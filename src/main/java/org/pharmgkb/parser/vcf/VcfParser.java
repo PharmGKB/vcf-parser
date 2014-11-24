@@ -1,6 +1,8 @@
 package org.pharmgkb.parser.vcf;
 
 import com.google.common.base.Splitter;
+import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.ListMultimap;
 import org.apache.commons.io.IOUtils;
 import org.pharmgkb.parser.vcf.model.*;
 import org.slf4j.Logger;
@@ -24,11 +26,14 @@ import java.util.regex.Pattern;
  */
 public class VcfParser implements AutoCloseable {
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+  private static final Pattern sf_refBasePattern = Pattern.compile("[AaCcGgTtNn]+");
+  private static final Pattern sf_altBasePattern = Pattern.compile("(?:[AaCcGgTtNn\\*]+|<.+>)");
   // from http://stackoverflow.com/questions/1757065/java-splitting-a-comma-separated-string-but-ignoring-commas-in-quotes
   private static final Pattern sf_metadataPattern = Pattern.compile(",(?=([^\"]*\"[^\"]*\")*[^\"]*$)");
   private static final Splitter sf_tabSplitter = Splitter.on("\t").trimResults();
   private static final Splitter sf_commaSplitter = Splitter.on(",").trimResults();
   private static final Splitter sf_colonSplitter = Splitter.on(":").trimResults();
+  private static final Splitter sf_semicolonSplitter = Splitter.on(";").trimResults();
   private static final Pattern sf_rsidPattern = Pattern.compile("rs\\d+");
 
   private Path m_dataFile;
@@ -44,6 +49,14 @@ public class VcfParser implements AutoCloseable {
     return this;
   }
 
+  /**
+   * Provide a {@link BufferedReader} to the beginning of the VCF file.
+   */
+  public VcfParser reader(BufferedReader reader) {
+    m_reader = reader;
+    return this;
+  }
+
   public VcfParser rsidsOnly() {
     m_rsidsOnly = true;
     return this;
@@ -52,7 +65,12 @@ public class VcfParser implements AutoCloseable {
 
   public VcfParser initialize() throws IOException {
 
-    m_reader = Files.newBufferedReader(m_dataFile);
+    if (m_reader == null) {
+      if (m_dataFile == null) {
+        throw new IllegalStateException("No reader and no file provided");
+      }
+      m_reader = Files.newBufferedReader(m_dataFile);
+    }
     VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder();
     String line;
     while ((line = m_reader.readLine()) != null) {
@@ -81,7 +99,7 @@ public class VcfParser implements AutoCloseable {
 
   public VcfParser parse() throws IOException {
 
-    if (m_reader == null) {
+    if (m_vcfMetadata == null) {
       initialize();
     }
     String line;
@@ -98,9 +116,37 @@ public class VcfParser implements AutoCloseable {
         continue;
       }
 
+      List<String> ref = sf_commaSplitter.splitToList(data.get(3));
+      for (String base : ref) {
+        if (!sf_refBasePattern.matcher(base).matches()) {
+          throw new IllegalArgumentException("Invalid reference base '" + base + "' (must be [AaGgCcTtNn]+)");
+        }
+      }
+
       List<String> alt = null;
       if (!data.get(4).equals("")) {
         alt = sf_commaSplitter.splitToList(data.get(4));
+        for (String base : alt) {
+          if (!sf_altBasePattern.matcher(base).matches()) {
+            throw new IllegalArgumentException("Invalid alternate base '" + base + "' (must be [AaGgCcTtNn\\*]+ or <.+>)");
+          }
+        }
+      }
+
+      ListMultimap<String, String> info = null;
+      if (!data.get(7).equals("")) {
+        info = ArrayListMultimap.create();
+        List<String> props = sf_semicolonSplitter.splitToList(data.get(7));
+        for (String prop : props) {
+          int idx = prop.indexOf('=');
+          if (idx == -1) {
+            info.put(prop, "");
+          } else {
+            String key = prop.substring(0, idx);
+            String value = prop.substring(idx + 1);
+            info.putAll(key, sf_commaSplitter.split(value));
+          }
+        }
       }
 
       List<String> format = null;
@@ -108,9 +154,8 @@ public class VcfParser implements AutoCloseable {
         format = sf_colonSplitter.splitToList(data.get(8));
       }
 
-      VcfPosition pos = new VcfPosition(data.get(0), Long.parseLong(data.get(1)),
-          ids, sf_commaSplitter.splitToList(data.get(3)), alt,
-          data.get(5), data.get(6), data.get(7), format);
+      VcfPosition pos = new VcfPosition(data.get(0), Long.parseLong(data.get(1)), ids, ref, alt,
+          data.get(5), data.get(6), info, format);
       List<VcfSample> samples = new ArrayList<>();
       for (int x = 9; x < data.size(); x++) {
         samples.add(new VcfSample(format, sf_colonSplitter.splitToList(data.get(x))));

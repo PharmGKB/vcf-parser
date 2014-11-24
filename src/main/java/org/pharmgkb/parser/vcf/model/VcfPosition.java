@@ -1,5 +1,7 @@
 package org.pharmgkb.parser.vcf.model;
 
+import com.google.common.collect.ListMultimap;
+
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -34,7 +36,7 @@ public class VcfPosition {
   private List<String> m_alleles = new ArrayList<>();
   private String m_quality;
   private String m_filter;
-  private String m_info;
+  private ListMultimap<String, String> m_info;
   private List<String> m_format;
 
 
@@ -44,7 +46,7 @@ public class VcfPosition {
       @Nullable List<String> altBases,
       @Nonnull String qual,
       @Nonnull String filter,
-      String info,
+      @Nullable ListMultimap<String, String> info,
       @Nullable List<String> format) {
 
     // not resolving ID string
@@ -60,7 +62,6 @@ public class VcfPosition {
     if (altBases == null) {
       m_altBases = Collections.emptyList();
     } else {
-      // not resolving ID strings in alternate bases
       m_altBases = altBases;
       m_alleles.addAll(altBases);
     }
@@ -73,6 +74,7 @@ public class VcfPosition {
     m_filter = filter;
 
     m_info = info;
+
     if (format == null) {
       m_format = Collections.emptyList();
     } else {
@@ -97,18 +99,30 @@ public class VcfPosition {
     return m_ids;
   }
 
+
+  /**
+   * Gets the reference base(s) for this position.  Each base must be an A, C, G, T, or N.
+   */
   public @Nonnull List<String> getRefBases() {
     return m_refBases;
   }
 
+  /**
+   * Gets the alternate base(s) for this position.  Each base must be an A, C, G, T, N or * unless it's an ID string, in
+   * which case it will be enclosed in angle brackets (e.g. &lt;CN1&gt;).
+   * <p>
+   * ID strings should reference a specific ALT metadata (obtainable via {@link VcfMetadata#getAlt(java.lang.String)}).
+   */
   public @Nonnull List<String> getAltBases() {
     return m_altBases;
   }
 
-  public @Nullable String getAllele(int index) {
-    if (index >= m_alleles.size()) {
-      return null;
-    }
+  /**
+   * Gets the allele at the given index from a list of containing refBases + altBases.
+   *
+   * @throws IndexOutOfBoundsException if index is out of range
+   */
+  public @Nonnull String getAllele(int index) {
     return m_alleles.get(index);
   }
 
@@ -126,9 +140,26 @@ public class VcfPosition {
     return m_filter;
   }
 
-  public @Nullable String getInfo() {
-    return m_info;
+
+  /**
+   * Get INFO metadata with the specified ID.
+   *
+   * @return list of values or null if there is no INFO metadata for the specified id
+   */
+  public @Nullable List<String> getInfo(String id) {
+    if (hasInfo(id)) {
+      return m_info.get(id);
+    }
+    return null;
   }
+
+  /**
+   * Checks if there is INFO metadata with the specified ID.
+   */
+  public boolean hasInfo(String id) {
+    return m_info != null && m_info.containsKey(id);
+  }
+
 
   public @Nonnull List<String> getFormat() {
     return m_format;

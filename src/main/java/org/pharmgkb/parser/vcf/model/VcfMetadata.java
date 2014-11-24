@@ -1,11 +1,12 @@
 package org.pharmgkb.parser.vcf.model;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
 
 import javax.annotation.Nonnull;
-import java.util.ArrayList;
-import java.util.List;
+import javax.annotation.Nullable;
+import java.util.*;
 
 
 /**
@@ -15,7 +16,7 @@ import java.util.List;
  */
 public class VcfMetadata {
   private String m_fileFormat;
-  private List<IdDescriptionMetadata> m_alt;
+  private Map<String, IdDescriptionMetadata> m_alt;
   private List<InfoMetadata> m_info;
   private List<IdDescriptionMetadata> m_filter;
   private List<FormatMetadata> m_format;
@@ -23,40 +24,79 @@ public class VcfMetadata {
   private ListMultimap<String, String> m_properties;
 
 
-  private VcfMetadata(String fileFormat, List<IdDescriptionMetadata> alt, List<InfoMetadata> info,
-      List<IdDescriptionMetadata> filter, List<FormatMetadata> format, @Nonnull List<String> columns,
-      ListMultimap<String, String> properties) {
+  private VcfMetadata(@Nonnull String fileFormat, @Nullable Map<String, IdDescriptionMetadata> alt,
+      @Nullable List<InfoMetadata> info, @Nullable List<IdDescriptionMetadata> filter,
+      @Nullable List<FormatMetadata> format, @Nonnull List<String> columns,
+      @Nullable ListMultimap<String, String> properties) {
+    Preconditions.checkNotNull(fileFormat);
+    Preconditions.checkNotNull(columns);
     m_fileFormat = fileFormat;
-    m_alt = alt;
-    m_info = info;
-    m_filter = filter;
-    m_format = format;
+    if (alt == null) {
+      m_alt = Collections.emptyMap();
+    } else {
+      m_alt = alt;
+    }
+    if (info == null) {
+      m_info = Collections.emptyList();
+    } else {
+      m_info = info;
+    }
+    if (filter == null) {
+      m_filter = Collections.emptyList();
+    } else {
+      m_filter = filter;
+    }
+    if (format == null) {
+      m_format = Collections.emptyList();
+    } else {
+      m_format = format;
+    }
     m_columns = columns;
-    m_properties = properties;
+    if (m_properties == null) {
+      m_properties = ArrayListMultimap.create();
+    } else {
+      m_properties = properties;
+    }
   }
 
 
-  public String getFileFormat() {
+  public @Nonnull String getFileFormat() {
     return m_fileFormat;
   }
 
-  public List<IdDescriptionMetadata> getAlt() {
-    return m_alt;
+
+  public @Nonnull Collection<IdDescriptionMetadata> getAlt() {
+    return m_alt.values();
   }
 
-  public List<InfoMetadata> getInfo() {
+  /**
+   * Gets the ALT metadata for the given ID.
+   *
+   * @param id the ID to lookup, will unwrap ID's enclosed in angle brackets (e.g. &lt;CN1&gt; will get converted to CN1)
+   */
+  @Nullable
+  public IdDescriptionMetadata getAlt(@Nonnull String id) {
+    IdDescriptionMetadata md = m_alt.get(id);
+    if (md == null && id.startsWith("<") && id.endsWith(">")) {
+      md = m_alt.get(id.substring(1, id.length() - 1));
+    }
+    return md;
+  }
+
+
+  public @Nonnull List<InfoMetadata> getInfo() {
     return m_info;
   }
 
-  public List<IdDescriptionMetadata> getFilter() {
+  public @Nonnull List<IdDescriptionMetadata> getFilter() {
     return m_filter;
   }
 
-  public List<FormatMetadata> getFormat() {
+  public @Nonnull List<FormatMetadata> getFormat() {
     return m_format;
   }
 
-  public List<String> getProperty(String name) {
+  public @Nonnull List<String> getProperty(String name) {
     return m_properties.get(name);
   }
 
@@ -69,14 +109,14 @@ public class VcfMetadata {
    * Gets the number of samples in the VCF file.
    */
   public int getNumSamples() {
-    return m_columns.size() - 8;
+    return m_columns.size() - 9;
   }
 
 
 
   public static class Builder {
     private String m_fileFormat;
-    private List<IdDescriptionMetadata> m_alt = new ArrayList<>();
+    private Map<String, IdDescriptionMetadata> m_alt = new HashMap<>();
     private List<InfoMetadata> m_info = new ArrayList<>();
     private List<IdDescriptionMetadata> m_filter = new ArrayList<>();
     private List<FormatMetadata> m_format = new ArrayList<>();
@@ -89,7 +129,7 @@ public class VcfMetadata {
     }
 
     public Builder addAlt(IdDescriptionMetadata md) {
-      m_alt.add(md);
+      m_alt.put(md.getId(), md);
       return this;
     }
 
