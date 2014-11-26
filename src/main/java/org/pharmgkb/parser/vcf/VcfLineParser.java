@@ -14,5 +14,5 @@ import java.util.List;
  */
 public interface VcfLineParser {
 
-  void parseLine(VcfMetadata metadata, VcfPosition position, List<VcfSample>  sampleData);
+  void parseLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData);
 }

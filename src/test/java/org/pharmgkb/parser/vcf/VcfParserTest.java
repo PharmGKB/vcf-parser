@@ -37,6 +37,9 @@ public class VcfParserTest {
       IdDescriptionMetadata md2 = vcfMetadata.getAlt("<CN0>");
       assertNotNull(md2);
       assertEquals(md1, md2);
+
+      assertEquals("HG00096", vcfMetadata.getSampleName(0));
+      assertEquals("HG00099", vcfMetadata.getSampleName(2));
     }
   }
 }

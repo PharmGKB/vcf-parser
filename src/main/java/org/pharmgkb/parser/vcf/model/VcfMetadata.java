@@ -112,6 +112,15 @@ public class VcfMetadata {
     return m_columns.size() - 9;
   }
 
+  /**
+   * Gets the sample name (column name).
+   *
+   * @param idx sample index, first sample is at index 0
+   */
+  public String getSampleName(int idx) {
+    return m_columns.get(9 + idx);
+  }
+
 
 
   public static class Builder {
