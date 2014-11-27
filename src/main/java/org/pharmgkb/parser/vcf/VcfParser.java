@@ -168,7 +168,7 @@ public class VcfParser implements AutoCloseable {
 
 
   @Override
-  public void close() throws Exception {
+  public void close() {
     IOUtils.closeQuietly(m_reader);
   }
 
