@@ -1,5 +1,6 @@
 package org.pharmgkb.parser.vcf;
 
+import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
@@ -9,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
@@ -36,7 +38,6 @@ public class VcfParser implements AutoCloseable {
   private static final Splitter sf_semicolonSplitter = Splitter.on(";").trimResults();
   private static final Pattern sf_rsidPattern = Pattern.compile("rs\\d+");
 
-  private Path m_dataFile;
   private boolean m_rsidsOnly;
   private BufferedReader m_reader;
   private VcfMetadata m_vcfMetadata;
@@ -44,32 +45,20 @@ public class VcfParser implements AutoCloseable {
 
 
 
-  public VcfParser file(Path dataFile) {
-    m_dataFile = dataFile;
-    return this;
+  private VcfParser(@Nonnull BufferedReader reader, boolean rsidsOnly, @Nonnull VcfLineParser lineParser) {
+    m_reader = reader;
+    m_rsidsOnly = rsidsOnly;
+    m_vcfLineParser = lineParser;
   }
+
 
   /**
-   * Provide a {@link BufferedReader} to the beginning of the VCF file.
+   * Parses metadata only.
    */
-  public VcfParser reader(BufferedReader reader) {
-    m_reader = reader;
-    return this;
-  }
+  public VcfMetadata parseMetadata() throws IOException {
 
-  public VcfParser rsidsOnly() {
-    m_rsidsOnly = true;
-    return this;
-  }
-
-
-  public VcfParser initialize() throws IOException {
-
-    if (m_reader == null) {
-      if (m_dataFile == null) {
-        throw new IllegalStateException("No reader and no file provided");
-      }
-      m_reader = Files.newBufferedReader(m_dataFile);
+    if (m_vcfMetadata != null) {
+      throw new IllegalStateException("Metadata has already been parsed.");
     }
     VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder();
     String line;
@@ -82,25 +71,25 @@ public class VcfParser implements AutoCloseable {
       }
     }
     m_vcfMetadata = mdBuilder.build();
-    return this;
-  }
-
-
-  public VcfMetadata getMetadata() {
     return m_vcfMetadata;
   }
 
 
-  public VcfParser parseWith(VcfLineParser lineParser) {
-    m_vcfLineParser = lineParser;
-    return this;
+  /**
+   * Gets VCF metadata (if it has already been parsed).
+   */
+  public @Nullable VcfMetadata getMetadata() {
+    return m_vcfMetadata;
   }
 
 
-  public VcfParser parse() throws IOException {
+  /**
+   * Parses entire VCF file.
+   */
+  public void parse() throws IOException {
 
     if (m_vcfMetadata == null) {
-      initialize();
+      parseMetadata();
     }
     String line;
     while ((line = m_reader.readLine()) != null) {
@@ -163,7 +152,6 @@ public class VcfParser implements AutoCloseable {
       m_vcfLineParser.parseLine(m_vcfMetadata, pos, samples);
     }
     IOUtils.closeQuietly(m_reader);
-    return this;
   }
 
 
@@ -264,5 +252,68 @@ public class VcfParser implements AutoCloseable {
    */
   public static @Nonnull String removeWrapper(@Nonnull String value) {
     return value.substring(1, value.length() - 1);
+  }
+
+
+
+  public static class Builder {
+    private BufferedReader m_reader;
+    private Path m_vcfFile;
+    private boolean m_rsidsOnly;
+    private VcfLineParser m_vcfLineParser;
+
+
+    /**
+     * Provides the {@link Path} to the VCF file to parse.
+     */
+    public Builder file(@Nonnull Path dataFile) {
+      Preconditions.checkNotNull(dataFile);
+      if (!dataFile.toString().endsWith(".vcf")) {
+        throw new IllegalArgumentException("Not a VCF file (doesn't end with .vcf extension");
+      }
+      m_vcfFile = dataFile;
+      return this;
+    }
+
+    /**
+     * Provides a {@link BufferedReader} to the beginning of the VCF file to parse.
+     */
+    public Builder read(@Nonnull BufferedReader reader) {
+      Preconditions.checkNotNull(reader);
+      m_reader = reader;
+      return this;
+    }
+
+    /**
+     * Tells parser to ignore data lines that are not associated with an RSID.
+     */
+    public Builder rsidsOnly() {
+      m_rsidsOnly = true;
+      return this;
+    }
+
+    public Builder parseWith(@Nonnull VcfLineParser lineParser) {
+      Preconditions.checkNotNull(lineParser);
+      m_vcfLineParser = lineParser;
+      return this;
+    }
+
+
+    public VcfParser build() throws IOException {
+
+      if (m_vcfLineParser == null) {
+        throw new IllegalStateException("Missing VcfLineParser");
+      }
+      if (m_vcfFile != null) {
+        if (m_reader != null) {
+          throw new IllegalStateException("Cannot provide both file and reader");
+        }
+        m_reader = Files.newBufferedReader(m_vcfFile);
+      }
+      if (m_reader == null) {
+        throw new IllegalStateException("Must specify either file or reader to parse");
+      }
+      return new VcfParser(m_reader, m_rsidsOnly, m_vcfLineParser);
+    }
   }
 }

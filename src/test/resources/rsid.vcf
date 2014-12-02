@@ -1,0 +1,4 @@
+##fileformat=VCFv4.1
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	PG0001444-BLD
+chr1	10439	rs112766696	AC	A	122.00	PASS	CIGAR=1M1D;RU=C;REFREP=4;IDREP=3;CSQ=-|100287102|NR_046018.2|Transcript|upstream_gene_variant|||||||||DDX11L1|||||1434|YES|||||||||,-|653635|NR_024540.1|Transcript|downstream_gene_variant|||||||||WASH7P|||||3922|YES|||||||||	GT:GQ:GQX:DPI:AD	0/1:162:122:15:8,4
+chr1	12783	.	G	A	35.00	PASS	SNVSB=0.0;SNVHPOL=2;CSQ=A||NR_024540.1|Transcript|downstream_gene_variant|||||||||WASH7P|||||1579|YES|||||||||,A||NR_046018.2|Transcript|intron_variant&nc_transcript_variant||||||||2/2|DDX11L1||||||YES|||||||NR_046018.2:n.463+62G>A||	GT:GQ:GQX:DP:DPF:AD	0/1:68:35:17:2:11,6

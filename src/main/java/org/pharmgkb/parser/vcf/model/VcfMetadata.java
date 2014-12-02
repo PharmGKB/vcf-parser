@@ -168,6 +168,9 @@ public class VcfMetadata {
     }
 
     public VcfMetadata build() {
+      if (m_fileFormat == null || !m_fileFormat.startsWith("VCF")) {
+        throw new IllegalStateException("Not a VCF file");
+      }
       return new VcfMetadata(m_fileFormat, m_alt, m_info, m_filter, m_format, m_columns, m_properties);
     }
   }

@@ -3,9 +3,15 @@ package org.pharmgkb.parser.vcf;
 import org.junit.Test;
 import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
+import org.pharmgkb.parser.vcf.model.VcfPosition;
+import org.pharmgkb.parser.vcf.model.VcfSample;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.List;
 
 import static org.junit.Assert.*;
 
@@ -21,8 +27,8 @@ public class VcfParserTest {
   public void testCnv() throws Exception {
 
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream("/cnv.vcf")))) {
-      VcfParser parser = new VcfParser()
-          .reader(reader)
+      VcfParser parser = new VcfParser.Builder()
+          .read(reader)
           .parseWith((metadata, position, sampleData) -> {
             for (String base : position.getAltBases()) {
               assertTrue(base.startsWith("<CN"));
@@ -30,7 +36,8 @@ public class VcfParserTest {
             }
             assertEquals(metadata.getNumSamples(), sampleData.size());
           })
-          .parse();
+          .build();
+      parser.parse();
       VcfMetadata vcfMetadata = parser.getMetadata();
       IdDescriptionMetadata md1 = vcfMetadata.getAlt("CN0");
       assertNotNull(md1);
@@ -40,6 +47,67 @@ public class VcfParserTest {
 
       assertEquals("HG00096", vcfMetadata.getSampleName(0));
       assertEquals("HG00099", vcfMetadata.getSampleName(2));
+    }
+  }
+
+
+
+  @Test
+  public void testRsidOnly() throws Exception {
+
+    VcfLineParser lineParser = new VcfLineParser() {
+      @Override
+      public void parseLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
+        assertEquals(1, position.getIds().size());
+        assertTrue(position.getIds().get(0).matches("rs\\d+"));
+        assertEquals(metadata.getNumSamples(), sampleData.size());
+      }
+    };
+
+    // read from reader
+    try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream("/rsid.vcf")))) {
+      VcfParser parser = new VcfParser.Builder()
+          .read(reader)
+          .rsidsOnly()
+          .parseWith(lineParser)
+          .build();
+      parser.parse();
+    }
+
+    // read from file
+    Path dataFile = Paths.get(VcfParserTest.class.getResource("/rsid.vcf").toURI());
+    assertTrue(Files.exists(dataFile));
+    try (VcfParser parser = new VcfParser.Builder().file(dataFile).rsidsOnly().parseWith(lineParser).build()) {
+      parser.parse();
+    }
+  }
+
+
+  @Test
+  public void testFile() throws Exception {
+
+
+    try {
+      VcfParser parser = new VcfParser.Builder()
+          .file(Paths.get("foo.txt"))
+          .parseWith((metadata, position, sampleData) -> {})
+          .build();
+      fail("Didn't catch invalid path");
+    } catch (IllegalArgumentException ex) {
+      // expected
+      assertTrue(ex.getMessage().contains("Not a VCF file"));
+    }
+
+    try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream("/notvcf.vcf")))) {
+      VcfParser parser = new VcfParser.Builder()
+          .read(reader)
+          .parseWith((metadata, position, sampleData) -> {})
+          .build();
+      parser.parseMetadata();
+      fail("Didn't catch invalid version");
+    } catch (IllegalStateException ex) {
+      // expected
+      assertTrue(ex.getMessage().contains("Not a VCF file"));
     }
   }
 }

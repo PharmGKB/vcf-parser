@@ -6,49 +6,46 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
- * A simple {@link org.pharmgkb.parser.vcf.VcfLineParser} that loads an entire VCF file into memory to permit constant-time lookup for VCF records, either:
+ * A simple {@link org.pharmgkb.parser.vcf.VcfLineParser} that loads an entire VCF file into memory to permit
+ * constant-time lookup for VCF records, either:
  * <ul>
- *   <li>By any ID listed in the {@code ID} field, or</li>
- *   <li>By chromosome and position</li>
+ * <li>By any ID listed in the {@code ID} field, or</li>
+ * <li>By chromosome and position</li>
  * </ul>
- *
- * <em>This implementation is memory-intensive and should only be used for short VCF files where repeated arbitrary (random) access to VCF records is required.</em>
- *
+ * <p>
+ * <em>This implementation is memory-intensive and should only be used for short VCF files where repeated arbitrary
+ * (random) access to VCF records is required.</em>
+ * <p>
  * By default, an {@link java.lang.IllegalArgumentException} is thrown each time a duplicate ID or locus is found.
- * To change this behavior, see {@link #setDuplicateLocusHandler} and {@link #setDuplicateLocusHandler}.
+ * To change this behavior, see {@link Builder#setDuplicateLocusHandler} and {@link Builder#setDuplicateLocusHandler}.
  *
  * @author Douglas Myers-Turnbull
  */
 public class MemoryMappedVcfLineParser implements VcfLineParser {
-
   private VcfMetadata m_metadata;
-  private Map<String,VcfPosition> m_idToPosition;
-  private Map<Locus,VcfPosition> m_locusToPosition;
-  private Map<String,List<VcfSample>> m_idToSamples;
-  private Map<Locus,List<VcfSample>> m_locusToSamples;
+  private Map<String, VcfPosition> m_idToPosition = new HashMap<>();
+  private Map<Locus, VcfPosition> m_locusToPosition = new HashMap<>();
+  private Map<String, List<VcfSample>> m_idToSamples = new HashMap<>();
+  private Map<Locus, List<VcfSample>> m_locusToSamples = new HashMap<>();
   private DuplicateHandler m_duplicateIdHandler;
   private DuplicateHandler m_duplicateLocusHandler;
 
-  public MemoryMappedVcfLineParser() {
-    m_idToPosition = new HashMap<>();
-    m_locusToPosition = new HashMap<>();
-    m_idToSamples = new HashMap<>();
-    m_locusToSamples = new HashMap<>();
-    m_duplicateIdHandler = DuplicateHandler.FAIL;
-    m_duplicateLocusHandler = DuplicateHandler.FAIL;
+
+  private MemoryMappedVcfLineParser(@Nonnull DuplicateHandler idHandler, @Nonnull DuplicateHandler locusHandler) {
+    m_duplicateIdHandler = idHandler;
+    m_duplicateLocusHandler = locusHandler;
   }
 
   /**
    * @return Every position read, or null if none no lines read.
    */
   public @Nullable Collection<VcfPosition> getAllPositions() {
-    if (m_metadata == null) return null;
+    if (m_metadata == null) {
+      return null;
+    }
     return m_locusToPosition.values();
   }
 
@@ -56,7 +53,9 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
    * @return The samples for every VCF record read, or null if no lines were read.
    */
   public @Nullable Collection<List<VcfSample>> getAllSamples() {
-    if (m_metadata == null) return null;
+    if (m_metadata == null) {
+      return null;
+    }
     return m_locusToSamples.values();
   }
 
@@ -65,24 +64,6 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
    */
   public @Nullable VcfMetadata getMetadata() {
     return m_metadata;
-  }
-
-  /**
-   * Determines what to do when an ID that was previously set is encountered, regardless of whether the two IDs correspond to the same locus.
-   * This is independent of {@link #setDuplicateLocusHandler}, except when either is set to {@link org.pharmgkb.parser.vcf.MemoryMappedVcfLineParser.DuplicateHandler#FAIL FAIL}.
-   */
-  public @Nonnull MemoryMappedVcfLineParser setDuplicateIdHandler(@Nonnull DuplicateHandler handler) {
-    m_duplicateIdHandler = handler;
-    return this;
-  }
-
-  /**
-   * Determines what to do when a VCF record is encountered with a locus (chromosome and position) that was already found.
-   * This is independent of {@link #setDuplicateIdHandler}, except when either is set to {@link org.pharmgkb.parser.vcf.MemoryMappedVcfLineParser.DuplicateHandler#FAIL FAIL}.
-   */
-  public @Nonnull MemoryMappedVcfLineParser setDuplicateLocusHandler(@Nonnull DuplicateHandler handler) {
-    m_duplicateLocusHandler = handler;
-    return this;
   }
 
   public @Nullable VcfPosition getPositionForId(@Nonnull String id) {
@@ -124,11 +105,46 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
         throw new IllegalArgumentException("Duplicate VCF record for ID " + id);
       }
       if (!containsId || m_duplicateIdHandler == DuplicateHandler.KEEP_LAST) {
-          m_idToPosition.put(id, position);
-          m_idToSamples.put(id, sampleData);
+        m_idToPosition.put(id, position);
+        m_idToSamples.put(id, sampleData);
       }
     }
   }
+
+
+  public static class Builder {
+    private DuplicateHandler m_duplicateIdHandler = DuplicateHandler.FAIL;
+    private DuplicateHandler m_duplicateLocusHandler = DuplicateHandler.FAIL;
+
+    /**
+     * Determines what to do when an ID that was previously set is encountered, regardless of whether the two IDs
+     * correspond to the same locus.
+     *
+     * This is independent of {@link #setDuplicateLocusHandler(DuplicateHandler)}, except when either is set to
+     * {@link DuplicateHandler#FAIL}.
+     */
+    public @Nonnull Builder setDuplicateIdHandler(@Nonnull DuplicateHandler handler) {
+      m_duplicateIdHandler = handler;
+      return this;
+    }
+
+    /**
+     * Determines what to do when a VCF record is encountered with a locus (chromosome and position) that was already
+     * found.
+     *
+     * This is independent of {@link #setDuplicateIdHandler(DuplicateHandler)}, except when either is set to
+     * {@link DuplicateHandler#FAIL}.
+     */
+    public @Nonnull Builder setDuplicateLocusHandler(@Nonnull DuplicateHandler handler) {
+      m_duplicateLocusHandler = handler;
+      return this;
+    }
+
+    public MemoryMappedVcfLineParser build() {
+      return new MemoryMappedVcfLineParser(m_duplicateIdHandler, m_duplicateLocusHandler);
+    }
+  }
+
 
   /**
    * What to do when a duplicate VCF record (line) is encountered.
@@ -150,8 +166,9 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
      * Replace the {@link org.pharmgkb.parser.vcf.model.VcfSample VcfSamples} and {@link org.pharmgkb.parser.vcf.model.VcfPosition}.
      * In other words, ignore the fact that the record is a duplicate and record it anyway.
      */
-    KEEP_LAST;
+    KEEP_LAST
   }
+
 
   private static class Locus {
     private final String m_chromosome;
@@ -172,17 +189,20 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
 
     @Override
     public boolean equals(Object o) {
-      if (this == o) return true;
-      if (o == null || getClass() != o.getClass()) return false;
-      Locus locus = (Locus) o;
-      return m_position == locus.m_position && m_chromosome.equals(locus.m_chromosome);
+      if (this == o) {
+        return true;
+      }
+      if (o == null || getClass() != o.getClass()) {
+        return false;
+      }
+      final Locus locus = (Locus)o;
+      return Objects.equals(m_position, locus.getPosition()) &&
+          Objects.equals(m_chromosome, locus.getChromosome());
     }
 
     @Override
     public int hashCode() {
-      int result = m_chromosome.hashCode();
-      result = 31 * result + (int) (m_position ^ (m_position >>> 32));
-      return result;
+      return Objects.hash(m_chromosome, m_position);
     }
 
     @Override
@@ -190,5 +210,4 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
       return m_chromosome + ":" + m_position;
     }
   }
-
 }
