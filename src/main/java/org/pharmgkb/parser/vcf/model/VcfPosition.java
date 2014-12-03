@@ -51,6 +51,9 @@ public class VcfPosition {
 
     // not resolving ID string
     m_chromosome = chr;
+    if (m_chromosome.startsWith("chr")) {
+      m_chromosome = chr.substring(3);
+    }
     m_position = pos;
     if (ids == null) {
       m_ids = Collections.emptyList();
@@ -83,7 +86,12 @@ public class VcfPosition {
   }
 
 
-
+  /**
+   * Gets the chromosome number or angle-bracketed ID string.
+   *
+   * The parser automatically normalizes this value to just the chromosome number by removing the "chr" prefix if it
+   * exists.
+   */
   public @Nonnull String getChromosome() {
     return m_chromosome;
   }
