@@ -113,7 +113,7 @@ public class VcfParser implements AutoCloseable {
       }
 
       List<String> alt = null;
-      if (!data.get(4).equals("")) {
+      if (!data.get(4).equals(".")) {
         alt = sf_commaSplitter.splitToList(data.get(4));
         for (String base : alt) {
           if (!sf_altBasePattern.matcher(base).matches()) {
@@ -123,7 +123,7 @@ public class VcfParser implements AutoCloseable {
       }
 
       ListMultimap<String, String> info = null;
-      if (!data.get(7).equals("")) {
+      if (!data.get(7).equals(".")) {
         info = ArrayListMultimap.create();
         List<String> props = sf_semicolonSplitter.splitToList(data.get(7));
         for (String prop : props) {
