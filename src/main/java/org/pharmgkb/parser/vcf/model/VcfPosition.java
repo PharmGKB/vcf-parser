@@ -51,9 +51,6 @@ public class VcfPosition {
 
     // not resolving ID string
     m_chromosome = chr;
-    if (m_chromosome.startsWith("chr")) {
-      m_chromosome = chr.substring(3);
-    }
     m_position = pos;
     if (ids == null) {
       m_ids = Collections.emptyList();
@@ -87,10 +84,8 @@ public class VcfPosition {
 
 
   /**
-   * Gets the chromosome number or angle-bracketed ID string.
-   *
-   * The parser automatically normalizes this value to just the chromosome number by removing the "chr" prefix if it
-   * exists.
+   * Gets an identifier from the reference genome or an angle-bracketed ID String ("<ID>") pointing to a contig in the
+   * assembly file.
    */
   public @Nonnull String getChromosome() {
     return m_chromosome;
@@ -116,8 +111,8 @@ public class VcfPosition {
   }
 
   /**
-   * Gets the alternate base(s) for this position.  Each base must be an A, C, G, T, N or * unless it's an ID string, in
-   * which case it will be enclosed in angle brackets (e.g. &lt;CN1&gt;).
+   * Gets the alternate base(s) for this position.  Each base must be an A, C, G, T, N or * unless it's an
+   * angle-bracketed ID string ("<ID>").
    * <p>
    * ID strings should reference a specific ALT metadata (obtainable via {@link VcfMetadata#getAlt(java.lang.String)}).
    */
