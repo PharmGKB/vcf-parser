@@ -3,15 +3,12 @@ package org.pharmgkb.parser.vcf;
 import org.junit.Test;
 import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
-import org.pharmgkb.parser.vcf.model.VcfPosition;
-import org.pharmgkb.parser.vcf.model.VcfSample;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.List;
 
 import static org.junit.Assert.*;
 
@@ -39,6 +36,7 @@ public class VcfParserTest {
           .build();
       parser.parse();
       VcfMetadata vcfMetadata = parser.getMetadata();
+      assertNotNull(vcfMetadata);
       IdDescriptionMetadata md1 = vcfMetadata.getAlt("CN0");
       assertNotNull(md1);
       IdDescriptionMetadata md2 = vcfMetadata.getAlt("<CN0>");
@@ -51,17 +49,13 @@ public class VcfParserTest {
   }
 
 
-
   @Test
   public void testRsidOnly() throws Exception {
 
-    VcfLineParser lineParser = new VcfLineParser() {
-      @Override
-      public void parseLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
-        assertEquals(1, position.getIds().size());
-        assertTrue(position.getIds().get(0).matches("rs\\d+"));
-        assertEquals(metadata.getNumSamples(), sampleData.size());
-      }
+    VcfLineParser lineParser = (metadata, position, sampleData) -> {
+      assertEquals(1, position.getIds().size());
+      assertTrue(position.getIds().get(0).matches("rs\\d+"));
+      assertEquals(metadata.getNumSamples(), sampleData.size());
     };
 
     // read from reader
@@ -86,9 +80,8 @@ public class VcfParserTest {
   @Test
   public void testFile() throws Exception {
 
-
     try {
-      VcfParser parser = new VcfParser.Builder()
+      new VcfParser.Builder()
           .file(Paths.get("foo.txt"))
           .parseWith((metadata, position, sampleData) -> {})
           .build();

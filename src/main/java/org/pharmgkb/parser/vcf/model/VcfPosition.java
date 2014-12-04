@@ -6,6 +6,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -149,7 +150,7 @@ public class VcfPosition {
    *
    * @return list of values or null if there is no INFO metadata for the specified id
    */
-  public @Nullable List<String> getInfo(String id) {
+  public @Nullable List<String> getInfo(@Nonnull String id) {
     if (hasInfo(id)) {
       return m_info.get(id);
     }
@@ -157,12 +158,59 @@ public class VcfPosition {
   }
 
   /**
+   * Returns the values for the specified key as list of string.
+   * @return The literal value of the INFO property (including an empty string if applicable),
+   * or null if it is not specified
+   */
+  public @Nullable List<String> getInfo(@Nonnull ReservedInfoProperty key) {
+    if (hasInfo(key.getId())) {
+      return m_info.get(key.getId());
+    }
+    return null;
+  }
+
+  /**
+   * Returns the value for the reserved property as the type specified by both {@link ReservedInfoProperty#getType()}
+   * and {@link ReservedInfoProperty#isList()}.
+   * <em>Note that this method does NOT always return a list.</em>
+   * For example:
+   * <code>
+   *   BigDecimal bq = vcfPosition.getInfoConverted(ReservedInfoProperty.BaseQuality);
+   * </code>
+   * @param <T> The type specified by {@code ReservedInfoProperty.getType()} if {@code ReservedInfoProperty.isList()}
+   *           is false;
+   *           otherwise {@code List<V>} where V is the type specified by {@code ReservedInfoProperty.getType()}.
+   */
+  public @Nullable <T> T getInfoConverted(@Nonnull ReservedInfoProperty key) {
+    if (!hasInfo(key.getId())) {
+      return null;
+    }
+    List<String> list = m_info.get(key.getId());
+    if (list.isEmpty()) return null;
+    StringBuilder sb = new StringBuilder();
+    Iterator<String> iter = list.iterator();
+    while (iter.hasNext()) {
+      sb.append(iter.next());
+      if (iter.hasNext()) {
+        sb.append(",");
+      }
+    }
+    return PropertyUtils.convertProperty(key, sb.toString());
+  }
+
+  /**
    * Checks if there is INFO metadata with the specified ID.
    */
-  public boolean hasInfo(String id) {
+  public boolean hasInfo(@Nonnull String id) {
     return m_info != null && m_info.containsKey(id);
   }
 
+  /**
+   * Checks if there is INFO metadata with the specified ID.
+   */
+  public boolean hasInfo(@Nonnull ReservedInfoProperty key) {
+    return hasInfo(key.getId());
+  }
 
   public @Nonnull List<String> getFormat() {
     return m_format;
