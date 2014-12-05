@@ -58,4 +58,12 @@ public class VcfSample {
     return PropertyUtils.convertProperty(key, m_properties.get(key.getId()));
   }
 
+  public boolean hasProperty(@Nonnull String key) {
+    return m_properties.containsKey(key);
+  }
+
+  public boolean hasProperty(@Nonnull ReservedFormatProperty key) {
+    return m_properties.containsKey(key.getId());
+  }
+
 }

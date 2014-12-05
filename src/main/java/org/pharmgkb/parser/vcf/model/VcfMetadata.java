@@ -104,6 +104,12 @@ public class VcfMetadata {
     return m_columns.indexOf(col);
   }
 
+  /**
+   * Sample numbering starts at 0.
+   */
+  public int getSampleIndex(String sampleId) {
+    return m_columns.indexOf(sampleId) - 9;
+  }
 
   /**
    * Gets the number of samples in the VCF file.
