@@ -1,12 +1,12 @@
 package org.pharmgkb.parser.vcf.model;
 
+import com.google.common.base.Joiner;
 import com.google.common.collect.ListMultimap;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -29,6 +29,7 @@ import java.util.regex.Pattern;
  */
 public class VcfPosition {
   private static final Pattern sf_qualPattern = Pattern.compile("([\\d\\.]+|\\.)");
+  private static final Joiner sf_commaJoiner = Joiner.on(",");
   private String m_chromosome;
   private long m_position;
   private List<String> m_ids;
@@ -158,18 +159,6 @@ public class VcfPosition {
   }
 
   /**
-   * Returns the values for the specified key as list of string.
-   * @return The literal value of the INFO property (including an empty string if applicable),
-   * or null if it is not specified
-   */
-  public @Nullable List<String> getInfo(@Nonnull ReservedInfoProperty key) {
-    if (hasInfo(key.getId())) {
-      return m_info.get(key.getId());
-    }
-    return null;
-  }
-
-  /**
    * Returns the value for the reserved property as the type specified by both {@link ReservedInfoProperty#getType()}
    * and {@link ReservedInfoProperty#isList()}.
    * <em>Note that this method does NOT always return a list.</em>
@@ -181,21 +170,15 @@ public class VcfPosition {
    *           is false;
    *           otherwise {@code List<V>} where V is the type specified by {@code ReservedInfoProperty.getType()}.
    */
-  public @Nullable <T> T getInfoConverted(@Nonnull ReservedInfoProperty key) {
+  public @Nullable <T> T getInfo(@Nonnull ReservedInfoProperty key) {
     if (!hasInfo(key.getId())) {
       return null;
     }
     List<String> list = m_info.get(key.getId());
-    if (list.isEmpty()) return null;
-    StringBuilder sb = new StringBuilder();
-    Iterator<String> iter = list.iterator();
-    while (iter.hasNext()) {
-      sb.append(iter.next());
-      if (iter.hasNext()) {
-        sb.append(",");
-      }
+    if (list.isEmpty()) {
+      return null;
     }
-    return PropertyUtils.convertProperty(key, sb.toString());
+    return PropertyUtils.convertProperty(key, sf_commaJoiner.join(list));
   }
 
   /**

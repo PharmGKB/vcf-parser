@@ -38,23 +38,13 @@ public class VcfSample {
   }
 
   /**
-   * Returns the value for a reserved property as a string.
-   * @return The literal value of the property (including an empty string if applicable),
-   * or null if it is not specified
-   */
-  public @Nullable String getProperty(@Nonnull ReservedFormatProperty key) {
-    return m_properties.get(key.getId());
-  }
-
-  /**
    * Returns the value for the reserved property as the type specified by both {@link ReservedFormatProperty#getType()}
    * and {@link ReservedFormatProperty#isList()}.
    * @param <T> The type specified by {@code ReservedInfoProperty.getType()} if {@code ReservedFormatProperty.isList()}
    *           is false;
    *           otherwise {@code List<V>} where V is the type specified by {@code ReservedFormatProperty.getType()}.
    */
-  @SuppressWarnings("unchecked")
-  public @Nullable <T> T getPropertyConverted(@Nonnull ReservedFormatProperty key) {
+  public @Nullable <T> T getProperty(@Nonnull ReservedFormatProperty key) {
     return PropertyUtils.convertProperty(key, m_properties.get(key.getId()));
   }
 

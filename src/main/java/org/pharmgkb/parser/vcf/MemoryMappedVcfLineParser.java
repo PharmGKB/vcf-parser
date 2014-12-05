@@ -24,17 +24,21 @@ import java.util.List;
  * @author Douglas Myers-Turnbull
  */
 public class MemoryMappedVcfLineParser implements VcfLineParser {
-
+  private MemoryMappedVcfDataStore m_dataStore = new MemoryMappedVcfDataStore();
   private DuplicateHandler m_duplicateIdHandler;
   private DuplicateHandler m_duplicateLocusHandler;
-  private MemoryMappedVcfDataStore m_dataStore;
 
-  private MemoryMappedVcfLineParser(@Nonnull DuplicateHandler idHandler, @Nonnull DuplicateHandler locusHandler,
-      @Nonnull MemoryMappedVcfDataStore dataStore) {
+
+  private MemoryMappedVcfLineParser(@Nonnull DuplicateHandler idHandler, @Nonnull DuplicateHandler locusHandler) {
     m_duplicateIdHandler = idHandler;
     m_duplicateLocusHandler = locusHandler;
-    m_dataStore = dataStore;
   }
+
+
+  public @Nonnull MemoryMappedVcfDataStore getDataStore() {
+    return  m_dataStore;
+  }
+
 
   @Override
   public void parseLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
@@ -67,7 +71,6 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
 
 
   public static class Builder {
-
     private DuplicateHandler m_duplicateIdHandler = DuplicateHandler.FAIL;
     private DuplicateHandler m_duplicateLocusHandler = DuplicateHandler.FAIL;
 
@@ -95,8 +98,8 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
       return this;
     }
 
-    public MemoryMappedVcfLineParser build(@Nonnull MemoryMappedVcfDataStore dataStore) {
-      return new MemoryMappedVcfLineParser(m_duplicateIdHandler, m_duplicateLocusHandler, dataStore);
+    public MemoryMappedVcfLineParser build() {
+      return new MemoryMappedVcfLineParser(m_duplicateIdHandler, m_duplicateLocusHandler);
     }
   }
 

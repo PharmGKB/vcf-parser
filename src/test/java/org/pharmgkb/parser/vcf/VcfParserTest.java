@@ -25,7 +25,7 @@ public class VcfParserTest {
 
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream("/cnv.vcf")))) {
       VcfParser parser = new VcfParser.Builder()
-          .read(reader)
+          .withReader(reader)
           .parseWith((metadata, position, sampleData) -> {
             for (String base : position.getAltBases()) {
               assertTrue(base.startsWith("<CN"));
@@ -61,7 +61,7 @@ public class VcfParserTest {
     // read from reader
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream("/rsid.vcf")))) {
       VcfParser parser = new VcfParser.Builder()
-          .read(reader)
+          .withReader(reader)
           .rsidsOnly()
           .parseWith(lineParser)
           .build();
@@ -71,7 +71,7 @@ public class VcfParserTest {
     // read from file
     Path dataFile = Paths.get(VcfParserTest.class.getResource("/rsid.vcf").toURI());
     assertTrue(Files.exists(dataFile));
-    try (VcfParser parser = new VcfParser.Builder().file(dataFile).rsidsOnly().parseWith(lineParser).build()) {
+    try (VcfParser parser = new VcfParser.Builder().withFile(dataFile).rsidsOnly().parseWith(lineParser).build()) {
       parser.parse();
     }
   }
@@ -82,7 +82,7 @@ public class VcfParserTest {
 
     try {
       new VcfParser.Builder()
-          .file(Paths.get("foo.txt"))
+          .withFile(Paths.get("foo.txt"))
           .parseWith((metadata, position, sampleData) -> {})
           .build();
       fail("Didn't catch invalid path");
@@ -93,7 +93,7 @@ public class VcfParserTest {
 
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream("/notvcf.vcf")))) {
       VcfParser parser = new VcfParser.Builder()
-          .read(reader)
+          .withReader(reader)
           .parseWith((metadata, position, sampleData) -> {})
           .build();
       parser.parseMetadata();

@@ -113,7 +113,7 @@ public class VcfParser implements AutoCloseable {
       }
 
       List<String> alt = null;
-      if (!data.get(4).equals(".")) {
+      if (!data.get(7).equals("") && !data.get(4).equals(".")) {
         alt = sf_commaSplitter.splitToList(data.get(4));
         for (String base : alt) {
           if (!sf_altBasePattern.matcher(base).matches()) {
@@ -123,7 +123,7 @@ public class VcfParser implements AutoCloseable {
       }
 
       ListMultimap<String, String> info = null;
-      if (!data.get(7).equals(".")) {
+      if (!data.get(7).equals("") && !data.get(7).equals(".")) {
         info = ArrayListMultimap.create();
         List<String> props = sf_semicolonSplitter.splitToList(data.get(7));
         for (String prop : props) {
@@ -266,7 +266,7 @@ public class VcfParser implements AutoCloseable {
     /**
      * Provides the {@link Path} to the VCF file to parse.
      */
-    public Builder file(@Nonnull Path dataFile) {
+    public Builder withFile(@Nonnull Path dataFile) {
       Preconditions.checkNotNull(dataFile);
       if (!dataFile.toString().endsWith(".vcf")) {
         throw new IllegalArgumentException("Not a VCF file (doesn't end with .vcf extension");
@@ -278,7 +278,7 @@ public class VcfParser implements AutoCloseable {
     /**
      * Provides a {@link BufferedReader} to the beginning of the VCF file to parse.
      */
-    public Builder read(@Nonnull BufferedReader reader) {
+    public Builder withReader(@Nonnull BufferedReader reader) {
       Preconditions.checkNotNull(reader);
       m_reader = reader;
       return this;

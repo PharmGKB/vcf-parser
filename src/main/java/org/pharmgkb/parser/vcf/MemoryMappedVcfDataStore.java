@@ -1,5 +1,6 @@
 package org.pharmgkb.parser.vcf;
 
+import com.google.common.base.Joiner;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
@@ -158,9 +159,7 @@ public class MemoryMappedVcfDataStore {
 
   @Immutable
   public static class Genotype {
-
     private final List<String> m_alleles;
-
     private final boolean m_isPhased;
 
     public Genotype(List<String> alleles, boolean isPhased) {
@@ -178,28 +177,25 @@ public class MemoryMappedVcfDataStore {
 
     @Override
     public String toString() {
-      StringBuilder sb = new StringBuilder();
-      String delim = m_isPhased? "|" : "/";
-      for (String allele : m_alleles) {
-        sb.append(allele).append(delim);
-      }
-      String string = sb.toString();
-      return string.substring(0, string.length() - 1);
+      return Joiner.on(m_isPhased ? "|" : "/").join(m_alleles);
     }
 
     @Override
     public boolean equals(Object o) {
-      if (this == o) return true;
-      if (o == null || getClass() != o.getClass()) return false;
+      if (this == o) {
+        return true;
+      }
+      if (o == null || getClass() != o.getClass()) {
+        return false;
+      }
       Genotype genotype = (Genotype) o;
-      return m_isPhased == genotype.m_isPhased && m_alleles.equals(genotype.m_alleles);
+      return Objects.equals(m_isPhased, genotype.isPhased()) &&
+          Objects.equals(m_alleles, genotype.getAlleles());
     }
 
     @Override
     public int hashCode() {
-      int result = m_alleles.hashCode();
-      result = 31 * result + (m_isPhased ? 1 : 0);
-      return result;
+      return Objects.hash(m_alleles, m_isPhased);
     }
   }
 
@@ -244,5 +240,4 @@ public class MemoryMappedVcfDataStore {
       return m_chromosome + ":" + m_position;
     }
   }
-
 }

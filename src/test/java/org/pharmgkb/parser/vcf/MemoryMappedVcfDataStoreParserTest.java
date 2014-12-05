@@ -19,12 +19,12 @@ public class MemoryMappedVcfDataStoreParserTest {
   public void test() throws IOException {
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream(
         "/integration_test.vcf")))) {
-      MemoryMappedVcfDataStore dataStore = new MemoryMappedVcfDataStore();
-      MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build(dataStore);
+      MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
       new VcfParser.Builder()
-          .read(reader)
+          .withReader(reader)
           .parseWith(lineParser)
           .build().parse();
+      MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
       VcfSample sample = dataStore.getSampleForId("rsb", "sample1");
       assertNotNull(sample);
       assertEquals("0|1", sample.getProperty(ReservedFormatProperty.Genotype));

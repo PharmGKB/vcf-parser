@@ -1,5 +1,7 @@
 package org.pharmgkb.parser.vcf.model;
 
+import org.apache.commons.lang3.StringUtils;
+
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.math.BigDecimal;
@@ -17,7 +19,6 @@ public class PropertyUtils {
    * Specifically, can return:
    * <ul>
    *   <li>String</li>
-   *   <li>Character</li>
    *   <li>Long</li>
    *   <li>BigDecimal</li>
    *   <li>The Boolean true (for flags)</li>
@@ -54,12 +55,18 @@ public class PropertyUtils {
     if (key.getType() == String.class) {
       return value;
     } else if (key.getType() == Boolean.class) {
-      return true; // this is an odd one; it's really just a flag so it's always true if present
-    } else if (key.getType() == Character.class) {
-      if (value.length() != 1) {
-        throw new IllegalArgumentException("Expected character; got " + value);
+      value = StringUtils.stripToNull(value);
+      if (value == null) {
+        return true;
       }
-      return value.charAt(0);
+      if (value.equals("0") || value.equalsIgnoreCase("false")) {
+        return false;
+      }
+      if (value.equals("1") || value.equalsIgnoreCase("true")) {
+        return true;
+      }
+      throw new IllegalArgumentException("Invalid boolean value: '" + value + "'");
+
     } else if (key.getType() == BigDecimal.class) {
       try {
         return new BigDecimal(value);
