@@ -22,7 +22,7 @@ public class VcfPositionTest {
   public void test() throws IOException {
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream("/vcfposition.vcf")))) {
       new VcfParser.Builder()
-          .withReader(reader)
+          .fromReader(reader)
           .parseWith((metadata, position, sampleData) -> {
             switch ((int) position.getPosition()) {
 

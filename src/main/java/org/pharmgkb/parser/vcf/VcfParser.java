@@ -266,8 +266,11 @@ public class VcfParser implements AutoCloseable {
     /**
      * Provides the {@link Path} to the VCF file to parse.
      */
-    public Builder withFile(@Nonnull Path dataFile) {
+    public Builder fromFile(@Nonnull Path dataFile) {
       Preconditions.checkNotNull(dataFile);
+      if (m_reader != null) {
+        throw new IllegalStateException("Already loading from reader");
+      }
       if (!dataFile.toString().endsWith(".vcf")) {
         throw new IllegalArgumentException("Not a VCF file (doesn't end with .vcf extension");
       }
@@ -278,8 +281,11 @@ public class VcfParser implements AutoCloseable {
     /**
      * Provides a {@link BufferedReader} to the beginning of the VCF file to parse.
      */
-    public Builder withReader(@Nonnull BufferedReader reader) {
+    public Builder fromReader(@Nonnull BufferedReader reader) {
       Preconditions.checkNotNull(reader);
+      if (m_vcfFile != null) {
+        throw new IllegalStateException("Already loading from file");
+      }
       m_reader = reader;
       return this;
     }
@@ -300,14 +306,10 @@ public class VcfParser implements AutoCloseable {
 
 
     public VcfParser build() throws IOException {
-
       if (m_vcfLineParser == null) {
         throw new IllegalStateException("Missing VcfLineParser");
       }
       if (m_vcfFile != null) {
-        if (m_reader != null) {
-          throw new IllegalStateException("Cannot provide both file and reader");
-        }
         m_reader = Files.newBufferedReader(m_vcfFile);
       }
       if (m_reader == null) {

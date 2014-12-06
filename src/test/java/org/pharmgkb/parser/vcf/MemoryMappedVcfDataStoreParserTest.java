@@ -21,7 +21,7 @@ public class MemoryMappedVcfDataStoreParserTest {
         "/integration_test.vcf")))) {
       MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
       new VcfParser.Builder()
-          .withReader(reader)
+          .fromReader(reader)
           .parseWith(lineParser)
           .build().parse();
       MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
