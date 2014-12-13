@@ -62,13 +62,23 @@ public class VcfParser implements AutoCloseable {
     }
     VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder();
     String line;
+    int lineNumber = 1;
     while ((line = m_reader.readLine()) != null) {
       if (line.startsWith("##")) {
-        parseMetadata(mdBuilder, line);
+        try {
+          parseMetadata(mdBuilder, line);
+        } catch (RuntimeException e) {
+          throw new IllegalArgumentException("Error parsing metadata on line #" + lineNumber + ": " + line, e);
+        }
       } else if (line.startsWith("#")) {
-        parseColumnInfo(mdBuilder, line);
+        try {
+          parseColumnInfo(mdBuilder, line);
+        } catch (RuntimeException e) {
+          throw new IllegalArgumentException("Error parsing column (# header) on line #" + lineNumber + ": " + line, e);
+        }
         break;
       }
+      lineNumber++;
     }
     m_vcfMetadata = mdBuilder.build();
     return m_vcfMetadata;
@@ -92,64 +102,75 @@ public class VcfParser implements AutoCloseable {
       parseMetadata();
     }
     String line;
+    int lineNumber = 1;
     while ((line = m_reader.readLine()) != null) {
-      List<String> data = sf_tabSplitter.splitToList(line);
 
-      List<String> ids = null;
-      if (!data.get(2).equals(".")) {
-        if (m_rsidsOnly && !sf_rsidPattern.matcher(data.get(2)).find()) {
+      try {
+
+        List<String> data = sf_tabSplitter.splitToList(line);
+
+        List<String> ids = null;
+        if (!data.get(2).equals(".")) {
+          if (m_rsidsOnly && !sf_rsidPattern.matcher(data.get(2)).find()) {
+            continue;
+          }
+          ids = sf_commaSplitter.splitToList(data.get(2));
+        } else if (m_rsidsOnly) {
           continue;
         }
-        ids = sf_commaSplitter.splitToList(data.get(2));
-      } else if (m_rsidsOnly) {
-        continue;
-      }
 
-      List<String> ref = sf_commaSplitter.splitToList(data.get(3));
-      for (String base : ref) {
-        if (!sf_refBasePattern.matcher(base).matches()) {
-          throw new IllegalArgumentException("Invalid reference base '" + base + "' (must be [AaGgCcTtNn]+)");
-        }
-      }
-
-      List<String> alt = null;
-      if (!data.get(7).equals("") && !data.get(4).equals(".")) {
-        alt = sf_commaSplitter.splitToList(data.get(4));
-        for (String base : alt) {
-          if (!sf_altBasePattern.matcher(base).matches()) {
-            throw new IllegalArgumentException("Invalid alternate base '" + base + "' (must be [AaGgCcTtNn\\*]+ or <.+>)");
+        List<String> ref = sf_commaSplitter.splitToList(data.get(3));
+        for (String base : ref) {
+          if (!sf_refBasePattern.matcher(base).matches()) {
+            throw new IllegalArgumentException("Invalid reference base '" + base + "' (must be [AaGgCcTtNn]+)");
           }
         }
-      }
 
-      ListMultimap<String, String> info = null;
-      if (!data.get(7).equals("") && !data.get(7).equals(".")) {
-        info = ArrayListMultimap.create();
-        List<String> props = sf_semicolonSplitter.splitToList(data.get(7));
-        for (String prop : props) {
-          int idx = prop.indexOf('=');
-          if (idx == -1) {
-            info.put(prop, "");
-          } else {
-            String key = prop.substring(0, idx);
-            String value = prop.substring(idx + 1);
-            info.putAll(key, sf_commaSplitter.split(value));
+        List<String> alt = null;
+        if (!data.get(7).equals("") && !data.get(4).equals(".")) {
+          alt = sf_commaSplitter.splitToList(data.get(4));
+          for (String base : alt) {
+            if (!sf_altBasePattern.matcher(base).matches()) {
+              throw new IllegalArgumentException("Invalid alternate base '" + base + "' (must be [AaGgCcTtNn\\*]+ or <.+>)");
+            }
           }
         }
+
+        ListMultimap<String, String> info = null;
+        if (!data.get(7).equals("") && !data.get(7).equals(".")) {
+          info = ArrayListMultimap.create();
+          List<String> props = sf_semicolonSplitter.splitToList(data.get(7));
+          for (String prop : props) {
+            int idx = prop.indexOf('=');
+            if (idx == -1) {
+              info.put(prop, "");
+            } else {
+              String key = prop.substring(0, idx);
+              String value = prop.substring(idx + 1);
+              info.putAll(key, sf_commaSplitter.split(value));
+            }
+          }
+        }
+
+        List<String> format = null;
+        if (data.size() >= 9 && data.get(8) != null) {
+          format = sf_colonSplitter.splitToList(data.get(8));
+        }
+
+        VcfPosition pos = new VcfPosition(data.get(0), Long.parseLong(data.get(1)), ids, ref, alt,
+            data.get(5), data.get(6), info, format);
+        List<VcfSample> samples = new ArrayList<>();
+        for (int x = 9; x < data.size(); x++) {
+          samples.add(new VcfSample(format, sf_colonSplitter.splitToList(data.get(x))));
+        }
+        m_vcfLineParser.parseLine(m_vcfMetadata, pos, samples);
+
+        lineNumber++;
+
+      } catch (RuntimeException e) {
+        throw new IllegalArgumentException("Error parsing VCF data line #" + lineNumber + ": " + line, e);
       }
 
-      List<String> format = null;
-      if (data.size() >= 9 && data.get(8) != null) {
-        format = sf_colonSplitter.splitToList(data.get(8));
-      }
-
-      VcfPosition pos = new VcfPosition(data.get(0), Long.parseLong(data.get(1)), ids, ref, alt,
-          data.get(5), data.get(6), info, format);
-      List<VcfSample> samples = new ArrayList<>();
-      for (int x = 9; x < data.size(); x++) {
-        samples.add(new VcfSample(format, sf_colonSplitter.splitToList(data.get(x))));
-      }
-      m_vcfLineParser.parseLine(m_vcfMetadata, pos, samples);
     }
     IOUtils.closeQuietly(m_reader);
   }
@@ -180,13 +201,13 @@ public class VcfParser implements AutoCloseable {
       case "filter":
       case "info":
       case "format":
+      case "contig":
+      case "sample":
+      case "pedigree":
         parseMetadataProperty(mdBuilder, propName, removeWrapper(propValue));
         break;
 
       case "assembly":
-      case "contig":
-      case "sample":
-      case "pedigree":
       case "pedigreedb":
       default:
         mdBuilder.addProperty(propName, propValue);
@@ -221,6 +242,9 @@ public class VcfParser implements AutoCloseable {
       case "format":
         mdBuilder.addFormat(new FormatMetadata(cols));
         break;
+      case "contig":
+        mdBuilder.addContig(new ContigMetadata(cols));
+        break;
     }
   }
 
@@ -234,14 +258,23 @@ public class VcfParser implements AutoCloseable {
    * Splits a property into a key-value pair.
    *
    * @param isStringValue if true, the value is a string that needs to be unwrapped (i.e remove
-   * quotes)
+   * quotes). If set to null, decides based on the presence or absence of quotation marks before and after
    */
-  public static String[] splitProperty(@Nonnull String prop, boolean isStringValue) {
+  public static String[] splitProperty(@Nonnull String prop, Boolean isStringValue) {
     int idx = prop.indexOf("=");
     String[] data = new String[2];
     data[0] = prop.substring(0, idx);
     data[1] = prop.substring(idx + 1);
-    if (isStringValue) {
+    boolean removeWrapper;
+    if (isStringValue == null) {
+      removeWrapper = data[1].startsWith("\"") && data[1].endsWith("\"");
+      if (data[1].startsWith("\"") ^ data[1].endsWith("\"")) {
+        throw new IllegalArgumentException("Quotation marks not matched for property " + prop);
+      }
+    } else {
+      removeWrapper = isStringValue;
+    }
+    if (removeWrapper) {
       data[1] = removeWrapper(data[1]);
     }
     return data;

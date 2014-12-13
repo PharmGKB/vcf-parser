@@ -1,11 +1,6 @@
 package org.pharmgkb.parser.vcf.model;
 
-import org.pharmgkb.parser.vcf.VcfParser;
-
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import java.util.HashMap;
-import java.util.Map;
 
 
 /**
@@ -19,51 +14,29 @@ import java.util.Map;
  *
  * @author Mark Woon
  */
-public class IdDescriptionMetadata {
-  private String m_id;
-  private String m_description;
-  private Map<String, String> m_properties;
-
+public class IdDescriptionMetadata extends BaseMetadata {
 
   public IdDescriptionMetadata(@Nonnull String[] props) {
-    this(props, 1);
+    super(props);
+    if (getProperty("ID") == null) {
+      throw new IllegalArgumentException("Required metadata property \"ID\" is missing");
+    }
+    if (getProperty("Description") == null) {
+      throw new IllegalArgumentException("Required metadata property \"Description\" is missing");
+    }
   }
 
-  IdDescriptionMetadata(@Nonnull String[] props, int descCol) {
-    m_id = VcfParser.splitProperty(props[0], false)[1];
-    m_description = VcfParser.splitProperty(props[descCol], true)[1];
-    addProperties(props, descCol + 1);
-  }
-
-
+  @SuppressWarnings("ConstantConditions")
   @Nonnull
   public String getId() {
-    return m_id;
+    return getProperty("ID");
   }
 
+  @SuppressWarnings("ConstantConditions")
   @Nonnull
   public String getDescription() {
-    return m_description;
+    return getProperty("Description");
   }
 
 
-  @Nullable
-  public String getProperty(String name) {
-    if (m_properties == null) {
-      return null;
-    }
-    return m_properties.get(name.toLowerCase());
-  }
-
-
-  protected void addProperties(String[] props, int startIdx) {
-    if (startIdx >= props.length) {
-      return;
-    }
-    m_properties = new HashMap<>();
-    for (int x = startIdx; x < props.length; x++) {
-      String[] data = VcfParser.splitProperty(props[x], true);
-      m_properties.put(data[0].toLowerCase(), data[1]);
-    }
-  }
 }

@@ -3,10 +3,12 @@ package org.pharmgkb.parser.vcf.model;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
+import org.pharmgkb.parser.vcf.VcfParser;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.*;
+import java.util.stream.Collectors;
 
 
 /**
@@ -22,12 +24,16 @@ public class VcfMetadata {
   private List<FormatMetadata> m_format;
   private List<String> m_columns;
   private ListMultimap<String, String> m_properties;
+  private List<ContigMetadata> m_contig = new ArrayList<>();
+  private List<IdDescriptionMetadata> m_sample;
+  private List<IdDescriptionMetadata> m_pedigree;
 
 
   private VcfMetadata(@Nonnull String fileFormat, @Nullable Map<String, IdDescriptionMetadata> alt,
       @Nullable List<InfoMetadata> info, @Nullable List<IdDescriptionMetadata> filter,
-      @Nullable List<FormatMetadata> format, @Nonnull List<String> columns,
-      @Nullable ListMultimap<String, String> properties) {
+      @Nullable List<FormatMetadata> format, @Nullable List<ContigMetadata> contig,
+      @Nullable List<IdDescriptionMetadata> sample, @Nullable List<IdDescriptionMetadata> pedigree,
+      @Nonnull List<String> columns, @Nullable ListMultimap<String, String> properties) {
     Preconditions.checkNotNull(fileFormat);
     Preconditions.checkNotNull(columns);
     m_fileFormat = fileFormat;
@@ -50,6 +56,21 @@ public class VcfMetadata {
       m_format = Collections.emptyList();
     } else {
       m_format = format;
+    }
+    if (contig == null) {
+      m_contig = Collections.emptyList();
+    } else {
+      m_contig = contig;
+    }
+    if (sample == null) {
+      m_sample = Collections.emptyList();
+    } else {
+      m_sample = sample;
+    }
+    if (pedigree == null) {
+      m_pedigree = Collections.emptyList();
+    } else {
+      m_pedigree = pedigree;
     }
     m_columns = columns;
     if (m_properties == null) {
@@ -96,6 +117,37 @@ public class VcfMetadata {
     return m_format;
   }
 
+  public @Nonnull List<ContigMetadata> getContig() {
+    return m_contig;
+  }
+
+  public @Nonnull List<IdDescriptionMetadata> getPedigree() {
+    return m_pedigree;
+  }
+
+  public @Nonnull List<IdDescriptionMetadata> getSample() {
+    return m_sample;
+  }
+
+  /**
+   * @return The URLs from the field(s) in the <em>assembly</em> metadata line(s)
+   */
+  public @Nullable List<String> getAssemblies() {
+    // spec says: ##assembly=url (without angle brackets)
+    return m_properties.get("assembly");
+  }
+
+  /**
+   * @return The URLs from the field(s) in the <em>pedigreeDB</em> metadata line(s), without angle brackets
+   */
+  public @Nullable List<String> getPedigreeDatabases() {
+    // spec says: ##pedigreeDB=<url> (with angle brackets)
+    List<String> properties = m_properties.get("pedigreeDB");
+    List<String> urls = new ArrayList<>(properties.size());
+    urls.addAll(properties.stream().map(VcfParser::removeWrapper).collect(Collectors.toList()));
+    return urls;
+  }
+
   public @Nonnull List<String> getProperty(String name) {
     return m_properties.get(name);
   }
@@ -135,6 +187,9 @@ public class VcfMetadata {
     private List<InfoMetadata> m_info = new ArrayList<>();
     private List<IdDescriptionMetadata> m_filter = new ArrayList<>();
     private List<FormatMetadata> m_format = new ArrayList<>();
+    private List<ContigMetadata> m_contig = new ArrayList<>();
+    private List<IdDescriptionMetadata> m_sample;
+    private List<IdDescriptionMetadata> m_pedigree;
     private List<String> m_columns;
     private ListMultimap<String, String> m_properties = ArrayListMultimap.create();
 
@@ -163,6 +218,21 @@ public class VcfMetadata {
       return this;
     }
 
+    public Builder addContig(ContigMetadata md) {
+      m_contig.add(md);
+      return this;
+    }
+
+    public Builder addSample(IdDescriptionMetadata md) {
+      m_sample.add(md);
+      return this;
+    }
+
+    public Builder addPedigree(IdDescriptionMetadata md) {
+      m_pedigree.add(md);
+      return this;
+    }
+
     public Builder addProperty(String name, String value) {
       m_properties.put(name, value);
       return this;
@@ -177,7 +247,8 @@ public class VcfMetadata {
       if (m_fileFormat == null || !m_fileFormat.startsWith("VCF")) {
         throw new IllegalStateException("Not a VCF file");
       }
-      return new VcfMetadata(m_fileFormat, m_alt, m_info, m_filter, m_format, m_columns, m_properties);
+      return new VcfMetadata(m_fileFormat, m_alt, m_info, m_filter, m_format, m_contig, m_sample, m_pedigree,
+          m_columns, m_properties);
     }
   }
 }

@@ -18,7 +18,7 @@ public class MemoryMappedVcfDataStoreParserTest {
   @Test
   public void test() throws IOException {
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream(
-        "/integration_test.vcf")))) {
+        "/vcfposition.vcf")))) {
       MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
       new VcfParser.Builder()
           .fromReader(reader)
