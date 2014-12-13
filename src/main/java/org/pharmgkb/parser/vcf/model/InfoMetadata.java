@@ -45,6 +45,16 @@ public class InfoMetadata extends IdDescriptionMetadata {
     return getProperty("Number");
   }
 
+  /**
+   * @return A special (reserved) <em>Number</em> ("A", "G", "R", or "."), or null if the Number is not reserved
+   * (it is numerical).
+   */
+  @SuppressWarnings("ConstantConditions")
+  @Nullable
+  public ReservedInfoNumber getReservedNumber() {
+    return ReservedInfoNumber.fromId(getProperty("Number"));
+  }
+
   @Nonnull
   public InfoType getType() {
     return m_type;
