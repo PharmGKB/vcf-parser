@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.io.BufferedReader;
+import java.io.Closeable;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.Files;
@@ -26,7 +27,7 @@ import java.util.regex.Pattern;
  *
  * @author Mark Woon
  */
-public class VcfParser implements AutoCloseable {
+public class VcfParser implements Closeable, AutoCloseable {
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   private static final Pattern sf_refBasePattern = Pattern.compile("[AaCcGgTtNn]+");
   private static final Pattern sf_altBasePattern = Pattern.compile("(?:[AaCcGgTtNn\\*]+|<.+>)");
@@ -109,7 +110,28 @@ public class VcfParser implements AutoCloseable {
 
         List<String> data = sf_tabSplitter.splitToList(line);
 
+        // CHROM
+        String chromosome = data.get(0);
+        if (chromosome.contains("\\s") || chromosome.contains(":")) {
+          throw new IllegalArgumentException("CHROM column \"" + chromosome + "\" contains whitespace or colons");
+        }
+
+        // POS
+        long position;
+        try {
+          position = Long.parseLong(data.get(1));
+        } catch (NumberFormatException e) {
+          throw new IllegalArgumentException("Position " + data.get(1) + " is not numerical");
+        }
+        if (position < 1) {
+          throw new IllegalArgumentException("Position " + position + " is not positive");
+        }
+
+        // ID
         List<String> ids = null;
+        if (data.get(2).contains("\\s") || data.get(2).contains(";")) {
+          throw new IllegalArgumentException("ID column \"" + data.get(2) + "\" contains whitespace or semicolons");
+        }
         if (!data.get(2).equals(".")) {
           if (m_rsidsOnly && !sf_rsidPattern.matcher(data.get(2)).find()) {
             continue;
@@ -119,6 +141,7 @@ public class VcfParser implements AutoCloseable {
           continue;
         }
 
+        // REF
         List<String> ref = sf_commaSplitter.splitToList(data.get(3));
         for (String base : ref) {
           if (!sf_refBasePattern.matcher(base).matches()) {
@@ -126,6 +149,7 @@ public class VcfParser implements AutoCloseable {
           }
         }
 
+        // ALT
         List<String> alt = null;
         if (!data.get(7).equals("") && !data.get(4).equals(".")) {
           alt = sf_commaSplitter.splitToList(data.get(4));
@@ -136,7 +160,26 @@ public class VcfParser implements AutoCloseable {
           }
         }
 
+        // QUAL
+        String quality = data.get(5); // we could check it's numerical here
+        if (quality.equals(".")) {
+          quality = null;
+        }
+
+        // FILTER
+        List<String> filters = null;
+        if (data.get(6).contains("\\s") || data.get(6).contains(";")) {
+          throw new IllegalArgumentException("FILTER column \"" + data.get(6) + "\" contains whitespace or semicolons");
+        }
+        if (!data.get(6).equals("PASS")) {
+          filters = sf_semicolonSplitter.splitToList(data.get(6));
+        }
+
+        // INFO
         ListMultimap<String, String> info = null;
+        if (data.get(7).contains("\\s")) {
+          throw new IllegalArgumentException("INFO column \"" + data.get(7) + "\" contains whitespace");
+        }
         if (!data.get(7).equals("") && !data.get(7).equals(".")) {
           info = ArrayListMultimap.create();
           List<String> props = sf_semicolonSplitter.splitToList(data.get(7));
@@ -152,13 +195,14 @@ public class VcfParser implements AutoCloseable {
           }
         }
 
+        // FORMAT
         List<String> format = null;
         if (data.size() >= 9 && data.get(8) != null) {
           format = sf_colonSplitter.splitToList(data.get(8));
         }
 
-        VcfPosition pos = new VcfPosition(data.get(0), Long.parseLong(data.get(1)), ids, ref, alt,
-            data.get(5), data.get(6), info, format);
+        VcfPosition pos = new VcfPosition(chromosome, position, ids, ref, alt,
+            quality, filters, info, format);
         List<VcfSample> samples = new ArrayList<>();
         for (int x = 9; x < data.size(); x++) {
           samples.add(new VcfSample(format, sf_colonSplitter.splitToList(data.get(x))));

@@ -27,8 +27,12 @@ public class BaseMetadata {
     return m_properties.get(name.toLowerCase());
   }
 
+  @Nonnull
+  public Map<String, String> getProperties() {
+    return m_properties;
+  }
 
-  protected void addProperties(String[] props) {
+  protected void addProperties(@Nonnull String... props) {
     if (props.length == 0) {
       return;
     }

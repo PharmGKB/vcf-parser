@@ -7,6 +7,7 @@ import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * This class contains sample data for a VCF position line.
@@ -54,6 +55,11 @@ public class VcfSample {
 
   public boolean hasProperty(@Nonnull ReservedFormatProperty key) {
     return m_properties.containsKey(key.getId());
+  }
+
+  @Nonnull
+  public Set<String> getPropertyKeys() {
+    return m_properties.keySet();
   }
 
 }

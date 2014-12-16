@@ -3,12 +3,10 @@ package org.pharmgkb.parser.vcf.model;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
-import org.pharmgkb.parser.vcf.VcfParser;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.*;
-import java.util.stream.Collectors;
 
 
 /**
@@ -132,20 +130,17 @@ public class VcfMetadata {
   /**
    * @return The URLs from the field(s) in the <em>assembly</em> metadata line(s)
    */
-  public @Nullable List<String> getAssemblies() {
+  public @Nonnull List<String> getAssemblies() {
     // spec says: ##assembly=url (without angle brackets)
     return m_properties.get("assembly");
   }
 
   /**
-   * @return The URLs from the field(s) in the <em>pedigreeDB</em> metadata line(s), without angle brackets
+   * @return The URLs from the field(s) in the <em>pedigreeDB</em> metadata line(s), including angle brackets if any
    */
-  public @Nullable List<String> getPedigreeDatabases() {
+  public @Nonnull List<String> getPedigreeDatabases() {
     // spec says: ##pedigreeDB=<url> (with angle brackets)
-    List<String> properties = m_properties.get("pedigreeDB");
-    List<String> urls = new ArrayList<>(properties.size());
-    urls.addAll(properties.stream().map(VcfParser::removeWrapper).collect(Collectors.toList()));
-    return urls;
+    return m_properties.get("pedigreeDB");
   }
 
   public @Nonnull List<String> getProperty(String name) {

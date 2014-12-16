@@ -5,9 +5,7 @@ import com.google.common.collect.ListMultimap;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.regex.Pattern;
 
 
@@ -30,6 +28,7 @@ import java.util.regex.Pattern;
 public class VcfPosition {
   private static final Pattern sf_qualPattern = Pattern.compile("([\\d\\.]+|\\.)");
   private static final Joiner sf_commaJoiner = Joiner.on(",");
+  private static final Joiner sf_semicolonJoiner = Joiner.on(";");
   private String m_chromosome;
   private long m_position;
   private List<String> m_ids;
@@ -37,7 +36,7 @@ public class VcfPosition {
   private List<String> m_altBases;
   private List<String> m_alleles = new ArrayList<>();
   private String m_quality;
-  private String m_filter;
+  private List<String> m_filter;
   private ListMultimap<String, String> m_info;
   private List<String> m_format;
 
@@ -46,8 +45,8 @@ public class VcfPosition {
       @Nullable List<String> ids,
       @Nonnull List<String> refBases,
       @Nullable List<String> altBases,
-      @Nonnull String qual,
-      @Nonnull String filter,
+      @Nullable String qual,
+      @Nullable List<String> filter,
       @Nullable ListMultimap<String, String> info,
       @Nullable List<String> format) {
 
@@ -68,12 +67,16 @@ public class VcfPosition {
       m_alleles.addAll(altBases);
     }
 
-    if (!sf_qualPattern.matcher(qual).matches()) {
+    if (qual != null && !sf_qualPattern.matcher(qual).matches()) {
       throw new IllegalArgumentException("[QUAL] Not contain a number: '" + qual + "'");
     }
     m_quality = qual;
 
-    m_filter = filter;
+    if (filter == null) {
+      m_filter = Collections.emptyList();
+    } else {
+      m_filter = filter;
+    }
 
     m_info = info;
 
@@ -138,13 +141,15 @@ public class VcfPosition {
 
 
   public boolean isPassedAllFilters() {
-    return m_filter.equalsIgnoreCase("PASS");
+    return m_filter.isEmpty();
   }
 
-  public @Nullable String getFilter() {
+  /**
+   * Returns a list of filters this position failed, if any.
+   */
+  public @Nonnull List<String> getFilters() {
     return m_filter;
   }
-
 
   /**
    * Get INFO metadata with the specified ID.
@@ -197,5 +202,13 @@ public class VcfPosition {
 
   public @Nonnull List<String> getFormat() {
     return m_format;
+  }
+
+  @Nonnull
+  public Set<String> getInfoKeys() {
+    if (m_info == null) {
+      return new HashSet<>(0);
+    }
+    return m_info.keySet();
   }
 }
