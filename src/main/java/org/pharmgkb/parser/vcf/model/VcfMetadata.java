@@ -24,13 +24,13 @@ public class VcfMetadata {
   private ListMultimap<String, String> m_properties;
   private List<ContigMetadata> m_contig = new ArrayList<>();
   private List<IdDescriptionMetadata> m_sample;
-  private List<IdDescriptionMetadata> m_pedigree;
+  private List<BaseMetadata> m_pedigree;
 
 
   private VcfMetadata(@Nonnull String fileFormat, @Nullable Map<String, IdDescriptionMetadata> alt,
       @Nullable List<InfoMetadata> info, @Nullable List<IdDescriptionMetadata> filter,
       @Nullable List<FormatMetadata> format, @Nullable List<ContigMetadata> contig,
-      @Nullable List<IdDescriptionMetadata> sample, @Nullable List<IdDescriptionMetadata> pedigree,
+      @Nullable List<IdDescriptionMetadata> sample, @Nullable List<BaseMetadata> pedigree,
       @Nonnull List<String> columns, @Nullable ListMultimap<String, String> properties) {
     Preconditions.checkNotNull(fileFormat);
     Preconditions.checkNotNull(columns);
@@ -71,7 +71,7 @@ public class VcfMetadata {
       m_pedigree = pedigree;
     }
     m_columns = columns;
-    if (m_properties == null) {
+    if (properties == null) {
       m_properties = ArrayListMultimap.create();
     } else {
       m_properties = properties;
@@ -119,7 +119,7 @@ public class VcfMetadata {
     return m_contig;
   }
 
-  public @Nonnull List<IdDescriptionMetadata> getPedigree() {
+  public @Nonnull List<BaseMetadata> getPedigree() {
     return m_pedigree;
   }
 
@@ -143,8 +143,23 @@ public class VcfMetadata {
     return m_properties.get("pedigreeDB");
   }
 
+  /**
+   * Returns the value of a property, or null if the property is not set or has no value.
+   * <em>This method will return null for a reserved property of the form XX=&lt;ID=value,ID=value,...&gt;;
+   * {@code assembly} and {@code pedigreeDB} are still included.</em>
+   */
   public @Nonnull List<String> getProperty(String name) {
     return m_properties.get(name);
+  }
+
+  /**
+   * Returns the keys of properties.
+   * <em>Reserved properties of the form XX=&lt;ID=value,ID=value,...&gt; are excluded, though {@code assembly}
+   * and {@code pedigreeDB} are still included.</em>
+   */
+  public @Nonnull
+  Set<String> getPropertyKeys() {
+    return m_properties.keySet();
   }
 
   public int getColumnIndex(String col) {
@@ -183,9 +198,9 @@ public class VcfMetadata {
     private List<IdDescriptionMetadata> m_filter = new ArrayList<>();
     private List<FormatMetadata> m_format = new ArrayList<>();
     private List<ContigMetadata> m_contig = new ArrayList<>();
-    private List<IdDescriptionMetadata> m_sample;
-    private List<IdDescriptionMetadata> m_pedigree;
-    private List<String> m_columns;
+    private List<IdDescriptionMetadata> m_sample = new ArrayList<>();
+    private List<BaseMetadata> m_pedigree = new ArrayList<>();
+    private List<String> m_columns = new ArrayList<>();
     private ListMultimap<String, String> m_properties = ArrayListMultimap.create();
 
     public Builder setFileFormat(String fileFormat) {
@@ -223,7 +238,7 @@ public class VcfMetadata {
       return this;
     }
 
-    public Builder addPedigree(IdDescriptionMetadata md) {
+    public Builder addPedigree(BaseMetadata md) {
       m_pedigree.add(md);
       return this;
     }

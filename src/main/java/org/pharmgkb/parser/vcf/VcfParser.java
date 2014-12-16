@@ -289,6 +289,12 @@ public class VcfParser implements Closeable, AutoCloseable {
       case "contig":
         mdBuilder.addContig(new ContigMetadata(cols));
         break;
+      case "sample":
+        mdBuilder.addSample(new IdDescriptionMetadata(cols));
+        break;
+      case "pedigree":
+        mdBuilder.addPedigree(new BaseMetadata(cols));
+        break;
     }
   }
 

@@ -15,7 +15,7 @@ public class BaseMetadata {
 
   private Map<String, String> m_properties;
 
-  BaseMetadata(@Nonnull String[] props) {
+  public BaseMetadata(@Nonnull String[] props) {
     addProperties(props);
   }
 
