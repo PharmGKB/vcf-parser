@@ -1,0 +1,23 @@
+##fileformat=VCFv4.2
+##INFO=<number=A,description=Total number of alternate alleles in called genotypes,id=AC,type=Integer>
+##INFO=<number=A,description=Estimated allele frequency in the range (0,1),id=AF,type=Float>
+##INFO=<number=1,description=Number of samples with data,id=NS,type=Integer>
+##INFO=<number=1,description=Total number of alleles in called genotypes,id=AN,type=Integer>
+##FILTER=<description=All filters passed,id=PASS>
+##FILTER=<description=Something bad happened,id=BAD>
+##FORMAT=<number=1,description=Genotype,id=GT,type=String>
+##ALT=<description=Copy Number Polymorphism,id=CNV>
+##contig=<assembly=b37,length=249250621,id=1>
+##SAMPLE=<genome=a;b;c;d,description=test,id=sample1>
+##SAMPLE=<genome=a;b;c;d,description=test,id=sample2>
+##PEDIGREE=<name_1=B,name_0=A>
+##assembly=GRCh38
+##extraspecialproperty=<ID=sdfadsf>
+##extraproperty=sdfadsf
+##pedigreeDB=<http://thismayormaynotbeavalidurl.vcf>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	sample1	sample2
+chr1	1	rsa	A	T	5	PASS	AA=A;CIGAR=I5;AC=5,10;MQ=52.4;AF=0.124;NS=2;H2=;H3=;AN=10;MQ0=100;BQ=5.7;SB=+;SOMATIC=;END=50;VALIDATED=;DB=	GT:GQ	2:.	2:.
+chr1	2	rsb	A	T	5	PASS	.	GT:DP:FT:GL:GLE:PL:GP:GQ:HQ:PS:PQ:EC:MQ	glestring:45:1:30:0.3,0.4:0.05,0.06:10,20:30:5:0|1:ftstring:5,50:2,2
+chr1	3	rsc	A	T	5	PASS	.	GT	0/1
+chr1	4	rsd	A	T	5	PASS	.	GT	.
+
