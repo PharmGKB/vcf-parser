@@ -17,20 +17,20 @@ import java.util.*;
 public class VcfMetadata {
   private String m_fileFormat;
   private Map<String, IdDescriptionMetadata> m_alt;
-  private List<InfoMetadata> m_info;
-  private List<IdDescriptionMetadata> m_filter;
-  private List<FormatMetadata> m_format;
+  private Map<String, InfoMetadata> m_info;
+  private Map<String, IdDescriptionMetadata> m_filter;
+  private Map<String, FormatMetadata> m_format;
   private List<String> m_columns;
   private ListMultimap<String, String> m_properties;
-  private List<ContigMetadata> m_contig = new ArrayList<>();
-  private List<IdDescriptionMetadata> m_sample;
+  private Map<String, ContigMetadata> m_contig;
+  private Map<String, IdDescriptionMetadata> m_sample;
   private List<BaseMetadata> m_pedigree;
 
 
   private VcfMetadata(@Nonnull String fileFormat, @Nullable Map<String, IdDescriptionMetadata> alt,
-      @Nullable List<InfoMetadata> info, @Nullable List<IdDescriptionMetadata> filter,
-      @Nullable List<FormatMetadata> format, @Nullable List<ContigMetadata> contig,
-      @Nullable List<IdDescriptionMetadata> sample, @Nullable List<BaseMetadata> pedigree,
+      @Nullable Map<String, InfoMetadata> info, @Nullable Map<String, IdDescriptionMetadata> filter,
+      @Nullable Map<String, FormatMetadata> format, @Nullable Map<String, ContigMetadata> contig,
+      @Nullable Map<String, IdDescriptionMetadata> sample, @Nullable List<BaseMetadata> pedigree,
       @Nonnull List<String> columns, @Nullable ListMultimap<String, String> properties) {
     Preconditions.checkNotNull(fileFormat);
     Preconditions.checkNotNull(columns);
@@ -41,27 +41,27 @@ public class VcfMetadata {
       m_alt = alt;
     }
     if (info == null) {
-      m_info = Collections.emptyList();
+      m_info = Collections.emptyMap();
     } else {
       m_info = info;
     }
     if (filter == null) {
-      m_filter = Collections.emptyList();
+      m_filter = Collections.emptyMap();
     } else {
       m_filter = filter;
     }
     if (format == null) {
-      m_format = Collections.emptyList();
+      m_format = Collections.emptyMap();
     } else {
       m_format = format;
     }
     if (contig == null) {
-      m_contig = Collections.emptyList();
+      m_contig = Collections.emptyMap();
     } else {
       m_contig = contig;
     }
     if (sample == null) {
-      m_sample = Collections.emptyList();
+      m_sample = Collections.emptyMap();
     } else {
       m_sample = sample;
     }
@@ -84,8 +84,8 @@ public class VcfMetadata {
   }
 
 
-  public @Nonnull Collection<IdDescriptionMetadata> getAlt() {
-    return m_alt.values();
+  public @Nonnull Map<String, IdDescriptionMetadata> getAlts() {
+    return m_alt;
   }
 
   /**
@@ -103,27 +103,27 @@ public class VcfMetadata {
   }
 
 
-  public @Nonnull List<InfoMetadata> getInfo() {
+  public @Nonnull Map<String, InfoMetadata> getInfos() {
     return m_info;
   }
 
-  public @Nonnull List<IdDescriptionMetadata> getFilter() {
+  public @Nonnull Map<String, IdDescriptionMetadata> getFilters() {
     return m_filter;
   }
 
-  public @Nonnull List<FormatMetadata> getFormat() {
+  public @Nonnull Map<String, FormatMetadata> getFormats() {
     return m_format;
   }
 
-  public @Nonnull List<ContigMetadata> getContig() {
+  public @Nonnull Map<String, ContigMetadata> getContigs() {
     return m_contig;
   }
 
-  public @Nonnull List<BaseMetadata> getPedigree() {
+  public @Nonnull List<BaseMetadata> getPedigrees() {
     return m_pedigree;
   }
 
-  public @Nonnull List<IdDescriptionMetadata> getSample() {
+  public @Nonnull Map<String, IdDescriptionMetadata> getSamples() {
     return m_sample;
   }
 
@@ -145,31 +145,30 @@ public class VcfMetadata {
 
   /**
    * Returns the value of a property, or null if the property is not set or has no value.
-   * <em>This method will return null for a reserved property of the form XX=&lt;ID=value,ID=value,...&gt;;
-   * {@code assembly} and {@code pedigreeDB} are still included.</em>
+   * <strong>This method will return null for a reserved property of the form XX=&lt;ID=value,ID=value,...&gt;;
+   * {@code assembly} and {@code pedigreeDB} are still included.</strong>
    */
-  public @Nonnull List<String> getProperty(String name) {
-    return m_properties.get(name);
+  public @Nonnull List<String> getRawValuesOfProperty(@Nonnull String propertyKey) {
+    return m_properties.get(propertyKey);
   }
 
   /**
-   * Returns the keys of properties.
-   * <em>Reserved properties of the form XX=&lt;ID=value,ID=value,...&gt; are excluded, though {@code assembly}
-   * and {@code pedigreeDB} are still included.</em>
+   * Returns a list of the properties defined.
+   * <strong>Reserved properties of the form XX=&lt;ID=value,ID=value,...&gt; are excluded, though {@code assembly}
+   * and {@code pedigreeDB} are still included.</strong>
    */
-  public @Nonnull
-  Set<String> getPropertyKeys() {
+  public @Nonnull Set<String> getRawPropertyKeys() {
     return m_properties.keySet();
   }
 
-  public int getColumnIndex(String col) {
-    return m_columns.indexOf(col);
+  public int getColumnIndex(@Nonnull String column) {
+    return m_columns.indexOf(column);
   }
 
   /**
    * Sample numbering starts at 0.
    */
-  public int getSampleIndex(String sampleId) {
+  public int getSampleIndex(@Nonnull String sampleId) {
     return m_columns.indexOf(sampleId) - 9;
   }
 
@@ -194,56 +193,77 @@ public class VcfMetadata {
   public static class Builder {
     private String m_fileFormat;
     private Map<String, IdDescriptionMetadata> m_alt = new HashMap<>();
-    private List<InfoMetadata> m_info = new ArrayList<>();
-    private List<IdDescriptionMetadata> m_filter = new ArrayList<>();
-    private List<FormatMetadata> m_format = new ArrayList<>();
-    private List<ContigMetadata> m_contig = new ArrayList<>();
-    private List<IdDescriptionMetadata> m_sample = new ArrayList<>();
+    private Map<String, InfoMetadata> m_info = new HashMap<>();
+    private Map<String, IdDescriptionMetadata> m_filter = new HashMap<>();
+    private Map<String, FormatMetadata> m_format = new HashMap<>();
+    private Map<String, ContigMetadata> m_contig = new HashMap<>();
+    private Map<String, IdDescriptionMetadata> m_sample = new HashMap<>();
     private List<BaseMetadata> m_pedigree = new ArrayList<>();
     private List<String> m_columns = new ArrayList<>();
     private ListMultimap<String, String> m_properties = ArrayListMultimap.create();
 
-    public Builder setFileFormat(String fileFormat) {
+    public Builder setFileFormat(@Nonnull String fileFormat) {
       m_fileFormat = fileFormat;
+      if (!m_fileFormat.startsWith("VCF")) {
+        throw new IllegalStateException("Not a VCF file: fileformat is " + m_fileFormat);
+      }
       return this;
     }
 
-    public Builder addAlt(IdDescriptionMetadata md) {
+    public Builder addAlt(@Nonnull IdDescriptionMetadata md) {
+      if (m_alt.containsKey(md.getId())) {
+        throw new IllegalArgumentException("Duplicate ID " + md.getId() + " for ALT");
+      }
       m_alt.put(md.getId(), md);
       return this;
     }
 
-    public Builder addInfo(InfoMetadata md) {
-      m_info.add(md);
+    public Builder addInfo(@Nonnull InfoMetadata md) {
+      if (m_info.containsKey(md.getId())) {
+        throw new IllegalArgumentException("Duplicate ID " + md.getId() + " for INFO");
+      }
+      m_info.put(md.getId(), md);
       return this;
     }
 
     public Builder addFilter(IdDescriptionMetadata md) {
-      m_filter.add(md);
+      if (m_filter.containsKey(md.getId())) {
+        throw new IllegalArgumentException("Duplicate ID " + md.getId() + " for FILTER");
+      }
+      m_filter.put(md.getId(), md);
       return this;
     }
 
-    public Builder addFormat(FormatMetadata md) {
-      m_format.add(md);
+    public Builder addFormat(@Nonnull FormatMetadata md) {
+      if (m_format.containsKey(md.getId())) {
+        throw new IllegalArgumentException("Duplicate ID " + md.getId() + " for FORMAT");
+      }
+      m_format.put(md.getId(), md);
       return this;
     }
 
-    public Builder addContig(ContigMetadata md) {
-      m_contig.add(md);
+    public Builder addContig(@Nonnull ContigMetadata md) {
+      if (m_contig.containsKey(md.getId())) {
+        throw new IllegalArgumentException("Duplicate ID " + md.getId() + " for CONTIG");
+      }
+      m_contig.put(md.getId(), md);
       return this;
     }
 
-    public Builder addSample(IdDescriptionMetadata md) {
-      m_sample.add(md);
+    public Builder addSample(@Nonnull IdDescriptionMetadata md) {
+      if (m_sample.containsKey(md.getId())) {
+        throw new IllegalArgumentException("Duplicate ID " + md.getId() + " for SAMPLE");
+      }
+      m_sample.put(md.getId(), md);
       return this;
     }
 
-    public Builder addPedigree(BaseMetadata md) {
+    public Builder addPedigree(@Nonnull BaseMetadata md) {
       m_pedigree.add(md);
       return this;
     }
 
-    public Builder addProperty(String name, String value) {
+    public Builder addRawProperty(@Nonnull String name, @Nonnull String value) {
       m_properties.put(name, value);
       return this;
     }
@@ -253,9 +273,10 @@ public class VcfMetadata {
       return this;
     }
 
+    @Nonnull
     public VcfMetadata build() {
-      if (m_fileFormat == null || !m_fileFormat.startsWith("VCF")) {
-        throw new IllegalStateException("Not a VCF file");
+      if (m_fileFormat == null) {
+        throw new IllegalStateException("Not a VCF file: no ##fileformat line");
       }
       return new VcfMetadata(m_fileFormat, m_alt, m_info, m_filter, m_format, m_contig, m_sample, m_pedigree,
           m_columns, m_properties);

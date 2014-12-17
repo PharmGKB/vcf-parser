@@ -14,22 +14,13 @@ import javax.annotation.Nonnull;
  *
  * @author Mark Woon
  */
-public class IdDescriptionMetadata extends BaseMetadata {
+public class IdDescriptionMetadata extends IdMetadata {
 
   public IdDescriptionMetadata(@Nonnull String[] props) {
     super(props);
-    if (getProperty("ID") == null) {
-      throw new IllegalArgumentException("Required metadata property \"ID\" is missing");
-    }
     if (getProperty("Description") == null) {
       throw new IllegalArgumentException("Required metadata property \"Description\" is missing");
     }
-  }
-
-  @SuppressWarnings("ConstantConditions")
-  @Nonnull
-  public String getId() {
-    return getProperty("ID");
   }
 
   @SuppressWarnings("ConstantConditions")

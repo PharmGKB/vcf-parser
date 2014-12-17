@@ -27,7 +27,7 @@ import java.util.regex.Pattern;
  *
  * @author Mark Woon
  */
-public class VcfParser implements Closeable, AutoCloseable {
+public class VcfParser implements Closeable {
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   private static final Pattern sf_refBasePattern = Pattern.compile("[AaCcGgTtNn]+");
   private static final Pattern sf_altBasePattern = Pattern.compile("(?:[AaCcGgTtNn\\*]+|<.+>)");
@@ -254,7 +254,7 @@ public class VcfParser implements Closeable, AutoCloseable {
       case "assembly":
       case "pedigreedb":
       default:
-        mdBuilder.addProperty(propName, propValue);
+        mdBuilder.addRawProperty(propName, propValue);
     }
   }
 

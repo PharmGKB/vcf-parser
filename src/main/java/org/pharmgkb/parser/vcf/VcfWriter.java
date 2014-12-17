@@ -33,21 +33,21 @@ class VcfWriter implements Closeable, AutoCloseable {
     m_writer.println("##fileformat=" + metadata.getFileFormat());
 
     // metadata, in order from spec
-    printLines("INFO", metadata.getInfo());
-    printLines("FILTER", metadata.getFilter());
-    printLines("FORMAT", metadata.getFormat());
-    printLines("ALT", metadata.getAlt());
-    printLines("contig", metadata.getContig());
-    printLines("SAMPLE", metadata.getSample());
-    printLines("PEDIGREE", metadata.getPedigree());
+    printLines("INFO", metadata.getInfos().values());
+    printLines("FILTER", metadata.getFilters().values());
+    printLines("FORMAT", metadata.getFormats().values());
+    printLines("ALT", metadata.getAlts().values());
+    printLines("contig", metadata.getContigs().values());
+    printLines("SAMPLE", metadata.getSamples().values());
+    printLines("PEDIGREE", metadata.getPedigrees());
 
-    for (String key : metadata.getPropertyKeys()) {
-      printPropertyLines(key, metadata.getProperty(key));
+    for (String key : metadata.getRawPropertyKeys()) {
+      printPropertyLines(key, metadata.getRawValuesOfProperty(key));
     }
 
     // header line
     StringBuilder sb = new StringBuilder("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT");
-    for (IdDescriptionMetadata sample : metadata.getSample()) {
+    for (IdDescriptionMetadata sample : metadata.getSamples().values()) {
       sb.append("\t").append(sample.getId());
     }
     m_writer.println(sb);

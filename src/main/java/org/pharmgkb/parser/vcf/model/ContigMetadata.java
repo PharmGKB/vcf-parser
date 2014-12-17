@@ -1,29 +1,21 @@
 package org.pharmgkb.parser.vcf.model;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
 /**
  * VCF metadata for contig=&lt;&gt; elements.
  * @author Douglas Myers-Turnbull
  */
-public class ContigMetadata extends BaseMetadata {
+public class ContigMetadata extends IdMetadata {
 
   public ContigMetadata(@Nonnull String[] props) {
     super(props);
-    if (getProperty("ID") == null) {
-      throw new IllegalArgumentException("Required metadata property \"ID\" is missing");
-    }
   }
 
   @SuppressWarnings("ConstantConditions")
-  @Nonnull
-  public String getId() {
-    return getProperty("ID");
-  }
-
-  @SuppressWarnings("ConstantConditions")
-  @Nonnull
-  public String getURL() {
+  @Nullable
+  public String getUrl() {
     return getProperty("URL");
   }
 
