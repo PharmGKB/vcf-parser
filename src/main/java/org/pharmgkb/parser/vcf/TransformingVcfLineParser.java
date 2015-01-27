@@ -13,59 +13,85 @@ import java.util.List;
 /**
  * Applies a transformation to a VCF file.
  * This is a streaming {@link VcfLineParser} that applies a {@link VcfTransformation} and writes the VCF.
+ * More generally, can apply to a single VCF stream a set of transformations and corresponding writers.
+ * Example:
+ * <code>
+ *   VcfTransformation transformation1 = new VcfTransformation() {
+ *       public void transformMetadata(VcfMetadata metadata) {
+ *           metadata.getRawProperties().put("Test", "123"); // adds ##Test=123
+ *       }
+ *   };
+ *   VcfTransformation transformation2 = new VcfTransformation() {
+ *       public void transformDataLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
+ *           position.setQuality("0");
+ *       }
+ *   };
+ *   TransformingVcfLineParser.Builder builder = new TransformingVcfLineParser.Builder();
+ *   builder.addTransformation(transformation1, file1);
+ *   builder.addTransformation(transformation2, file2);
+ *   try (TransformingVcfLineParser lineParser = builder.build()) {
+ *       try (VcfParser parser = new VcfParser.Builder().fromFile(input.toPath()).parseWith(transformer).build()) {
+ *           parser.parse(); // prints transformed VCFs to file1 and file2
+ *       }
+ *   }
+ * </code>
  */
 public class TransformingVcfLineParser implements VcfLineParser {
 
   private int m_lines;
-  private VcfTransformation m_transformation;
-  private VcfWriter m_writer;
+  private List<VcfTransformation> m_transformations;
+  private List<VcfWriter> m_writers;
 
-  private TransformingVcfLineParser(@Nonnull VcfTransformation transformation, @Nonnull VcfWriter writer) {
-    m_transformation = transformation;
-    m_writer = writer;
+  private TransformingVcfLineParser(@Nonnull List<VcfTransformation> transformations, @Nonnull List<VcfWriter> writer) {
+    m_transformations = transformations;
+    m_writers = writer;
   }
 
   public void parseLine(@Nonnull VcfMetadata metadata, @Nonnull VcfPosition position,
       @Nonnull List<VcfSample> sampleData) {
-    if (m_lines == 0) {
-      m_transformation.transformMetadata(metadata);
-      m_writer.writeHeader(metadata);
+    for (int i = 0; i < m_transformations.size(); i++) {
+      if (m_lines == 0) {
+        m_transformations.get(i).transformMetadata(metadata);
+        m_writers.get(i).writeHeader(metadata);
+      }
+      m_transformations.get(i).transformDataLine(metadata, position, sampleData);
+      m_writers.get(i).writeLine(metadata, position, sampleData);
     }
-    m_transformation.transformDataLine(metadata, position, sampleData);
-    m_writer.writeLine(metadata, position, sampleData);
     m_lines++;
   }
 
   public static class Builder {
 
-    private VcfTransformation m_transformation;
-    private VcfWriter m_writer;
-
-    public Builder(@Nonnull VcfTransformation transformation) {
-      m_transformation = transformation;
-    }
+    private List<VcfTransformation> m_transformations;
+    private List<VcfWriter> m_writers;
 
     @Nonnull
-    public Builder toFile(@Nonnull Path file) throws IOException {
-      m_writer = new VcfWriter.Builder().toFile(file).build();
+    public Builder addTransformation(@Nonnull VcfTransformation transformation, @Nonnull Path outputFile)
+        throws IOException {
+      m_transformations.add(transformation);
+      m_writers.add(new VcfWriter.Builder().toFile(outputFile).build());
       return this;
     }
 
     @Nonnull
-    public Builder toWriter(@Nonnull PrintWriter writer) throws IOException {
-      m_writer = new VcfWriter.Builder().toWriter(writer).build();
+    public Builder addTransformation(@Nonnull VcfTransformation transformation, @Nonnull PrintWriter writer)
+        throws IOException {
+      m_transformations.add(transformation);
+      m_writers.add(new VcfWriter.Builder().toWriter(writer).build());
       return this;
     }
 
     @Nonnull
-    public Builder toWriter(@Nonnull VcfWriter writer) throws IOException {
-      m_writer = writer;
+    public Builder addTransformation(@Nonnull VcfTransformation transformation, @Nonnull VcfWriter writer)
+        throws IOException {
+      m_transformations.add(transformation);
+      m_writers.add(writer);
       return this;
     }
 
     @Nonnull
     public TransformingVcfLineParser build() {
-      return new TransformingVcfLineParser(m_transformation, m_writer);
+      return new TransformingVcfLineParser(m_transformations, m_writers);
     }
   }
 
