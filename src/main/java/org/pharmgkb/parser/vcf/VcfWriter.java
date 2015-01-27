@@ -33,7 +33,7 @@ class VcfWriter implements Closeable, AutoCloseable {
     m_writer.println("##fileformat=" + metadata.getFileFormat());
 
     // metadata, in order from spec
-    printLines("INFO", metadata.getInfos().values());
+    printLines("INFO", metadata.getInfo().values());
     printLines("FILTER", metadata.getFilters().values());
     printLines("FORMAT", metadata.getFormats().values());
     printLines("ALT", metadata.getAlts().values());

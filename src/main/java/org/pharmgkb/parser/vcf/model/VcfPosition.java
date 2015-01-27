@@ -115,7 +115,6 @@ public class VcfPosition {
     return m_ids;
   }
 
-
   /**
    * Gets the reference base(s) for this position.  Each base must be an A, C, G, T, or N.
    */
@@ -160,6 +159,13 @@ public class VcfPosition {
    */
   public @Nonnull List<String> getFilters() {
     return m_filter;
+  }
+
+  /**
+   * Gets all INFO fields for every key.
+   */
+  public @Nonnull ListMultimap<String, String> getInfo() {
+    return m_info;
   }
 
   /**

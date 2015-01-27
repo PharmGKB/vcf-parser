@@ -103,7 +103,7 @@ public class VcfMetadata {
   }
 
 
-  public @Nonnull Map<String, InfoMetadata> getInfos() {
+  public @Nonnull Map<String, InfoMetadata> getInfo() {
     return m_info;
   }
 
@@ -146,6 +146,17 @@ public class VcfMetadata {
   /**
    * Returns a map from every property key to each of its values.
    * Call {@link ListMultimap#asMap} to get a Map&lt;String, Collection&lt;String&gt;&gt;.
+   * @return <em>Contains every property except those contained in:</em>
+   * <ul>
+   *   <li>{@link #getInfo}</li>
+   *   <li>{@link #getFilters}</li>
+   *   <li>{@link #getFormats}</li>
+   *   <li>{@link #getContigs}</li>
+   *   <li>{@link #getPedigrees}</li>
+   *   <li>{@link #getInfo}</li>
+   *   <li>{@link #getSamples}</li>
+   * </ul>
+   * However, contains any in {@link #getAssemblies} and {@link #getPedigreeDatabases}.
    */
   public @Nonnull ListMultimap<String, String> getRawProperties() {
     return m_properties;
@@ -164,6 +175,17 @@ public class VcfMetadata {
    * Returns a list of the properties defined.
    * <strong>Reserved properties of the form XX=&lt;ID=value,ID=value,...&gt; are excluded, though {@code assembly}
    * and {@code pedigreeDB} are still included.</strong>
+   * @return <em>Contains every property except those contained in:</em>
+   * <ul>
+   *   <li>{@link #getInfo}</li>
+   *   <li>{@link #getFilters}</li>
+   *   <li>{@link #getFormats}</li>
+   *   <li>{@link #getContigs}</li>
+   *   <li>{@link #getPedigrees}</li>
+   *   <li>{@link #getInfo}</li>
+   *   <li>{@link #getSamples}</li>
+   * </ul>
+   * However, contains any in {@link #getAssemblies} and {@link #getPedigreeDatabases}.
    */
   public @Nonnull Set<String> getRawPropertyKeys() {
     return m_properties.keySet();
