@@ -62,4 +62,8 @@ public class VcfSample {
     return m_properties.keySet();
   }
 
+  @Nonnull
+  public Map<String, String> getProperties() {
+    return m_properties;
+  }
 }

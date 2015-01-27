@@ -211,4 +211,16 @@ public class VcfPosition {
     }
     return m_info.keySet();
   }
+
+  public void setQuality(@Nonnull String quality) {
+    m_quality = quality;
+  }
+
+  public void setPosition(long position) {
+    m_position = position;
+  }
+
+  public void setChromosome(@Nonnull String chromosome) {
+    m_chromosome = chromosome;
+  }
 }
