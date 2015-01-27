@@ -13,8 +13,7 @@ public class TransformingVcfLineParserTest {
   public void simpleIntegrationTest() throws Exception {
     VcfTransformation transformation = new VcfTransformation() {}; // does nothing
     StringWriter sw = new StringWriter();
-    TransformingVcfLineParser lineParser = new TransformingVcfLineParser.Builder(transformation)
-        .toWriter(new PrintWriter(sw)).build();
+    TransformingVcfLineParser lineParser = new TransformingVcfLineParser.Builder().addTransformation(transformation, new PrintWriter(sw)).build();
     Path dataFile = Paths.get(VcfParserTest.class.getResource("/to_transform.vcf").toURI());
     try (VcfParser parser = new VcfParser.Builder().parseWith(lineParser).fromFile(dataFile).build()) {
       parser.parse();

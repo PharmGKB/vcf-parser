@@ -103,13 +103,13 @@ class VcfWriter implements Closeable, AutoCloseable {
   }
 
   private void addSampleConditionally(VcfMetadata metadata, VcfSample sample, StringBuilder sb) {
-    Iterator<String> keys = sample.getPropertyKeys().iterator();
+    Iterator<String> keys = sample.keySet().iterator();
     if (!keys.hasNext()) {
       return;
     }
     while (keys.hasNext()) {
       String key = keys.next();
-      sb.append(sample.getProperty(key));
+      sb.append(sample.get(key));
       if (keys.hasNext()) {
         sb.append(":");
       }

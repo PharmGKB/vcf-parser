@@ -27,7 +27,7 @@ public class MemoryMappedVcfDataStoreParserTest {
       MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
       VcfSample sample = dataStore.getSampleForId("rsb", "sample1");
       assertNotNull(sample);
-      assertEquals("0|1", sample.getProperty(ReservedFormatProperty.Genotype));
+      assertEquals("0|1", sample.getReserved(ReservedFormatProperty.Genotype));
       MemoryMappedVcfDataStore.Genotype genotype = dataStore.getGenotypeForId("rsb", "sample1");
       assertNotNull(genotype);
       assertTrue(genotype.isPhased());

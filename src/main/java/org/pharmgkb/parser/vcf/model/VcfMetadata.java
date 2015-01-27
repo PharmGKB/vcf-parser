@@ -234,7 +234,7 @@ public class VcfMetadata {
       return this;
     }
 
-    public Builder addFilter(IdDescriptionMetadata md) {
+    public Builder addFilter(@Nonnull IdDescriptionMetadata md) {
       if (m_filter.containsKey(md.getId())) {
         throw new IllegalArgumentException("Duplicate ID " + md.getId() + " for FILTER");
       }

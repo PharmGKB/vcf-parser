@@ -6,17 +6,13 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 /**
  * This class contains sample data for a VCF position line.
  *
  * @author Mark Woon
  */
-public class VcfSample {
-
-  private Map<String, String> m_properties = new HashMap<>();
+public class VcfSample extends HashMap<String, String> {
 
   public VcfSample(@Nullable List<String> keys, @Nullable List<String> values) {
     if (keys == null) {
@@ -29,13 +25,8 @@ public class VcfSample {
     }
     Preconditions.checkArgument(keys.size() == values.size(), "Number of keys does not match number of values");
     for (int x = 0; x < keys.size(); x++) {
-      m_properties.put(keys.get(x), values.get(x));
+      put(keys.get(x), values.get(x));
     }
-  }
-
-
-  public @Nullable String getProperty(@Nonnull String key) {
-    return m_properties.get(key);
   }
 
   /**
@@ -45,25 +36,13 @@ public class VcfSample {
    *           is false;
    *           otherwise {@code List<V>} where V is the type specified by {@code ReservedFormatProperty.getType()}.
    */
-  public @Nullable <T> T getProperty(@Nonnull ReservedFormatProperty key) {
-    return PropertyUtils.convertProperty(key, m_properties.get(key.getId()));
+  public @Nullable <T> T getReserved(@Nonnull ReservedFormatProperty key) {
+    return PropertyUtils.convertProperty(key, get(key.getId()));
   }
 
-  public boolean hasProperty(@Nonnull String key) {
-    return m_properties.containsKey(key);
+  public boolean containsReserved(@Nonnull ReservedFormatProperty key) {
+    return containsKey(key.getId());
   }
 
-  public boolean hasProperty(@Nonnull ReservedFormatProperty key) {
-    return m_properties.containsKey(key.getId());
-  }
 
-  @Nonnull
-  public Set<String> getPropertyKeys() {
-    return m_properties.keySet();
-  }
-
-  @Nonnull
-  public Map<String, String> getProperties() {
-    return m_properties;
-  }
 }

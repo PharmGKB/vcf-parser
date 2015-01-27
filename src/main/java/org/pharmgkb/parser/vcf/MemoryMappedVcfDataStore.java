@@ -112,7 +112,7 @@ public class MemoryMappedVcfDataStore {
   }
 
   private @Nullable Genotype doGetGenotype(VcfPosition position, VcfSample sample) {
-    String genotype = sample.getProperty(ReservedFormatProperty.Genotype);
+    String genotype = sample.getReserved(ReservedFormatProperty.Genotype);
     if (genotype == null || genotype.isEmpty() || genotype.equals(".")) {
       return null;
     }

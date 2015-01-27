@@ -96,8 +96,16 @@ public class VcfPosition {
     return m_chromosome;
   }
 
+  public void setChromosome(@Nonnull String chromosome) {
+    m_chromosome = chromosome;
+  }
+
   public long getPosition() {
     return m_position;
+  }
+
+  public void setPosition(long position) {
+    m_position = position;
   }
 
   /**
@@ -139,8 +147,11 @@ public class VcfPosition {
     return m_quality;
   }
 
+  public void setQuality(@Nullable String quality) {
+    m_quality = quality;
+  }
 
-  public boolean isPassedAllFilters() {
+  public boolean isPassingAllFilters() {
     return m_filter.isEmpty();
   }
 
@@ -212,15 +223,4 @@ public class VcfPosition {
     return m_info.keySet();
   }
 
-  public void setQuality(@Nonnull String quality) {
-    m_quality = quality;
-  }
-
-  public void setPosition(long position) {
-    m_position = position;
-  }
-
-  public void setChromosome(@Nonnull String chromosome) {
-    m_chromosome = chromosome;
-  }
 }
