@@ -144,6 +144,14 @@ public class VcfMetadata {
   }
 
   /**
+   * Returns a map from every property key to each of its values.
+   * Call {@link ListMultimap#asMap} to get a Map&lt;String, Collection&lt;String&gt;&gt;.
+   */
+  public @Nonnull ListMultimap<String, String> getRawProperties() {
+    return m_properties;
+  }
+
+  /**
    * Returns the value of a property, or null if the property is not set or has no value.
    * <strong>This method will return null for a reserved property of the form XX=&lt;ID=value,ID=value,...&gt;;
    * {@code assembly} and {@code pedigreeDB} are still included.</strong>
