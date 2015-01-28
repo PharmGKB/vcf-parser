@@ -16,7 +16,7 @@ import javax.annotation.Nonnull;
  */
 public class IdDescriptionMetadata extends IdMetadata {
 
-  public IdDescriptionMetadata(@Nonnull String[] props) {
+  public IdDescriptionMetadata(@Nonnull String... props) {
     super(props);
     if (getProperty("Description") == null) {
       throw new IllegalArgumentException("Required metadata property \"Description\" is missing");

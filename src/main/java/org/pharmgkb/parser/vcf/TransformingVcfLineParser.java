@@ -8,6 +8,7 @@ import javax.annotation.Nonnull;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -62,8 +63,8 @@ public class TransformingVcfLineParser implements VcfLineParser {
 
   public static class Builder {
 
-    private List<VcfTransformation> m_transformations;
-    private List<VcfWriter> m_writers;
+    private List<VcfTransformation> m_transformations = new ArrayList<>();
+    private List<VcfWriter> m_writers = new ArrayList<>();
 
     @Nonnull
     public Builder addTransformation(@Nonnull VcfTransformation transformation, @Nonnull Path outputFile)

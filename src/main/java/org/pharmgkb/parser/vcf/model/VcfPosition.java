@@ -54,14 +54,14 @@ public class VcfPosition {
     m_chromosome = chr;
     m_position = pos;
     if (ids == null) {
-      m_ids = Collections.emptyList();
+      m_ids = new ArrayList<>();
     } else {
       m_ids = ids;
     }
     m_refBases = refBases;
     m_alleles.addAll(m_refBases);
     if (altBases == null) {
-      m_altBases = Collections.emptyList();
+      m_altBases = new ArrayList<>();
     } else {
       m_altBases = altBases;
       m_alleles.addAll(altBases);
@@ -73,7 +73,7 @@ public class VcfPosition {
     m_quality = qual;
 
     if (filter == null) {
-      m_filter = Collections.emptyList();
+      m_filter = new ArrayList<>();
     } else {
       m_filter = filter;
     }
@@ -81,7 +81,7 @@ public class VcfPosition {
     m_info = info;
 
     if (format == null) {
-      m_format = Collections.emptyList();
+      m_format = new ArrayList<>();
     } else {
       m_format = format;
     }

@@ -36,37 +36,37 @@ public class VcfMetadata {
     Preconditions.checkNotNull(columns);
     m_fileFormat = fileFormat;
     if (alt == null) {
-      m_alt = Collections.emptyMap();
+      m_alt = new HashMap<>();
     } else {
       m_alt = alt;
     }
     if (info == null) {
-      m_info = Collections.emptyMap();
+      m_info = new HashMap<>();
     } else {
       m_info = info;
     }
     if (filter == null) {
-      m_filter = Collections.emptyMap();
+      m_filter = new HashMap<>();
     } else {
       m_filter = filter;
     }
     if (format == null) {
-      m_format = Collections.emptyMap();
+      m_format = new HashMap<>();
     } else {
       m_format = format;
     }
     if (contig == null) {
-      m_contig = Collections.emptyMap();
+      m_contig = new HashMap<>();
     } else {
       m_contig = contig;
     }
     if (sample == null) {
-      m_sample = Collections.emptyMap();
+      m_sample = new HashMap<>();
     } else {
       m_sample = sample;
     }
     if (pedigree == null) {
-      m_pedigree = Collections.emptyList();
+      m_pedigree = new ArrayList<>();
     } else {
       m_pedigree = pedigree;
     }
@@ -83,6 +83,9 @@ public class VcfMetadata {
     return m_fileFormat;
   }
 
+  public void setFileFormat(@Nonnull String fileFormat) {
+    m_fileFormat = fileFormat;
+  }
 
   public @Nonnull Map<String, IdDescriptionMetadata> getAlts() {
     return m_alt;

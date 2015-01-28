@@ -15,7 +15,7 @@ public class BaseMetadata {
 
   private Map<String, String> m_properties;
 
-  public BaseMetadata(@Nonnull String[] props) {
+  public BaseMetadata(@Nonnull String... props) {
     addProperties(props);
   }
 
@@ -38,7 +38,12 @@ public class BaseMetadata {
     }
     m_properties = new HashMap<>();
     for (String prop : props) {
-      String[] data = VcfParser.splitProperty(prop, null);
+      String[] data;
+      try {
+        data = VcfParser.splitProperty(prop, null);
+      } catch (RuntimeException e) {
+        throw new IllegalArgumentException("Error parsing property \"" + prop + "\"", e);
+      }
       m_properties.put(data[0].toLowerCase(), data[1]);
     }
   }

@@ -7,7 +7,7 @@ import javax.annotation.Nonnull;
  */
 public class IdMetadata extends BaseMetadata {
 
-  public IdMetadata(@Nonnull String[] props) {
+  public IdMetadata(@Nonnull String... props) {
     super(props);
     if (getProperty("ID") == null) {
       throw new IllegalArgumentException("Required metadata property \"ID\" is missing");

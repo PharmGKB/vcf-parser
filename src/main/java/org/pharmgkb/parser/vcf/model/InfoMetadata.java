@@ -26,7 +26,7 @@ public class InfoMetadata extends IdDescriptionMetadata {
   private InfoType m_type;
 
   @SuppressWarnings("ConstantConditions")
-  public InfoMetadata(@Nonnull String[] props) {
+  public InfoMetadata(@Nonnull String... props) {
     super(props);
     String number = getProperty("Number");
     if (!sf_numberPattern.matcher(number).matches()) {
