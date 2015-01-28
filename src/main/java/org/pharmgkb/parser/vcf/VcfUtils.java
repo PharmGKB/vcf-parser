@@ -1,18 +1,68 @@
-package org.pharmgkb.parser.vcf.model;
+package org.pharmgkb.parser.vcf;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
+import org.pharmgkb.parser.vcf.model.ReservedProperty;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Contains static methods for handling properties in INFO and FORMAT fields.
  * @author Douglas Myers-Turnbull
  */
-public class PropertyUtils {
+public class VcfUtils {
+
+  public static Map<String, String> extractProperties(@Nonnull String... props) {
+    Map<String, String> map = new HashMap<>();
+    for (String prop : props) {
+      Pair<String, String> pair;
+      try {
+        pair = splitProperty(prop, null);
+      } catch (RuntimeException e) {
+        throw new IllegalArgumentException("Error parsing property \"" + prop + "\"", e);
+      }
+      map.put(pair.getKey(), pair.getValue());
+    }
+    return map;
+  }
+
+  /**
+   * Splits a property into a key-value pair.
+   *
+   * @param isStringValue if true, the value is a string that needs to be unwrapped (i.e remove
+   * quotes). If set to null, decides based on the presence or absence of quotation marks before and after
+   */
+  public static Pair<String, String> splitProperty(@Nonnull String prop, Boolean isStringValue) {
+    int idx = prop.indexOf("=");
+    String key = prop.substring(0, idx);
+    String value = prop.substring(idx + 1);
+    boolean removeWrapper;
+    if (isStringValue == null) {
+      removeWrapper = value.startsWith("\"") && value.endsWith("\"");
+      if (value.startsWith("\"") ^ value.endsWith("\"")) {
+        throw new IllegalArgumentException("Quotation marks not matched for property " + prop);
+      }
+    } else {
+      removeWrapper = isStringValue;
+    }
+    if (removeWrapper) {
+      value = removeWrapper(value);
+    }
+    return Pair.of(key, value);
+  }
+
+  /**
+   * Removes the wrapper around a string (e.g. quotes).
+   */
+  public static @Nonnull String removeWrapper(@Nonnull String value) {
+    return value.substring(1, value.length() - 1);
+  }
 
   /**
    * Converts a String representation of a property into a more useful type.

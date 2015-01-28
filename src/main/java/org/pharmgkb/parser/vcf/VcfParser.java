@@ -248,7 +248,7 @@ public class VcfParser implements Closeable {
       case "contig":
       case "sample":
       case "pedigree":
-        parseMetadataProperty(mdBuilder, propName, removeWrapper(propValue));
+        parseMetadataProperty(mdBuilder, propName, VcfUtils.removeWrapper(propValue));
         break;
 
       case "assembly":
@@ -275,25 +275,25 @@ public class VcfParser implements Closeable {
     }
     switch (propName.toLowerCase()) {
       case "alt":
-        mdBuilder.addAlt(new IdDescriptionMetadata(cols));
+        mdBuilder.addAlt(new IdDescriptionMetadata(VcfUtils.extractProperties(cols)));
         break;
       case "filter":
-        mdBuilder.addFilter(new IdDescriptionMetadata(cols));
+        mdBuilder.addFilter(new IdDescriptionMetadata(VcfUtils.extractProperties(cols)));
         break;
       case "info":
-        mdBuilder.addInfo(new InfoMetadata(cols));
+        mdBuilder.addInfo(new InfoMetadata(VcfUtils.extractProperties(cols)));
         break;
       case "format":
-        mdBuilder.addFormat(new FormatMetadata(cols));
+        mdBuilder.addFormat(new FormatMetadata(VcfUtils.extractProperties(cols)));
         break;
       case "contig":
-        mdBuilder.addContig(new ContigMetadata(cols));
+        mdBuilder.addContig(new ContigMetadata(VcfUtils.extractProperties(cols)));
         break;
       case "sample":
-        mdBuilder.addSample(new IdDescriptionMetadata(cols));
+        mdBuilder.addSample(new IdDescriptionMetadata(VcfUtils.extractProperties(cols)));
         break;
       case "pedigree":
-        mdBuilder.addPedigree(new BaseMetadata(cols));
+        mdBuilder.addPedigree(new BaseMetadata(VcfUtils.extractProperties(cols)));
         break;
     }
   }
@@ -302,41 +302,6 @@ public class VcfParser implements Closeable {
   private void parseColumnInfo(@Nonnull VcfMetadata.Builder mdBuilder, @Nonnull String line) {
     mdBuilder.setColumns(sf_tabSplitter.splitToList(line));
   }
-
-
-  /**
-   * Splits a property into a key-value pair.
-   *
-   * @param isStringValue if true, the value is a string that needs to be unwrapped (i.e remove
-   * quotes). If set to null, decides based on the presence or absence of quotation marks before and after
-   */
-  public static String[] splitProperty(@Nonnull String prop, Boolean isStringValue) {
-    int idx = prop.indexOf("=");
-    String[] data = new String[2];
-    data[0] = prop.substring(0, idx);
-    data[1] = prop.substring(idx + 1);
-    boolean removeWrapper;
-    if (isStringValue == null) {
-      removeWrapper = data[1].startsWith("\"") && data[1].endsWith("\"");
-      if (data[1].startsWith("\"") ^ data[1].endsWith("\"")) {
-        throw new IllegalArgumentException("Quotation marks not matched for property " + prop);
-      }
-    } else {
-      removeWrapper = isStringValue;
-    }
-    if (removeWrapper) {
-      data[1] = removeWrapper(data[1]);
-    }
-    return data;
-  }
-
-  /**
-   * Removes the wrapper around a string (e.g. quotes).
-   */
-  public static @Nonnull String removeWrapper(@Nonnull String value) {
-    return value.substring(1, value.length() - 1);
-  }
-
 
 
   public static class Builder {

@@ -2,6 +2,7 @@ package org.pharmgkb.parser.vcf.model;
 
 import com.google.common.base.Joiner;
 import com.google.common.collect.ListMultimap;
+import org.pharmgkb.parser.vcf.VcfUtils;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -127,6 +128,7 @@ public class VcfPosition {
    * angle-bracketed ID string ("<ID>").
    * <p>
    * ID strings should reference a specific ALT metadata (obtainable via {@link VcfMetadata#getAlt(java.lang.String)}).
+   * </p>
    */
   public @Nonnull List<String> getAltBases() {
     return m_altBases;
@@ -200,7 +202,7 @@ public class VcfPosition {
     if (list.isEmpty()) {
       return null;
     }
-    return PropertyUtils.convertProperty(key, sf_commaJoiner.join(list));
+    return VcfUtils.convertProperty(key, sf_commaJoiner.join(list));
   }
 
   /**

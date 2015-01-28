@@ -74,7 +74,7 @@ class VcfWriter implements Closeable, AutoCloseable {
     // these columns can be skipped completely
     addFormatConditionally(position, sb);
     for (VcfSample sample : samples) {
-      addSampleConditionally(metadata, sample, sb);
+      addSampleConditionally(sample, sb);
     }
 
     String line = sb.toString();
@@ -102,14 +102,14 @@ class VcfWriter implements Closeable, AutoCloseable {
     sb.append("\t");
   }
 
-  private void addSampleConditionally(VcfMetadata metadata, VcfSample sample, StringBuilder sb) {
-    Iterator<String> keys = sample.keySet().iterator();
+  private void addSampleConditionally(VcfSample sample, StringBuilder sb) {
+    Iterator<String> keys = sample.getPropertyKeys().iterator();
     if (!keys.hasNext()) {
       return;
     }
     while (keys.hasNext()) {
       String key = keys.next();
-      sb.append(sample.get(key));
+      sb.append(sample.getProperty(key));
       if (keys.hasNext()) {
         sb.append(":");
       }

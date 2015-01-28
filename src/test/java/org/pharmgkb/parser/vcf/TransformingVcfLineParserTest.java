@@ -26,7 +26,7 @@ public class TransformingVcfLineParserTest {
     VcfTransformation transformation = new VcfTransformation() {
       @Override
       public void transformMetadata(@Nonnull VcfMetadata metadata) {
-        metadata.getInfo().put("Test", new InfoMetadata("x"));
+        metadata.getInfo().put("TestInfo", new InfoMetadata("an_id", "a_description", "String", "G", null, null));
       }
 
       @Override

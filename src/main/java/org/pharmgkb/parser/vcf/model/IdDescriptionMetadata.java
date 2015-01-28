@@ -1,6 +1,7 @@
 package org.pharmgkb.parser.vcf.model;
 
 import javax.annotation.Nonnull;
+import java.util.Map;
 
 
 /**
@@ -16,17 +17,30 @@ import javax.annotation.Nonnull;
  */
 public class IdDescriptionMetadata extends IdMetadata {
 
-  public IdDescriptionMetadata(@Nonnull String... props) {
-    super(props);
-    if (getProperty("Description") == null) {
-      throw new IllegalArgumentException("Required metadata property \"Description\" is missing");
+  public static final String ID = "ID";
+  public static final String DESCRIPTION = "Description";
+
+  public IdDescriptionMetadata(@Nonnull String id, @Nonnull String description) {
+    super(id);
+    getProperties().put(DESCRIPTION, description);
+    init();
+  }
+
+  public IdDescriptionMetadata(@Nonnull Map<String, String> properties) {
+    super(properties);
+    init();
+  }
+
+  private void init() {
+    if (getProperty(DESCRIPTION) == null) {
+      throw new IllegalArgumentException("Required metadata property \"" + DESCRIPTION + "\" is missing");
     }
   }
 
   @SuppressWarnings("ConstantConditions")
   @Nonnull
   public String getDescription() {
-    return getProperty("Description");
+    return getProperty(DESCRIPTION);
   }
 
 

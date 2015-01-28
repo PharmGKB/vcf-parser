@@ -1,6 +1,7 @@
 package org.pharmgkb.parser.vcf.model;
 
 import org.junit.Test;
+import org.pharmgkb.parser.vcf.VcfUtils;
 
 import static org.junit.Assert.assertEquals;
 
@@ -17,7 +18,7 @@ public class InfoMetadataTest {
     props[2] = "Type=String";
     String desc = "Ancestral Allele, test";
     props[3] = "Description=\"" + desc + "\"";
-    InfoMetadata md = new InfoMetadata(props);
+    InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(props));
     assertEquals(InfoType.String, md.getType());
     assertEquals(desc, md.getDescription());
 
@@ -26,7 +27,7 @@ public class InfoMetadataTest {
     };
     for (String n : nums) {
       props[1] = "Number=" + n;
-      md = new InfoMetadata(props);
+      md = new InfoMetadata(VcfUtils.extractProperties(props));
       assertEquals(n, md.getNumber());
     }
 
@@ -36,7 +37,7 @@ public class InfoMetadataTest {
     for (String n : nums) {
       try {
         props[1] = "Number=" + n;
-        new InfoMetadata(props);
+        new InfoMetadata(VcfUtils.extractProperties(props));
       } catch (IllegalArgumentException ex) {
         // expected
       }

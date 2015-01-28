@@ -45,7 +45,7 @@ public class VcfPositionTest {
 
               case 2:
                 VcfSample sample = sampleData.get(0);
-                List<BigDecimal> d = sample.getReserved(ReservedFormatProperty.GenotypePosteriorProbabilitiesPhredScaled);
+                List<BigDecimal> d = sample.getProperty(ReservedFormatProperty.GenotypePosteriorProbabilitiesPhredScaled);
                 assertNotNull(d);
                 assertEquals(2, d.size());
                 assertEquals(new BigDecimal("0.05"), d.get(0));

@@ -2,6 +2,7 @@ package org.pharmgkb.parser.vcf.model;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 
@@ -22,19 +23,43 @@ import java.util.regex.Pattern;
  */
 public class InfoMetadata extends IdDescriptionMetadata {
 
+  public static final String ID = "ID";
+  public static final String DESCRIPTION = "Description";
+  public static final String NUMBER = "Number";
+  public static final String TYPE = "Type";
+  public static final String SOURCE = "Source";
+  public static final String VERSION = "Version";
+
   private static final Pattern sf_numberPattern = Pattern.compile("(?:\\d+|[\\.AaGgRr])");
   private InfoType m_type;
 
-  @SuppressWarnings("ConstantConditions")
-  public InfoMetadata(@Nonnull String... props) {
-    super(props);
-    String number = getProperty("Number");
-    if (!sf_numberPattern.matcher(number).matches()) {
-      throw new IllegalArgumentException("[Number] Not a number: '" + number + "'");
+  public InfoMetadata(@Nonnull String id, @Nonnull String description, @Nonnull String type, @Nonnull String number,
+      @Nullable String source, @Nullable String version) {
+    super(id, description);
+    getProperties().put(NUMBER, number);
+    getProperties().put(TYPE, type);
+    if (source != null) {
+      getProperties().put(SOURCE, source);
     }
-    m_type = InfoType.valueOf(getProperty("Type"));
+    if (version != null) {
+      getProperties().put(VERSION, version);
+    }
+    init();
   }
 
+  public InfoMetadata(@Nonnull Map<String, String> properties) {
+    super(properties);
+    init();
+  }
+
+  private void init() {
+    String number = getProperty(NUMBER);
+    assert number != null;
+    if (!sf_numberPattern.matcher(number).matches()) {
+      throw new IllegalArgumentException(NUMBER + " is not a number: '" + number + "'");
+    }
+    m_type = InfoType.valueOf(getProperty(TYPE));
+  }
 
   /**
    * Value is either an integer or "A", "G", "R", or ".".
@@ -42,7 +67,7 @@ public class InfoMetadata extends IdDescriptionMetadata {
   @SuppressWarnings("ConstantConditions")
   @Nonnull
   public String getNumber() {
-    return getProperty("Number");
+    return getProperty(NUMBER);
   }
 
   /**
@@ -52,7 +77,7 @@ public class InfoMetadata extends IdDescriptionMetadata {
   @SuppressWarnings("ConstantConditions")
   @Nullable
   public ReservedInfoNumber getReservedNumber() {
-    return ReservedInfoNumber.fromId(getProperty("Number"));
+    return ReservedInfoNumber.fromId(getProperty(NUMBER));
   }
 
   @Nonnull
@@ -62,11 +87,11 @@ public class InfoMetadata extends IdDescriptionMetadata {
 
   @Nullable
   public String getSource() {
-    return getProperty("Source");
+    return getProperty(SOURCE);
   }
 
   @Nullable
   public String getVersion() {
-    return getProperty("Version");
+    return getProperty(VERSION);
   }
 }
