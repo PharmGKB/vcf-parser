@@ -75,21 +75,28 @@ public class VcfUtils {
    *   <li>A List of any of the above types</li>
    * </ul>
    */
-  @SuppressWarnings("unchecked")
   public static @Nullable <T> T convertProperty(@Nonnull ReservedProperty key, @Nullable String value) {
+   return convertProperty(key.getType(), value, key.isList());
+  }
+
+  /**
+   * @see #convertProperty(ReservedProperty, String)
+   */
+  @SuppressWarnings("unchecked")
+  public static @Nullable <T> T convertProperty(Class<?> clas, String value, boolean isList) {
     if (value == null || ".".equals(value)) {
       return null;
     }
-    if (!key.isList()) {
+    if (!isList) {
       try {
-        return (T) convertElement(key, value);
+        return (T) convertElement(clas, value);
       } catch (ClassCastException e) {
         throw new IllegalArgumentException("Wrong type specified", e);
       }
     }
     List<Object> list = new ArrayList<>();
     for (String part : value.split(",")) {
-      list.add(convertElement(key, part));
+      list.add(convertElement(clas, part));
     }
     try {
       return (T) list;
@@ -98,13 +105,13 @@ public class VcfUtils {
     }
   }
 
-  private static @Nullable Object convertElement(ReservedProperty key, String value) {
+  private static @Nullable Object convertElement(Class<?> clas, String value) {
     if (value == null || ".".equals(value)) {
       return null;
     }
-    if (key.getType() == String.class) {
+    if (clas == String.class) {
       return value;
-    } else if (key.getType() == Boolean.class) {
+    } else if (clas == Boolean.class) {
       value = StringUtils.stripToNull(value);
       if (value == null) {
         return true;
@@ -117,19 +124,19 @@ public class VcfUtils {
       }
       throw new IllegalArgumentException("Invalid boolean value: '" + value + "'");
 
-    } else if (key.getType() == BigDecimal.class) {
+    } else if (clas == BigDecimal.class) {
       try {
         return new BigDecimal(value);
       } catch (NumberFormatException e) {
         throw new IllegalArgumentException("Expected float; got " + value);
       }
-    } else if (key.getType() == Long.class) {
+    } else if (clas == Long.class) {
       try {
         return Long.parseLong(value);
       } catch (NumberFormatException e) {
         throw new IllegalArgumentException("Expected integer; got " + value);
       }
     }
-    throw new UnsupportedOperationException("Type " + key.getType() + " unrecognized");
+    throw new UnsupportedOperationException("Type " + clas + " unrecognized");
   }
 }
