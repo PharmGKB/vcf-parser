@@ -5,6 +5,7 @@ import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
 
 import javax.annotation.Nonnull;
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.file.Path;
@@ -37,7 +38,7 @@ import java.util.List;
  *   }
  * </code>
  */
-public class TransformingVcfLineParser implements VcfLineParser {
+public class TransformingVcfLineParser implements VcfLineParser, Closeable {
 
   private int m_lines;
   private List<VcfTransformation> m_transformations;
@@ -59,6 +60,11 @@ public class TransformingVcfLineParser implements VcfLineParser {
       m_writers.get(i).writeLine(metadata, position, sampleData);
     }
     m_lines++;
+  }
+
+  @Override
+  public void close() throws IOException {
+    m_writers.forEach(org.pharmgkb.parser.vcf.VcfWriter::close);
   }
 
   public static class Builder {
@@ -92,6 +98,9 @@ public class TransformingVcfLineParser implements VcfLineParser {
 
     @Nonnull
     public TransformingVcfLineParser build() {
+      if (m_transformations.isEmpty()) {
+        throw new IllegalStateException("Must add at least one transformation");
+      }
       return new TransformingVcfLineParser(m_transformations, m_writers);
     }
   }
