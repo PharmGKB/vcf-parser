@@ -52,6 +52,9 @@ public class TransformingVcfLineParser implements VcfLineParser, Closeable {
   public void parseLine(@Nonnull VcfMetadata metadata, @Nonnull VcfPosition position,
       @Nonnull List<VcfSample> sampleData) {
     for (int i = 0; i < m_transformations.size(); i++) {
+
+      // notice that this always happens before transformDataLine gets called
+      // this means that transformDataLine can't change the metadata output
       if (m_lines == 0) {
         m_transformations.get(i).transformMetadata(metadata);
         m_writers.get(i).writeHeader(metadata);

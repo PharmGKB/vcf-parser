@@ -2,10 +2,7 @@ package org.pharmgkb.parser.vcf;
 
 import org.apache.commons.io.IOUtils;
 import org.junit.Test;
-import org.pharmgkb.parser.vcf.model.InfoMetadata;
-import org.pharmgkb.parser.vcf.model.VcfMetadata;
-import org.pharmgkb.parser.vcf.model.VcfPosition;
-import org.pharmgkb.parser.vcf.model.VcfSample;
+import org.pharmgkb.parser.vcf.model.*;
 
 import javax.annotation.Nonnull;
 import java.io.BufferedReader;
@@ -27,12 +24,13 @@ public class TransformingVcfLineParserTest {
       @Override
       public void transformMetadata(@Nonnull VcfMetadata metadata) {
         metadata.getInfo().put("TestInfo", new InfoMetadata("an_id", "a_description", "String", "G", null, null));
+        metadata.getFilters().put("Transformation", new IdDescriptionMetadata("Transformation", "A transformation was applied"));
       }
 
       @Override
       public void transformDataLine(@Nonnull VcfMetadata metadata, @Nonnull VcfPosition position, @Nonnull List<VcfSample> sampleData) {
         position.getFilters().clear();
-        position.getFilters().add("Transformation");
+        metadata.getFilters().clear(); // should do nothing!
         position.setPosition(position.getPosition() + 10);
       }
     };

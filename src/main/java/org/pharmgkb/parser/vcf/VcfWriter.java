@@ -3,6 +3,7 @@ package org.pharmgkb.parser.vcf;
 import org.apache.commons.io.IOUtils;
 import org.pharmgkb.parser.vcf.model.*;
 
+import javax.annotation.Nonnull;
 import java.io.*;
 import java.nio.file.Path;
 import java.util.Collection;
@@ -22,6 +23,8 @@ class VcfWriter implements Closeable, AutoCloseable {
   private final Path m_file;
   private final PrintWriter m_writer;
 
+  private int m_lineNumber;
+
   private VcfWriter(Path file, PrintWriter writer) {
     m_file = file;
     m_writer = writer;
@@ -30,7 +33,7 @@ class VcfWriter implements Closeable, AutoCloseable {
   public void writeHeader(VcfMetadata metadata) {
 
     // file format
-    m_writer.println("##fileformat=" + metadata.getFileFormat());
+    printLine("##fileformat=" + metadata.getFileFormat());
 
     // metadata, in order from spec
     printLines("INFO", metadata.getInfo().values());
@@ -50,7 +53,7 @@ class VcfWriter implements Closeable, AutoCloseable {
     for (IdDescriptionMetadata sample : metadata.getSamples().values()) {
       sb.append("\t").append(sample.getId());
     }
-    m_writer.println(sb);
+    printLine(sb);
 
     m_writer.flush();
   }
@@ -63,23 +66,38 @@ class VcfWriter implements Closeable, AutoCloseable {
     sb.append(position.getPosition()).append("\t");
     addListOrElse(position.getIds(), ";", ".", sb);
     if (position.getRefBases().isEmpty()) {
-      throw new IllegalArgumentException("No REF bases, but the column is required");
+      throw new IllegalArgumentException("No REF bases, but the column is required (on line " + m_lineNumber + ")");
     }
     addListOrElse(position.getRefBases(), ",", ".", sb);
     addListOrElse(position.getAltBases(), ",", ".", sb);
     addStringOrElse(position.getQuality(), ".", sb);
     addListOrElse(position.getFilters(), ";", "PASS", sb);
-    addInfoOrDot(position, sb);
+    addInfoOrDot(metadata, position, sb);
+
+    for (String key : position.getFilters()) {
+      if (!metadata.getFilters().containsKey(key)) {
+        throw new IllegalArgumentException("Position " + position.getChromosome() + " " + position.getPosition() +
+            " has FILTER " + key + ", but there is no FILTER metadata with that name (on line " + m_lineNumber + ")");
+      }
+    }
+
+    if (samples.size() > metadata.getNumSamples()) {
+      throw new IllegalArgumentException("Position " + position.getChromosome() + " " + position.getPosition() +
+          " contains " + samples.size() + " samples, but the metadata only declares " + metadata.getNumSamples() +
+          " (on line " + m_lineNumber + ")");
+    }
 
     // these columns can be skipped completely
     addFormatConditionally(position, sb);
+    int sampleIndex = 0;
     for (VcfSample sample : samples) {
-      addSampleConditionally(sample, sb);
+      addSampleConditionally(metadata, sampleIndex, position, sample, sb);
+      sampleIndex++;
     }
 
     String line = sb.toString();
     if (line.endsWith("\t")) line = line.substring(0, line.length() - 1);
-    m_writer.println(line);
+    printLine(line);
     m_writer.flush();
   }
 
@@ -102,31 +120,82 @@ class VcfWriter implements Closeable, AutoCloseable {
     sb.append("\t");
   }
 
-  private void addSampleConditionally(VcfSample sample, StringBuilder sb) {
+  private void addSampleConditionally(VcfMetadata metadata, int sampleIndex, VcfPosition position, VcfSample sample, StringBuilder sb) {
+
     Iterator<String> keys = sample.getPropertyKeys().iterator();
-    if (!keys.hasNext()) {
+    if (!keys.hasNext() && position.getFormat().isEmpty()) {
       return;
     }
-    while (keys.hasNext()) {
-      String key = keys.next();
-      sb.append(sample.getProperty(key));
+
+    for (String key : position.getFormat()) {
+
+      keys.next();
+
+      if (!metadata.getFormats().containsKey(key)) {
+        throw new IllegalArgumentException("Sample #" + sampleIndex + " " + position.getPosition() +
+            " contains FORMAT " + key + ", but there is no FORMAT metadata with that name (on line " + m_lineNumber + ")");
+      }
+
+      if (!sample.containsProperty(key)) {
+        throw new IllegalArgumentException("Sample #" + sampleIndex + " is missing property " + key +
+            " (on line " + m_lineNumber + ")");
+      }
+
+      String value = sample.getProperty(key);
+
+      FormatType type = metadata.getFormats().get(key).getType();
+      try {
+        VcfUtils.convertProperty(type, value);
+      } catch (IllegalArgumentException e) {
+        throw new IllegalArgumentException("Property " + key + " for sample #" + sampleIndex + " is not of type " +
+            type + " (on line " + m_lineNumber + ")");
+      }
+
+      sb.append(value);
       if (keys.hasNext()) {
         sb.append(":");
+      }
+    }
+
+    // now make sure the sample doesn't contain extra keys
+    for (String key : sample.getPropertyKeys()) {
+      if (!position.getFormat().contains(key)) {
+        throw new IllegalArgumentException("Sample #" + sampleIndex + " contains extra property " + key +
+            " (on line " + m_lineNumber + ")");
       }
     }
     sb.append("\t");
   }
 
   @SuppressWarnings("ConstantConditions")
-  private void addInfoOrDot(VcfPosition position, StringBuilder sb) {
+  private void addInfoOrDot(VcfMetadata metadata, VcfPosition position, StringBuilder sb) {
+
     Iterator<String> keys = position.getInfoKeys().iterator();
     if (!keys.hasNext()) {
       sb.append(".");
     }
+
     while (keys.hasNext()) {
       String key = keys.next();
-      sb.append(key);
+
+      if (!metadata.getInfo().containsKey(key)) {
+        throw new IllegalArgumentException("Position " + position.getChromosome() + " " + position.getPosition() +
+        " contains INFO " + key + ", but there is no INFO metadata with that name (on line " + m_lineNumber + ")");
+      }
+
       List<String> values = position.getInfo(key);
+
+      InfoType type = metadata.getInfo().get(key).getType();
+      for (String value : values) {
+        try {
+          VcfUtils.convertProperty(type, value);
+        } catch (IllegalArgumentException e) {
+          throw new IllegalArgumentException("Property " + key + " is not of type " +
+              type + " (on line " + m_lineNumber + ")");
+        }
+      }
+
+      sb.append(key);
       if (!values.isEmpty()) {
         sb.append("=").append(values.get(0));
         for (int i = 1; i < values.size(); i++) {
@@ -163,13 +232,13 @@ class VcfWriter implements Closeable, AutoCloseable {
 
   private void printPropertyLines(String name, Collection<String> list) {
     for (String string : list) {
-      m_writer.println("##" + name + "=" + string);
+      printLine("##" + name + "=" + string);
     }
   }
 
   private void printLines(String name, Collection<? extends BaseMetadata> list) {
     for (BaseMetadata metadata : list) {
-      m_writer.println(getAllProperties(name, metadata));
+      printLine(getAllProperties(name, metadata));
     }
   }
 
@@ -213,6 +282,11 @@ class VcfWriter implements Closeable, AutoCloseable {
       return new VcfWriter(m_file, m_writer);
     }
 
+  }
+
+  private void printLine(@Nonnull Object line) {
+    m_writer.println(line);
+    m_lineNumber++;
   }
 
 }

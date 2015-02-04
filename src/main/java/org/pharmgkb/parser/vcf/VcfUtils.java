@@ -2,6 +2,8 @@ package org.pharmgkb.parser.vcf;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
+import org.pharmgkb.parser.vcf.model.FormatType;
+import org.pharmgkb.parser.vcf.model.InfoType;
 import org.pharmgkb.parser.vcf.model.ReservedProperty;
 
 import javax.annotation.Nonnull;
@@ -103,6 +105,50 @@ public class VcfUtils {
     } catch (ClassCastException e) {
       throw new IllegalArgumentException("Wrong type specified", e);
     }
+  }
+
+  public static @Nullable <T> T convertProperty(FormatType type, String value) {
+    Class<?> clas;
+    switch (type) {
+      case Integer:
+        clas = Long.class;
+        break;
+      case Float:
+        clas = BigDecimal.class;
+        break;
+      case Character:
+        clas = Character.class;
+        break;
+      case String:
+        clas = String.class;
+        break;
+      default:
+        throw new RuntimeException(FormatType.class.getSimpleName() + " " + type + " isn't covered?!");
+    }
+    return convertProperty(clas, value, false);
+  }
+
+  public static @Nullable <T> T convertProperty(InfoType type, String value) {
+    Class<?> clas;
+    switch (type) {
+      case Integer:
+        clas = Long.class;
+        break;
+      case Float:
+        clas = BigDecimal.class;
+        break;
+      case Character:
+        clas = Character.class;
+        break;
+      case String:
+        clas = String.class;
+        break;
+      case Flag:
+        clas = Boolean.class;
+      default:
+        throw new RuntimeException(InfoType.class.getSimpleName() + " " + type + " isn't covered?!");
+    }
+    return convertProperty(clas, value, false);
   }
 
   private static @Nullable Object convertElement(Class<?> clas, String value) {

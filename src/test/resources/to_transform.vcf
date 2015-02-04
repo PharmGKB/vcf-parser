@@ -7,6 +7,7 @@
 ##contig=<ID=1,assembly=b37,length=249250621>
 ##ALT=<ID=CNV,Description="Copy Number Polymorphism">
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=GQ,Number=1,Type=Float,Description="Genotype quality">
 ##INFO=<ID=AC,Number=A,Type=Integer,Description="Total number of alternate alleles in called genotypes">
 ##INFO=<ID=AF,Number=A,Type=Float,Description="Estimated allele frequency in the range (0,1)">
 ##INFO=<ID=NS,Number=1,Type=Integer,Description="Number of samples with data">
@@ -16,7 +17,7 @@
 ##PEDIGREE=<NAME_0="A",NAME_1="B">
 ##pedigreeDB=<http://thismayormaynotbeavalidurl.vcf>
 #CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	sample1	sample2
-chr1	1	rsa	A	T	5	PASS	AA=A;AC=5,10;AF=0.124;AN=10;BQ=5.7;CIGAR=I5;DB;END=50;H2;H3;MQ=52.4;MQ0=100;NS=2;SB=+;SOMATIC;VALIDATED	GT:GQ	.:2	.:2
-chr1	2	rsb	A	T	5	PASS	.	GT:DP:FT:GL:GLE:PL:GP:GQ:HQ:PS:PQ:EC:MQ	0|1:5:ftstring:0.3,0.4:glestring:5,50:0.05,0.06:30:10,20:1:45:2,2:30
+chr1	1	rsa	A	T	5	PASS	AC=1;AF=0.5;AN=15	GT:GQ	.:2	.:2
+chr1	2	rsb	A	T	5	PASS	.	GT	0|1
 chr1	3	rsc	A	T	5	PASS	.	GT	0/1
 chr1	4	rsd	A	T	5	PASS	.	GT	.
