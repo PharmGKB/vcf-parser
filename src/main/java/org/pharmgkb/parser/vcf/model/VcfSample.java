@@ -17,7 +17,7 @@ import java.util.Set;
  */
 public class VcfSample {
 
-  private HashMap<String, String> m_properties = new HashMap<>();
+  private Map<String, String> m_properties = new HashMap<>();
 
   public VcfSample(@Nullable List<String> keys, @Nullable List<String> values) {
     if (keys == null) {
@@ -31,6 +31,20 @@ public class VcfSample {
     Preconditions.checkArgument(keys.size() == values.size(), "Number of keys does not match number of values");
     for (int x = 0; x < keys.size(); x++) {
       m_properties.put(keys.get(x), values.get(x));
+    }
+    init();
+  }
+
+  public VcfSample(@Nonnull Map<String, String> properties) {
+    m_properties = properties;
+    init();
+  }
+
+  private void init() {
+    for (Map.Entry<String, String> entry : m_properties.entrySet()) {
+      if (entry.getKey().contains("\n") || entry.getValue().contains("\n")) {
+        throw new IllegalArgumentException("FORMAT [[[" + entry.getKey() + "=" + entry.getValue() + "]]] contains a newline");
+      }
     }
   }
 

@@ -23,17 +23,20 @@ public class IdDescriptionMetadata extends IdMetadata {
   public IdDescriptionMetadata(@Nonnull String id, @Nonnull String description) {
     super(id);
     getProperties().put(DESCRIPTION, description);
-    init();
+    init(true);
   }
 
-  public IdDescriptionMetadata(@Nonnull Map<String, String> properties) {
-    super(properties);
-    init();
+  public IdDescriptionMetadata(@Nonnull Map<String, String> properties, boolean isBaseType) {
+    super(properties, isBaseType);
+    init(isBaseType);
   }
 
-  private void init() {
+  private void init(boolean isBaseType) {
     if (getProperty(DESCRIPTION) == null) {
       throw new IllegalArgumentException("Required metadata property \"" + DESCRIPTION + "\" is missing");
+    }
+    if (isBaseType) {
+      ensureNoExtras(ID, DESCRIPTION);
     }
   }
 

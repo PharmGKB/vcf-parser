@@ -48,7 +48,7 @@ public class InfoMetadata extends IdDescriptionMetadata {
   }
 
   public InfoMetadata(@Nonnull Map<String, String> properties) {
-    super(properties);
+    super(properties, false);
     init();
   }
 
@@ -59,6 +59,7 @@ public class InfoMetadata extends IdDescriptionMetadata {
       throw new IllegalArgumentException(NUMBER + " is not a number: '" + number + "'");
     }
     m_type = InfoType.valueOf(getProperty(TYPE));
+    ensureNoExtras(ID, DESCRIPTION, NUMBER, TYPE, SOURCE, VERSION);
   }
 
   /**

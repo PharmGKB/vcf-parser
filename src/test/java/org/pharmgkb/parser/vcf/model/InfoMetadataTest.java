@@ -18,7 +18,7 @@ public class InfoMetadataTest {
     props[2] = "Type=String";
     String desc = "Ancestral Allele, test";
     props[3] = "Description=\"" + desc + "\"";
-    InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(props));
+    InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(VcfUtils.Quoted.Unknown, props));
     assertEquals(InfoType.String, md.getType());
     assertEquals(desc, md.getDescription());
 
@@ -27,7 +27,7 @@ public class InfoMetadataTest {
     };
     for (String n : nums) {
       props[1] = "Number=" + n;
-      md = new InfoMetadata(VcfUtils.extractProperties(props));
+      md = new InfoMetadata(VcfUtils.extractProperties(VcfUtils.Quoted.Unknown, props));
       assertEquals(n, md.getNumber());
     }
 
@@ -37,7 +37,7 @@ public class InfoMetadataTest {
     for (String n : nums) {
       try {
         props[1] = "Number=" + n;
-        new InfoMetadata(VcfUtils.extractProperties(props));
+        new InfoMetadata(VcfUtils.extractProperties(VcfUtils.Quoted.Unknown, props));
       } catch (IllegalArgumentException ex) {
         // expected
       }

@@ -14,17 +14,20 @@ public class IdMetadata extends BaseMetadata {
   public IdMetadata(@Nonnull String id) {
     super(new HashMap<>());
     getProperties().put(ID, id);
-    init();
+    init(true);
   }
 
-  public IdMetadata(@Nonnull Map<String, String> properties) {
+  public IdMetadata(@Nonnull Map<String, String> properties, boolean isBaseType) {
     super(properties);
-    init();
+    init(isBaseType);
   }
 
-  private void init() {
+  private void init(boolean isBaseType) {
     if (getProperty(ID) == null) {
       throw new IllegalArgumentException("Required metadata property \"" + ID + "\" is missing");
+    }
+    if (isBaseType) {
+      ensureNoExtras(ID);
     }
   }
 

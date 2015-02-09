@@ -32,7 +32,7 @@ public class FormatMetadata extends IdDescriptionMetadata {
   }
 
   public FormatMetadata(@Nonnull Map<String, String> properties) {
-    super(properties);
+    super(properties, false);
     init();
   }
 
@@ -43,6 +43,7 @@ public class FormatMetadata extends IdDescriptionMetadata {
       throw new IllegalArgumentException(NUMBER + " is not a VCF number: '" + number + "'");
     }
     m_type = FormatType.valueOf(getProperty(TYPE));
+    ensureNoExtras(ID, DESCRIPTION, NUMBER, TYPE);
   }
 
   /**

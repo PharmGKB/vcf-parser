@@ -15,11 +15,11 @@ import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Pattern;
 
 
 /**
@@ -28,16 +28,13 @@ import java.util.regex.Pattern;
  * @author Mark Woon
  */
 public class VcfParser implements Closeable {
+
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
-  private static final Pattern sf_refBasePattern = Pattern.compile("[AaCcGgTtNn]+");
-  private static final Pattern sf_altBasePattern = Pattern.compile("(?:[AaCcGgTtNn\\*]+|<.+>)");
-  // from http://stackoverflow.com/questions/1757065/java-splitting-a-comma-separated-string-but-ignoring-commas-in-quotes
-  private static final Pattern sf_metadataPattern = Pattern.compile(",(?=([^\"]*\"[^\"]*\")*[^\"]*$)");
+
   private static final Splitter sf_tabSplitter = Splitter.on("\t").trimResults();
   private static final Splitter sf_commaSplitter = Splitter.on(",").trimResults();
   private static final Splitter sf_colonSplitter = Splitter.on(":").trimResults();
   private static final Splitter sf_semicolonSplitter = Splitter.on(";").trimResults();
-  private static final Pattern sf_rsidPattern = Pattern.compile("rs\\d+");
 
   private boolean m_rsidsOnly;
   private BufferedReader m_reader;
@@ -112,9 +109,6 @@ public class VcfParser implements Closeable {
 
         // CHROM
         String chromosome = data.get(0);
-        if (chromosome.contains("\\s") || chromosome.contains(":")) {
-          throw new IllegalArgumentException("CHROM column \"" + chromosome + "\" contains whitespace or colons");
-        }
 
         // POS
         long position;
@@ -123,17 +117,11 @@ public class VcfParser implements Closeable {
         } catch (NumberFormatException e) {
           throw new IllegalArgumentException("Position " + data.get(1) + " is not numerical");
         }
-        if (position < 1) {
-          throw new IllegalArgumentException("Position " + position + " is not positive");
-        }
 
         // ID
         List<String> ids = null;
-        if (data.get(2).contains("\\s") || data.get(2).contains(";")) {
-          throw new IllegalArgumentException("ID column \"" + data.get(2) + "\" contains whitespace or semicolons");
-        }
         if (!data.get(2).equals(".")) {
-          if (m_rsidsOnly && !sf_rsidPattern.matcher(data.get(2)).find()) {
+          if (m_rsidsOnly && !VcfUtils.RSID_PATTERN.matcher(data.get(2)).find()) {
             continue;
           }
           ids = sf_commaSplitter.splitToList(data.get(2));
@@ -143,43 +131,27 @@ public class VcfParser implements Closeable {
 
         // REF
         List<String> ref = sf_commaSplitter.splitToList(data.get(3));
-        for (String base : ref) {
-          if (!sf_refBasePattern.matcher(base).matches()) {
-            throw new IllegalArgumentException("Invalid reference base '" + base + "' (must be [AaGgCcTtNn]+)");
-          }
-        }
 
         // ALT
         List<String> alt = null;
-        if (!data.get(7).equals("") && !data.get(4).equals(".")) {
+        if (!data.get(7).isEmpty() && !data.get(4).equals(".")) {
           alt = sf_commaSplitter.splitToList(data.get(4));
-          for (String base : alt) {
-            if (!sf_altBasePattern.matcher(base).matches()) {
-              throw new IllegalArgumentException("Invalid alternate base '" + base + "' (must be [AaGgCcTtNn\\*]+ or <.+>)");
-            }
-          }
         }
 
         // QUAL
-        String quality = data.get(5); // we could check it's numerical here
-        if (quality.equals(".")) {
-          quality = null;
+        BigDecimal quality = null;
+        if (!data.get(5).isEmpty() && !data.get(5).equals(".")) {
+          quality = new BigDecimal(data.get(5));
         }
 
         // FILTER
         List<String> filters = null;
-        if (data.get(6).contains("\\s") || data.get(6).contains(";")) {
-          throw new IllegalArgumentException("FILTER column \"" + data.get(6) + "\" contains whitespace or semicolons");
-        }
         if (!data.get(6).equals("PASS")) {
           filters = sf_semicolonSplitter.splitToList(data.get(6));
         }
 
         // INFO
         ListMultimap<String, String> info = null;
-        if (data.get(7).contains("\\s")) {
-          throw new IllegalArgumentException("INFO column \"" + data.get(7) + "\" contains whitespace");
-        }
         if (!data.get(7).equals("") && !data.get(7).equals(".")) {
           info = ArrayListMultimap.create();
           List<String> props = sf_semicolonSplitter.splitToList(data.get(7));
@@ -266,7 +238,7 @@ public class VcfParser implements Closeable {
     String unescapedValue = value.replaceAll("\\\\", "~~~~");
     unescapedValue = unescapedValue.replaceAll("\\\\\"", "~!~!");
     boolean wasEscaped = !unescapedValue.equals(value);
-    String[] cols = sf_metadataPattern.split(unescapedValue);
+    String[] cols = VcfUtils.METADATA_PATTERN.split(unescapedValue);
     if (wasEscaped) {
       for (int x = 0; x < cols.length; x++) {
         cols[x] = cols[x].replaceAll("~~~~", "\\");
@@ -275,25 +247,25 @@ public class VcfParser implements Closeable {
     }
     switch (propName.toLowerCase()) {
       case "alt":
-        mdBuilder.addAlt(new IdDescriptionMetadata(VcfUtils.extractProperties(cols)));
+        mdBuilder.addAlt(new IdDescriptionMetadata(VcfUtils.extractProperties(VcfUtils.Quoted.Unknown, cols), true));
         break;
       case "filter":
-        mdBuilder.addFilter(new IdDescriptionMetadata(VcfUtils.extractProperties(cols)));
+        mdBuilder.addFilter(new IdDescriptionMetadata(VcfUtils.extractProperties(VcfUtils.Quoted.Unknown, cols), true));
         break;
       case "info":
-        mdBuilder.addInfo(new InfoMetadata(VcfUtils.extractProperties(cols)));
+        mdBuilder.addInfo(new InfoMetadata(VcfUtils.extractProperties(VcfUtils.Quoted.Unknown, cols)));
         break;
       case "format":
-        mdBuilder.addFormat(new FormatMetadata(VcfUtils.extractProperties(cols)));
+        mdBuilder.addFormat(new FormatMetadata(VcfUtils.extractProperties(VcfUtils.Quoted.Unknown, cols)));
         break;
       case "contig":
-        mdBuilder.addContig(new ContigMetadata(VcfUtils.extractProperties(cols)));
+        mdBuilder.addContig(new ContigMetadata(VcfUtils.extractProperties(VcfUtils.Quoted.Unknown, cols)));
         break;
       case "sample":
-        mdBuilder.addSample(new IdDescriptionMetadata(VcfUtils.extractProperties(cols)));
+        mdBuilder.addSample(new IdDescriptionMetadata(VcfUtils.extractProperties(VcfUtils.Quoted.Unknown, cols), true));
         break;
       case "pedigree":
-        mdBuilder.addPedigree(new BaseMetadata(VcfUtils.extractProperties(cols)));
+        mdBuilder.addPedigree(new BaseMetadata(VcfUtils.extractProperties(VcfUtils.Quoted.Unknown, cols)));
         break;
     }
   }

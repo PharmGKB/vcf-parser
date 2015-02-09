@@ -3,9 +3,13 @@ package org.pharmgkb.parser.vcf.model;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ListMultimap;
 import org.pharmgkb.parser.vcf.VcfUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.lang.invoke.MethodHandles;
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.regex.Pattern;
 
@@ -27,16 +31,19 @@ import java.util.regex.Pattern;
  * @author Mark Woon
  */
 public class VcfPosition {
-  private static final Pattern sf_qualPattern = Pattern.compile("([\\d\\.]+|\\.)");
+
+  private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
   private static final Joiner sf_commaJoiner = Joiner.on(",");
   private static final Joiner sf_semicolonJoiner = Joiner.on(";");
+  private static final Pattern sf_whitespace = Pattern.compile(".*\\s.*");
   private String m_chromosome;
   private long m_position;
   private List<String> m_ids;
   private List<String> m_refBases;
   private List<String> m_altBases;
   private List<String> m_alleles = new ArrayList<>();
-  private String m_quality;
+  private BigDecimal m_quality;
   private List<String> m_filter;
   private ListMultimap<String, String> m_info;
   private List<String> m_format;
@@ -46,10 +53,78 @@ public class VcfPosition {
       @Nullable List<String> ids,
       @Nonnull List<String> refBases,
       @Nullable List<String> altBases,
-      @Nullable String qual,
+      @Nullable BigDecimal qual,
       @Nullable List<String> filter,
       @Nullable ListMultimap<String, String> info,
       @Nullable List<String> format) {
+
+    if (sf_whitespace.matcher(chr).matches()  || chr.contains(":")) {
+      throw new IllegalArgumentException("CHROM column \"" + chr + "\" contains whitespace or colons");
+    }
+
+    if (pos < 1) {
+      throw new IllegalArgumentException("Position " + pos + " is not positive");
+    }
+
+    if (ids != null) {
+      for (String id : ids) {
+        if (sf_whitespace.matcher(id).matches() || id.contains(";")) {
+          throw new IllegalArgumentException("ID column entry \"" + id + "\" contains whitespace or semicolons");
+        }
+      }
+    }
+
+    for (String base : refBases) {
+      if (!VcfUtils.REF_BASE_PATTERN.matcher(base).matches()) {
+        throw new IllegalArgumentException("Invalid reference base '" + base +
+            "' (must match " + VcfUtils.REF_BASE_PATTERN +")");
+      }
+    }
+
+    if (altBases != null) {
+      for (String base : altBases) {
+        if (!VcfUtils.ALT_BASE_PATTERN.matcher(base).matches()) {
+          throw new IllegalArgumentException("Invalid alternate base '" + base + "' (must be [AaGgCcTtNn\\*]+ or <.+>)");
+        }
+      }
+    }
+
+    if (filter != null) {
+      for (String f : filter) {
+        if (sf_whitespace.matcher(f).matches()) {
+          throw new IllegalArgumentException("FILTER column entry \"" + f + "\" contains whitespace");
+        }
+        if (f.equals("0")) {
+          throw new IllegalArgumentException("FILTER column entry should not be 0");
+        }
+        if (f.equals("PASS")) {
+          if (filter.size() == 1) { // a user is likely to pass "PASS" instead of an empty list or null
+            sf_logger.warn("FILTER is PASS, but should have been passed as null. Converting to null");
+            filter = null;
+            break; // unnecessary, but gets rid of the warning
+          } else { // but this is illegal per VCF spec
+            throw new IllegalArgumentException("FILTER contains PASS along with other filters!");
+          }
+        }
+      }
+    }
+
+    if (info != null) {
+      for (Map.Entry<String, String> entry : info.entries()) {
+        if (sf_whitespace.matcher(entry.getKey()).matches() || sf_whitespace.matcher(entry.getValue()).matches()) {
+          throw new IllegalArgumentException("INFO column entry \"" + entry.getKey() + "=" + entry.getValue() +
+              "\" contains whitespace");
+        }
+      }
+    }
+
+    if (format != null) {
+      for (String f : format) {
+        if (!VcfUtils.FORMAT_PATTERN.matcher(f).matches() || f.contains(":")) {
+          throw new IllegalArgumentException("FORMAT column is not alphanumeric");
+        }
+      }
+    }
 
     // not resolving ID string
     m_chromosome = chr;
@@ -68,9 +143,6 @@ public class VcfPosition {
       m_alleles.addAll(altBases);
     }
 
-    if (qual != null && !sf_qualPattern.matcher(qual).matches()) {
-      throw new IllegalArgumentException("[QUAL] Not contain a number: '" + qual + "'");
-    }
     m_quality = qual;
 
     if (filter == null) {
@@ -144,11 +216,11 @@ public class VcfPosition {
   }
 
 
-  public @Nullable String getQuality() {
+  public @Nullable BigDecimal getQuality() {
     return m_quality;
   }
 
-  public void setQuality(@Nullable String quality) {
+  public void setQuality(@Nullable BigDecimal quality) {
     m_quality = quality;
   }
 

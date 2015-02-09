@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Contains static methods for handling properties in INFO and FORMAT fields.
@@ -20,12 +21,18 @@ import java.util.Map;
  */
 public class VcfUtils {
 
-  public static Map<String, String> extractProperties(@Nonnull String... props) {
+  public static final Pattern REF_BASE_PATTERN = Pattern.compile("[AaCcGgTtNn]+");
+  public static final Pattern ALT_BASE_PATTERN = Pattern.compile("(?:[AaCcGgTtNn\\*]+|<.+>)");
+  public static final Pattern METADATA_PATTERN = Pattern.compile(",(?=([^\"]*\"[^\"]*\")*[^\"]*$)");
+  public static final Pattern FORMAT_PATTERN = Pattern.compile("[A-Z0-9:]+");
+  public static final Pattern RSID_PATTERN = Pattern.compile("rs\\d+");
+
+  public static @Nonnull Map<String, String> extractProperties(@Nonnull Quoted quoted, @Nonnull String... props) {
     Map<String, String> map = new HashMap<>();
     for (String prop : props) {
       Pair<String, String> pair;
       try {
-        pair = splitProperty(prop, null);
+        pair = splitProperty(prop, quoted);
       } catch (RuntimeException e) {
         throw new IllegalArgumentException("Error parsing property \"" + prop + "\"", e);
       }
@@ -36,22 +43,19 @@ public class VcfUtils {
 
   /**
    * Splits a property into a key-value pair.
-   *
-   * @param isStringValue if true, the value is a string that needs to be unwrapped (i.e remove
-   * quotes). If set to null, decides based on the presence or absence of quotation marks before and after
    */
-  public static Pair<String, String> splitProperty(@Nonnull String prop, Boolean isStringValue) {
+  public static @Nonnull Pair<String, String> splitProperty(@Nonnull String prop, @Nonnull Quoted quoted) {
     int idx = prop.indexOf("=");
     String key = prop.substring(0, idx);
     String value = prop.substring(idx + 1);
     boolean removeWrapper;
-    if (isStringValue == null) {
+    if (quoted == Quoted.Unknown) {
       removeWrapper = value.startsWith("\"") && value.endsWith("\"");
       if (value.startsWith("\"") ^ value.endsWith("\"")) {
         throw new IllegalArgumentException("Quotation marks not matched for property " + prop);
       }
     } else {
-      removeWrapper = isStringValue;
+      removeWrapper = quoted == Quoted.True;
     }
     if (removeWrapper) {
       value = removeWrapper(value);
@@ -85,7 +89,7 @@ public class VcfUtils {
    * @see #convertProperty(ReservedProperty, String)
    */
   @SuppressWarnings("unchecked")
-  public static @Nullable <T> T convertProperty(Class<?> clas, String value, boolean isList) {
+  public static @Nullable <T> T convertProperty(@Nonnull Class<?> clas, @Nullable String value, boolean isList) {
     if (value == null || ".".equals(value)) {
       return null;
     }
@@ -107,7 +111,7 @@ public class VcfUtils {
     }
   }
 
-  public static @Nullable <T> T convertProperty(FormatType type, String value) {
+  public static @Nullable <T> T convertProperty(@Nonnull FormatType type, @Nullable String value) {
     Class<?> clas;
     switch (type) {
       case Integer:
@@ -128,7 +132,7 @@ public class VcfUtils {
     return convertProperty(clas, value, false);
   }
 
-  public static @Nullable <T> T convertProperty(InfoType type, String value) {
+  public static @Nullable <T> T convertProperty(@Nonnull InfoType type, @Nullable String value) {
     Class<?> clas;
     switch (type) {
       case Integer:
@@ -151,7 +155,7 @@ public class VcfUtils {
     return convertProperty(clas, value, false);
   }
 
-  private static @Nullable Object convertElement(Class<?> clas, String value) {
+  private static @Nullable Object convertElement(@Nonnull Class<?> clas, @Nullable String value) {
     if (value == null || ".".equals(value)) {
       return null;
     }
@@ -185,4 +189,9 @@ public class VcfUtils {
     }
     throw new UnsupportedOperationException("Type " + clas + " unrecognized");
   }
+
+  public static enum Quoted {
+    True, False, Unknown;
+  }
+
 }

@@ -1,59 +1,95 @@
 package org.pharmgkb.parser.vcf;
 
+import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.ListMultimap;
 import org.junit.Test;
-import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
-import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
-import org.pharmgkb.parser.vcf.model.VcfSample;
+import org.pharmgkb.parser.vcf.model.VcfPosition;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.math.BigDecimal;
-import java.util.List;
+import java.util.Arrays;
 
 import static org.junit.Assert.*;
 
 /**
+ * Tests {@link VcfPosition}.
  * @author Douglas Myers-Turnbull
  */
 public class VcfPositionTest {
 
   @Test
-  public void test() throws IOException {
-    try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream("/vcfposition.vcf")))) {
-      new VcfParser.Builder()
-          .fromReader(reader)
-          .parseWith((metadata, position, sampleData) -> {
-            switch ((int) position.getPosition()) {
-
-              case 1:
-                assertEquals("A", position.getInfo(ReservedInfoProperty.AncestralAllele));
-                assertEquals(true, position.getInfo(ReservedInfoProperty.Hapmap2)); // flag is set
-                assertNull(position.getInfo(ReservedInfoProperty.ThousandGenomes)); // property doesn't exist
-
-                List<BigDecimal> b = position.getInfo(ReservedInfoProperty.AlleleFrequency);
-                assertNotNull(b);
-                assertEquals(1, b.size());
-                assertEquals(new BigDecimal("0.124"), b.get(0));
-
-                List<Long> c = position.getInfo(ReservedInfoProperty.AlleleCount);
-                assertNotNull(c);
-                assertEquals(2, c.size());
-                assertEquals(5l, (long)c.get(0));
-                assertEquals(10l, (long)c.get(1));
-                break;
-
-              case 2:
-                VcfSample sample = sampleData.get(0);
-                List<BigDecimal> d = sample.getProperty(ReservedFormatProperty.GenotypePosteriorProbabilitiesPhredScaled);
-                assertNotNull(d);
-                assertEquals(2, d.size());
-                assertEquals(new BigDecimal("0.05"), d.get(0));
-                assertEquals(new BigDecimal("0.06"), d.get(1));
-                break;
-            }
-          })
-          .build().parse();
-    }
+  public void testNoFilters() {
+    VcfPosition position = new VcfPosition("chr", 1, null, Arrays.asList("C"), null, null, null, null, null);
+    assertTrue(position.getFilters().isEmpty());
+    assertTrue(position.isPassingAllFilters());
   }
+
+  @Test
+  public void testHasFilters() {
+    VcfPosition position = new VcfPosition("chr", 1, null, Arrays.asList("C"), null, null, Arrays.asList("bad"),
+        null, null);
+    assertEquals(1, position.getFilters().size());
+    assertEquals("bad", position.getFilters().get(0));
+    assertFalse(position.isPassingAllFilters());
+  }
+
+  @Test
+  public void testBadFilter1() {
+    VcfPosition position = new VcfPosition("chr", 1, null, Arrays.asList("C"), null, null, Arrays.asList("PASS"),
+        null, null);
+    assertTrue(position.getFilters().isEmpty());
+    assertTrue(position.isPassingAllFilters());
+  }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void testBadFilter2() {
+    new VcfPosition("chr", 1, null, Arrays.asList("C"), null, null, Arrays.asList("bad", "PASS"),
+        null, null);
+  }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void testBadChromosome() {
+    new VcfPosition("chr:", 1, null, Arrays.asList("C"), null, null, null, null, null);
+  }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void testBadPosition() {
+    new VcfPosition("chr1", 0, null, Arrays.asList("C"), null, null, null, null, null);
+  }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void testBadId() {
+    new VcfPosition("chr1", 1, Arrays.asList(";"), Arrays.asList("C"), null, null, null, null, null);
+  }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void testBadRefBase() {
+    new VcfPosition("chr1", 1, null, Arrays.asList("X"), null, null, null, null, null);
+  }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void testBadVarBase() {
+    new VcfPosition("chr1", 1, null, Arrays.asList("C"), Arrays.asList("X"), null, null, null, null);
+  }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void testZeroFilter() {
+    new VcfPosition("chr1", 1, null, Arrays.asList("C"), null, null, Arrays.asList("0"), null, null);
+  }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void testFilterWithWhitespace() {
+    new VcfPosition("chr1", 1, null, Arrays.asList("C"), null, null, Arrays.asList("adsf\nsdf"), null, null);
+  }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void testInfoWithWhitespace() {
+    ListMultimap<String, String> map = ArrayListMultimap.create();
+    map.put("anid", "a\nvalue");
+    new VcfPosition("chr1", 1, null, Arrays.asList("C"), null, null, null, map, null);
+  }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void testBadFormat() {
+    new VcfPosition("chr1", 1, null, Arrays.asList("C"), null, null, null, null, Arrays.asList("+"));
+  }
+
 }

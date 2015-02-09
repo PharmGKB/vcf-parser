@@ -2,9 +2,13 @@ package org.pharmgkb.parser.vcf;
 
 import org.apache.commons.io.IOUtils;
 import org.pharmgkb.parser.vcf.model.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.io.*;
+import java.lang.invoke.MethodHandles;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Iterator;
@@ -20,17 +24,18 @@ import java.util.Map;
  */
 class VcfWriter implements Closeable, AutoCloseable {
 
+  private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
   private final Path m_file;
   private final PrintWriter m_writer;
-
   private int m_lineNumber;
 
-  private VcfWriter(Path file, PrintWriter writer) {
+  private VcfWriter(@Nullable Path file, @Nonnull PrintWriter writer) {
     m_file = file;
     m_writer = writer;
   }
 
-  public void writeHeader(VcfMetadata metadata) {
+  public void writeHeader(@Nonnull VcfMetadata metadata) {
 
     // file format
     printLine("##fileformat=" + metadata.getFileFormat());
@@ -56,9 +61,11 @@ class VcfWriter implements Closeable, AutoCloseable {
     printLine(sb);
 
     m_writer.flush();
+    sf_logger.info("Wrote {} lines of header{}", m_lineNumber, (m_file == null ? "" : " to " + m_file));
   }
 
-  public void writeLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> samples) {
+  public void writeLine(@Nonnull VcfMetadata metadata, @Nonnull VcfPosition position,
+      @Nonnull List<VcfSample> samples) {
 
     StringBuilder sb = new StringBuilder();
 
@@ -74,18 +81,10 @@ class VcfWriter implements Closeable, AutoCloseable {
     addListOrElse(position.getFilters(), ";", "PASS", sb);
     addInfoOrDot(metadata, position, sb);
 
-    for (String key : position.getFilters()) {
-      if (!metadata.getFilters().containsKey(key)) {
-        throw new IllegalArgumentException("Position " + position.getChromosome() + " " + position.getPosition() +
-            " has FILTER " + key + ", but there is no FILTER metadata with that name (on line " + m_lineNumber + ")");
-      }
-    }
-
-    if (samples.size() > metadata.getNumSamples()) {
-      throw new IllegalArgumentException("Position " + position.getChromosome() + " " + position.getPosition() +
-          " contains " + samples.size() + " samples, but the metadata only declares " + metadata.getNumSamples() +
-          " (on line " + m_lineNumber + ")");
-    }
+    position.getFilters().stream().filter(key -> !metadata.getFilters().containsKey(key)).forEach(key -> {
+      sf_logger.warn("Position {}:{} has FILTER {}, but there is no FILTER metadata with that name (on line {})",
+          position.getChromosome(), position.getPosition(), key, m_lineNumber);
+    });
 
     // these columns can be skipped completely
     addFormatConditionally(position, sb);
@@ -106,7 +105,7 @@ class VcfWriter implements Closeable, AutoCloseable {
     IOUtils.closeQuietly(m_writer);
   }
 
-  private void addFormatConditionally(VcfPosition position, StringBuilder sb) {
+  private void addFormatConditionally(@Nonnull VcfPosition position, @Nonnull StringBuilder sb) {
     Iterator<String> formats = position.getFormat().iterator();
     if (!formats.hasNext()) {
       return;
@@ -120,7 +119,8 @@ class VcfWriter implements Closeable, AutoCloseable {
     sb.append("\t");
   }
 
-  private void addSampleConditionally(VcfMetadata metadata, int sampleIndex, VcfPosition position, VcfSample sample, StringBuilder sb) {
+  private void addSampleConditionally(@Nonnull VcfMetadata metadata, int sampleIndex,
+      @Nonnull VcfPosition position, @Nonnull VcfSample sample, @Nonnull StringBuilder sb) {
 
     Iterator<String> keys = sample.getPropertyKeys().iterator();
     if (!keys.hasNext() && position.getFormat().isEmpty()) {
@@ -132,8 +132,8 @@ class VcfWriter implements Closeable, AutoCloseable {
       keys.next();
 
       if (!metadata.getFormats().containsKey(key)) {
-        throw new IllegalArgumentException("Sample #" + sampleIndex + " " + position.getPosition() +
-            " contains FORMAT " + key + ", but there is no FORMAT metadata with that name (on line " + m_lineNumber + ")");
+        sf_logger.warn("Sample #{} for {}:{} contains FORMAT {}, but there is no FORMAT metadata with that name (on line {})",
+            sampleIndex, position.getChromosome(), position.getPosition(), key, m_lineNumber);
       }
 
       if (!sample.containsProperty(key)) {
@@ -167,8 +167,7 @@ class VcfWriter implements Closeable, AutoCloseable {
     sb.append("\t");
   }
 
-  @SuppressWarnings("ConstantConditions")
-  private void addInfoOrDot(VcfMetadata metadata, VcfPosition position, StringBuilder sb) {
+  private void addInfoOrDot(@Nonnull VcfMetadata metadata, @Nonnull VcfPosition position, @Nonnull StringBuilder sb) {
 
     Iterator<String> keys = position.getInfoKeys().iterator();
     if (!keys.hasNext()) {
@@ -179,11 +178,12 @@ class VcfWriter implements Closeable, AutoCloseable {
       String key = keys.next();
 
       if (!metadata.getInfo().containsKey(key)) {
-        throw new IllegalArgumentException("Position " + position.getChromosome() + " " + position.getPosition() +
-        " contains INFO " + key + ", but there is no INFO metadata with that name (on line " + m_lineNumber + ")");
+        sf_logger.warn("Position {}:{} contains INFO {}, but there is no INFO metadata with that name (on line {})",
+            position.getChromosome(), position.getPosition(), key, m_lineNumber);
       }
 
       List<String> values = position.getInfo(key);
+      assert values != null;
 
       InfoType type = metadata.getInfo().get(key).getType();
       for (String value : values) {
@@ -209,16 +209,17 @@ class VcfWriter implements Closeable, AutoCloseable {
     sb.append("\t");
   }
 
-  private void addStringOrElse(String string, String missingValue, StringBuilder sb) {
-    if (string == null || string.isEmpty()) {
+  private void addStringOrElse(@Nullable Object object, @Nonnull String missingValue, @Nonnull StringBuilder sb) {
+    if (object == null || object.toString().isEmpty()) {
       sb.append(missingValue);
     } else {
-      sb.append(string);
+      sb.append(object.toString());
     }
     sb.append("\t");
   }
 
-  private void addListOrElse(List<String> list, String delimiter, String missingValue, StringBuilder sb) {
+  private void addListOrElse(@Nonnull List<String> list, @Nonnull String delimiter, @Nonnull String missingValue,
+      @Nonnull StringBuilder sb) {
     if (list.isEmpty()) {
       sb.append(missingValue);
     } else {
@@ -230,19 +231,19 @@ class VcfWriter implements Closeable, AutoCloseable {
     sb.append("\t");
   }
 
-  private void printPropertyLines(String name, Collection<String> list) {
+  private void printPropertyLines(@Nonnull String name, @Nonnull Collection<String> list) {
     for (String string : list) {
       printLine("##" + name + "=" + string);
     }
   }
 
-  private void printLines(String name, Collection<? extends BaseMetadata> list) {
+  private void printLines(@Nonnull String name, @Nonnull Collection<? extends BaseMetadata> list) {
     for (BaseMetadata metadata : list) {
       printLine(getAllProperties(name, metadata));
     }
   }
 
-  private String getAllProperties(String name, BaseMetadata metadata) {
+  private String getAllProperties(@Nonnull String name, @Nonnull BaseMetadata metadata) {
     StringBuilder sb = new StringBuilder("##");
     sb.append(name).append("=<");
     int i = 0;
@@ -285,8 +286,16 @@ class VcfWriter implements Closeable, AutoCloseable {
   }
 
   private void printLine(@Nonnull Object line) {
+    String string = line.toString();
+    if (string.contains("\n")) {
+      throw new RuntimeException("Something went wrong writing line #" + m_lineNumber + ": [[[" + string +
+          "]]] contains more than one line");
+    }
     m_writer.println(line);
     m_lineNumber++;
+    if (m_lineNumber % 1000 == 0) {
+      sf_logger.info("Wrote {} lines{}", m_lineNumber, (m_file == null ? "" : " to " + m_file));
+    }
   }
 
 }
