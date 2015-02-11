@@ -21,13 +21,17 @@ public class IdDescriptionMetadata extends IdMetadata {
   public static final String DESCRIPTION = "Description";
 
   public IdDescriptionMetadata(@Nonnull String id, @Nonnull String description) {
-    super(id);
-    getProperties().put(DESCRIPTION, description);
-    init(true);
+    this(id, description, true);
   }
 
   public IdDescriptionMetadata(@Nonnull Map<String, String> properties, boolean isBaseType) {
-    super(properties, isBaseType);
+    super(properties, false);
+    init(isBaseType);
+  }
+
+  protected IdDescriptionMetadata(@Nonnull String id, @Nonnull String description, boolean isBaseType) {
+    super(id);
+    getProperties().put(DESCRIPTION, description);
     init(isBaseType);
   }
 

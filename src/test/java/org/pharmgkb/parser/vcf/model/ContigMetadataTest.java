@@ -20,18 +20,46 @@ public class ContigMetadataTest {
     new ContigMetadata(map);
   }
 
+  /**
+   * Just makes sure it doesn't throw an exception. However, should probably warn.
+   */
   @Test(expected = IllegalArgumentException.class)
   public void testExtraProperty() {
     Map<String, String> map = new HashMap<>();
     map.put(ContigMetadata.ID, "id");
+    map.put(ContigMetadata.ASSEMBLY, "assembly");
+    map.put(ContigMetadata.LENGTH, "23");
     map.put("test", "one");
     new ContigMetadata(map);
+  }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void testBadLength() {
+    Map<String, String> map = new HashMap<>();
+    map.put(ContigMetadata.ID, "id");
+    map.put(ContigMetadata.ASSEMBLY, "assembly");
+    map.put(ContigMetadata.LENGTH, "234asdgasdgasdg");
+    map.put(ContigMetadata.URL, "url");
+    new ContigMetadata(map);
+  }
+
+  @Test
+  public void testGetLength() {
+    Map<String, String> map = new HashMap<>();
+    map.put(ContigMetadata.ID, "id");
+    map.put(ContigMetadata.ASSEMBLY, "assembly");
+    map.put(ContigMetadata.LENGTH, "23");
+    map.put(ContigMetadata.URL, "url");
+    ContigMetadata contig = new ContigMetadata(map);
+    assertEquals(23, contig.getLength());
   }
 
   @Test
   public void testGetUrl() {
     Map<String, String> map = new HashMap<>();
     map.put(ContigMetadata.ID, "id");
+    map.put(ContigMetadata.ASSEMBLY, "assembly");
+    map.put(ContigMetadata.LENGTH, "23");
     map.put(ContigMetadata.URL, "url");
     ContigMetadata contig = new ContigMetadata(map);
     assertEquals("url", contig.getUrl());

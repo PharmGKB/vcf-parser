@@ -1,7 +1,11 @@
 package org.pharmgkb.parser.vcf.model;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.lang.invoke.MethodHandles;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
@@ -13,6 +17,8 @@ import java.util.Set;
  * @author Douglas Myers-Turnbull
  */
 public class BaseMetadata {
+
+  private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private Map<String, String> m_properties;
 
@@ -37,17 +43,15 @@ public class BaseMetadata {
 
   /**
    * Should be used only for base classes.
+   * Logs a warning if this metadata contains a property key not in the array passed.
    * @param names An array of permitted property keys
-   * @throws IllegalArgumentException If this metadata contains a property key not in the array passed
    */
   protected void ensureNoExtras(@Nonnull String... names) {
     Set<String> set = new HashSet<>();
     Collections.addAll(set, names);
-    for (String property : m_properties.keySet()) {
-      if (!set.contains(property)) {
-        throw new IllegalArgumentException("Metadata line contains unexpected property " + property);
-      }
-    }
+    m_properties.keySet().stream().filter(property -> !set.contains(property)).forEach(property -> {
+      sf_logger.warn("Metadata line contains unexpected property {}", property);
+    });
   }
 
 }

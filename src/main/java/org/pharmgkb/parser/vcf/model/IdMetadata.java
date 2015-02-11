@@ -12,12 +12,20 @@ public class IdMetadata extends BaseMetadata {
   public static final String ID = "ID";
 
   public IdMetadata(@Nonnull String id) {
-    super(new HashMap<>());
-    getProperties().put(ID, id);
-    init(true);
+    this(id, true);
   }
 
-  public IdMetadata(@Nonnull Map<String, String> properties, boolean isBaseType) {
+  public IdMetadata(@Nonnull Map<String, String> properties) {
+    this(properties, true);
+  }
+
+  protected IdMetadata(@Nonnull String id, boolean isBaseType) {
+    super(new HashMap<>());
+    getProperties().put(ID, id);
+    init(isBaseType);
+  }
+
+  protected IdMetadata(@Nonnull Map<String, String> properties, boolean isBaseType) {
     super(properties);
     init(isBaseType);
   }

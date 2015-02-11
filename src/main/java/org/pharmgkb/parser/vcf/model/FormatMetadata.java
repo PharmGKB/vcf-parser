@@ -25,7 +25,7 @@ public class FormatMetadata extends IdDescriptionMetadata {
   private FormatType m_type;
 
   public FormatMetadata(@Nonnull String id, @Nonnull String description, @Nonnull String number, @Nonnull String type) {
-    super(id, description);
+    super(id, description, false);
     getProperties().put(NUMBER, number);
     getProperties().put(TYPE, type);
     init();
@@ -38,7 +38,9 @@ public class FormatMetadata extends IdDescriptionMetadata {
 
   public void init() {
     String number = getProperty(NUMBER);
-    assert number != null;
+    if (number == null) {
+      throw new IllegalArgumentException("Required metadata property \"" + NUMBER + "\" is missing");
+    }
     if (!sf_numberPattern.matcher(number).matches()) {
       throw new IllegalArgumentException(NUMBER + " is not a VCF number: '" + number + "'");
     }
