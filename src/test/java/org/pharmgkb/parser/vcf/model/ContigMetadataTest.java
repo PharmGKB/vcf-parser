@@ -23,7 +23,7 @@ public class ContigMetadataTest {
   /**
    * Just makes sure it doesn't throw an exception. However, should probably warn.
    */
-  @Test(expected = IllegalArgumentException.class)
+  @Test
   public void testExtraProperty() {
     Map<String, String> map = new HashMap<>();
     map.put(ContigMetadata.ID, "id");
