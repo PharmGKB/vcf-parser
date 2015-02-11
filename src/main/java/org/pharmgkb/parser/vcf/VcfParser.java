@@ -41,6 +41,9 @@ public class VcfParser implements Closeable {
   private VcfMetadata m_vcfMetadata;
   private VcfLineParser m_vcfLineParser;
 
+  private int m_lineNumber;
+  private boolean m_alreadyFinished;
+
 
 
   private VcfParser(@Nonnull BufferedReader reader, boolean rsidsOnly, @Nonnull VcfLineParser lineParser) {
@@ -52,31 +55,31 @@ public class VcfParser implements Closeable {
 
   /**
    * Parses metadata only.
+   * This method should be if only the metadata is needed; otherwise, {@link #parse()} is preferred.
    */
-  public VcfMetadata parseMetadata() throws IOException {
+  public @Nonnull VcfMetadata parseMetadata() throws IOException {
 
     if (m_vcfMetadata != null) {
       throw new IllegalStateException("Metadata has already been parsed.");
     }
     VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder();
     String line;
-    int lineNumber = 1;
     while ((line = m_reader.readLine()) != null) {
+      m_lineNumber++;
       if (line.startsWith("##")) {
         try {
           parseMetadata(mdBuilder, line);
         } catch (RuntimeException e) {
-          throw new IllegalArgumentException("Error parsing metadata on line #" + lineNumber + ": " + line, e);
+          throw new IllegalArgumentException("Error parsing metadata on line #" + m_lineNumber + ": " + line, e);
         }
       } else if (line.startsWith("#")) {
         try {
           parseColumnInfo(mdBuilder, line);
         } catch (RuntimeException e) {
-          throw new IllegalArgumentException("Error parsing column (# header) on line #" + lineNumber + ": " + line, e);
+          throw new IllegalArgumentException("Error parsing column (# header) on line #" + m_lineNumber + ": " + line, e);
         }
         break;
       }
-      lineNumber++;
     }
     m_vcfMetadata = mdBuilder.build();
     return m_vcfMetadata;
@@ -92,105 +95,129 @@ public class VcfParser implements Closeable {
 
 
   /**
-   * Parses entire VCF file.
+   * Parses the entire VCF file (including the metadata).
+   *
+   * This is the preferred way to read a VCF file.
    */
   public void parse() throws IOException {
-
-    if (m_vcfMetadata == null) {
-      parseMetadata();
-    }
-    String line;
-    int lineNumber = 1;
-    while ((line = m_reader.readLine()) != null) {
-
-      try {
-
-        List<String> data = sf_tabSplitter.splitToList(line);
-
-        // CHROM
-        String chromosome = data.get(0);
-
-        // POS
-        long position;
-        try {
-          position = Long.parseLong(data.get(1));
-        } catch (NumberFormatException e) {
-          throw new IllegalArgumentException("Position " + data.get(1) + " is not numerical");
-        }
-
-        // ID
-        List<String> ids = null;
-        if (!data.get(2).equals(".")) {
-          if (m_rsidsOnly && !VcfUtils.RSID_PATTERN.matcher(data.get(2)).find()) {
-            continue;
-          }
-          ids = sf_commaSplitter.splitToList(data.get(2));
-        } else if (m_rsidsOnly) {
-          continue;
-        }
-
-        // REF
-        List<String> ref = sf_commaSplitter.splitToList(data.get(3));
-
-        // ALT
-        List<String> alt = null;
-        if (!data.get(7).isEmpty() && !data.get(4).equals(".")) {
-          alt = sf_commaSplitter.splitToList(data.get(4));
-        }
-
-        // QUAL
-        BigDecimal quality = null;
-        if (!data.get(5).isEmpty() && !data.get(5).equals(".")) {
-          quality = new BigDecimal(data.get(5));
-        }
-
-        // FILTER
-        List<String> filters = null;
-        if (!data.get(6).equals("PASS")) {
-          filters = sf_semicolonSplitter.splitToList(data.get(6));
-        }
-
-        // INFO
-        ListMultimap<String, String> info = null;
-        if (!data.get(7).equals("") && !data.get(7).equals(".")) {
-          info = ArrayListMultimap.create();
-          List<String> props = sf_semicolonSplitter.splitToList(data.get(7));
-          for (String prop : props) {
-            int idx = prop.indexOf('=');
-            if (idx == -1) {
-              info.put(prop, "");
-            } else {
-              String key = prop.substring(0, idx);
-              String value = prop.substring(idx + 1);
-              info.putAll(key, sf_commaSplitter.split(value));
-            }
-          }
-        }
-
-        // FORMAT
-        List<String> format = null;
-        if (data.size() >= 9 && data.get(8) != null) {
-          format = sf_colonSplitter.splitToList(data.get(8));
-        }
-
-        VcfPosition pos = new VcfPosition(chromosome, position, ids, ref, alt,
-            quality, filters, info, format);
-        List<VcfSample> samples = new ArrayList<>();
-        for (int x = 9; x < data.size(); x++) {
-          samples.add(new VcfSample(format, sf_colonSplitter.splitToList(data.get(x))));
-        }
-        m_vcfLineParser.parseLine(m_vcfMetadata, pos, samples);
-
-        lineNumber++;
-
-      } catch (RuntimeException e) {
-        throw new IllegalArgumentException("Error parsing VCF data line #" + lineNumber + ": " + line, e);
-      }
-
+    boolean hasNext = true;
+    while (hasNext) {
+      hasNext = parseNextLine();
     }
     IOUtils.closeQuietly(m_reader);
   }
 
+  /**
+   * Parses just the next data line available, also reading all the metadata if it has not been read.
+   * This is a specialized method; in general calling {@link #parse()} to parse the entire stream is preferred.
+   *
+   * @return Whether another line may be available to read; false only if and only if this is the last line available
+   * @throws IllegalStateException If the stream was already fully parsed
+   */
+  public boolean parseNextLine() throws IOException {
+
+    if (m_vcfMetadata == null) {
+      parseMetadata();
+    }
+
+    String line = m_reader.readLine();
+    if (line == null) {
+      m_alreadyFinished = true;
+      return false;
+    }
+
+    if (m_alreadyFinished) {
+      // prevents user errors from causing infinite loops
+      throw new IllegalStateException("Already finished reading the stream");
+    }
+
+    m_lineNumber++;
+
+    try {
+
+    List<String> data = sf_tabSplitter.splitToList(line);
+
+    // CHROM
+    String chromosome = data.get(0);
+
+    // POS
+    long position;
+    try {
+      position = Long.parseLong(data.get(1));
+    } catch (NumberFormatException e) {
+      throw new IllegalArgumentException("Position " + data.get(1) + " is not numerical");
+    }
+
+    // ID
+    List<String> ids = null;
+    if (!data.get(2).equals(".")) {
+      if (m_rsidsOnly && !VcfUtils.RSID_PATTERN.matcher(data.get(2)).find()) {
+        return true;
+      }
+      ids = sf_commaSplitter.splitToList(data.get(2));
+    } else if (m_rsidsOnly) {
+      return true;
+    }
+
+    // REF
+    List<String> ref = sf_commaSplitter.splitToList(data.get(3));
+
+    // ALT
+    List<String> alt = null;
+    if (!data.get(7).isEmpty() && !data.get(4).equals(".")) {
+      alt = sf_commaSplitter.splitToList(data.get(4));
+    }
+
+    // QUAL
+    BigDecimal quality = null;
+    if (!data.get(5).isEmpty() && !data.get(5).equals(".")) {
+      quality = new BigDecimal(data.get(5));
+    }
+
+    // FILTER
+    List<String> filters = null;
+    if (!data.get(6).equals("PASS")) {
+      filters = sf_semicolonSplitter.splitToList(data.get(6));
+    }
+
+    // INFO
+    ListMultimap<String, String> info = null;
+    if (!data.get(7).equals("") && !data.get(7).equals(".")) {
+      info = ArrayListMultimap.create();
+      List<String> props = sf_semicolonSplitter.splitToList(data.get(7));
+      for (String prop : props) {
+        int idx = prop.indexOf('=');
+        if (idx == -1) {
+          info.put(prop, "");
+        } else {
+          String key = prop.substring(0, idx);
+          String value = prop.substring(idx + 1);
+          info.putAll(key, sf_commaSplitter.split(value));
+        }
+      }
+    }
+
+    // FORMAT
+    List<String> format = null;
+    if (data.size() >= 9 && data.get(8) != null) {
+      format = sf_colonSplitter.splitToList(data.get(8));
+    }
+
+    VcfPosition pos = new VcfPosition(chromosome, position, ids, ref, alt,
+        quality, filters, info, format);
+    List<VcfSample> samples = new ArrayList<>();
+    for (int x = 9; x < data.size(); x++) {
+      samples.add(new VcfSample(format, sf_colonSplitter.splitToList(data.get(x))));
+    }
+    m_vcfLineParser.parseLine(m_vcfMetadata, pos, samples);
+
+    m_lineNumber++;
+
+    } catch (RuntimeException e) {
+      throw new IllegalArgumentException("Error parsing VCF data line #" + m_lineNumber + ": " + line, e);
+    }
+    return true;
+  }
 
   @Override
   public void close() {
