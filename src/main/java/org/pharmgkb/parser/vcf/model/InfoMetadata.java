@@ -1,9 +1,10 @@
 package org.pharmgkb.parser.vcf.model;
 
+import org.pharmgkb.parser.vcf.VcfUtils;
+
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 
 /**
@@ -30,7 +31,6 @@ public class InfoMetadata extends IdDescriptionMetadata {
   public static final String SOURCE = "Source";
   public static final String VERSION = "Version";
 
-  private static final Pattern sf_numberPattern = Pattern.compile("(?:\\d+|[\\.AaGgRr])");
   private InfoType m_type;
 
   public InfoMetadata(@Nonnull String id, @Nonnull String description, @Nonnull String type, @Nonnull String number,
@@ -55,7 +55,7 @@ public class InfoMetadata extends IdDescriptionMetadata {
   private void init() {
     String number = getProperty(NUMBER);
     assert number != null;
-    if (!sf_numberPattern.matcher(number).matches()) {
+    if (!VcfUtils.NUMBER_PATTERN.matcher(number).matches()) {
       throw new IllegalArgumentException(NUMBER + " is not a number: '" + number + "'");
     }
     m_type = InfoType.valueOf(getProperty(TYPE));
@@ -77,8 +77,8 @@ public class InfoMetadata extends IdDescriptionMetadata {
    */
   @SuppressWarnings("ConstantConditions")
   @Nullable
-  public ReservedInfoNumber getReservedNumber() {
-    return ReservedInfoNumber.fromId(getProperty(NUMBER));
+  public SpecialVcfNumber getReservedNumber() {
+    return SpecialVcfNumber.fromId(getProperty(NUMBER));
   }
 
   @Nonnull

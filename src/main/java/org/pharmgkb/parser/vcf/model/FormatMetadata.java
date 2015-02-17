@@ -1,8 +1,9 @@
 package org.pharmgkb.parser.vcf.model;
 
+import org.pharmgkb.parser.vcf.VcfUtils;
+
 import javax.annotation.Nonnull;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 
 /**
@@ -21,7 +22,6 @@ public class FormatMetadata extends IdDescriptionMetadata {
   public static final String NUMBER = "Number";
   public static final String TYPE = "Type";
 
-  private static final Pattern sf_numberPattern = Pattern.compile("(?:\\d+|\\.)");
   private FormatType m_type;
 
   public FormatMetadata(@Nonnull String id, @Nonnull String description, @Nonnull String number, @Nonnull String type) {
@@ -41,7 +41,7 @@ public class FormatMetadata extends IdDescriptionMetadata {
     if (number == null) {
       throw new IllegalArgumentException("Required metadata property \"" + NUMBER + "\" is missing");
     }
-    if (!sf_numberPattern.matcher(number).matches()) {
+    if (!VcfUtils.NUMBER_PATTERN.matcher(number).matches()) {
       throw new IllegalArgumentException(NUMBER + " is not a VCF number: '" + number + "'");
     }
     m_type = FormatType.valueOf(getProperty(TYPE));

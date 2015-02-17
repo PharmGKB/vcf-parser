@@ -26,6 +26,7 @@ public class VcfUtils {
   public static final Pattern METADATA_PATTERN = Pattern.compile(",(?=([^\"]*\"[^\"]*\")*[^\"]*$)");
   public static final Pattern FORMAT_PATTERN = Pattern.compile("[A-Z0-9:]+");
   public static final Pattern RSID_PATTERN = Pattern.compile("rs\\d+");
+  public static final Pattern NUMBER_PATTERN = Pattern.compile("(?:\\d+|[\\.AaGgRr])");
 
   public static @Nonnull Map<String, String> extractProperties(@Nonnull Quoted quoted, @Nonnull String... props) {
     Map<String, String> map = new HashMap<>();

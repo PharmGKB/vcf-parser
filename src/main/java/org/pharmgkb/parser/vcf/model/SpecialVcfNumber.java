@@ -4,10 +4,10 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 /**
- * A reserved value for the "Number" field in INFO metadata entries.
+ * A reserved value for the "Number" field in INFO and FORMAT metadata entries.
  * @author Douglas Myers-Turnbull
  */
-public enum ReservedInfoNumber {
+public enum SpecialVcfNumber {
 
   ONE_PER_ALT("A"),
   ONE_PER_ALT_OR_REF("R"),
@@ -15,7 +15,7 @@ public enum ReservedInfoNumber {
   UNKNOWN_OR_UNBOUNDED(".");
 
   @Nullable
-  public static ReservedInfoNumber fromId(@Nonnull String id) {
+  public static SpecialVcfNumber fromId(@Nonnull String id) {
     switch(id) {
       case "A": return ONE_PER_ALT;
       case "R": return ONE_PER_ALT_OR_REF;
@@ -27,10 +27,11 @@ public enum ReservedInfoNumber {
 
   private final String m_id;
 
-  ReservedInfoNumber(String id) {
+  SpecialVcfNumber(String id) {
     m_id = id;
   }
 
+  @Nonnull
   public String getId() {
     return m_id;
   }
