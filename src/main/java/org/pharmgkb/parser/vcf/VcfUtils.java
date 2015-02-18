@@ -40,10 +40,6 @@ public class VcfUtils {
   public static final Pattern RSID_PATTERN = Pattern.compile("rs\\d+");
   public static final Pattern NUMBER_PATTERN = Pattern.compile("(?:\\d+|[\\.AaGgRr])");
 
-  static {
-    System.out.println(ALT_BASE_PATTERN.pattern());
-  }
-
   public static @Nonnull Map<String, String> extractProperties(@Nonnull Quoted quoted, @Nonnull String... props) {
     Map<String, String> map = new HashMap<>();
     for (String prop : props) {

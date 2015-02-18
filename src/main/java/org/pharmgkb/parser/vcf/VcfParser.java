@@ -1,7 +1,6 @@
 package org.pharmgkb.parser.vcf;
 
 import com.google.common.base.Preconditions;
-import com.google.common.base.Splitter;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
 import org.apache.commons.io.IOUtils;
@@ -19,7 +18,10 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.regex.Pattern;
 
 
 /**
@@ -31,10 +33,10 @@ public class VcfParser implements Closeable {
 
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-  private static final Splitter sf_tabSplitter = Splitter.on("\t").trimResults();
-  private static final Splitter sf_commaSplitter = Splitter.on(",").trimResults();
-  private static final Splitter sf_colonSplitter = Splitter.on(":").trimResults();
-  private static final Splitter sf_semicolonSplitter = Splitter.on(";").trimResults();
+  private static final Pattern sf_tabSplitter = Pattern.compile("\t");
+  private static final Pattern sf_commaSplitter = Pattern.compile(",");
+  private static final Pattern sf_colonSplitter = Pattern.compile(":");
+  private static final Pattern sf_semicolonSplitter = Pattern.compile(";");
 
   private boolean m_rsidsOnly;
   private BufferedReader m_reader;
@@ -135,7 +137,7 @@ public class VcfParser implements Closeable {
 
     try {
 
-    List<String> data = sf_tabSplitter.splitToList(line);
+    List<String> data = toList(sf_tabSplitter, line);
 
     // CHROM
     String chromosome = data.get(0);
@@ -154,18 +156,18 @@ public class VcfParser implements Closeable {
       if (m_rsidsOnly && !VcfUtils.RSID_PATTERN.matcher(data.get(2)).find()) {
         return true;
       }
-      ids = sf_commaSplitter.splitToList(data.get(2));
+      ids = toList(sf_commaSplitter, data.get(2));
     } else if (m_rsidsOnly) {
       return true;
     }
 
     // REF
-    List<String> ref = sf_commaSplitter.splitToList(data.get(3));
+    List<String> ref = toList(sf_commaSplitter, data.get(3));
 
-    // ALT
+      // ALT
     List<String> alt = null;
     if (!data.get(7).isEmpty() && !data.get(4).equals(".")) {
-      alt = sf_commaSplitter.splitToList(data.get(4));
+      alt = toList(sf_commaSplitter, data.get(4));
     }
 
     // QUAL
@@ -177,14 +179,14 @@ public class VcfParser implements Closeable {
     // FILTER
     List<String> filters = null;
     if (!data.get(6).equals("PASS")) {
-      filters = sf_semicolonSplitter.splitToList(data.get(6));
+      filters = toList(sf_semicolonSplitter, data.get(6));
     }
 
     // INFO
     ListMultimap<String, String> info = null;
     if (!data.get(7).equals("") && !data.get(7).equals(".")) {
       info = ArrayListMultimap.create();
-      List<String> props = sf_semicolonSplitter.splitToList(data.get(7));
+      List<String> props = toList(sf_semicolonSplitter, data.get(7));
       for (String prop : props) {
         int idx = prop.indexOf('=');
         if (idx == -1) {
@@ -192,7 +194,7 @@ public class VcfParser implements Closeable {
         } else {
           String key = prop.substring(0, idx);
           String value = prop.substring(idx + 1);
-          info.putAll(key, sf_commaSplitter.split(value));
+          info.putAll(key, toList(sf_commaSplitter, value));
         }
       }
     }
@@ -200,14 +202,14 @@ public class VcfParser implements Closeable {
     // FORMAT
     List<String> format = null;
     if (data.size() >= 9 && data.get(8) != null) {
-      format = sf_colonSplitter.splitToList(data.get(8));
+      format = toList(sf_colonSplitter, data.get(8));
     }
 
     VcfPosition pos = new VcfPosition(chromosome, position, ids, ref, alt,
         quality, filters, info, format);
     List<VcfSample> samples = new ArrayList<>();
     for (int x = 9; x < data.size(); x++) {
-      samples.add(new VcfSample(format, sf_colonSplitter.splitToList(data.get(x))));
+      samples.add(new VcfSample(format, toList(sf_colonSplitter, (data.get(x)))));
     }
     m_vcfLineParser.parseLine(m_vcfMetadata, pos, samples);
 
@@ -297,9 +299,22 @@ public class VcfParser implements Closeable {
     }
   }
 
+  private @Nullable List<String> toList(@Nonnull Pattern pattern, @Nullable String string) {
+    if (string == null) {
+      return null;
+    }
+    String[] array = pattern.split(string);
+    List<String> list = new ArrayList<>(array.length);
+    Collections.addAll(list, array);
+    return list;
+  }
+
+  public int getLineNumber() {
+    return m_lineNumber;
+  }
 
   private void parseColumnInfo(@Nonnull VcfMetadata.Builder mdBuilder, @Nonnull String line) {
-    mdBuilder.setColumns(sf_tabSplitter.splitToList(line));
+    mdBuilder.setColumns(Arrays.asList(sf_tabSplitter.split(line)));
   }
 
 

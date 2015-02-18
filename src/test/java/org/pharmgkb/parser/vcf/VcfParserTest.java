@@ -27,6 +27,7 @@ public class VcfParserTest {
       new VcfParser.Builder()
           .fromReader(reader)
           .parseWith((metadata, position, sampleData) -> {
+
             switch ((int) position.getPosition()) {
 
               case 1:
@@ -60,6 +61,22 @@ public class VcfParserTest {
     }
   }
 
+
+  @Test
+  public void testIsModifiable() throws IOException {
+    try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream("/vcfposition.vcf")))) {
+      new VcfParser.Builder()
+          .fromReader(reader)
+          .parseWith((metadata, position, sampleData) -> {
+            position.getRefBases().add("test");
+            position.getAltBases().add("test");
+            position.getIds().add("test");
+            position.getFormat().add("test");
+            position.getFilters().add("none");
+          })
+          .build().parse();
+    }
+  }
 
   @Test
   public void testCnv() throws Exception {

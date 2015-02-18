@@ -50,9 +50,10 @@ public class VcfPositionTest {
     new VcfPosition("chr:", 1, null, Arrays.asList("C"), null, null, null, null, null);
   }
 
-  @Test(expected = IllegalArgumentException.class)
-  public void testBadPosition() {
+  @Test
+  public void testTelomericPositions() {
     new VcfPosition("chr1", 0, null, Arrays.asList("C"), null, null, null, null, null);
+    new VcfPosition("chr1", -1, null, Arrays.asList("C"), null, null, null, null, null);
   }
 
   @Test(expected = IllegalArgumentException.class)
