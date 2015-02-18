@@ -62,9 +62,7 @@ public class VcfPosition {
       throw new IllegalArgumentException("CHROM column \"" + chr + "\" contains whitespace or colons");
     }
 
-    if (pos < 1) {
-      throw new IllegalArgumentException("Position " + pos + " is not positive");
-    }
+    // allow pos < 1 because that's reserved for telomers
 
     if (ids != null) {
       for (String id : ids) {

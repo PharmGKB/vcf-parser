@@ -21,12 +21,28 @@ import java.util.regex.Pattern;
  */
 public class VcfUtils {
 
+  private static final String sf_simpleAltPattern = "(?:[AaCcGgTtNn]+" +
+      "|\\*" + // indicates that the position doesn't exist due to an upstream deletion
+      "|<.+>)"; // symbolic alts for structural variants (declared in ALT metadata)
+
+  private static final String sf_number = "(?:(?:\\d+|(?:<.+>))(?::\\d+)?)";
+
   public static final Pattern REF_BASE_PATTERN = Pattern.compile("[AaCcGgTtNn]+");
-  public static final Pattern ALT_BASE_PATTERN = Pattern.compile("(?:[AaCcGgTtNn\\*]+|<.+>)");
+  public static final Pattern ALT_BASE_PATTERN = Pattern.compile("\\.?(?:" + // notice the optional opening dot
+      "(?:[AaCcGgTtNn]+|\\*|<.+>)" + // simple
+      "|(?:" + sf_simpleAltPattern + "\\[" + sf_number + "\\[)" + // breakpoint type 1
+      "|(?:" + sf_simpleAltPattern + "\\]" + sf_number + "\\])" + // breakpoint type 2
+      "|(?:\\]" + sf_number + "\\]" + sf_simpleAltPattern + ")" + // breakpoint type 3
+      "|(?:\\[" + sf_number + "\\[" + sf_simpleAltPattern + ")" + // breakpoint type 4
+      ")\\.?"); // notice the optional ending dot
   public static final Pattern METADATA_PATTERN = Pattern.compile(",(?=([^\"]*\"[^\"]*\")*[^\"]*$)");
   public static final Pattern FORMAT_PATTERN = Pattern.compile("[A-Z0-9:]+");
   public static final Pattern RSID_PATTERN = Pattern.compile("rs\\d+");
   public static final Pattern NUMBER_PATTERN = Pattern.compile("(?:\\d+|[\\.AaGgRr])");
+
+  static {
+    System.out.println(ALT_BASE_PATTERN.pattern());
+  }
 
   public static @Nonnull Map<String, String> extractProperties(@Nonnull Quoted quoted, @Nonnull String... props) {
     Map<String, String> map = new HashMap<>();
