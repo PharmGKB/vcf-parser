@@ -84,6 +84,20 @@ public class VcfParser implements Closeable {
       }
     }
     m_vcfMetadata = mdBuilder.build();
+
+    // check sample lists
+    if (m_vcfMetadata.getNumSamples() == m_vcfMetadata.getSamples().size()) {
+      for (int i = 0; i < m_vcfMetadata.getNumSamples(); i++) {
+        String sampleName = m_vcfMetadata.getSampleName(i);
+        if (!m_vcfMetadata.getSamples().containsKey(sampleName)) {
+          sf_logger.warn("Sample {} is missing in the metadata", sampleName);
+        }
+      }
+    } else {
+      sf_logger.warn("There are {} samples in the header but {} in the metadata", m_vcfMetadata.getNumSamples(),
+          m_vcfMetadata.getSamples().size());
+    }
+
     return m_vcfMetadata;
   }
 
@@ -164,7 +178,7 @@ public class VcfParser implements Closeable {
     // REF
     List<String> ref = toList(sf_commaSplitter, data.get(3));
 
-      // ALT
+    // ALT
     List<String> alt = null;
     if (!data.get(7).isEmpty() && !data.get(4).equals(".")) {
       alt = toList(sf_commaSplitter, data.get(4));
@@ -205,12 +219,14 @@ public class VcfParser implements Closeable {
       format = toList(sf_colonSplitter, data.get(8));
     }
 
+    // samples
     VcfPosition pos = new VcfPosition(chromosome, position, ids, ref, alt,
         quality, filters, info, format);
     List<VcfSample> samples = new ArrayList<>();
     for (int x = 9; x < data.size(); x++) {
       samples.add(new VcfSample(format, toList(sf_colonSplitter, (data.get(x)))));
     }
+
     m_vcfLineParser.parseLine(m_vcfMetadata, pos, samples);
 
     m_lineNumber++;
@@ -311,10 +327,7 @@ public class VcfParser implements Closeable {
     }
   }
 
-  private @Nullable List<String> toList(@Nonnull Pattern pattern, @Nullable String string) {
-    if (string == null) {
-      return null;
-    }
+  private @Nonnull List<String> toList(@Nonnull Pattern pattern, @Nullable String string) {
     String[] array = pattern.split(string);
     List<String> list = new ArrayList<>(array.length);
     Collections.addAll(list, array);

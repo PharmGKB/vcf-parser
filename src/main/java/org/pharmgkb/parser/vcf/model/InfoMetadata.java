@@ -25,11 +25,11 @@ import java.util.Map;
 public class InfoMetadata extends IdDescriptionMetadata {
 
   public static final String ID = "ID";
-  public static final String DESCRIPTION = "Description";
+  public static final String DESCRIPTION = "Description"; // should be quoted
   public static final String NUMBER = "Number";
   public static final String TYPE = "Type";
-  public static final String SOURCE = "Source";
-  public static final String VERSION = "Version";
+  public static final String SOURCE = "Source"; // should be quoted
+  public static final String VERSION = "Version"; // should be quoted
 
   private InfoType m_type;
 
@@ -39,10 +39,10 @@ public class InfoMetadata extends IdDescriptionMetadata {
     putPropertyRaw(NUMBER, number);
     putPropertyRaw(TYPE, type);
     if (source != null) {
-      putPropertyRaw(SOURCE, source);
+      putAndQuoteProperty(SOURCE, source);
     }
     if (version != null) {
-      putPropertyRaw(VERSION, version);
+      putAndQuoteProperty(VERSION, version);
     }
     init();
   }
@@ -88,11 +88,11 @@ public class InfoMetadata extends IdDescriptionMetadata {
 
   @Nullable
   public String getSource() {
-    return getPropertyRaw(SOURCE);
+    return getPropertyUnquoted(SOURCE);
   }
 
   @Nullable
   public String getVersion() {
-    return getPropertyRaw(VERSION);
+    return getPropertyUnquoted(VERSION);
   }
 }

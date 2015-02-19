@@ -55,8 +55,8 @@ public class VcfWriter implements Closeable {
 
     // header line
     StringBuilder sb = new StringBuilder("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT");
-    for (IdDescriptionMetadata sample : metadata.getSamples().values()) {
-      sb.append("\t").append(sample.getId());
+    for (int i = 0; i < metadata.getNumSamples(); i++) {
+      sb.append("\t").append(metadata.getSampleName(i));
     }
     printLine(sb);
 
