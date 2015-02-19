@@ -1,18 +1,18 @@
 ##fileformat=VCFv4.2
-##INFO=<Type=Integer,Description=Total number of alternate alleles in called genotypes,Number=A,ID=AC>
-##INFO=<Type=Float,Description=Estimated allele frequency in the range (0,1),Number=A,ID=AF>
-##INFO=<Type=Integer,Description=Number of samples with data,Number=1,ID=NS>
-##INFO=<Type=String,Description=a_description,Number=G,ID=an_id>
-##INFO=<Type=Integer,Description=Total number of alleles in called genotypes,Number=1,ID=AN>
-##FILTER=<Description=A transformation was applied,ID=Transformation>
-##FILTER=<Description=All filters passed,ID=PASS>
-##FILTER=<Description=Something bad happened,ID=BAD>
-##FORMAT=<Type=Float,Description=Genotype quality,Number=1,ID=GQ>
-##FORMAT=<Type=String,Description=Genotype,Number=1,ID=GT>
-##ALT=<Description=Copy Number Polymorphism,ID=CNV>
+##INFO=<Type=Integer,Description="Total number of alternate alleles in called genotypes",Number=A,ID=AC>
+##INFO=<Type=Float,Description="Estimated allele frequency in the range (0,1)",Number=A,ID=AF>
+##INFO=<Type=Integer,Description="Number of samples with data",Number=1,ID=NS>
+##INFO=<Type=String,Description="a_description",Number=G,ID=an_id>
+##INFO=<Type=Integer,Description="Total number of alleles in called genotypes",Number=1,ID=AN>
+##FILTER=<Description="A transformation was applied",ID=Transformation>
+##FILTER=<Description="All filters passed",ID=PASS>
+##FILTER=<Description="Something bad happened",ID=BAD>
+##FORMAT=<Type=Float,Description="Genotype quality",Number=1,ID=GQ>
+##FORMAT=<Type=String,Description="Genotype",Number=1,ID=GT>
+##ALT=<Description="Copy Number Polymorphism",ID=CNV>
 ##contig=<assembly=b37,length=249250621,ID=1>
-##SAMPLE=<Description=test,ID=sample1,Genome=a;b;c;d>
-##SAMPLE=<Description=test,ID=sample2,Genome=a;b;c;d>
+##SAMPLE=<Description="test",ID=sample1,Genome=a;b;c;d>
+##SAMPLE=<Description="test",ID=sample2,Genome=a;b;c;d>
 ##PEDIGREE=<NAME_0=A,NAME_1=B>
 ##assembly=GRCh38
 ##extraspecialproperty=<ID=sdfadsf>

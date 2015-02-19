@@ -31,12 +31,12 @@ public class IdDescriptionMetadata extends IdMetadata {
 
   protected IdDescriptionMetadata(@Nonnull String id, @Nonnull String description, boolean isBaseType) {
     super(id);
-    getProperties().put(DESCRIPTION, description);
+    putAndQuoteProperty(DESCRIPTION, description);
     init(isBaseType);
   }
 
   private void init(boolean isBaseType) {
-    if (getProperty(DESCRIPTION) == null) {
+    if (getPropertyRaw(DESCRIPTION) == null) {
       throw new IllegalArgumentException("Required metadata property \"" + DESCRIPTION + "\" is missing");
     }
     if (isBaseType) {
@@ -47,7 +47,7 @@ public class IdDescriptionMetadata extends IdMetadata {
   @SuppressWarnings("ConstantConditions")
   @Nonnull
   public String getDescription() {
-    return getProperty(DESCRIPTION);
+    return getPropertyUnquoted(DESCRIPTION);
   }
 
 

@@ -21,7 +21,7 @@ public class IdMetadata extends BaseMetadata {
 
   protected IdMetadata(@Nonnull String id, boolean isBaseType) {
     super(new HashMap<>());
-    getProperties().put(ID, id);
+    putPropertyRaw(ID, id);
     init(isBaseType);
   }
 
@@ -31,7 +31,7 @@ public class IdMetadata extends BaseMetadata {
   }
 
   private void init(boolean isBaseType) {
-    if (getProperty(ID) == null) {
+    if (getPropertyRaw(ID) == null) {
       throw new IllegalArgumentException("Required metadata property \"" + ID + "\" is missing");
     }
     if (isBaseType) {
@@ -42,7 +42,7 @@ public class IdMetadata extends BaseMetadata {
   @SuppressWarnings("ConstantConditions")
   @Nonnull
   public String getId() {
-    return getProperty(ID);
+    return getPropertyRaw(ID);
   }
 
 }

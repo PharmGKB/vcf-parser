@@ -14,7 +14,7 @@
 ##INFO=<ID=AN,Number=1,Type=Integer,Description="Total number of alleles in called genotypes">
 ##SAMPLE=<ID=sample1,Genome=a;b;c;d,Description="test">
 ##SAMPLE=<ID=sample2,Genome=a;b;c;d,Description="test">
-##PEDIGREE=<NAME_0="A",NAME_1="B">
+##PEDIGREE=<NAME_0=A,NAME_1=B>
 ##pedigreeDB=<http://thismayormaynotbeavalidurl.vcf>
 #CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	sample1	sample2
 chr1	1	rsa	A	T	5	PASS	AC=1;AF=0.5;AN=15	GT:GQ	.:2	.:2

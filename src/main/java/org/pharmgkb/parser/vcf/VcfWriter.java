@@ -22,7 +22,7 @@ import java.util.Map;
  * @author Douglas Myers-Turnbull
  * @see {@link TransformingVcfLineParser} Is a read-transform-write streamer that is publically accessible
  */
-class VcfWriter implements Closeable, AutoCloseable {
+public class VcfWriter implements Closeable {
 
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
@@ -247,7 +247,7 @@ class VcfWriter implements Closeable, AutoCloseable {
     StringBuilder sb = new StringBuilder("##");
     sb.append(name).append("=<");
     int i = 0;
-    for (Map.Entry<String, String> entry : metadata.getProperties().entrySet()) {
+    for (Map.Entry<String, String> entry : metadata.getPropertiesRaw().entrySet()) {
       if (i > 0) {
         sb.append(",");
       }

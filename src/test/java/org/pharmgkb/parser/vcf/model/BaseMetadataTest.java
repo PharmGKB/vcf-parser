@@ -18,7 +18,7 @@ public class BaseMetadataTest {
     Map<String, String> map = new HashMap<>();
     map.put("test", "one");
     BaseMetadata metadata = new BaseMetadata(map);
-    assertEquals("one", metadata.getProperty("test"));
+    assertEquals("one", metadata.getPropertyRaw("test"));
   }
 
   @Test(expected = IllegalArgumentException.class)

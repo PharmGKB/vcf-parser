@@ -36,13 +36,13 @@ public class InfoMetadata extends IdDescriptionMetadata {
   public InfoMetadata(@Nonnull String id, @Nonnull String description, @Nonnull String type, @Nonnull String number,
       @Nullable String source, @Nullable String version) {
     super(id, description);
-    getProperties().put(NUMBER, number);
-    getProperties().put(TYPE, type);
+    putPropertyRaw(NUMBER, number);
+    putPropertyRaw(TYPE, type);
     if (source != null) {
-      getProperties().put(SOURCE, source);
+      putPropertyRaw(SOURCE, source);
     }
     if (version != null) {
-      getProperties().put(VERSION, version);
+      putPropertyRaw(VERSION, version);
     }
     init();
   }
@@ -53,12 +53,12 @@ public class InfoMetadata extends IdDescriptionMetadata {
   }
 
   private void init() {
-    String number = getProperty(NUMBER);
+    String number = getPropertyRaw(NUMBER);
     assert number != null;
     if (!VcfUtils.NUMBER_PATTERN.matcher(number).matches()) {
       throw new IllegalArgumentException(NUMBER + " is not a number: '" + number + "'");
     }
-    m_type = InfoType.valueOf(getProperty(TYPE));
+    m_type = InfoType.valueOf(getPropertyRaw(TYPE));
     ensureNoExtras(ID, DESCRIPTION, NUMBER, TYPE, SOURCE, VERSION);
   }
 
@@ -68,7 +68,7 @@ public class InfoMetadata extends IdDescriptionMetadata {
   @SuppressWarnings("ConstantConditions")
   @Nonnull
   public String getNumber() {
-    return getProperty(NUMBER);
+    return getPropertyRaw(NUMBER);
   }
 
   /**
@@ -78,7 +78,7 @@ public class InfoMetadata extends IdDescriptionMetadata {
   @SuppressWarnings("ConstantConditions")
   @Nullable
   public SpecialVcfNumber getReservedNumber() {
-    return SpecialVcfNumber.fromId(getProperty(NUMBER));
+    return SpecialVcfNumber.fromId(getPropertyRaw(NUMBER));
   }
 
   @Nonnull
@@ -88,11 +88,11 @@ public class InfoMetadata extends IdDescriptionMetadata {
 
   @Nullable
   public String getSource() {
-    return getProperty(SOURCE);
+    return getPropertyRaw(SOURCE);
   }
 
   @Nullable
   public String getVersion() {
-    return getProperty(VERSION);
+    return getPropertyRaw(VERSION);
   }
 }

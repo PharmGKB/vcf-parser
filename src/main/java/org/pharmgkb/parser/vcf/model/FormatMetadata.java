@@ -26,8 +26,8 @@ public class FormatMetadata extends IdDescriptionMetadata {
 
   public FormatMetadata(@Nonnull String id, @Nonnull String description, @Nonnull String number, @Nonnull String type) {
     super(id, description, false);
-    getProperties().put(NUMBER, number);
-    getProperties().put(TYPE, type);
+    putPropertyRaw(NUMBER, number);
+    putPropertyRaw(TYPE, type);
     init();
   }
 
@@ -37,14 +37,14 @@ public class FormatMetadata extends IdDescriptionMetadata {
   }
 
   public void init() {
-    String number = getProperty(NUMBER);
+    String number = getPropertyRaw(NUMBER);
     if (number == null) {
       throw new IllegalArgumentException("Required metadata property \"" + NUMBER + "\" is missing");
     }
     if (!VcfUtils.NUMBER_PATTERN.matcher(number).matches()) {
       throw new IllegalArgumentException(NUMBER + " is not a VCF number: '" + number + "'");
     }
-    m_type = FormatType.valueOf(getProperty(TYPE));
+    m_type = FormatType.valueOf(getPropertyRaw(TYPE));
     ensureNoExtras(ID, DESCRIPTION, NUMBER, TYPE);
   }
 
@@ -54,7 +54,7 @@ public class FormatMetadata extends IdDescriptionMetadata {
   @SuppressWarnings("ConstantConditions")
   @Nonnull
   public String getNumber() {
-    return getProperty(NUMBER);
+    return getPropertyRaw(NUMBER);
   }
 
   @Nonnull

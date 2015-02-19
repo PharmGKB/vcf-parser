@@ -231,32 +231,44 @@ public class VcfParser implements Closeable {
    * Parses a metadata line (starts with ##).
    */
   private void parseMetadata(@Nonnull VcfMetadata.Builder mdBuilder, @Nonnull String line) {
+
     int idx = line.indexOf("=");
     String propName = line.substring(2, idx).trim();
     String propValue = line.substring(idx + 1).trim();
 
     sf_logger.debug("{} : {}", propName, propValue);
 
-    switch (propName.toLowerCase()) {
+    switch (propName) {
       case "fileformat":
         mdBuilder.setFileFormat(propValue);
         break;
 
-      case "alt":
-      case "filter":
-      case "info":
-      case "format":
+      case "ALT":
+      case "FILTER":
+      case "INFO":
+      case "FORMAT":
       case "contig":
-      case "sample":
-      case "pedigree":
-        parseMetadataProperty(mdBuilder, propName, VcfUtils.removeWrapper(propValue));
+      case "SAMPLE":
+      case "PEDIGREE":
+        parseMetadataProperty(mdBuilder, propName, removeAngleBrackets(propValue));
         break;
 
       case "assembly":
-      case "pedigreedb":
+      case "pedigreeDB":
       default:
         mdBuilder.addRawProperty(propName, propValue);
     }
+  }
+
+  /**
+   * Removes double quotation marks around a string.
+   * @throws IllegalArgumentException If angle brackets are not present
+   */
+  private static @Nonnull String removeAngleBrackets(@Nonnull String string) throws IllegalArgumentException {
+    if (string.startsWith("<") && string.endsWith(">")) {
+      return string.substring(1, string.length() - 1);
+    }
+    throw new IllegalArgumentException("Angle brackets not present for: " + string);
   }
 
   /**
@@ -276,25 +288,25 @@ public class VcfParser implements Closeable {
     }
     switch (propName.toLowerCase()) {
       case "alt":
-        mdBuilder.addAlt(new IdDescriptionMetadata(VcfUtils.extractProperties(VcfUtils.Quoted.Unknown, cols), true));
+        mdBuilder.addAlt(new IdDescriptionMetadata(VcfUtils.extractProperties(cols), true));
         break;
       case "filter":
-        mdBuilder.addFilter(new IdDescriptionMetadata(VcfUtils.extractProperties(VcfUtils.Quoted.Unknown, cols), true));
+        mdBuilder.addFilter(new IdDescriptionMetadata(VcfUtils.extractProperties(cols), true));
         break;
       case "info":
-        mdBuilder.addInfo(new InfoMetadata(VcfUtils.extractProperties(VcfUtils.Quoted.Unknown, cols)));
+        mdBuilder.addInfo(new InfoMetadata(VcfUtils.extractProperties(cols)));
         break;
       case "format":
-        mdBuilder.addFormat(new FormatMetadata(VcfUtils.extractProperties(VcfUtils.Quoted.Unknown, cols)));
+        mdBuilder.addFormat(new FormatMetadata(VcfUtils.extractProperties(cols)));
         break;
       case "contig":
-        mdBuilder.addContig(new ContigMetadata(VcfUtils.extractProperties(VcfUtils.Quoted.Unknown, cols)));
+        mdBuilder.addContig(new ContigMetadata(VcfUtils.extractProperties(cols)));
         break;
       case "sample":
-        mdBuilder.addSample(new IdDescriptionMetadata(VcfUtils.extractProperties(VcfUtils.Quoted.Unknown, cols), true));
+        mdBuilder.addSample(new IdDescriptionMetadata(VcfUtils.extractProperties(cols), true));
         break;
       case "pedigree":
-        mdBuilder.addPedigree(new BaseMetadata(VcfUtils.extractProperties(VcfUtils.Quoted.Unknown, cols)));
+        mdBuilder.addPedigree(new BaseMetadata(VcfUtils.extractProperties(cols)));
         break;
     }
   }

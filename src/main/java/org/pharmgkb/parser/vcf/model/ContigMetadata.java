@@ -29,16 +29,16 @@ public class ContigMetadata extends IdMetadata {
   public ContigMetadata(@Nonnull String id, long length, @Nonnull String assembly, @Nullable String md5,
       @Nullable String species, @Nullable String taxonomy, @Nullable String url) {
     super(id, false);
-    getProperties().put(LENGTH, String.valueOf(length));
-    getProperties().put(ASSEMBLY, assembly);
+    putPropertyRaw(LENGTH, String.valueOf(length));
+    putPropertyRaw(ASSEMBLY, assembly);
     if (md5 != null) {
-      getProperties().put(MD5, md5);
+      putPropertyRaw(MD5, md5);
     }
     if (species != null) {
-      getProperties().put(SPECIES, species);
+      putAndQuoteProperty(SPECIES, species);
     }
     if (taxonomy != null) {
-      getProperties().put(TAXONOMY, taxonomy);
+      putPropertyRaw(TAXONOMY, taxonomy);
     }
     if (url != null) {
       try {
@@ -47,7 +47,7 @@ public class ContigMetadata extends IdMetadata {
         sf_logger.warn("URL {} is malformed", url, e);
       }
     }
-    getProperties().put(URL, url);
+    putPropertyRaw(URL, url);
     init();
   }
 
@@ -58,40 +58,40 @@ public class ContigMetadata extends IdMetadata {
 
   @SuppressWarnings("ConstantConditions")
   public long getLength() {
-    return Long.parseLong(getProperty(LENGTH));
+    return Long.parseLong(getPropertyRaw(LENGTH));
   }
 
   @SuppressWarnings("ConstantConditions")
   @Nonnull
   public String getAssembly() {
-    return getProperty(ASSEMBLY);
+    return getPropertyRaw(ASSEMBLY);
   }
 
   @Nullable
   public String getTaxonomy() {
-    return getProperty(TAXONOMY);
+    return getPropertyRaw(TAXONOMY);
   }
 
   @Nullable
   public String getSpecies() {
-    return getProperty(SPECIES);
+    return getPropertyUnquoted(SPECIES);
   }
 
   @Nullable
   public String getMd5() {
-    return getProperty(MD5);
+    return getPropertyRaw(MD5);
   }
 
   @Nullable
   public String getUrl() {
-    return getProperty(URL);
+    return getPropertyRaw(URL);
   }
 
   private void init() {
-    if (getProperty(ASSEMBLY) == null) {
+    if (getPropertyUnquoted(ASSEMBLY) == null) {
       throw new IllegalArgumentException("Required metadata property \"" + ASSEMBLY + "\" is missing");
     }
-    String length = getProperty(LENGTH);
+    String length = getPropertyUnquoted(LENGTH);
     if (length == null) {
       throw new IllegalArgumentException("Required metadata property \"" + LENGTH + "\" is missing");
     }

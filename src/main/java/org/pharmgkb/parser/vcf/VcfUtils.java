@@ -40,12 +40,12 @@ public class VcfUtils {
   public static final Pattern RSID_PATTERN = Pattern.compile("rs\\d+");
   public static final Pattern NUMBER_PATTERN = Pattern.compile("(?:\\d+|[\\.AaGgRr])");
 
-  public static @Nonnull Map<String, String> extractProperties(@Nonnull Quoted quoted, @Nonnull String... props) {
+  public static @Nonnull Map<String, String> extractProperties(@Nonnull String... props) {
     Map<String, String> map = new HashMap<>();
     for (String prop : props) {
       Pair<String, String> pair;
       try {
-        pair = splitProperty(prop, quoted);
+        pair = splitProperty(prop);
       } catch (RuntimeException e) {
         throw new IllegalArgumentException("Error parsing property \"" + prop + "\"", e);
       }
@@ -56,31 +56,33 @@ public class VcfUtils {
 
   /**
    * Splits a property into a key-value pair.
+   * @param prop In the form "key=value"
    */
-  public static @Nonnull Pair<String, String> splitProperty(@Nonnull String prop, @Nonnull Quoted quoted) {
-    int idx = prop.indexOf("=");
-    String key = prop.substring(0, idx);
-    String value = prop.substring(idx + 1);
-    boolean removeWrapper;
-    if (quoted == Quoted.Unknown) {
-      removeWrapper = value.startsWith("\"") && value.endsWith("\"");
-      if (value.startsWith("\"") ^ value.endsWith("\"")) {
-        throw new IllegalArgumentException("Quotation marks not matched for property " + prop);
-      }
-    } else {
-      removeWrapper = quoted == Quoted.True;
+  public static @Nonnull Pair<String, String> splitProperty(@Nonnull String prop) {
+    String[] parts = prop.split("=");
+    if (parts.length != 2) {
+      throw new IllegalArgumentException("There were " + (parts.length - 1) + " equals signs for: " + prop);
     }
-    if (removeWrapper) {
-      value = removeWrapper(value);
-    }
-    return Pair.of(key, value);
+    return Pair.of(parts[0], parts[1]);
   }
 
   /**
-   * Removes the wrapper around a string (e.g. quotes).
+   * Adds double quotation marks around a string.
    */
-  public static @Nonnull String removeWrapper(@Nonnull String value) {
-    return value.substring(1, value.length() - 1);
+  @Nonnull
+  public static String quote(@Nonnull String string) {
+    return "\"" + string + "\"";
+  }
+
+  /**
+   * Removes double quotation marks around a string if they are present.
+   */
+  @Nonnull
+  public static String unquote(@Nonnull String string) {
+    if (string.startsWith("\"") && string.endsWith("\"")) {
+      return string.substring(1, string.length() - 1);
+    }
+    return string;
   }
 
   /**

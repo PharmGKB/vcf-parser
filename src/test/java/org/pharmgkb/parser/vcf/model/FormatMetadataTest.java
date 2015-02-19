@@ -18,7 +18,7 @@ public class FormatMetadataTest {
     props[2] = "Type=String";
     String desc = "Ancestral Allele, test";
     props[3] = "Description=\"" + desc + "\"";
-    FormatMetadata md = new FormatMetadata(VcfUtils.extractProperties(VcfUtils.Quoted.Unknown, props));
+    FormatMetadata md = new FormatMetadata(VcfUtils.extractProperties(props));
     assertEquals(FormatType.String, md.getType());
     assertEquals(desc, md.getDescription());
 
@@ -27,7 +27,7 @@ public class FormatMetadataTest {
     };
     for (String n : nums) {
       props[1] = "Number=" + n;
-      md = new FormatMetadata(VcfUtils.extractProperties(VcfUtils.Quoted.Unknown, props));
+      md = new FormatMetadata(VcfUtils.extractProperties(props));
       assertEquals(n, md.getNumber());
     }
 
@@ -37,7 +37,7 @@ public class FormatMetadataTest {
     for (String n : nums) {
       try {
         props[1] = "Number=" + n;
-        new FormatMetadata(VcfUtils.extractProperties(VcfUtils.Quoted.Unknown, props));
+        new FormatMetadata(VcfUtils.extractProperties(props));
       } catch (IllegalArgumentException ex) {
         // expected
       }
