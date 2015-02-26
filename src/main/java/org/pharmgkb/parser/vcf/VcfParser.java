@@ -17,10 +17,7 @@ import java.lang.invoke.MethodHandles;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.regex.Pattern;
 
 
@@ -292,37 +289,28 @@ public class VcfParser implements Closeable {
    */
   private void parseMetadataProperty(@Nonnull VcfMetadata.Builder mdBuilder,
       @Nonnull String propName, @Nonnull String value) {
-    String unescapedValue = value.replaceAll("\\\\", "~~~~");
-    unescapedValue = unescapedValue.replaceAll("\\\\\"", "~!~!");
-    boolean wasEscaped = !unescapedValue.equals(value);
-    String[] cols = VcfUtils.METADATA_PATTERN.split(unescapedValue);
-    if (wasEscaped) {
-      for (int x = 0; x < cols.length; x++) {
-        cols[x] = cols[x].replaceAll("~~~~", "\\");
-        cols[x] = cols[x].replaceAll("~!~!", "\"");
-      }
-    }
+    Map<String, String> props = VcfUtils.extractPropertiesFromLine(value);
     switch (propName.toLowerCase()) {
       case "alt":
-        mdBuilder.addAlt(new IdDescriptionMetadata(VcfUtils.extractProperties(cols), true));
+        mdBuilder.addAlt(new IdDescriptionMetadata(props, true));
         break;
       case "filter":
-        mdBuilder.addFilter(new IdDescriptionMetadata(VcfUtils.extractProperties(cols), true));
+        mdBuilder.addFilter(new IdDescriptionMetadata(props, true));
         break;
       case "info":
-        mdBuilder.addInfo(new InfoMetadata(VcfUtils.extractProperties(cols)));
+        mdBuilder.addInfo(new InfoMetadata(props));
         break;
       case "format":
-        mdBuilder.addFormat(new FormatMetadata(VcfUtils.extractProperties(cols)));
+        mdBuilder.addFormat(new FormatMetadata(props));
         break;
       case "contig":
-        mdBuilder.addContig(new ContigMetadata(VcfUtils.extractProperties(cols)));
+        mdBuilder.addContig(new ContigMetadata(props));
         break;
       case "sample":
-        mdBuilder.addSample(new IdDescriptionMetadata(VcfUtils.extractProperties(cols), true));
+        mdBuilder.addSample(new IdDescriptionMetadata(props, true));
         break;
       case "pedigree":
-        mdBuilder.addPedigree(new BaseMetadata(VcfUtils.extractProperties(cols)));
+        mdBuilder.addPedigree(new BaseMetadata(props));
         break;
     }
   }

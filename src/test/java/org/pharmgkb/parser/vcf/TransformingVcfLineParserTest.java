@@ -28,10 +28,11 @@ public class TransformingVcfLineParserTest {
       }
 
       @Override
-      public void transformDataLine(@Nonnull VcfMetadata metadata, @Nonnull VcfPosition position, @Nonnull List<VcfSample> sampleData) {
+      public boolean transformDataLine(@Nonnull VcfMetadata metadata, @Nonnull VcfPosition position, @Nonnull List<VcfSample> sampleData) {
         position.getFilters().clear();
         metadata.getFilters().clear(); // should do nothing!
         position.setPosition(position.getPosition() + 10);
+        return true;
       }
     };
 

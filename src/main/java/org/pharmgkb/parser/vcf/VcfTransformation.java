@@ -21,8 +21,11 @@ public interface VcfTransformation {
   /**
    * Modifies the arguments {@code position} and {@code sampleData}. Should not modify {@code metadata}.
    * The default method does nothing.
+   * @return If false, the VcfPosition will be removed
    */
-  default void transformDataLine(@Nonnull VcfMetadata metadata, @Nonnull VcfPosition position,
-      @Nonnull List<VcfSample> sampleData) {}
+  default boolean transformDataLine(@Nonnull VcfMetadata metadata, @Nonnull VcfPosition position,
+      @Nonnull List<VcfSample> sampleData) {
+    return true;
+  }
 
 }

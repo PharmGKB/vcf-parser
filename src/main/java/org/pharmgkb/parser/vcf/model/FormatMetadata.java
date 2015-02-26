@@ -3,6 +3,7 @@ package org.pharmgkb.parser.vcf.model;
 import org.pharmgkb.parser.vcf.VcfUtils;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.util.Map;
 
 
@@ -55,6 +56,16 @@ public class FormatMetadata extends IdDescriptionMetadata {
   @Nonnull
   public String getNumber() {
     return getPropertyRaw(NUMBER);
+  }
+
+  /**
+   * @return A special (reserved) <em>Number</em> ("A", "G", "R", or "."), or null if the Number is not reserved
+   * (it is numerical).
+   */
+  @SuppressWarnings("ConstantConditions")
+  @Nullable
+  public SpecialVcfNumber getReservedNumber() {
+    return SpecialVcfNumber.fromId(getPropertyRaw(NUMBER));
   }
 
   @Nonnull
