@@ -40,7 +40,7 @@ public class VcfPosition {
   private String m_chromosome;
   private long m_position;
   private List<String> m_ids;
-  private List<String> m_refBases;
+  private String m_refBases;
   private List<String> m_altBases;
   private List<String> m_alleles = new ArrayList<>();
   private BigDecimal m_quality;
@@ -51,7 +51,7 @@ public class VcfPosition {
 
   public VcfPosition(@Nonnull String chr, long pos,
       @Nullable List<String> ids,
-      @Nonnull List<String> refBases,
+      @Nonnull String ref,
       @Nullable List<String> altBases,
       @Nullable BigDecimal qual,
       @Nullable List<String> filter,
@@ -72,11 +72,9 @@ public class VcfPosition {
       }
     }
 
-    for (String base : refBases) {
-      if (!VcfUtils.REF_BASE_PATTERN.matcher(base).matches()) {
-        throw new IllegalArgumentException("Invalid reference base '" + base +
-            "' (must match " + VcfUtils.REF_BASE_PATTERN +")");
-      }
+    if (!VcfUtils.REF_BASE_PATTERN.matcher(ref).matches()) {
+      throw new IllegalArgumentException("Invalid reference base '" + ref +
+          "' (must match " + VcfUtils.REF_BASE_PATTERN +")");
     }
 
     if (altBases != null) {
@@ -132,8 +130,8 @@ public class VcfPosition {
     } else {
       m_ids = ids;
     }
-    m_refBases = refBases;
-    m_alleles.addAll(m_refBases);
+    m_refBases = ref;
+    m_alleles.add(m_refBases);
     if (altBases == null) {
       m_altBases = new ArrayList<>();
     } else {
@@ -171,6 +169,10 @@ public class VcfPosition {
     m_chromosome = chromosome;
   }
 
+  public void setRef(@Nonnull String ref) {
+    m_refBases = ref;
+  }
+
   public long getPosition() {
     return m_position;
   }
@@ -189,7 +191,7 @@ public class VcfPosition {
   /**
    * Gets the reference base(s) for this position.  Each base must be an A, C, G, T, or N.
    */
-  public @Nonnull List<String> getRefBases() {
+  public @Nonnull String getRef() {
     return m_refBases;
   }
 

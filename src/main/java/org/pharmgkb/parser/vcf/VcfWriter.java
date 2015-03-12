@@ -10,10 +10,7 @@ import javax.annotation.Nullable;
 import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.Path;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Writes to VCF format from a {@link VcfSample}, {@link VcfPosition VcfPositions}, and {@link VcfMetadata}.
@@ -72,10 +69,10 @@ public class VcfWriter implements Closeable {
     sb.append(position.getChromosome()).append("\t");
     sb.append(position.getPosition()).append("\t");
     addListOrElse(position.getIds(), ";", ".", sb);
-    if (position.getRefBases().isEmpty()) {
+    if (position.getRef().isEmpty()) {
       throw new IllegalArgumentException("No REF bases, but the column is required (on line " + m_lineNumber + ")");
     }
-    addListOrElse(position.getRefBases(), ",", ".", sb);
+    addListOrElse(Arrays.asList(position.getRef()), ",", ".", sb);
     addListOrElse(position.getAltBases(), ",", ".", sb);
     addStringOrElse(position.getQuality(), ".", sb);
     addListOrElse(position.getFilters(), ";", "PASS", sb);

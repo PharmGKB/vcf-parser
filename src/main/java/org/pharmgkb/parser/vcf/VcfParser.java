@@ -173,7 +173,7 @@ public class VcfParser implements Closeable {
     }
 
     // REF
-    List<String> ref = toList(sf_commaSplitter, data.get(3));
+    String ref = data.get(3);
 
     // ALT
     List<String> alt = null;

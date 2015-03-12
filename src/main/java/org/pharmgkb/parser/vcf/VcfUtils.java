@@ -62,6 +62,20 @@ public class VcfUtils {
   public static final Pattern RSID_PATTERN = Pattern.compile("rs\\d+");
   public static final Pattern NUMBER_PATTERN = Pattern.compile("(?:\\d+|[ARG\\.])");
 
+  public static @Nonnull Map<String, String> extractPropertiesFromLine(@Nonnull String value) {
+    String unescapedValue = value.replaceAll("\\\\", "~~~~");
+    unescapedValue = unescapedValue.replaceAll("\\\\\"", "~!~!");
+    boolean wasEscaped = !unescapedValue.equals(value);
+    String[] cols = VcfUtils.METADATA_PATTERN.split(unescapedValue);
+    if (wasEscaped) {
+      for (int x = 0; x < cols.length; x++) {
+        cols[x] = cols[x].replaceAll("~~~~", "\\");
+        cols[x] = cols[x].replaceAll("~!~!", "\"");
+      }
+    }
+    return extractProperties(cols);
+  }
+
   public static @Nonnull Map<String, String> extractProperties(@Nonnull String... props) {
     Map<String, String> map = new HashMap<>();
     for (String prop : props) {

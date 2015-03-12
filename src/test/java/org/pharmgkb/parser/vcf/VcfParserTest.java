@@ -68,7 +68,7 @@ public class VcfParserTest {
       new VcfParser.Builder()
           .fromReader(reader)
           .parseWith((metadata, position, sampleData) -> {
-            position.getRefBases().add("test");
+            position.setRef("test");
             position.getAltBases().add("test");
             position.getIds().add("test");
             position.getFormat().add("test");

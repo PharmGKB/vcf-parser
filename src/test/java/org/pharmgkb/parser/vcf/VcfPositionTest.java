@@ -17,14 +17,14 @@ public class VcfPositionTest {
 
   @Test
   public void testNoFilters() {
-    VcfPosition position = new VcfPosition("chr", 1, null, Arrays.asList("C"), null, null, null, null, null);
+    VcfPosition position = new VcfPosition("chr", 1, null, "C", null, null, null, null, null);
     assertTrue(position.getFilters().isEmpty());
     assertTrue(position.isPassingAllFilters());
   }
 
   @Test
   public void testHasFilters() {
-    VcfPosition position = new VcfPosition("chr", 1, null, Arrays.asList("C"), null, null, Arrays.asList("bad"),
+    VcfPosition position = new VcfPosition("chr", 1, null, "C", null, null, Arrays.asList("bad"),
         null, null);
     assertEquals(1, position.getFilters().size());
     assertEquals("bad", position.getFilters().get(0));
@@ -33,7 +33,7 @@ public class VcfPositionTest {
 
   @Test
   public void testBadFilter1() {
-    VcfPosition position = new VcfPosition("chr", 1, null, Arrays.asList("C"), null, null, Arrays.asList("PASS"),
+    VcfPosition position = new VcfPosition("chr", 1, null, "C", null, null, Arrays.asList("PASS"),
         null, null);
     assertTrue(position.getFilters().isEmpty());
     assertTrue(position.isPassingAllFilters());
@@ -41,56 +41,56 @@ public class VcfPositionTest {
 
   @Test(expected = IllegalArgumentException.class)
   public void testBadFilter2() {
-    new VcfPosition("chr", 1, null, Arrays.asList("C"), null, null, Arrays.asList("bad", "PASS"),
+    new VcfPosition("chr", 1, null, "C", null, null, Arrays.asList("bad", "PASS"),
         null, null);
   }
 
   @Test(expected = IllegalArgumentException.class)
   public void testBadChromosome() {
-    new VcfPosition("chr:", 1, null, Arrays.asList("C"), null, null, null, null, null);
+    new VcfPosition("chr:", 1, null, "C", null, null, null, null, null);
   }
 
   @Test
   public void testTelomericPositions() {
-    new VcfPosition("chr1", 0, null, Arrays.asList("C"), null, null, null, null, null);
-    new VcfPosition("chr1", -1, null, Arrays.asList("C"), null, null, null, null, null);
+    new VcfPosition("chr1", 0, null, "C", null, null, null, null, null);
+    new VcfPosition("chr1", -1, null,"C", null, null, null, null, null);
   }
 
   @Test(expected = IllegalArgumentException.class)
   public void testBadId() {
-    new VcfPosition("chr1", 1, Arrays.asList(";"), Arrays.asList("C"), null, null, null, null, null);
+    new VcfPosition("chr1", 1, Arrays.asList(";"), "C", null, null, null, null, null);
   }
 
   @Test(expected = IllegalArgumentException.class)
   public void testBadRefBase() {
-    new VcfPosition("chr1", 1, null, Arrays.asList("X"), null, null, null, null, null);
+    new VcfPosition("chr1", 1, null, "X", null, null, null, null, null);
   }
 
   @Test(expected = IllegalArgumentException.class)
   public void testBadVarBase() {
-    new VcfPosition("chr1", 1, null, Arrays.asList("C"), Arrays.asList("X"), null, null, null, null);
+    new VcfPosition("chr1", 1, null, "C", Arrays.asList("X"), null, null, null, null);
   }
 
   @Test(expected = IllegalArgumentException.class)
   public void testZeroFilter() {
-    new VcfPosition("chr1", 1, null, Arrays.asList("C"), null, null, Arrays.asList("0"), null, null);
+    new VcfPosition("chr1", 1, null, "C", null, null, Arrays.asList("0"), null, null);
   }
 
   @Test(expected = IllegalArgumentException.class)
   public void testFilterWithWhitespace() {
-    new VcfPosition("chr1", 1, null, Arrays.asList("C"), null, null, Arrays.asList("adsf\nsdf"), null, null);
+    new VcfPosition("chr1", 1, null, "C", null, null, Arrays.asList("adsf\nsdf"), null, null);
   }
 
   @Test(expected = IllegalArgumentException.class)
   public void testInfoWithWhitespace() {
     ListMultimap<String, String> map = ArrayListMultimap.create();
     map.put("anid", "a\nvalue");
-    new VcfPosition("chr1", 1, null, Arrays.asList("C"), null, null, null, map, null);
+    new VcfPosition("chr1", 1, null, "C", null, null, null, map, null);
   }
 
   @Test(expected = IllegalArgumentException.class)
   public void testBadFormat() {
-    new VcfPosition("chr1", 1, null, Arrays.asList("C"), null, null, null, null, Arrays.asList("+"));
+    new VcfPosition("chr1", 1, null, "C", null, null, null, null, Arrays.asList("+"));
   }
 
 }
