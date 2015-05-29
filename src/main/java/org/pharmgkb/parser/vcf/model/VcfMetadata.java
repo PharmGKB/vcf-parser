@@ -209,6 +209,9 @@ public class VcfMetadata {
    * Gets the number of samples in the VCF file.
    */
   public int getNumSamples() {
+    if (m_columns.size() < 9) {
+      return 0; // necessary because if we have no samples, we'll be missing FORMAT
+    }
     return m_columns.size() - 9;
   }
 

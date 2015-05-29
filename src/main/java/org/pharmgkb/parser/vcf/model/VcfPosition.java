@@ -1,6 +1,7 @@
 package org.pharmgkb.parser.vcf.model;
 
 import com.google.common.base.Joiner;
+import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
 import org.pharmgkb.parser.vcf.VcfUtils;
 import org.slf4j.Logger;
@@ -57,6 +58,10 @@ public class VcfPosition {
       @Nullable List<String> filter,
       @Nullable ListMultimap<String, String> info,
       @Nullable List<String> format) {
+
+    /*
+      1. Check the arguments, in order
+     */
 
     if (sf_whitespace.matcher(chr).matches()  || chr.contains(":")) {
       throw new IllegalArgumentException("CHROM column \"" + chr + "\" contains whitespace or colons");
@@ -122,38 +127,31 @@ public class VcfPosition {
       }
     }
 
+    /*
+      2. Set the fields, in order
+     */
+
     // not resolving ID string
     m_chromosome = chr;
     m_position = pos;
-    if (ids == null) {
-      m_ids = new ArrayList<>();
-    } else {
-      m_ids = ids;
-    }
+
+    m_ids = ids==null? new ArrayList<>() : ids;
+
     m_refBases = ref;
     m_alleles.add(m_refBases);
-    if (altBases == null) {
-      m_altBases = new ArrayList<>();
-    } else {
-      m_altBases = altBases;
+
+    m_altBases = altBases==null? new ArrayList<>() : altBases;
+    if (altBases != null) {
       m_alleles.addAll(altBases);
     }
 
     m_quality = qual;
 
-    if (filter == null) {
-      m_filter = new ArrayList<>();
-    } else {
-      m_filter = filter;
-    }
+    m_filter = filter==null? new ArrayList<>() : filter;
 
-    m_info = info;
+    m_info = info==null? ArrayListMultimap.create() : info;
 
-    if (format == null) {
-      m_format = new ArrayList<>();
-    } else {
-      m_format = format;
-    }
+    m_format = format==null? new ArrayList<>() : format;
   }
 
 
