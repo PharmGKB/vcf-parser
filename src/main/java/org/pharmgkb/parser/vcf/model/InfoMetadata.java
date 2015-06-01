@@ -33,11 +33,11 @@ public class InfoMetadata extends IdDescriptionMetadata {
 
   private InfoType m_type;
 
-  public InfoMetadata(@Nonnull String id, @Nonnull String description, @Nonnull String type, @Nonnull String number,
+  public InfoMetadata(@Nonnull String id, @Nonnull String description, @Nonnull InfoType type, @Nonnull String number,
       @Nullable String source, @Nullable String version) {
     super(id, description);
     putPropertyRaw(NUMBER, number);
-    putPropertyRaw(TYPE, type);
+    putPropertyRaw(TYPE, type.name());
     if (source != null) {
       putAndQuoteProperty(SOURCE, source);
     }

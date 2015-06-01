@@ -51,7 +51,10 @@ public class VcfWriter implements Closeable {
     }
 
     // header line
-    StringBuilder sb = new StringBuilder("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT");
+    StringBuilder sb = new StringBuilder("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO");
+    if (metadata.getNumSamples() > 0) {
+      sb.append("\tFORMAT");
+    }
     for (int i = 0; i < metadata.getNumSamples(); i++) {
       sb.append("\t").append(metadata.getSampleName(i));
     }
@@ -174,26 +177,26 @@ public class VcfWriter implements Closeable {
     while (keys.hasNext()) {
       String key = keys.next();
 
-      if (!metadata.getInfo().containsKey(key)) {
-        sf_logger.warn("Position {}:{} contains INFO {}, but there is no INFO metadata with that name (on line {})",
-            position.getChromosome(), position.getPosition(), key, m_lineNumber);
-      }
-
       List<String> values = position.getInfo(key);
       assert values != null;
 
-      InfoType type = metadata.getInfo().get(key).getType();
-      for (String value : values) {
-        try {
-          VcfUtils.convertProperty(type, value);
-        } catch (IllegalArgumentException e) {
-          throw new IllegalArgumentException("Property " + key + " is not of type " +
-              type + " (on line " + m_lineNumber + ")");
+      if (!metadata.getInfo().containsKey(key)) {
+        sf_logger.warn("Position {}:{} contains INFO {}, but there is no INFO metadata with that name (on line {})",
+            position.getChromosome(), position.getPosition(), key, m_lineNumber);
+      } else {
+        InfoType type = metadata.getInfo().get(key).getType();
+        for (String value : values) {
+          try {
+            VcfUtils.convertProperty(type, value); // just test
+          } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Property " + key + " is not of type " +
+                type + " (on line " + m_lineNumber + ")");
+          }
         }
       }
 
       sb.append(key);
-      if (!values.isEmpty()) {
+      if (!values.isEmpty() && !(values.size() == 1 && values.get(0).isEmpty())) {
         sb.append("=").append(values.get(0));
         for (int i = 1; i < values.size(); i++) {
           sb.append(",").append(values.get(i));

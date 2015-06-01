@@ -1,0 +1,5 @@
+##fileformat=VCFv4.2
+##INFO=<Type=Integer,Description="Number of samples with data",Number=1,ID=NS>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rsa	A	T	0	PASS	NS=0
+chr1	2	rsb	A	T	0	PASS	.

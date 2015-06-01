@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.Assert.*;
@@ -73,6 +74,28 @@ public class VcfParserTest {
             position.getIds().add("test");
             position.getFormat().add("test");
             position.getFilters().add("none");
+          })
+          .build().parse();
+    }
+  }
+
+  @Test
+  public void testNoSamples() throws IOException {
+
+    try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream("/no_samples.vcf")))) {
+      new VcfParser.Builder()
+          .fromReader(reader)
+          .parseWith((metadata, position, sampleData) -> {
+            assertNotNull(position.getFormat());
+            assertTrue(position.getFormat().isEmpty());
+            assertTrue(sampleData.isEmpty());
+            assertNotNull(position.getInfo());
+            if (position.getPosition() == 1) {
+              assertEquals(1, position.getInfo().size());
+              assertEquals(Arrays.asList("0"), position.getInfo().get("NS"));
+            } else if (position.getPosition() == 2) {
+              assertTrue(position.getInfo().isEmpty());
+            }
           })
           .build().parse();
     }

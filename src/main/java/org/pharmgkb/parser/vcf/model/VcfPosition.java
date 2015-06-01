@@ -36,18 +36,17 @@ public class VcfPosition {
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private static final Joiner sf_commaJoiner = Joiner.on(",");
-  private static final Joiner sf_semicolonJoiner = Joiner.on(";");
   private static final Pattern sf_whitespace = Pattern.compile(".*\\s.*");
   private String m_chromosome;
   private long m_position;
-  private List<String> m_ids;
+  private List<String> m_ids = new ArrayList<>();
   private String m_refBases;
-  private List<String> m_altBases;
+  private List<String> m_altBases = new ArrayList<>();
   private List<String> m_alleles = new ArrayList<>();
   private BigDecimal m_quality;
-  private List<String> m_filter;
-  private ListMultimap<String, String> m_info;
-  private List<String> m_format;
+  private List<String> m_filter = new ArrayList<>();
+  private ListMultimap<String, String> m_info = ArrayListMultimap.create();
+  private List<String> m_format = new ArrayList<>();
 
 
   public VcfPosition(@Nonnull String chr, long pos,
@@ -132,28 +131,42 @@ public class VcfPosition {
      */
 
     // not resolving ID string
-    m_chromosome = chr;
-    m_position = pos;
+    m_chromosome = chr; // required
+    m_position = pos; // required
 
-    m_ids = ids==null? new ArrayList<>() : ids;
+    if (ids != null) {
+      m_ids = ids;
+    }
 
-    m_refBases = ref;
+    m_refBases = ref; // required
     m_alleles.add(m_refBases);
 
-    m_altBases = altBases==null? new ArrayList<>() : altBases;
     if (altBases != null) {
+      m_altBases = altBases;
       m_alleles.addAll(altBases);
     }
 
-    m_quality = qual;
+    m_quality = qual; // required
 
-    m_filter = filter==null? new ArrayList<>() : filter;
+    if (filter != null) {
+      m_filter = filter;
+    }
 
-    m_info = info==null? ArrayListMultimap.create() : info;
+    if (info != null) {
+      m_info = info;
+    }
 
-    m_format = format==null? new ArrayList<>() : format;
+    if (format != null) {
+      m_format = format;
+    }
   }
 
+  public VcfPosition(@Nonnull String chromosome, long position, @Nonnull String refBases, @Nonnull BigDecimal quality) {
+    m_chromosome = chromosome;
+    m_position = position;
+    m_refBases = refBases;
+    m_quality = quality;
+  }
 
   /**
    * Gets an identifier from the reference genome or an angle-bracketed ID String ("<ID>") pointing to a contig in the

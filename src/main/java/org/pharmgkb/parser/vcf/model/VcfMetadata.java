@@ -238,6 +238,10 @@ public class VcfMetadata {
     private List<String> m_columns = new ArrayList<>();
     private ListMultimap<String, String> m_properties = ArrayListMultimap.create();
 
+    /**
+     * Sets the VCF version string.
+     * @param fileFormat Ex: "VCFv4.2"
+     */
     public Builder setFileFormat(@Nonnull String fileFormat) {
       m_fileFormat = fileFormat;
       if (!m_fileFormat.startsWith("VCF")) {

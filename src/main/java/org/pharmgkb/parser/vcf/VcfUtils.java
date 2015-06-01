@@ -200,6 +200,7 @@ public class VcfUtils {
         break;
       case Flag:
         clas = Boolean.class;
+        break;
       default:
         throw new RuntimeException(InfoType.class.getSimpleName() + " " + type + " isn't covered?!");
     }
@@ -239,10 +240,6 @@ public class VcfUtils {
       }
     }
     throw new UnsupportedOperationException("Type " + clas + " unrecognized");
-  }
-
-  public static enum Quoted {
-    True, False, Unknown;
   }
 
 }

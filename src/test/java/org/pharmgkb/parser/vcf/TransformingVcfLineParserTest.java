@@ -11,6 +11,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
@@ -23,14 +24,27 @@ public class TransformingVcfLineParserTest {
     VcfTransformation transformation = new VcfTransformation() {
       @Override
       public void transformMetadata(@Nonnull VcfMetadata metadata) {
-        metadata.getInfo().put("TestInfo", new InfoMetadata("an_id", "a_description", "String", "G", null, null));
+        // this is the only place where we can alter the metadata
+        metadata.getInfo().put("TestInfo", new InfoMetadata("an_id", "a_description", InfoType.String, "G", null, null));
         metadata.getFilters().put("Transformation", new IdDescriptionMetadata("Transformation", "A transformation was applied"));
       }
 
       @Override
       public boolean transformDataLine(@Nonnull VcfMetadata metadata, @Nonnull VcfPosition position, @Nonnull List<VcfSample> sampleData) {
+
         position.getFilters().clear();
-        metadata.getFilters().clear(); // should do nothing!
+        metadata.getFilters().clear(); // since we're in transformatDataLine, this should do nothing!
+
+        if (position.getPosition() == 1) {
+          // This implies that the correct encoding for a no-value INFO annotation (e.g. DB) is with a single "" value,
+          // NOT with an empty list:
+          assertEquals(Arrays.asList(""), position.getInfo().get(ReservedInfoProperty.Imprecise.getId()));
+          // Similarly, the correct encoding for no info is a nonexistent list, NOT with an empty list:
+          position.getInfo().get(ReservedInfoProperty.Imprecise.getId()).clear();
+          // Again, put "" INSTEAD OF doing:
+          // position.getInfo().replaceValues(ReservedInfoProperty.Dbsnp.getId(), Collections.emptyList());
+          position.getInfo().put(ReservedInfoProperty.Dbsnp.getId(), "");
+        }
         position.setPosition(position.getPosition() + 10);
         return true;
       }

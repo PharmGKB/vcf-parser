@@ -12,12 +12,14 @@
 ##INFO=<ID=AF,Number=A,Type=Float,Description="Estimated allele frequency in the range (0,1)">
 ##INFO=<ID=NS,Number=1,Type=Integer,Description="Number of samples with data">
 ##INFO=<ID=AN,Number=1,Type=Integer,Description="Total number of alleles in called genotypes">
+##INFO=<Type=Flag,Description="Imprecise structural variation",Number=0,ID=IMPRECISE>
+##INFO=<Type=Flag,Description="Appears in dbSNP",Number=0,ID=DB>
 ##SAMPLE=<ID=sample1,Genome=a;b;c;d,Description="test">
 ##SAMPLE=<ID=sample2,Genome=a;b;c;d,Description="test">
 ##PEDIGREE=<NAME_0=A,NAME_1=B>
 ##pedigreeDB=<http://thismayormaynotbeavalidurl.vcf>
 #CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	sample1	sample2
-chr1	1	rsa	A	T	5	PASS	AC=1;AF=0.5;AN=15	GT:GQ	.:2	.:2
+chr1	1	rsa	A	T	5	PASS	AC=1;AF=0.5;AN=15;IMPRECISE	GT:GQ	.:2	.:2
 chr1	2	rsb	A	T	5	PASS	.	GT	0|1
 chr1	3	rsc	A	T	5	PASS	.	GT	0/1
 chr1	4	rsd	A	T	5	PASS	.	GT	.
