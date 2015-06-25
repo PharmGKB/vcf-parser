@@ -1,6 +1,10 @@
 package org.pharmgkb.parser.vcf.model;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import javax.annotation.Nonnull;
+import java.lang.invoke.MethodHandles;
 import java.util.Map;
 
 
@@ -16,6 +20,8 @@ import java.util.Map;
  * @author Mark Woon
  */
 public class IdDescriptionMetadata extends IdMetadata {
+
+  private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   public static final String ID = "ID";
   public static final String DESCRIPTION = "Description";
@@ -37,7 +43,7 @@ public class IdDescriptionMetadata extends IdMetadata {
 
   private void init(boolean isBaseType) {
     if (getPropertyRaw(DESCRIPTION) == null) {
-      throw new IllegalArgumentException("Required metadata property \"" + DESCRIPTION + "\" is missing");
+      sf_logger.warn("Required metadata property \"{}\" is missing", DESCRIPTION);
     }
     if (isBaseType) {
       ensureNoExtras(ID, DESCRIPTION);

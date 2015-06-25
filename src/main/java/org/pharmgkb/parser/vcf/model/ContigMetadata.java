@@ -89,17 +89,18 @@ public class ContigMetadata extends IdMetadata {
 
   private void init() {
     if (getPropertyUnquoted(ASSEMBLY) == null) {
-      throw new IllegalArgumentException("Required metadata property \"" + ASSEMBLY + "\" is missing");
+      sf_logger.warn("Required metadata property \"{}\" is missing", ASSEMBLY);
     }
     String length = getPropertyUnquoted(LENGTH);
     if (length == null) {
-      throw new IllegalArgumentException("Required metadata property \"" + LENGTH + "\" is missing");
-    }
-    try {
-      //noinspection ResultOfMethodCallIgnored
-      Long.parseLong(length);
-    } catch (NumberFormatException e) {
-      throw new IllegalArgumentException("Length is not a number", e);
+      sf_logger.warn("Required metadata property \"{}\" is missing", LENGTH);
+    } else {
+      try {
+        //noinspection ResultOfMethodCallIgnored
+        Long.parseLong(length);
+      } catch (NumberFormatException e) {
+        sf_logger.warn("Length is not a number", e);
+      }
     }
     ensureNoExtras(ID, LENGTH, ASSEMBLY, MD5, SPECIES, TAXONOMY, URL);
   }

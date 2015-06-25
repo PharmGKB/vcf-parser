@@ -150,27 +150,27 @@ public class VcfMetadata {
     return m_properties.get("pedigreeDB");
   }
 
-  public void putAlt(@Nonnull IdDescriptionMetadata value) {
+  public void setAlt(@Nonnull IdDescriptionMetadata value) {
     m_alt.put(value.getId(), value);
   }
 
-  public void putInfo(@Nonnull InfoMetadata value) {
+  public void setInfo(@Nonnull InfoMetadata value) {
     m_info.put(value.getId(), value);
   }
 
-  public void putFormat(@Nonnull FormatMetadata value) {
+  public void setFormat(@Nonnull FormatMetadata value) {
     m_format.put(value.getId(), value);
   }
 
-  public void putContig(@Nonnull ContigMetadata value) {
+  public void setContig(@Nonnull ContigMetadata value) {
     m_contig.put(value.getId(), value);
   }
 
-  public void putFilter(@Nonnull IdDescriptionMetadata value) {
+  public void setFilter(@Nonnull IdDescriptionMetadata value) {
     m_filter.put(value.getId(), value);
   }
 
-  public void putAssembly(@Nonnull String value) {
+  public void setAssembly(@Nonnull String value) {
     m_properties.put("assembly", value);
   }
 
