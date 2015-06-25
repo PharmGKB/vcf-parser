@@ -25,10 +25,10 @@ public class FormatMetadata extends IdDescriptionMetadata {
 
   private FormatType m_type;
 
-  public FormatMetadata(@Nonnull String id, @Nonnull String description, @Nonnull String number, @Nonnull String type) {
+  public FormatMetadata(@Nonnull String id, @Nonnull String description, @Nonnull String number, @Nonnull FormatType type) {
     super(id, description, false);
     putPropertyRaw(NUMBER, number);
-    putPropertyRaw(TYPE, type);
+    putPropertyRaw(TYPE, type.name());
     init();
   }
 

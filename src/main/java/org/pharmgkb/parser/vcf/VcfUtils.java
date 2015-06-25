@@ -62,6 +62,10 @@ public class VcfUtils {
   public static final Pattern RSID_PATTERN = Pattern.compile("rs\\d+");
   public static final Pattern NUMBER_PATTERN = Pattern.compile("(?:\\d+|[ARG\\.])");
 
+  public static final Pattern FILE_FORMAT_PATTERN = Pattern.compile("VCFv[\\d\\.]+");
+
+  public static final Pattern UNQUOTED_EQUAL_SIGN_PATTERN = Pattern.compile("=(?=([^\"]*\"[^\"]*\")*[^\"]*$)");
+
   public static @Nonnull Map<String, String> extractPropertiesFromLine(@Nonnull String value) {
     String unescapedValue = value.replaceAll("\\\\", "~~~~");
     unescapedValue = unescapedValue.replaceAll("\\\\\"", "~!~!");
@@ -95,9 +99,9 @@ public class VcfUtils {
    * @param prop In the form "key=value"
    */
   public static @Nonnull Pair<String, String> splitProperty(@Nonnull String prop) {
-    String[] parts = prop.split("=");
+    String[] parts = UNQUOTED_EQUAL_SIGN_PATTERN.split(prop);
     if (parts.length != 2) {
-      throw new IllegalArgumentException("There were " + (parts.length - 1) + " equals signs for: " + prop);
+      throw new RuntimeException("There were " + (parts.length - 1) + " equals signs for: " + prop);
     }
     return Pair.of(parts[0], parts[1]);
   }

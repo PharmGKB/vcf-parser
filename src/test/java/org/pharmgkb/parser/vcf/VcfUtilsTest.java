@@ -1,7 +1,9 @@
 package org.pharmgkb.parser.vcf;
 
+import org.apache.commons.lang3.tuple.Pair;
 import org.junit.Test;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -43,6 +45,13 @@ public class VcfUtilsTest {
     for (String test : shouldPass) {
       assertFalse("String " + test + " was recognized", VcfUtils.ALT_BASE_PATTERN.matcher(test).matches());
     }
+  }
+
+  @Test
+  public void testSplitProp() throws Exception {
+    assertEquals(Pair.of("abc", "\"d=ef\""), VcfUtils.splitProperty("abc=\"d=ef\""));
+    assertEquals(Pair.of("\"a=bc\"", "\"d=ef\""), VcfUtils.splitProperty("\"a=bc\"=\"d=ef\""));
+    assertEquals(Pair.of("\"a=b=c\"", "\"d=ef\""), VcfUtils.splitProperty("\"a=b=c\"=\"d=ef\""));
   }
 
 }

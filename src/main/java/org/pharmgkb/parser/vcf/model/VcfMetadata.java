@@ -3,6 +3,7 @@ package org.pharmgkb.parser.vcf.model;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
+import org.pharmgkb.parser.vcf.VcfUtils;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -84,6 +85,9 @@ public class VcfMetadata {
   }
 
   public void setFileFormat(@Nonnull String fileFormat) {
+    if (!VcfUtils.FILE_FORMAT_PATTERN.matcher(fileFormat).matches()) {
+      throw new IllegalArgumentException("VCF format must look like ex: VCFv4.2; was " + fileFormat);
+    }
     m_fileFormat = fileFormat;
   }
 
@@ -144,6 +148,41 @@ public class VcfMetadata {
   public @Nonnull List<String> getPedigreeDatabases() {
     // spec says: ##pedigreeDB=<url> (with angle brackets)
     return m_properties.get("pedigreeDB");
+  }
+
+  public void putAlt(@Nonnull IdDescriptionMetadata value) {
+    m_alt.put(value.getId(), value);
+  }
+
+  public void putInfo(@Nonnull InfoMetadata value) {
+    m_info.put(value.getId(), value);
+  }
+
+  public void putFormat(@Nonnull FormatMetadata value) {
+    m_format.put(value.getId(), value);
+  }
+
+  public void putContig(@Nonnull ContigMetadata value) {
+    m_contig.put(value.getId(), value);
+  }
+
+  public void putFilter(@Nonnull IdDescriptionMetadata value) {
+    m_filter.put(value.getId(), value);
+  }
+
+  public void putAssembly(@Nonnull String value) {
+    m_properties.put("assembly", value);
+  }
+
+  /**
+   * @param value Must be wrapped in angle brakcets
+   */
+  public void addPedigreeDatabase(@Nonnull String value) {
+    if (value.startsWith("<") && value.endsWith(">")) {
+      m_properties.put("pedigreeDB", value);
+    } else {
+      throw new IllegalArgumentException("pedigreeDB string " + value + " should be enclosed in angle brackets according to spec");
+    }
   }
 
   /**
@@ -219,8 +258,10 @@ public class VcfMetadata {
    * Gets the sample name (column name).
    *
    * @param idx sample index, first sample is at index 0
+   *
+   * @throws ArrayIndexOutOfBoundsException If the sample doesn't exist
    */
-  public String getSampleName(int idx) {
+  public @Nonnull String getSampleName(int idx) {
     return m_columns.get(9 + idx);
   }
 
@@ -244,7 +285,7 @@ public class VcfMetadata {
      */
     public Builder setFileFormat(@Nonnull String fileFormat) {
       m_fileFormat = fileFormat;
-      if (!m_fileFormat.startsWith("VCF")) {
+      if (!VcfUtils.FILE_FORMAT_PATTERN.matcher(fileFormat).matches()) {
         throw new IllegalStateException("Not a VCF file: fileformat is " + m_fileFormat);
       }
       return this;
