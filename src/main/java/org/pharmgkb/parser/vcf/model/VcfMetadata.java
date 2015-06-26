@@ -36,47 +36,15 @@ public class VcfMetadata {
     Preconditions.checkNotNull(fileFormat);
     Preconditions.checkNotNull(columns);
     m_fileFormat = fileFormat;
-    if (alt == null) {
-      m_alt = new HashMap<>();
-    } else {
-      m_alt = alt;
-    }
-    if (info == null) {
-      m_info = new HashMap<>();
-    } else {
-      m_info = info;
-    }
-    if (filter == null) {
-      m_filter = new HashMap<>();
-    } else {
-      m_filter = filter;
-    }
-    if (format == null) {
-      m_format = new HashMap<>();
-    } else {
-      m_format = format;
-    }
-    if (contig == null) {
-      m_contig = new HashMap<>();
-    } else {
-      m_contig = contig;
-    }
-    if (sample == null) {
-      m_sample = new HashMap<>();
-    } else {
-      m_sample = sample;
-    }
-    if (pedigree == null) {
-      m_pedigree = new ArrayList<>();
-    } else {
-      m_pedigree = pedigree;
-    }
-    m_columns = columns;
-    if (properties == null) {
-      m_properties = ArrayListMultimap.create();
-    } else {
-      m_properties = properties;
-    }
+    m_alt        = alt==null?        new HashMap<>()            : alt;
+    m_info       = info==null?       new HashMap<>()            : info;
+    m_filter     = filter==null?     new HashMap<>()            : filter;
+    m_format     = format==null?     new HashMap<>()            : format;
+    m_contig     = contig==null?     new HashMap<>()            : contig;
+    m_sample     = sample==null?     new HashMap<>()            : sample;
+    m_pedigree   = pedigree==null?   new ArrayList<>()          : pedigree;
+    m_properties = properties==null? ArrayListMultimap.create() : properties;
+    m_columns    = columns;
   }
 
 
@@ -150,37 +118,95 @@ public class VcfMetadata {
     return m_properties.get("pedigreeDB");
   }
 
-  public void setAlt(@Nonnull IdDescriptionMetadata value) {
+  /**
+   * Adds {@code value} to the map of ALT metadata, using its {@link IdDescriptionMetadata#getId() ID} as the key.
+   */
+  public void addAlt(@Nonnull IdDescriptionMetadata value) {
     m_alt.put(value.getId(), value);
   }
 
-  public void setInfo(@Nonnull InfoMetadata value) {
+  /**
+   * Adds {@code value} to the map of INFO metadata, using its {@link InfoMetadata#getId() ID} as the key.
+   */
+  public void addInfo(@Nonnull InfoMetadata value) {
     m_info.put(value.getId(), value);
   }
 
-  public void setFormat(@Nonnull FormatMetadata value) {
+  /**
+   * Adds {@code value} to the map of FORMAT metadata, using its {@link FormatMetadata#getId() ID} as the key.
+   */
+  public void addFormat(@Nonnull FormatMetadata value) {
     m_format.put(value.getId(), value);
   }
 
-  public void setContig(@Nonnull ContigMetadata value) {
+  /**
+   * Adds {@code value} to the map of CONTIG metadata, using its {@link ContigMetadata#getId() ID} as the key.
+   */
+  public void addContig(@Nonnull ContigMetadata value) {
     m_contig.put(value.getId(), value);
   }
 
-  public void setFilter(@Nonnull IdDescriptionMetadata value) {
+  /**
+   * Adds {@code value} to the map of FILTER metadata, using its {@link IdDescriptionMetadata#getId() ID} as the key.
+   */
+  public void addFilter(@Nonnull IdDescriptionMetadata value) {
     m_filter.put(value.getId(), value);
   }
 
-  public void setAssembly(@Nonnull String value) {
+  /**
+   * Adds {@code value} to the list of assembly metadata.
+   * @param value Should not be wrapped in angle brackets
+   */
+  public void addAssembly(@Nonnull String value) {
     m_properties.put("assembly", value);
   }
 
   /**
-   * @param value Must be wrapped in angle brakcets
+   * Adds {@code value} to the list of pedigreeDB.
+   * @param value Must be wrapped in angle brackets
+   * @throws IllegalArgumentException If {@code value} is not wrapped in angle brackets
    */
   public void addPedigreeDatabase(@Nonnull String value) {
     if (value.startsWith("<") && value.endsWith(">")) {
       m_properties.put("pedigreeDB", value);
     } else {
+      throw new IllegalArgumentException("pedigreeDB string " + value + " should be enclosed in angle brackets according to spec");
+    }
+  }
+
+  public void removeAlt(@Nonnull IdDescriptionMetadata value) {
+    m_alt.remove(value.getId());
+  }
+
+  public void removeInfo(@Nonnull InfoMetadata value) {
+    m_info.remove(value.getId());
+  }
+
+  public void removeFormat(@Nonnull FormatMetadata value) {
+    m_format.remove(value.getId());
+  }
+
+  public void removeContig(@Nonnull ContigMetadata value) {
+    m_contig.remove(value.getId());
+  }
+
+  public void removeFilter(@Nonnull IdDescriptionMetadata value) {
+    m_filter.remove(value.getId());
+  }
+
+  public void removeAssembly(@Nonnull String value) {
+    m_properties.remove("assembly", value);
+  }
+
+  /**
+   * Adds {@code value} to the list of pedigreeDB.
+   * @param value Must be wrapped in angle brackets
+   * @throws IllegalArgumentException If {@code value} is not wrapped in angle brackets
+   */
+  public void removePedigreeDb(@Nonnull String value) {
+    if (value.startsWith("<") && value.endsWith(">")) {
+      m_properties.remove("pedigreeDB", value);
+    } else { // be strict to avoid needing to delete both value and <value>
       throw new IllegalArgumentException("pedigreeDB string " + value + " should be enclosed in angle brackets according to spec");
     }
   }
