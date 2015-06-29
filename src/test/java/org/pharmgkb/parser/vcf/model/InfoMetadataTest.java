@@ -4,7 +4,6 @@ import org.junit.Test;
 import org.pharmgkb.parser.vcf.VcfUtils;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
 
 
 public class InfoMetadataTest {
@@ -32,17 +31,12 @@ public class InfoMetadataTest {
       assertEquals(n, md.getNumber());
     }
 
-    nums = new String[] {
+    nums = new String[] { // these should all cause warnings
         "AA", "x", ".g", "23a"
     };
     for (String n : nums) {
-      try {
-        props[1] = "Number=" + n;
-        new InfoMetadata(VcfUtils.extractProperties(props));
-        fail("Number " + n + " was recognized but should not have been");
-      } catch (IllegalArgumentException ex) {
-        // expected
-      }
+      props[1] = "Number=" + n;
+      new InfoMetadata(VcfUtils.extractProperties(props));
     }
   }
 }

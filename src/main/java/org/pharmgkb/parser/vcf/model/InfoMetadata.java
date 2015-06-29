@@ -69,9 +69,9 @@ public class InfoMetadata extends IdDescriptionMetadata {
 
   /**
    * Value is either an integer or "A", "G", "R", or ".".
+   * @return Null only when incorrectly constructed without one
    */
-  @SuppressWarnings("ConstantConditions")
-  @Nonnull
+  @Nullable
   public String getNumber() {
     return getPropertyRaw(NUMBER);
   }
@@ -86,7 +86,10 @@ public class InfoMetadata extends IdDescriptionMetadata {
     return SpecialVcfNumber.fromId(getPropertyRaw(NUMBER));
   }
 
-  @Nonnull
+  /**
+   * @return Null only when incorrectly constructed without one
+   */
+  @Nullable
   public InfoType getType() {
     return m_type;
   }

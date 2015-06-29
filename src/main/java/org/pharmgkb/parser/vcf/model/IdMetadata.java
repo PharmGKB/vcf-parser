@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.lang.invoke.MethodHandles;
 import java.util.HashMap;
 import java.util.Map;
@@ -45,8 +46,10 @@ public class IdMetadata extends BaseMetadata {
     }
   }
 
-  @SuppressWarnings("ConstantConditions")
-  @Nonnull
+  /**
+   * @return Null only when incorrectly constructed without one
+   */
+  @Nullable
   public String getId() {
     return getPropertyRaw(ID);
   }

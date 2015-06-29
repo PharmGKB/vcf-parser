@@ -61,8 +61,10 @@ public class ContigMetadata extends IdMetadata {
     return Long.parseLong(getPropertyRaw(LENGTH));
   }
 
-  @SuppressWarnings("ConstantConditions")
-  @Nonnull
+  /**
+   * @return Null only when invalid
+   */
+  @Nullable
   public String getAssembly() {
     return getPropertyRaw(ASSEMBLY);
   }
