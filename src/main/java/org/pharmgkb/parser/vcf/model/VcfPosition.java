@@ -71,7 +71,7 @@ public class VcfPosition {
     if (ids != null) {
       for (String id : ids) {
         if (sf_whitespace.matcher(id).matches() || id.contains(";")) {
-          throw new IllegalArgumentException("ID column entry \"" + id + "\" contains whitespace or semicolons");
+          throw new IllegalArgumentException("ID \"" + id + "\" contains whitespace or semicolons");
         }
       }
     }

@@ -82,8 +82,13 @@ public class VcfWriter implements Closeable {
     addInfoOrDot(metadata, position, sb);
 
     position.getFilters().stream().filter(key -> !metadata.getFilters().containsKey(key)).forEach(key -> {
-      sf_logger.warn("Position {}:{} has FILTER {}, but there is no FILTER metadata with that name (on line {})",
+      if (key.equals(".")) {
+        sf_logger.warn("Position {}:{} has FILTER {}; the absence of a filter should instead be marked with PASS (on line {})",
+            position.getChromosome(), position.getPosition(), key, m_lineNumber);
+      } else {
+        sf_logger.warn("Position {}:{} has FILTER {}, but there is no FILTER metadata with that name (on line {})",
           position.getChromosome(), position.getPosition(), key, m_lineNumber);
+      }
     });
 
     // these columns can be skipped completely
@@ -147,7 +152,7 @@ public class VcfWriter implements Closeable {
       FormatMetadata format = metadata.getFormats().get(key);
       Integer number = null;
       try {
-        number = Integer.parseInt(format.getNumber());;
+        number = Integer.parseInt(format.getNumber());
       } catch (NumberFormatException ignored) {}
       if (number != null && number == 1) {
         try {

@@ -23,6 +23,25 @@ import static org.junit.Assert.*;
 public class VcfParserTest {
 
   @Test
+  public void testBasic() throws IOException {
+    try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream("/basic.vcf")))) {
+      new VcfParser.Builder()
+          .fromReader(reader)
+          .parseWith((metadata, position, sampleData) -> {
+            assertEquals("chr1", position.getChromosome());
+            assertEquals(5, position.getPosition());
+            assertEquals(Arrays.asList("rsa", "rsb"), position.getIds());
+            assertEquals("Aa", position.getRef());
+            assertEquals(Arrays.asList("Tt", "Gg", "Cc"), position.getAltBases());
+            assertEquals(new BigDecimal("5.2e-10"), position.getQuality());
+            assertTrue(position.getFilters().isEmpty());
+            assertTrue(position.getInfo().isEmpty());
+          })
+          .build().parse();
+    }
+  }
+
+  @Test
   public void testWithSamples() throws IOException {
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream("/vcfposition.vcf")))) {
       new VcfParser.Builder()

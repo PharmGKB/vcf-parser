@@ -167,7 +167,7 @@ public class VcfParser implements Closeable {
       if (m_rsidsOnly && !VcfUtils.RSID_PATTERN.matcher(data.get(2)).find()) {
         return true;
       }
-      ids = toList(sf_commaSplitter, data.get(2));
+      ids = toList(sf_semicolonSplitter, data.get(2));
     } else if (m_rsidsOnly) {
       return true;
     }

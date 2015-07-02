@@ -217,6 +217,12 @@ public class VcfUtils {
     }
     if (clas == String.class) {
       return value;
+    } else if (clas == Character.class) {
+      if (value.length() == 1) {
+        return value;
+      } else {
+        throw new IllegalArgumentException("Invalid character value '" + value + "'");
+      }
     } else if (clas == Boolean.class) {
       value = StringUtils.stripToNull(value);
       if (value == null) {
