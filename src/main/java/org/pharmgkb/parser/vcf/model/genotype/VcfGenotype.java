@@ -45,6 +45,9 @@ public class VcfGenotype {
 
   private final boolean m_isPhased;
 
+  /**
+   * @param genotype A string like A/TT
+   */
   @Nonnull
   public static VcfGenotype fromString(@Nonnull String genotype) {
     Matcher matcher = sf_genotypePattern.matcher(genotype);
@@ -70,6 +73,16 @@ public class VcfGenotype {
     if (genotype == null) {
       return null;
     }
+    return fromNumberString(position, genotype);
+
+  }
+
+  /**
+   * @param genotype A string like 0/1
+   * @return The genotype, or null if GT is null
+   */
+  @Nullable
+  public static VcfGenotype fromNumberString(@Nonnull VcfPosition position, @Nonnull String genotype) {
 
     Matcher matcher = sf_numberPattern.matcher(genotype);
 
@@ -112,7 +125,7 @@ public class VcfGenotype {
   public String makeGt(@Nonnull VcfPosition position) {
     return (m_allele1==null? sf_noData : getAlleleIndex(position, m_allele1.toString()))
         + (m_isPhased? sf_phasedDelimiter : sf_unphasedDelimiter)
-        + (m_allele2==null? sf_noData : getAlleleFromIndex(position, m_allele2.toString()));
+        + (m_allele2==null? sf_noData : getAlleleIndex(position, m_allele2.toString()));
   }
 
   private String getAlleleIndex(@Nonnull VcfPosition position, @Nonnull String allele) {
@@ -134,6 +147,17 @@ public class VcfGenotype {
    */
   public boolean isPhased() {
     return m_isPhased;
+  }
+
+  public boolean isHomozygous() {
+    if (m_allele1 != null && m_allele2 != null) {
+      return m_allele1.equals(m_allele2);
+    }
+    return m_allele1 == m_allele2; // both null
+  }
+
+  public boolean isNoCall() {
+    return m_allele1 == null && m_allele2 == null;
   }
 
   @Nullable
