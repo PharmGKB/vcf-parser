@@ -5,10 +5,7 @@ import org.pharmgkb.parser.vcf.VcfUtils;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * This class contains sample data for a VCF position line.
@@ -17,7 +14,7 @@ import java.util.Set;
  */
 public class VcfSample {
 
-  private Map<String, String> m_properties = new HashMap<>();
+  private LinkedHashMap<String, String> m_properties = new LinkedHashMap<>();
 
   public VcfSample(@Nullable List<String> keys, @Nullable List<String> values) {
     if (keys == null) {
@@ -35,7 +32,7 @@ public class VcfSample {
     init();
   }
 
-  public VcfSample(@Nonnull Map<String, String> properties) {
+  public VcfSample(@Nonnull LinkedHashMap<String, String> properties) {
     m_properties = properties;
     init();
   }
@@ -92,8 +89,12 @@ public class VcfSample {
     m_properties.clear();
   }
 
+  /**
+   * @return A set of the property keys, which has guaranteed order
+   */
   @Nonnull
   public Set<String> getPropertyKeys() {
+    // LinkedHashMap.keySet() returns a LinkedKeySet, which has guaranteed order
     return m_properties.keySet();
   }
 

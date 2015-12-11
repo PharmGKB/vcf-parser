@@ -10,6 +10,7 @@ import javax.annotation.Nonnull;
 import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
@@ -76,7 +77,7 @@ public class VcfGenotypeTest {
   }
 
   private VcfGenotype makeGenotype(@Nonnull VcfPosition position, @Nonnull String genotype) {
-    VcfSample sample = new VcfSample(new HashMap<>());
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
     sample.putProperty(ReservedFormatProperty.Genotype, genotype);
     return VcfGenotype.fromVcf(position, sample);
   }
