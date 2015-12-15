@@ -18,7 +18,7 @@ public class BaseMetadataTest {
   public void testGetProperty() throws Exception {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("test", "one");
-    BaseMetadata metadata = new BaseMetadata(map);
+    X metadata = new X(map);
     assertEquals("one", metadata.getPropertyRaw("test"));
   }
 
@@ -26,13 +26,22 @@ public class BaseMetadataTest {
   public void testKeyNewline() throws Exception {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("test", "two\nlines");
-    new BaseMetadata(map);
+    new X(map);
   }
 
   @Test(expected = IllegalArgumentException.class)
   public void testValueNewline() throws Exception {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("second\ntest", "one");
-    new BaseMetadata(map);
+    new X(map);
+  }
+
+  private static class X extends BaseMetadata {
+
+    public X(LinkedHashMap<String, String> map) {
+      super();
+      map.entrySet().stream().forEach(e -> putPropertyRaw(e.getKey(), e.getValue()));
+      super.init();
+    }
   }
 }

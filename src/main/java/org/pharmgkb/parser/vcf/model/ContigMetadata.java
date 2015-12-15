@@ -27,6 +27,17 @@ public final class ContigMetadata extends IdMetadata {
   public static final String TAXONOMY = "taxonomy";
   public static final String URL = "URL";
 
+  public ContigMetadata(@Nonnull LinkedHashMap<String, String> props) {
+    this(
+        props.get(ContigMetadata.ID),
+        Long.parseLong(props.get(ContigMetadata.LENGTH)),
+        props.get(ContigMetadata.ASSEMBLY), props.get(ContigMetadata.MD5),
+        props.get(ContigMetadata.SPECIES),
+        props.get(ContigMetadata.TAXONOMY),
+        props.get(ContigMetadata.URL));
+  }
+
+
   public ContigMetadata(@Nonnull String id, long length, @Nonnull String assembly, @Nullable String md5,
       @Nullable String species, @Nullable String taxonomy, @Nullable String url) {
     super();

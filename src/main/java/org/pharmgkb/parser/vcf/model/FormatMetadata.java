@@ -40,6 +40,15 @@ public final class FormatMetadata extends IdDescriptionMetadata {
     init();
   }
 
+  public FormatMetadata(@Nonnull LinkedHashMap<String, String> props) {
+  this(
+    props.get(FormatMetadata.ID),
+        props.get(FormatMetadata.DESCRIPTION),
+        props.get(FormatMetadata.NUMBER),
+        FormatType.valueOf(props.get(FormatMetadata.TYPE))
+  );
+  }
+
   public void init() {
     String number = getPropertyRaw(NUMBER);
     if (number == null) {

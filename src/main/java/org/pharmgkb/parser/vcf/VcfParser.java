@@ -294,42 +294,22 @@ public class VcfParser implements Closeable {
     LinkedHashMap<String, String> props = VcfUtils.extractPropertiesFromLine(value);
     switch (propName.toLowerCase()) {
       case "alt":
-        mdBuilder.addAlt(new AltMetadata(
-            props.get(AltMetadata.ID),
-            props.get(AltMetadata.DESCRIPTION)));
+        mdBuilder.addAlt(new AltMetadata(props));
         break;
       case "filter":
-        mdBuilder.addFilter(new FilterMetadata(
-            props.get(FilterMetadata.ID),
-            props.get(FilterMetadata.DESCRIPTION)));
+        mdBuilder.addFilter(new FilterMetadata(props));
         break;
       case "info":
-        mdBuilder.addInfo(new InfoMetadata(
-            props.get(InfoMetadata.ID),
-            props.get(InfoMetadata.DESCRIPTION),
-            InfoType.valueOf(props.get(InfoMetadata.TYPE)), props.get(InfoMetadata.NUMBER),
-            props.get(InfoMetadata.SOURCE), props.get(InfoMetadata.VERSION)));
+        mdBuilder.addInfo(new InfoMetadata(props));
         break;
       case "format":
-        mdBuilder.addFormat(new FormatMetadata(
-            props.get(FormatMetadata.ID),
-            props.get(FormatMetadata.DESCRIPTION),
-            props.get(FormatMetadata.NUMBER),
-            FormatType.valueOf(props.get(FormatMetadata.TYPE))));
+        mdBuilder.addFormat(new FormatMetadata(props));
         break;
       case "contig":
-        mdBuilder.addContig(new ContigMetadata(
-            props.get(ContigMetadata.ID),
-            Long.parseLong(props.get(ContigMetadata.LENGTH)),
-            props.get(ContigMetadata.ASSEMBLY), props.get(ContigMetadata.MD5),
-            props.get(ContigMetadata.SPECIES),
-            props.get(ContigMetadata.TAXONOMY),
-            props.get(ContigMetadata.URL)));
+        mdBuilder.addContig(new ContigMetadata(props));
         break;
       case "sample":
-        mdBuilder.addSample(new SampleMetadata(
-            props.get(SampleMetadata.ID),
-            props.get(SampleMetadata.DESCRIPTION)));
+        mdBuilder.addSample(new SampleMetadata(props));
         break;
       case "pedigree":
         mdBuilder.addPedigree(new PedigreeMetadata(props));

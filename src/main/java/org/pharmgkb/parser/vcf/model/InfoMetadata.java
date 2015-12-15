@@ -55,6 +55,14 @@ public final class InfoMetadata extends IdDescriptionMetadata {
     init();
   }
 
+  public InfoMetadata(@Nonnull LinkedHashMap<String, String> props) {
+    this(
+        props.get(InfoMetadata.ID),
+        props.get(InfoMetadata.DESCRIPTION),
+        InfoType.valueOf(props.get(InfoMetadata.TYPE)), props.get(InfoMetadata.NUMBER),
+        props.get(InfoMetadata.SOURCE), props.get(InfoMetadata.VERSION));
+  }
+
   protected void init() {
     super.init();
     String number = getPropertyRaw(NUMBER);

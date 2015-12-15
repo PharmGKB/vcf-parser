@@ -1,6 +1,7 @@
 package org.pharmgkb.parser.vcf.model;
 
 import javax.annotation.Nonnull;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -8,9 +9,9 @@ import java.util.Map;
  */
 public final class RawMetadata extends IdMetadata {
 
-  public RawMetadata(@Nonnull String id) {
+  public RawMetadata(@Nonnull String string) {
     super();
-    putPropertyRaw(ID, id);
+    putPropertyRaw(ID, string);
   }
 
   @Nonnull

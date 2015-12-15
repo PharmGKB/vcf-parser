@@ -26,7 +26,7 @@ public class TransformingVcfLineParserTest {
       public void transformMetadata(@Nonnull VcfMetadata metadata) {
         // this is the only place where we can alter the metadata
         metadata.getInfo().put("TestInfo", new InfoMetadata("an_id", "a_description", InfoType.String, "G", null, null));
-        metadata.getFilters().put("Transformation", new IdDescriptionMetadata("Transformation", "A transformation was applied"));
+        metadata.getFilters().put("Transformation", new X("Transformation", "A transformation was applied"));
       }
 
       @Override
@@ -66,6 +66,14 @@ public class TransformingVcfLineParserTest {
       expectedResult = IOUtils.toString(br);
     }
     assertEquals(expectedResult, actualResult);
+  }
+
+  private static class X extends IdDescriptionMetadata {
+    public X(@Nonnull String id, @Nonnull String description) {
+      putPropertyRaw("ID", id);
+      putAndQuoteProperty("Description", description);
+      super.init();
+    }
   }
 
 }
