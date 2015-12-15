@@ -3,6 +3,7 @@ package org.pharmgkb.parser.vcf.model;
 import org.junit.Test;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
@@ -14,7 +15,7 @@ import static org.junit.Assert.assertEquals;
 public class ContigMetadataTest {
 
   public void testNoId() { // should warn
-    Map<String, String> map = new HashMap<>();
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put(ContigMetadata.URL, "one");
     new ContigMetadata(map);
   }
@@ -24,7 +25,7 @@ public class ContigMetadataTest {
    */
   @Test
   public void testExtraProperty() {
-    Map<String, String> map = new HashMap<>();
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put(ContigMetadata.ID, "id");
     map.put(ContigMetadata.ASSEMBLY, "assembly");
     map.put(ContigMetadata.LENGTH, "23");
@@ -33,7 +34,7 @@ public class ContigMetadataTest {
   }
 
   public void testBadLength() { // should warn
-    Map<String, String> map = new HashMap<>();
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put(ContigMetadata.ID, "id");
     map.put(ContigMetadata.ASSEMBLY, "assembly");
     map.put(ContigMetadata.LENGTH, "234asdgasdgasdg");
@@ -43,7 +44,7 @@ public class ContigMetadataTest {
 
   @Test
   public void testGetLength() {
-    Map<String, String> map = new HashMap<>();
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put(ContigMetadata.ID, "id");
     map.put(ContigMetadata.ASSEMBLY, "assembly");
     map.put(ContigMetadata.LENGTH, "23");
@@ -54,7 +55,7 @@ public class ContigMetadataTest {
 
   @Test
   public void testGetUrl() {
-    Map<String, String> map = new HashMap<>();
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put(ContigMetadata.ID, "id");
     map.put(ContigMetadata.ASSEMBLY, "assembly");
     map.put(ContigMetadata.LENGTH, "23");

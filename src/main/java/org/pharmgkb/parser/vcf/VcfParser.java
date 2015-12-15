@@ -2,6 +2,8 @@ package org.pharmgkb.parser.vcf;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.LinkedHashMultimap;
+import com.google.common.collect.LinkedListMultimap;
 import com.google.common.collect.ListMultimap;
 import org.apache.commons.io.IOUtils;
 import org.pharmgkb.parser.vcf.model.*;
@@ -194,9 +196,9 @@ public class VcfParser implements Closeable {
     }
 
     // INFO
-    ListMultimap<String, String> info = null;
+    LinkedListMultimap<String, String> info = null;
     if (!data.get(7).equals("") && !data.get(7).equals(".")) {
-      info = ArrayListMultimap.create();
+      info = LinkedListMultimap.create();
       List<String> props = toList(sf_semicolonSplitter, data.get(7));
       for (String prop : props) {
         int idx = prop.indexOf('=');
@@ -289,28 +291,48 @@ public class VcfParser implements Closeable {
    */
   private void parseMetadataProperty(@Nonnull VcfMetadata.Builder mdBuilder,
       @Nonnull String propName, @Nonnull String value) {
-    Map<String, String> props = VcfUtils.extractPropertiesFromLine(value);
+    LinkedHashMap<String, String> props = VcfUtils.extractPropertiesFromLine(value);
     switch (propName.toLowerCase()) {
       case "alt":
-        mdBuilder.addAlt(new IdDescriptionMetadata(props, true));
+        mdBuilder.addAlt(new AltMetadata(
+            props.get(AltMetadata.ID),
+            props.get(AltMetadata.DESCRIPTION)));
         break;
       case "filter":
-        mdBuilder.addFilter(new IdDescriptionMetadata(props, true));
+        mdBuilder.addFilter(new FilterMetadata(
+            props.get(FilterMetadata.ID),
+            props.get(FilterMetadata.DESCRIPTION)));
         break;
       case "info":
-        mdBuilder.addInfo(new InfoMetadata(props));
+        mdBuilder.addInfo(new InfoMetadata(
+            props.get(InfoMetadata.ID),
+            props.get(InfoMetadata.DESCRIPTION),
+            InfoType.valueOf(props.get(InfoMetadata.TYPE)), props.get(InfoMetadata.NUMBER),
+            props.get(InfoMetadata.SOURCE), props.get(InfoMetadata.VERSION)));
         break;
       case "format":
-        mdBuilder.addFormat(new FormatMetadata(props));
+        mdBuilder.addFormat(new FormatMetadata(
+            props.get(FormatMetadata.ID),
+            props.get(FormatMetadata.DESCRIPTION),
+            props.get(FormatMetadata.NUMBER),
+            FormatType.valueOf(props.get(FormatMetadata.TYPE))));
         break;
       case "contig":
-        mdBuilder.addContig(new ContigMetadata(props));
+        mdBuilder.addContig(new ContigMetadata(
+            props.get(ContigMetadata.ID),
+            Long.parseLong(props.get(ContigMetadata.LENGTH)),
+            props.get(ContigMetadata.ASSEMBLY), props.get(ContigMetadata.MD5),
+            props.get(ContigMetadata.SPECIES),
+            props.get(ContigMetadata.TAXONOMY),
+            props.get(ContigMetadata.URL)));
         break;
       case "sample":
-        mdBuilder.addSample(new IdDescriptionMetadata(props, true));
+        mdBuilder.addSample(new SampleMetadata(
+            props.get(SampleMetadata.ID),
+            props.get(SampleMetadata.DESCRIPTION)));
         break;
       case "pedigree":
-        mdBuilder.addPedigree(new BaseMetadata(props));
+        mdBuilder.addPedigree(new PedigreeMetadata(props));
         break;
     }
   }

@@ -1,7 +1,6 @@
 package org.pharmgkb.parser.vcf;
 
-import com.google.common.collect.ArrayListMultimap;
-import com.google.common.collect.ListMultimap;
+import com.google.common.collect.LinkedListMultimap;
 import org.junit.Test;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 
@@ -83,7 +82,7 @@ public class VcfPositionTest {
 
   @Test(expected = IllegalArgumentException.class)
   public void testInfoWithWhitespace() {
-    ListMultimap<String, String> map = ArrayListMultimap.create();
+    LinkedListMultimap<String, String> map = LinkedListMultimap.create();
     map.put("anid", "a\nvalue");
     new VcfPosition("chr1", 1, null, "C", null, null, null, map, null);
   }

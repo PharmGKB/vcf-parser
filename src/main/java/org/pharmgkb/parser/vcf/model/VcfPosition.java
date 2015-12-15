@@ -1,8 +1,7 @@
 package org.pharmgkb.parser.vcf.model;
 
 import com.google.common.base.Joiner;
-import com.google.common.collect.ArrayListMultimap;
-import com.google.common.collect.ListMultimap;
+import com.google.common.collect.LinkedListMultimap;
 import org.pharmgkb.parser.vcf.VcfUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,7 +44,7 @@ public class VcfPosition {
   private List<String> m_alleles = new ArrayList<>();
   private BigDecimal m_quality;
   private List<String> m_filter = new ArrayList<>();
-  private ListMultimap<String, String> m_info = ArrayListMultimap.create();
+  private LinkedListMultimap<String, String> m_info = LinkedListMultimap.create();
   private List<String> m_format = new ArrayList<>();
 
 
@@ -55,7 +54,7 @@ public class VcfPosition {
       @Nullable List<String> altBases,
       @Nullable BigDecimal qual,
       @Nullable List<String> filter,
-      @Nullable ListMultimap<String, String> info,
+      @Nullable LinkedListMultimap<String, String> info,
       @Nullable List<String> format) {
 
     /*
@@ -249,7 +248,7 @@ public class VcfPosition {
   /**
    * Gets all INFO fields for every key.
    */
-  public @Nonnull ListMultimap<String, String> getInfo() {
+  public @Nonnull LinkedListMultimap<String, String> getInfo() {
     return m_info;
   }
 

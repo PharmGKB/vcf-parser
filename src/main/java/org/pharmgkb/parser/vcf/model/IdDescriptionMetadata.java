@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.lang.invoke.MethodHandles;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 
@@ -27,27 +28,14 @@ public class IdDescriptionMetadata extends IdMetadata {
   public static final String ID = "ID";
   public static final String DESCRIPTION = "Description";
 
-  public IdDescriptionMetadata(@Nonnull String id, @Nonnull String description) {
-    this(id, description, true);
+  protected IdDescriptionMetadata() {
+    super();
   }
 
-  public IdDescriptionMetadata(@Nonnull Map<String, String> properties, boolean isBaseType) {
-    super(properties, false);
-    init(isBaseType);
-  }
-
-  protected IdDescriptionMetadata(@Nonnull String id, @Nonnull String description, boolean isBaseType) {
-    super(id);
-    putAndQuoteProperty(DESCRIPTION, description);
-    init(isBaseType);
-  }
-
-  private void init(boolean isBaseType) {
+  protected void init() {
+    super.init();
     if (getPropertyRaw(DESCRIPTION) == null) {
       sf_logger.warn("Required metadata property \"{}\" is missing", DESCRIPTION);
-    }
-    if (isBaseType) {
-      ensureNoExtras(ID, DESCRIPTION);
     }
   }
 
@@ -58,6 +46,5 @@ public class IdDescriptionMetadata extends IdMetadata {
   public String getDescription() {
     return getPropertyUnquoted(DESCRIPTION);
   }
-
 
 }

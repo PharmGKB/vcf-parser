@@ -1,24 +1,24 @@
 ##fileformat=VCFv4.2
-##INFO=<Type=Integer,Description="Total number of alternate alleles in called genotypes",Number=A,ID=AC>
-##INFO=<Type=Float,Description="Estimated allele frequency in the range (0,1)",Number=A,ID=AF>
-##INFO=<Type=Integer,Description="Number of samples with data",Number=1,ID=NS>
-##INFO=<Type=String,Description="a_description",Number=G,ID=an_id>
-##INFO=<Type=Integer,Description="Total number of alleles in called genotypes",Number=1,ID=AN>
+##INFO=<ID=AC,Number=A,Type=Integer,Description="Total number of alternate alleles in called genotypes">
+##INFO=<ID=AF,Number=A,Type=Float,Description="Estimated allele frequency in the range (0,1)">
+##INFO=<ID=NS,Number=1,Type=Integer,Description="Number of samples with data">
+##INFO=<ID=AN,Number=1,Type=Integer,Description="Total number of alleles in called genotypes">
 ##INFO=<Type=Flag,Description="Imprecise structural variation",Number=0,ID=IMPRECISE>
 ##INFO=<Type=Flag,Description="Appears in dbSNP",Number=0,ID=DB>
-##FILTER=<Description="A transformation was applied",ID=Transformation>
-##FILTER=<Description="All filters passed",ID=PASS>
-##FILTER=<Description="Something bad happened",ID=BAD>
-##FORMAT=<Type=Float,Description="Genotype quality",Number=1,ID=GQ>
-##FORMAT=<Type=String,Description="Genotype",Number=1,ID=GT>
-##ALT=<Description="Copy Number Polymorphism",ID=CNV>
-##contig=<assembly=b37,length=249250621,ID=1>
-##SAMPLE=<Description="test",ID=sample1,Genome=a;b;c;d>
-##SAMPLE=<Description="test",ID=sample2,Genome=a;b;c;d>
+##INFO=<ID=an_id,Number=G,Type=String,Description="a_description">
+##FILTER=<ID=PASS,Description="All filters passed">
+##FILTER=<ID=BAD,Description="Something bad happened">
+##FILTER=<ID=Transformation,Description="A transformation was applied">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=GQ,Number=1,Type=Float,Description="Genotype quality">
+##ALT=<ID=CNV,Description="Copy Number Polymorphism">
+##contig=<ID=1,assembly=b37,length=249250621>
+##SAMPLE=<ID=sample1,Genome=a;b;c;d,Description="test">
+##SAMPLE=<ID=sample2,Genome=a;b;c;d,Description="test">
 ##PEDIGREE=<NAME_0=A,NAME_1=B>
-##assembly=GRCh38
-##extraspecialproperty=<ID=sdfadsf>
 ##extraproperty=sdfadsf
+##extraspecialproperty=<ID=sdfadsf>
+##assembly=GRCh38
 ##pedigreeDB=<http://thismayormaynotbeavalidurl.vcf>
 #CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	sample1	sample2
 chr1	11	rsa	A	T	5	PASS	AC=1;AF=0.5;AN=15;DB	GT:GQ	.:2	.:2

@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.lang.invoke.MethodHandles;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 
@@ -19,7 +20,7 @@ import java.util.Map;
  *
  * @author Mark Woon
  */
-public class FormatMetadata extends IdDescriptionMetadata {
+public final class FormatMetadata extends IdDescriptionMetadata {
 
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
@@ -31,14 +32,11 @@ public class FormatMetadata extends IdDescriptionMetadata {
   private FormatType m_type;
 
   public FormatMetadata(@Nonnull String id, @Nonnull String description, @Nonnull String number, @Nonnull FormatType type) {
-    super(id, description, false);
+    super();
+    putPropertyRaw(ID, id);
     putPropertyRaw(NUMBER, number);
     putPropertyRaw(TYPE, type.name());
-    init();
-  }
-
-  public FormatMetadata(@Nonnull Map<String, String> properties) {
-    super(properties, false);
+    putAndQuoteProperty(DESCRIPTION, description);
     init();
   }
 

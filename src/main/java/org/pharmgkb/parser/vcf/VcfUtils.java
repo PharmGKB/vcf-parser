@@ -9,10 +9,7 @@ import org.pharmgkb.parser.vcf.model.ReservedProperty;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.regex.Pattern;
 
 /**
@@ -66,7 +63,7 @@ public class VcfUtils {
 
   public static final Pattern UNQUOTED_EQUAL_SIGN_PATTERN = Pattern.compile("=(?=([^\"]*\"[^\"]*\")*[^\"]*$)");
 
-  public static @Nonnull Map<String, String> extractPropertiesFromLine(@Nonnull String value) {
+  public static @Nonnull LinkedHashMap<String, String> extractPropertiesFromLine(@Nonnull String value) {
     String unescapedValue = value.replaceAll("\\\\", "~~~~");
     unescapedValue = unescapedValue.replaceAll("\\\\\"", "~!~!");
     boolean wasEscaped = !unescapedValue.equals(value);
@@ -80,8 +77,8 @@ public class VcfUtils {
     return extractProperties(cols);
   }
 
-  public static @Nonnull Map<String, String> extractProperties(@Nonnull String... props) {
-    Map<String, String> map = new HashMap<>();
+  public static @Nonnull LinkedHashMap<String, String> extractProperties(@Nonnull String... props) {
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
     for (String prop : props) {
       Pair<String, String> pair;
       try {

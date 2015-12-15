@@ -3,6 +3,7 @@ package org.pharmgkb.parser.vcf.model;
 import org.junit.Test;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
@@ -15,7 +16,7 @@ public class BaseMetadataTest {
 
   @Test
   public void testGetProperty() throws Exception {
-    Map<String, String> map = new HashMap<>();
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("test", "one");
     BaseMetadata metadata = new BaseMetadata(map);
     assertEquals("one", metadata.getPropertyRaw("test"));
@@ -23,14 +24,14 @@ public class BaseMetadataTest {
 
   @Test(expected = IllegalArgumentException.class)
   public void testKeyNewline() throws Exception {
-    Map<String, String> map = new HashMap<>();
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("test", "two\nlines");
     new BaseMetadata(map);
   }
 
   @Test(expected = IllegalArgumentException.class)
   public void testValueNewline() throws Exception {
-    Map<String, String> map = new HashMap<>();
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("second\ntest", "one");
     new BaseMetadata(map);
   }

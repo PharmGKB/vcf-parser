@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.lang.invoke.MethodHandles;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 
@@ -25,7 +26,7 @@ import java.util.Map;
  *
  * @author Mark Woon
  */
-public class InfoMetadata extends IdDescriptionMetadata {
+public final class InfoMetadata extends IdDescriptionMetadata {
 
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
@@ -40,9 +41,11 @@ public class InfoMetadata extends IdDescriptionMetadata {
 
   public InfoMetadata(@Nonnull String id, @Nonnull String description, @Nonnull InfoType type, @Nonnull String number,
       @Nullable String source, @Nullable String version) {
-    super(id, description);
+    super();
+    putPropertyRaw(ID, id);
     putPropertyRaw(NUMBER, number);
     putPropertyRaw(TYPE, type.name());
+    putAndQuoteProperty(DESCRIPTION, description);
     if (source != null) {
       putAndQuoteProperty(SOURCE, source);
     }
@@ -52,12 +55,8 @@ public class InfoMetadata extends IdDescriptionMetadata {
     init();
   }
 
-  public InfoMetadata(@Nonnull Map<String, String> properties) {
-    super(properties, false);
-    init();
-  }
-
-  private void init() {
+  protected void init() {
+    super.init();
     String number = getPropertyRaw(NUMBER);
     assert number != null;
     if (!VcfUtils.NUMBER_PATTERN.matcher(number).matches()) {

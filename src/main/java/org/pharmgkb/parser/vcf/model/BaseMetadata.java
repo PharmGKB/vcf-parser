@@ -18,15 +18,18 @@ public class BaseMetadata {
 
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-  private Map<String, String> m_properties;
+  private LinkedHashMap<String, String> m_properties;
 
-  public BaseMetadata(@Nonnull Map<String, String> properties) {
-    for (Map.Entry<String, String> entry : properties.entrySet()) {
+  protected BaseMetadata() {
+    m_properties = new LinkedHashMap<>();
+  }
+
+  protected void init() {
+    for (Map.Entry<String, String> entry : m_properties.entrySet()) {
       if (entry.getKey().contains("\n") || entry.getValue().contains("\n")) {
         throw new IllegalArgumentException("INFO [[[" + entry.getKey() + "=" + entry.getValue() + "]]] contains a newline");
       }
     }
-    m_properties = properties;
   }
 
   @Nullable
@@ -45,7 +48,7 @@ public class BaseMetadata {
 
   @Nonnull
   public Map<String, String> getPropertiesUnquoted() {
-    Map<String, String> map = new HashMap<>();
+    Map<String, String> map = new LinkedHashMap<>();
     for (Map.Entry<String, String>  entry : m_properties.entrySet()) {
       map.put(entry.getKey(), VcfUtils.unquote(entry.getValue()));
     }
@@ -85,6 +88,23 @@ public class BaseMetadata {
     m_properties.keySet().stream().filter(property -> !set.contains(property)).forEach(property -> {
       sf_logger.warn("Metadata line contains unexpected property {}", property);
     });
+  }
+
+  @Nonnull
+  public String asVcfString(@Nonnull String metadataTypeName) {
+    // note that this gets overriden in RawMetadata
+    StringBuilder sb = new StringBuilder("##");
+    sb.append(metadataTypeName).append("=<");
+    int i = 0;
+    for (Map.Entry<String, String> entry : getPropertiesRaw().entrySet()) {
+      if (i > 0) {
+        sb.append(",");
+      }
+      sb.append(entry.getKey()).append("=").append(entry.getValue());
+      i++;
+    }
+    sb.append(">");
+    return sb.toString();
   }
 
 }

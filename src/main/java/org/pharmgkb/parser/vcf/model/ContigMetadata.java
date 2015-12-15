@@ -8,13 +8,14 @@ import javax.annotation.Nullable;
 import java.lang.invoke.MethodHandles;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
  * VCF metadata for contig=&lt;&gt; elements.
  * @author Douglas Myers-Turnbull
  */
-public class ContigMetadata extends IdMetadata {
+public final class ContigMetadata extends IdMetadata {
 
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
@@ -28,7 +29,8 @@ public class ContigMetadata extends IdMetadata {
 
   public ContigMetadata(@Nonnull String id, long length, @Nonnull String assembly, @Nullable String md5,
       @Nullable String species, @Nullable String taxonomy, @Nullable String url) {
-    super(id, false);
+    super();
+    putPropertyRaw(ID, id);
     putPropertyRaw(LENGTH, String.valueOf(length));
     putPropertyRaw(ASSEMBLY, assembly);
     if (md5 != null) {
@@ -48,11 +50,6 @@ public class ContigMetadata extends IdMetadata {
       }
     }
     putPropertyRaw(URL, url);
-    init();
-  }
-
-  public ContigMetadata(@Nonnull Map<String, String> properties) {
-    super(properties, false);
     init();
   }
 
@@ -89,7 +86,8 @@ public class ContigMetadata extends IdMetadata {
     return getPropertyRaw(URL);
   }
 
-  private void init() {
+  protected void init() {
+    super.init();
     if (getPropertyUnquoted(ASSEMBLY) == null) {
       sf_logger.warn("Required metadata property \"{}\" is missing", ASSEMBLY);
     }

@@ -1,6 +1,6 @@
 package org.pharmgkb.parser.vcf.model.genotype;
 
-import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.LinkedListMultimap;
 import org.junit.Test;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
@@ -51,7 +51,7 @@ public class VcfGenotypeTest {
 
     List<String> alts = Arrays.asList("G", "AAA", "<ID>", "C[2:321682[");
     VcfPosition position = new VcfPosition("chr1", 1, Arrays.asList("id"), "A", alts, new BigDecimal("0.0"),
-        Arrays.asList(), ArrayListMultimap.create(), Arrays.asList("GT"));
+        Arrays.asList(), LinkedListMultimap.create(), Arrays.asList("GT"));
 
     VcfGenotype genotype1 = makeGenotype(position, "0/1");
     assertEquals("A/G", genotype1.toString());

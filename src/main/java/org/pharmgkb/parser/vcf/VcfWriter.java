@@ -213,10 +213,10 @@ public class VcfWriter implements Closeable {
       }
 
       sb.append(key);
-      if (!values.isEmpty() && !(values.size() == 1 && values.get(0).isEmpty())) {
-        sb.append("=").append(values.get(0));
-        for (int i = 1; i < values.size(); i++) {
-          sb.append(",").append(values.get(i));
+      if (!values.isEmpty()) {
+        String first = values.iterator().next();
+        if (!first.isEmpty()) {
+          sb.append("=").append(String.join(",", values));
         }
       }
       if (keys.hasNext()) {
@@ -261,18 +261,7 @@ public class VcfWriter implements Closeable {
   }
 
   private String getAllProperties(@Nonnull String name, @Nonnull BaseMetadata metadata) {
-    StringBuilder sb = new StringBuilder("##");
-    sb.append(name).append("=<");
-    int i = 0;
-    for (Map.Entry<String, String> entry : metadata.getPropertiesRaw().entrySet()) {
-      if (i > 0) {
-        sb.append(",");
-      }
-      sb.append(entry.getKey()).append("=").append(entry.getValue());
-      i++;
-    }
-    sb.append(">");
-    return sb.toString();
+    return metadata.asVcfString(name);
   }
 
   public static class Builder {

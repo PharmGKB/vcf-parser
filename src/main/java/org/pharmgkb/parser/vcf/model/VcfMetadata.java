@@ -1,13 +1,18 @@
 package org.pharmgkb.parser.vcf.model;
 
+import com.google.common.base.Functions;
+import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.LinkedListMultimap;
 import com.google.common.collect.ListMultimap;
+import com.sun.xml.internal.rngom.parse.host.Base;
 import org.pharmgkb.parser.vcf.VcfUtils;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.*;
+import java.util.stream.Collectors;
 
 
 /**
@@ -16,37 +21,33 @@ import java.util.*;
  * @author Mark Woon
  */
 public class VcfMetadata {
+
   private String m_fileFormat;
-  private Map<String, IdDescriptionMetadata> m_alt;
-  private Map<String, InfoMetadata> m_info;
-  private Map<String, IdDescriptionMetadata> m_filter;
-  private Map<String, FormatMetadata> m_format;
   private List<String> m_columns;
-  private ListMultimap<String, String> m_properties;
-  private Map<String, ContigMetadata> m_contig;
-  private Map<String, IdDescriptionMetadata> m_sample;
-  private List<BaseMetadata> m_pedigree;
 
+  private LinkedListMultimap<UniqueMetadataKey, IdMetadata> m_metadataWithId;
 
-  private VcfMetadata(@Nonnull String fileFormat, @Nullable Map<String, IdDescriptionMetadata> alt,
-      @Nullable Map<String, InfoMetadata> info, @Nullable Map<String, IdDescriptionMetadata> filter,
-      @Nullable Map<String, FormatMetadata> format, @Nullable Map<String, ContigMetadata> contig,
-      @Nullable Map<String, IdDescriptionMetadata> sample, @Nullable List<BaseMetadata> pedigree,
-      @Nonnull List<String> columns, @Nullable ListMultimap<String, String> properties) {
+  private VcfMetadata(@Nonnull String fileFormat, @Nullable LinkedHashMap<String, IdDescriptionMetadata> alt,
+      @Nullable LinkedHashMap<String, InfoMetadata> info, @Nullable LinkedHashMap<String, IdDescriptionMetadata> filter,
+      @Nullable LinkedHashMap<String, FormatMetadata> format, @Nullable LinkedHashMap<String, ContigMetadata> contig,
+      @Nullable LinkedHashMap<String, IdDescriptionMetadata> sample, @Nullable List<BaseMetadata> pedigree,
+      @Nonnull List<String> columns, @Nullable LinkedListMultimap<String, String> properties) {
+
     Preconditions.checkNotNull(fileFormat);
     Preconditions.checkNotNull(columns);
-    m_fileFormat = fileFormat;
-    m_alt        = alt==null?        new HashMap<>()            : alt;
-    m_info       = info==null?       new HashMap<>()            : info;
-    m_filter     = filter==null?     new HashMap<>()            : filter;
-    m_format     = format==null?     new HashMap<>()            : format;
-    m_contig     = contig==null?     new HashMap<>()            : contig;
-    m_sample     = sample==null?     new HashMap<>()            : sample;
-    m_pedigree   = pedigree==null?   new ArrayList<>()          : pedigree;
-    m_properties = properties==null? ArrayListMultimap.create() : properties;
-    m_columns    = columns;
-  }
 
+    m_fileFormat = fileFormat;
+    m_columns    = columns;
+
+    if (alt != null) alt.entrySet().forEach(e -> m_metadataWithId.put(new UniqueMetadataKey(MetadataType.ALT, e.getKey()), e.getValue()));
+    if (info != null) info.entrySet().forEach(e -> m_metadataWithId.put(new UniqueMetadataKey(MetadataType.INFO, e.getKey()), e.getValue()));
+    if (filter != null) filter.entrySet().forEach(e -> m_metadataWithId.put(new UniqueMetadataKey(MetadataType.FILTER, e.getKey()), e.getValue()));
+    if (format != null) format.entrySet().forEach(e -> m_metadataWithId.put(new UniqueMetadataKey(MetadataType.FORMAT, e.getKey()), e.getValue()));
+    if (contig != null) contig.entrySet().forEach(e -> m_metadataWithId.put(new UniqueMetadataKey(MetadataType.CONTIG, e.getKey()), e.getValue()));
+    if (info != null) info.entrySet().forEach(e -> m_metadataWithId.put(new UniqueMetadataKey(MetadataType.INFO, e.getKey()), e.getValue()));
+    if (sample != null) sample.entrySet().forEach(e -> m_metadataWithId.put(new UniqueMetadataKey(MetadataType.SAMPLE, e.getKey()), e.getValue()));
+
+  }
 
   public @Nonnull String getFileFormat() {
     return m_fileFormat;
@@ -59,8 +60,46 @@ public class VcfMetadata {
     m_fileFormat = fileFormat;
   }
 
+  @SuppressWarnings("unchecked")
+  private <T extends IdMetadata> LinkedListMultimap<String, T> getAllOfTypeRaw(@Nonnull MetadataType type) {
+    LinkedListMultimap m = LinkedListMultimap.create();
+    m_metadataWithId.entries().stream()
+        .filter(e -> e.getKey().getType() == type)
+        .forEach(e -> m.put(e.getKey(), e.getValue()));
+    return m;
+  }
+
+  @SuppressWarnings("unchecked")
+  private <T extends IdMetadata> LinkedHashMap<String, T> getAllOfType(@Nonnull MetadataType type) {
+    LinkedHashMap<String, T> m = new LinkedHashMap<>();
+    m_metadataWithId.entries().stream()
+        .filter(e -> e.getKey().getType() == type)
+        .forEach(e -> m.put(e.getKey().getKey(), (T)e.getValue()));
+    return m;
+  }
+
+  @SuppressWarnings("unchecked")
+  private <T extends IdMetadata> List<T> getOfType(@Nonnull MetadataType type, @Nonnull String id) {
+    return (List<T>)m_metadataWithId.get(new UniqueMetadataKey(type, id));
+  }
+
+  private void putOfType(@Nonnull MetadataType type, @Nonnull String id, @Nonnull IdMetadata value) {
+    if (type != MetadataType.UNDEFINED && !getOfType(type, id).isEmpty()) {
+      throw new IllegalArgumentException("Can't add duplicate metadata ID=" + id + " of type " + type);
+    }
+    m_metadataWithId.put(new UniqueMetadataKey(type, id), value);
+  }
+
+  private void removeOfType(@Nonnull MetadataType type, @Nonnull String id, @Nonnull IdMetadata value) {
+    m_metadataWithId.remove(new UniqueMetadataKey(type, id), value);
+  }
+
+  private void removeAllOfType(@Nonnull MetadataType type, @Nonnull String id) {
+    m_metadataWithId.removeAll(new UniqueMetadataKey(type, id));
+  }
+
   public @Nonnull Map<String, IdDescriptionMetadata> getAlts() {
-    return m_alt;
+    return getAllOfType(MetadataType.ALT);
   }
 
   /**
@@ -70,36 +109,33 @@ public class VcfMetadata {
    */
   @Nullable
   public IdDescriptionMetadata getAlt(@Nonnull String id) {
-    IdDescriptionMetadata md = m_alt.get(id);
-    if (md == null && id.startsWith("<") && id.endsWith(">")) {
-      md = m_alt.get(id.substring(1, id.length() - 1));
-    }
-    return md;
+    return (IdDescriptionMetadata) getOfType(MetadataType.ALT, id).get(0);
   }
 
-
   public @Nonnull Map<String, InfoMetadata> getInfo() {
-    return m_info;
+    return getAllOfType(MetadataType.INFO);
   }
 
   public @Nonnull Map<String, IdDescriptionMetadata> getFilters() {
-    return m_filter;
+    return getAllOfType(MetadataType.FILTER);
   }
 
   public @Nonnull Map<String, FormatMetadata> getFormats() {
-    return m_format;
+    return getAllOfType(MetadataType.FORMAT);
   }
 
   public @Nonnull Map<String, ContigMetadata> getContigs() {
-    return m_contig;
-  }
-
-  public @Nonnull List<BaseMetadata> getPedigrees() {
-    return m_pedigree;
+    return getAllOfType(MetadataType.CONTIG);
   }
 
   public @Nonnull Map<String, IdDescriptionMetadata> getSamples() {
-    return m_sample;
+    return getAllOfType(MetadataType.SAMPLE);
+  }
+
+  public @Nonnull List<BaseMetadata> getPedigrees() {
+    List<BaseMetadata> m = new ArrayList<>();
+    getAllOfTypeRaw(MetadataType.PEDIGREE).values().forEach(m::add); // because Java generics are invariant
+    return m;
   }
 
   /**
@@ -107,7 +143,11 @@ public class VcfMetadata {
    */
   public @Nonnull List<String> getAssemblies() {
     // spec says: ##assembly=url (without angle brackets)
-    return m_properties.get("assembly");
+    List<String> m = new ArrayList<>();
+    getAllOfTypeRaw(MetadataType.UNDEFINED).values().stream()
+        .filter(e -> e.getId().equals("assembly"))
+        .forEach(IdMetadata::getId); // because Java generics are invariant
+    return m;
   }
 
   /**
@@ -115,42 +155,46 @@ public class VcfMetadata {
    */
   public @Nonnull List<String> getPedigreeDatabases() {
     // spec says: ##pedigreeDB=<url> (with angle brackets)
-    return m_properties.get("pedigreeDB");
+    List<String> m = new ArrayList<>();
+    getAllOfTypeRaw(MetadataType.UNDEFINED).values().stream()
+        .filter(e -> e.getId().equals("pedigreeDB"))
+        .forEach(IdMetadata::getId); // because Java generics are invariant
+    return m;
   }
 
   /**
    * Adds {@code value} to the map of ALT metadata, using its {@link IdDescriptionMetadata#getId() ID} as the key.
    */
   public void addAlt(@Nonnull IdDescriptionMetadata value) {
-    m_alt.put(value.getId(), value);
+    putOfType(MetadataType.ALT, value.getId(), value);
   }
 
   /**
    * Adds {@code value} to the map of INFO metadata, using its {@link InfoMetadata#getId() ID} as the key.
    */
   public void addInfo(@Nonnull InfoMetadata value) {
-    m_info.put(value.getId(), value);
+    putOfType(MetadataType.INFO, value.getId(), value);
   }
 
   /**
    * Adds {@code value} to the map of FORMAT metadata, using its {@link FormatMetadata#getId() ID} as the key.
    */
   public void addFormat(@Nonnull FormatMetadata value) {
-    m_format.put(value.getId(), value);
+    putOfType(MetadataType.FORMAT, value.getId(), value);
   }
 
   /**
    * Adds {@code value} to the map of CONTIG metadata, using its {@link ContigMetadata#getId() ID} as the key.
    */
   public void addContig(@Nonnull ContigMetadata value) {
-    m_contig.put(value.getId(), value);
+    putOfType(MetadataType.CONTIG, value.getId(), value);
   }
 
   /**
    * Adds {@code value} to the map of FILTER metadata, using its {@link IdDescriptionMetadata#getId() ID} as the key.
    */
   public void addFilter(@Nonnull IdDescriptionMetadata value) {
-    m_filter.put(value.getId(), value);
+    putOfType(MetadataType.FILTER, value.getId(), value);
   }
 
   /**
@@ -158,7 +202,7 @@ public class VcfMetadata {
    * @param value Should not be wrapped in angle brackets
    */
   public void addAssembly(@Nonnull String value) {
-    m_properties.put("assembly", value);
+    putOfType(MetadataType.UNDEFINED, "assembly", new RawMetadata(value));
   }
 
   /**
@@ -168,34 +212,34 @@ public class VcfMetadata {
    */
   public void addPedigreeDatabase(@Nonnull String value) {
     if (value.startsWith("<") && value.endsWith(">")) {
-      m_properties.put("pedigreeDB", value);
+      putOfType(MetadataType.UNDEFINED, "assembly", new RawMetadata(value));
     } else {
       throw new IllegalArgumentException("pedigreeDB string " + value + " should be enclosed in angle brackets according to spec");
     }
   }
 
   public void removeAlt(@Nonnull IdDescriptionMetadata value) {
-    m_alt.remove(value.getId());
+    removeOfType(MetadataType.ALT, value.getId(), value);
   }
 
   public void removeInfo(@Nonnull InfoMetadata value) {
-    m_info.remove(value.getId());
+    removeOfType(MetadataType.INFO, value.getId(), value);
   }
 
   public void removeFormat(@Nonnull FormatMetadata value) {
-    m_format.remove(value.getId());
+    removeOfType(MetadataType.FORMAT, value.getId(), value);
   }
 
   public void removeContig(@Nonnull ContigMetadata value) {
-    m_contig.remove(value.getId());
+    removeOfType(MetadataType.CONTIG, value.getId(), value);
   }
 
   public void removeFilter(@Nonnull IdDescriptionMetadata value) {
-    m_filter.remove(value.getId());
+    removeOfType(MetadataType.FILTER, value.getId(), value);
   }
 
   public void removeAssembly(@Nonnull String value) {
-    m_properties.remove("assembly", value);
+    removeOfType(MetadataType.UNDEFINED, "assembly", new RawMetadata(value));
   }
 
   /**
@@ -205,7 +249,7 @@ public class VcfMetadata {
    */
   public void removePedigreeDb(@Nonnull String value) {
     if (value.startsWith("<") && value.endsWith(">")) {
-      m_properties.remove("pedigreeDB", value);
+      removeOfType(MetadataType.UNDEFINED, "pedigreeDB", new RawMetadata(value));
     } else { // be strict to avoid needing to delete both value and <value>
       throw new IllegalArgumentException("pedigreeDB string " + value + " should be enclosed in angle brackets according to spec");
     }
@@ -227,7 +271,11 @@ public class VcfMetadata {
    * However, contains any in {@link #getAssemblies} and {@link #getPedigreeDatabases}.
    */
   public @Nonnull ListMultimap<String, String> getRawProperties() {
-    return m_properties;
+    LinkedListMultimap<String, String> m = LinkedListMultimap.create();
+    m_metadataWithId.entries().stream()
+        .filter(e -> e.getKey().getType() == MetadataType.UNDEFINED)
+        .forEach(e -> m.put(e.getKey().getKey(), e.getValue().asVcfString("")));
+    return m;
   }
 
   /**
@@ -236,7 +284,7 @@ public class VcfMetadata {
    * {@code assembly} and {@code pedigreeDB} are still included.</strong>
    */
   public @Nonnull List<String> getRawValuesOfProperty(@Nonnull String propertyKey) {
-    return m_properties.get(propertyKey);
+    return getRawProperties().get(propertyKey);
   }
 
   /**
@@ -255,8 +303,14 @@ public class VcfMetadata {
    * </ul>
    * However, contains any in {@link #getAssemblies} and {@link #getPedigreeDatabases}.
    */
-  public @Nonnull Set<String> getRawPropertyKeys() {
-    return m_properties.keySet();
+  public @Nonnull List<String> getRawPropertyKeys() {
+    return m_metadataWithId.keySet().stream()
+        .map(UniqueMetadataKey::getKey)
+        .collect(Collectors.toList());
+  }
+
+  public List<Map.Entry<UniqueMetadataKey, IdMetadata>> getAllMetadataInOrder() {
+    return m_metadataWithId.entries();
   }
 
   public int getColumnIndex(@Nonnull String column) {
@@ -295,15 +349,15 @@ public class VcfMetadata {
 
   public static class Builder {
     private String m_fileFormat;
-    private Map<String, IdDescriptionMetadata> m_alt = new HashMap<>();
-    private Map<String, InfoMetadata> m_info = new HashMap<>();
-    private Map<String, IdDescriptionMetadata> m_filter = new HashMap<>();
-    private Map<String, FormatMetadata> m_format = new HashMap<>();
-    private Map<String, ContigMetadata> m_contig = new HashMap<>();
-    private Map<String, IdDescriptionMetadata> m_sample = new HashMap<>();
+    private LinkedHashMap<String, IdDescriptionMetadata> m_alt = new LinkedHashMap<>();
+    private LinkedHashMap<String, InfoMetadata> m_info = new LinkedHashMap<>();
+    private LinkedHashMap<String, IdDescriptionMetadata> m_filter = new LinkedHashMap<>();
+    private LinkedHashMap<String, FormatMetadata> m_format = new LinkedHashMap<>();
+    private LinkedHashMap<String, ContigMetadata> m_contig = new LinkedHashMap<>();
+    private LinkedHashMap<String, IdDescriptionMetadata> m_sample = new LinkedHashMap<>();
     private List<BaseMetadata> m_pedigree = new ArrayList<>();
     private List<String> m_columns = new ArrayList<>();
-    private ListMultimap<String, String> m_properties = ArrayListMultimap.create();
+    private LinkedListMultimap<String, String> m_properties = LinkedListMultimap.create();
 
     /**
      * Sets the VCF version string.
@@ -388,5 +442,50 @@ public class VcfMetadata {
       return new VcfMetadata(m_fileFormat, m_alt, m_info, m_filter, m_format, m_contig, m_sample, m_pedigree,
           m_columns, m_properties);
     }
+  }
+
+  /**
+   * A key for metadata objects that's guaranteed to be unique.
+   * If the metadata object is not a form of {@link IdMetadata}, the entire text of the metadata value is used.
+   */
+  static class UniqueMetadataKey {
+
+    private final MetadataType m_type;
+    private final String m_key;
+
+    public UniqueMetadataKey(@Nonnull MetadataType type, @Nonnull String key) {
+      m_type = type;
+      m_key = key;
+    }
+
+    public @Nonnull MetadataType getType() {
+      return m_type;
+    }
+
+    public @Nonnull String getKey() {
+      return m_key;
+    }
+
+    @Override
+    public String toString() {
+      return MoreObjects.toStringHelper(this).add("type", m_type).add("key", m_key).toString();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (o == null || getClass() != o.getClass()) return false;
+      UniqueMetadataKey that = (UniqueMetadataKey) o;
+      return m_type == that.m_type && m_key.equals(that.m_key);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(m_type, m_key);
+    }
+  }
+
+  private enum MetadataType {
+    ALT, INFO, FILTER, FORMAT, CONTIG, SAMPLE, PEDIGREE, UNDEFINED
   }
 }
