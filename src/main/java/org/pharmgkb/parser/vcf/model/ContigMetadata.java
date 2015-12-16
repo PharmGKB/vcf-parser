@@ -8,6 +8,7 @@ import javax.annotation.Nullable;
 import java.lang.invoke.MethodHandles;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -51,7 +52,7 @@ public class ContigMetadata extends IdMetadata {
     init();
   }
 
-  public ContigMetadata(@Nonnull Map<String, String> properties) {
+  public ContigMetadata(@Nonnull LinkedHashMap<String, String> properties) {
     super(properties, false);
     init();
   }

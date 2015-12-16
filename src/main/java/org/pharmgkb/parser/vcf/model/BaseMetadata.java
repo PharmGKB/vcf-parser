@@ -18,9 +18,9 @@ public class BaseMetadata {
 
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-  private Map<String, String> m_properties;
+  private LinkedHashMap<String, String> m_properties;
 
-  public BaseMetadata(@Nonnull Map<String, String> properties) {
+  public BaseMetadata(@Nonnull LinkedHashMap<String, String> properties) {
     for (Map.Entry<String, String> entry : properties.entrySet()) {
       if (entry.getKey().contains("\n") || entry.getValue().contains("\n")) {
         throw new IllegalArgumentException("INFO [[[" + entry.getKey() + "=" + entry.getValue() + "]]] contains a newline");

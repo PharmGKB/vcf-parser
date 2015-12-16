@@ -1,7 +1,7 @@
 package org.pharmgkb.parser.vcf.model;
 
 import com.google.common.base.Preconditions;
-import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.LinkedListMultimap;
 import com.google.common.collect.ListMultimap;
 import org.pharmgkb.parser.vcf.VcfUtils;
 
@@ -16,23 +16,25 @@ import java.util.*;
  * @author Mark Woon
  */
 public class VcfMetadata {
+
+  // TODO Preserve order of annotations, irrespective of type
   private String m_fileFormat;
-  private Map<String, IdDescriptionMetadata> m_alt;
-  private Map<String, InfoMetadata> m_info;
-  private Map<String, IdDescriptionMetadata> m_filter;
-  private Map<String, FormatMetadata> m_format;
+  private HashMap<String, IdDescriptionMetadata> m_alt;
+  private HashMap<String, InfoMetadata> m_info;
+  private HashMap<String, IdDescriptionMetadata> m_filter;
+  private HashMap<String, FormatMetadata> m_format;
   private List<String> m_columns;
   private ListMultimap<String, String> m_properties;
-  private Map<String, ContigMetadata> m_contig;
-  private Map<String, IdDescriptionMetadata> m_sample;
+  private HashMap<String, ContigMetadata> m_contig;
+  private HashMap<String, IdDescriptionMetadata> m_sample;
   private List<BaseMetadata> m_pedigree;
 
 
-  private VcfMetadata(@Nonnull String fileFormat, @Nullable Map<String, IdDescriptionMetadata> alt,
-      @Nullable Map<String, InfoMetadata> info, @Nullable Map<String, IdDescriptionMetadata> filter,
-      @Nullable Map<String, FormatMetadata> format, @Nullable Map<String, ContigMetadata> contig,
-      @Nullable Map<String, IdDescriptionMetadata> sample, @Nullable List<BaseMetadata> pedigree,
-      @Nonnull List<String> columns, @Nullable ListMultimap<String, String> properties) {
+  private VcfMetadata(@Nonnull String fileFormat, @Nullable LinkedHashMap<String, IdDescriptionMetadata> alt,
+      @Nullable LinkedHashMap<String, InfoMetadata> info, @Nullable LinkedHashMap<String, IdDescriptionMetadata> filter,
+      @Nullable LinkedHashMap<String, FormatMetadata> format, @Nullable LinkedHashMap<String, ContigMetadata> contig,
+      @Nullable LinkedHashMap<String, IdDescriptionMetadata> sample, @Nullable List<BaseMetadata> pedigree,
+      @Nonnull List<String> columns, @Nullable LinkedListMultimap<String, String> properties) {
     Preconditions.checkNotNull(fileFormat);
     Preconditions.checkNotNull(columns);
     m_fileFormat = fileFormat;
@@ -43,7 +45,7 @@ public class VcfMetadata {
     m_contig     = contig==null?     new HashMap<>()            : contig;
     m_sample     = sample==null?     new HashMap<>()            : sample;
     m_pedigree   = pedigree==null?   new ArrayList<>()          : pedigree;
-    m_properties = properties==null? ArrayListMultimap.create() : properties;
+    m_properties = properties==null? LinkedListMultimap.create() : properties;
     m_columns    = columns;
   }
 
@@ -295,15 +297,15 @@ public class VcfMetadata {
 
   public static class Builder {
     private String m_fileFormat;
-    private Map<String, IdDescriptionMetadata> m_alt = new HashMap<>();
-    private Map<String, InfoMetadata> m_info = new HashMap<>();
-    private Map<String, IdDescriptionMetadata> m_filter = new HashMap<>();
-    private Map<String, FormatMetadata> m_format = new HashMap<>();
-    private Map<String, ContigMetadata> m_contig = new HashMap<>();
-    private Map<String, IdDescriptionMetadata> m_sample = new HashMap<>();
+    private LinkedHashMap<String, IdDescriptionMetadata> m_alt = new LinkedHashMap<>();
+    private LinkedHashMap<String, InfoMetadata> m_info = new LinkedHashMap<>();
+    private LinkedHashMap<String, IdDescriptionMetadata> m_filter = new LinkedHashMap<>();
+    private LinkedHashMap<String, FormatMetadata> m_format = new LinkedHashMap<>();
+    private LinkedHashMap<String, ContigMetadata> m_contig = new LinkedHashMap<>();
+    private LinkedHashMap<String, IdDescriptionMetadata> m_sample = new LinkedHashMap<>();
     private List<BaseMetadata> m_pedigree = new ArrayList<>();
     private List<String> m_columns = new ArrayList<>();
-    private ListMultimap<String, String> m_properties = ArrayListMultimap.create();
+    private LinkedListMultimap<String, String> m_properties = LinkedListMultimap.create();
 
     /**
      * Sets the VCF version string.

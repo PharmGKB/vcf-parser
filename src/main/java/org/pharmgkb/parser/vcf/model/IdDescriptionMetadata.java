@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.lang.invoke.MethodHandles;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 
@@ -31,7 +32,7 @@ public class IdDescriptionMetadata extends IdMetadata {
     this(id, description, true);
   }
 
-  public IdDescriptionMetadata(@Nonnull Map<String, String> properties, boolean isBaseType) {
+  public IdDescriptionMetadata(@Nonnull LinkedHashMap<String, String> properties, boolean isBaseType) {
     super(properties, false);
     init(isBaseType);
   }

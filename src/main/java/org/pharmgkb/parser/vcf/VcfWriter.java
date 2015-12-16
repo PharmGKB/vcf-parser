@@ -198,7 +198,7 @@ public class VcfWriter implements Closeable {
         for (String value : values) {
           Integer number = null;
           try {
-            number = Integer.parseInt(info.getNumber());;
+            number = Integer.parseInt(info.getNumber());
           } catch (NumberFormatException ignored) {}
           // if the number is anything but 1, it might be a list of something else, represented as a string
           // in that case, we can't compare
@@ -213,10 +213,10 @@ public class VcfWriter implements Closeable {
       }
 
       sb.append(key);
-      if (!values.isEmpty() && !(values.size() == 1 && values.get(0).isEmpty())) {
-        sb.append("=").append(values.get(0));
-        for (int i = 1; i < values.size(); i++) {
-          sb.append(",").append(values.get(i));
+      if (!values.isEmpty()) {
+        String first = values.iterator().next();
+        if (!first.isEmpty()) {
+          sb.append("=").append(String.join(",", values));
         }
       }
       if (keys.hasNext()) {

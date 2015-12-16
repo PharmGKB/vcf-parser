@@ -7,6 +7,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.lang.invoke.MethodHandles;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -22,17 +23,17 @@ public class IdMetadata extends BaseMetadata {
     this(id, true);
   }
 
-  public IdMetadata(@Nonnull Map<String, String> properties) {
+  public IdMetadata(@Nonnull LinkedHashMap<String, String> properties) {
     this(properties, true);
   }
 
   protected IdMetadata(@Nonnull String id, boolean isBaseType) {
-    super(new HashMap<>());
+    super(new LinkedHashMap<>());
     putPropertyRaw(ID, id);
     init(isBaseType);
   }
 
-  protected IdMetadata(@Nonnull Map<String, String> properties, boolean isBaseType) {
+  protected IdMetadata(@Nonnull LinkedHashMap<String, String> properties, boolean isBaseType) {
     super(properties);
     init(isBaseType);
   }

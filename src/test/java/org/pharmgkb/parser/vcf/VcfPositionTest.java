@@ -1,6 +1,7 @@
 package org.pharmgkb.parser.vcf;
 
 import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.LinkedHashMultimap;
 import com.google.common.collect.ListMultimap;
 import org.junit.Test;
 import org.pharmgkb.parser.vcf.model.VcfPosition;

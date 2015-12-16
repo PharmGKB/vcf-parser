@@ -289,7 +289,7 @@ public class VcfParser implements Closeable {
    */
   private void parseMetadataProperty(@Nonnull VcfMetadata.Builder mdBuilder,
       @Nonnull String propName, @Nonnull String value) {
-    Map<String, String> props = VcfUtils.extractPropertiesFromLine(value);
+    LinkedHashMap<String, String> props = VcfUtils.extractPropertiesFromLine(value);
     switch (propName.toLowerCase()) {
       case "alt":
         mdBuilder.addAlt(new IdDescriptionMetadata(props, true));
