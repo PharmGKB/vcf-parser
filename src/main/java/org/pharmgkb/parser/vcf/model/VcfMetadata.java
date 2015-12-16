@@ -1,7 +1,7 @@
 package org.pharmgkb.parser.vcf.model;
 
 import com.google.common.base.Preconditions;
-import com.google.common.collect.LinkedListMultimap;
+import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
 import org.pharmgkb.parser.vcf.VcfUtils;
 
@@ -34,7 +34,7 @@ public class VcfMetadata {
       @Nullable LinkedHashMap<String, InfoMetadata> info, @Nullable LinkedHashMap<String, IdDescriptionMetadata> filter,
       @Nullable LinkedHashMap<String, FormatMetadata> format, @Nullable LinkedHashMap<String, ContigMetadata> contig,
       @Nullable LinkedHashMap<String, IdDescriptionMetadata> sample, @Nullable List<BaseMetadata> pedigree,
-      @Nonnull List<String> columns, @Nullable LinkedListMultimap<String, String> properties) {
+      @Nonnull List<String> columns, @Nullable ListMultimap<String, String> properties) {
     Preconditions.checkNotNull(fileFormat);
     Preconditions.checkNotNull(columns);
     m_fileFormat = fileFormat;
@@ -45,7 +45,7 @@ public class VcfMetadata {
     m_contig     = contig==null?     new HashMap<>()            : contig;
     m_sample     = sample==null?     new HashMap<>()            : sample;
     m_pedigree   = pedigree==null?   new ArrayList<>()          : pedigree;
-    m_properties = properties==null? LinkedListMultimap.create() : properties;
+    m_properties = properties==null? ArrayListMultimap.create() : properties;
     m_columns    = columns;
   }
 
@@ -305,7 +305,7 @@ public class VcfMetadata {
     private LinkedHashMap<String, IdDescriptionMetadata> m_sample = new LinkedHashMap<>();
     private List<BaseMetadata> m_pedigree = new ArrayList<>();
     private List<String> m_columns = new ArrayList<>();
-    private LinkedListMultimap<String, String> m_properties = LinkedListMultimap.create();
+    private ListMultimap<String, String> m_properties = ArrayListMultimap.create();
 
     /**
      * Sets the VCF version string.

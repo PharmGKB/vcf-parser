@@ -1,8 +1,6 @@
 package org.pharmgkb.parser.vcf.model.genotype;
 
 import com.google.common.collect.ArrayListMultimap;
-import com.google.common.collect.LinkedHashMultimap;
-import com.google.common.collect.LinkedListMultimap;
 import org.junit.Test;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
 import org.pharmgkb.parser.vcf.model.VcfPosition;

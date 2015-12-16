@@ -16,9 +16,9 @@
 ##SAMPLE=<ID=sample1,Genome=a;b;c;d,Description="test">
 ##SAMPLE=<ID=sample2,Genome=a;b;c;d,Description="test">
 ##PEDIGREE=<NAME_0=A,NAME_1=B>
-##extraproperty=sdfadsf
-##extraspecialproperty=<ID=sdfadsf>
 ##assembly=GRCh38
+##extraspecialproperty=<ID=sdfadsf>
+##extraproperty=sdfadsf
 ##pedigreeDB=<http://thismayormaynotbeavalidurl.vcf>
 #CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	sample1	sample2
 chr1	11	rsa	A	T	5	PASS	AC=1;AF=0.5;AN=15;DB	GT:GQ	.:2	.:2
