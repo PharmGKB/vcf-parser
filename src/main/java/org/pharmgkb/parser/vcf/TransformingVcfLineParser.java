@@ -59,8 +59,10 @@ public class TransformingVcfLineParser implements VcfLineParser, Closeable {
         m_transformations.get(i).transformMetadata(metadata);
         m_writers.get(i).writeHeader(metadata);
       }
-      m_transformations.get(i).transformDataLine(metadata, position, sampleData);
-      m_writers.get(i).writeLine(metadata, position, sampleData);
+      boolean keep = m_transformations.get(i).transformDataLine(metadata, position, sampleData);
+      if (keep) {
+        m_writers.get(i).writeLine(metadata, position, sampleData);
+      }
     }
     m_lines++;
   }
