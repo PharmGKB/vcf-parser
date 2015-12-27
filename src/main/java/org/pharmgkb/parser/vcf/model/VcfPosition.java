@@ -135,29 +135,30 @@ public class VcfPosition {
     m_position = pos; // required
 
     if (ids != null) {
-      m_ids = ids;
+      m_ids = new ArrayList<>(ids);
     }
 
     m_refBases = ref; // required
     m_alleles.add(m_refBases);
 
     if (altBases != null) {
-      m_altBases = altBases;
+      m_altBases = new ArrayList<>(altBases);
       m_alleles.addAll(altBases);
     }
 
     m_quality = qual; // required
 
     if (filter != null) {
-      m_filter = filter;
+      m_filter = new ArrayList<>(filter);
     }
 
     if (info != null) {
-      m_info = info;
+      m_info = ArrayListMultimap.create();
+      m_info.putAll(info);
     }
 
     if (format != null) {
-      m_format = format;
+      m_format = new ArrayList<>(format);
     }
   }
 
@@ -236,13 +237,19 @@ public class VcfPosition {
   }
 
   public boolean isPassingAllFilters() {
-    return m_filter.isEmpty();
+    return m_filter.isEmpty() || m_filter.size() == 1 && m_filter.get(0).equals(".");
   }
 
   /**
    * Returns a list of filters this position failed, if any.
    */
   public @Nonnull List<String> getFilters() {
+    // TODO this is definitely hacky, but since we always return the list and let it change, there's no easy way around
+    // also, the definition of PASS as empty and "." by itself should probably be reversed
+    // ensure that we only ever have "." (meaning no filters applied yet) by itself:
+    if (m_filter.contains(".") && m_filter.size() > 1) {
+      m_filter.remove(".");
+    }
     return m_filter;
   }
 
