@@ -1,14 +1,15 @@
 # IntelliJ files
-/.idea/workspace.xml
 /.idea/libraries/Gradle__*.xml
+/.idea/shelf
+/.idea/workspace.xml
 
 # Gradle files
-/.gradle
-/gradle
+/.gradle/
 
 # OS files
 .DS_Store
 ._.DS_Store
+
 # Temporary files
 *~
 /build
