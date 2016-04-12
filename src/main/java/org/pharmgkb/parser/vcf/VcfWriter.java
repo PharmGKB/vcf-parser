@@ -16,8 +16,9 @@ import java.util.*;
  * Writes to VCF format from a {@link VcfSample}, {@link VcfPosition VcfPositions}, and {@link VcfMetadata}.
  * For now, this class performs little validation of its own, relying on {@link VcfParser} instead. For that reason, it
  * is currently package-accessible only.
+ *
  * @author Douglas Myers-Turnbull
- * @see {@link TransformingVcfLineParser} Is a read-transform-write streamer that is publically accessible
+ * @see TransformingVcfLineParser TransformingVcfLineParser - a read-transform-write streamer that is publically accessible
  */
 public class VcfWriter implements Closeable {
 

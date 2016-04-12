@@ -13,9 +13,10 @@ import java.util.Map;
 /**
  * This class represents a single VCF FORMAT metadata line.
  *
- * <code>
+ * <pre>{@code
  * ##FORMAT=<ID=ID,Number=number,Type=type,Description="description">
- * </code>
+ * }
+ * </pre>
  *
  * @author Mark Woon
  */

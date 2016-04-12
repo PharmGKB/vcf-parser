@@ -169,8 +169,8 @@ public class VcfPosition {
   }
 
   /**
-   * Gets an identifier from the reference genome or an angle-bracketed ID String ("<ID>") pointing to a contig in the
-   * assembly file.
+   * Gets an identifier from the reference genome or an angle-bracketed ID String ("{@code <ID>}") pointing to a contig
+   * in the assembly file.
    */
   public @Nonnull String getChromosome() {
     return m_chromosome;
@@ -208,7 +208,7 @@ public class VcfPosition {
 
   /**
    * Gets the alternate base(s) for this position.  Each base must be an A, C, G, T, N or * unless it's an
-   * angle-bracketed ID string ("<ID>").
+   * angle-bracketed ID string ("{@code <ID>}").
    * <p>
    * ID strings should reference a specific ALT metadata (obtainable via {@link VcfMetadata#getAlt(java.lang.String)}).
    * </p>
@@ -268,11 +268,15 @@ public class VcfPosition {
   /**
    * Returns the value for the reserved property as the type specified by both {@link ReservedInfoProperty#getType()}
    * and {@link ReservedInfoProperty#isList()}.
+   * <p>
    * <em>Note that this method does NOT always return a list.</em>
+   * <p>
    * For example:
-   * <code>
+   * <pre>{@code
    *   BigDecimal bq = vcfPosition.getInfoConverted(ReservedInfoProperty.BaseQuality);
-   * </code>
+   * }
+   * </pre>
+   *
    * @param <T> The type specified by {@code ReservedInfoProperty.getType()} if {@code ReservedInfoProperty.isList()}
    *           is false;
    *           otherwise {@code List<V>} where V is the type specified by {@code ReservedInfoProperty.getType()}.

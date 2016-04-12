@@ -11,12 +11,13 @@ import java.util.Map;
 
 /**
  * This class represents a single VCF metadata line with an id and description.
- *
+ * <p>
  * In 4.1/4.2:
- * <code>
+ * <pre>{@code
  * ##ALT=<ID=type,Description="description">
  * ##FILTER=<ID=ID,Description="description">
- * </code>
+ * }
+ * </pre>
  *
  * @author Mark Woon
  */

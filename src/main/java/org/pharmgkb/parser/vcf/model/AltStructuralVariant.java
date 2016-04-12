@@ -14,14 +14,17 @@ import java.util.regex.Pattern;
  * Where {@code ID} is a colon-delimited list of identifiers. Some of these identifiers are reserved, as coded in the
  * {@link ReservedStructuralVariantCode} class. The first identifier (at level 0) is required to be reserved.
  * As explicitly stated in the spec, these codes are case-sensitive.
+ * <p>
  * Example:
- * <code>
+ * <pre>{@code
  *   AltStructuralVariant alt = new AltStructuralVariant("INS:ME:LINE");
  *   alt.getReservedComponent(0); // ReservedStructuralVariantCode.Insertion
  *   alt.getReservedComponent(1); // ReservedStructuralVariantCode.MobileElement
  *   alt.getReservedComponent(2); // null, because it's not a reserved code
  *   alt.getComponent(); // "LINE"
- * </code>
+ * }
+ * </pre>
+ *
  * @author Douglas Myers-Turnbull
  */
 public class AltStructuralVariant {

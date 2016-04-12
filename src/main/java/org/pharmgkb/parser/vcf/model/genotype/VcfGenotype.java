@@ -16,16 +16,20 @@ import java.util.regex.Pattern;
 
 /**
  * A diploid (or haploid; see below) genotype matching the VCF 4.2 specification.
+ * <p>
  * For example:
  * <ul>
- *     A/A (an unphased homozygous genotype)
- *     A|ATG (an phased heterozygous 2bp insertion of TG)
+ *   <li>A/A (an unphased homozygous genotype)</li>
+ *   <li>A|ATG (an phased heterozygous 2bp insertion of TG)</li>
  * </ul>
+ *
  * This class can also handle haploid genotypes (e.g. A), but note that:
- * <code>
+ * <pre>{@code
  *     Genotype.fromString("A").toString(); // prints A|A
- * </code>
+ * }
+ * </pre>
  * Always use {@link #equals(Object)} to compare genotypes, not {@code toString().equals}.
+ *
  * @author Douglas Myers-Turnbull
  */
 @Immutable
@@ -109,10 +113,11 @@ public class VcfGenotype {
 
   /**
    * Note:
-   * <code>
+   * <pre>{@code
    *   VcfGenotype homozygous = new VcfGenotype("A", "A", false);
    *   homogyzgous.isPhased(); // false
-   * </code>
+   * }
+   * </pre>
    * The same logic applies with haploid genotypes.
    */
   public VcfGenotype(@Nullable VcfAllele allele1, @Nullable VcfAllele allele2, boolean isPhased) {

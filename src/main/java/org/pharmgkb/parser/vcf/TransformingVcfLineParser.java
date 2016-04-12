@@ -16,8 +16,9 @@ import java.util.List;
  * Applies a transformation to a VCF file.
  * This is a streaming {@link VcfLineParser} that applies a {@link VcfTransformation} and writes the VCF.
  * More generally, can apply to a single VCF stream a set of transformations and corresponding writers.
+ * <p>
  * Example:
- * <code>
+ * <pre>{@code
  *   VcfTransformation transformation1 = new VcfTransformation() {
  *       public void transformMetadata(VcfMetadata metadata) {
  *           metadata.getRawProperties().put("Test", "123"); // adds ##Test=123
@@ -36,7 +37,8 @@ import java.util.List;
  *           parser.parse(); // prints transformed VCFs to file1 and file2
  *       }
  *   }
- * </code>
+ * }
+ * </pre>
  */
 public class TransformingVcfLineParser implements VcfLineParser, Closeable {
 

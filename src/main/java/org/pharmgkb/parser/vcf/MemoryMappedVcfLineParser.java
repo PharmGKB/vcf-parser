@@ -108,7 +108,7 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
    * What to do when a duplicate VCF record (line) is encountered.
    * This includes cases where the contents of the record, such as the ALT, REF, INFO, and sample fields, differ.
    */
-  public static enum DuplicateHandler {
+  public enum DuplicateHandler {
 
     /**
      * Return an {@link java.lang.IllegalArgumentException} when a duplicate is encountered.

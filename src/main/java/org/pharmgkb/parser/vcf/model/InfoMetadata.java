@@ -12,16 +12,18 @@ import java.util.Map;
 
 /**
  * This class represents a single VCF INFO metadata line.
- *
+ * <p></p>
  * In 4.1:
- * <code>
+ * <pre>{@code
  * ##INFO=<ID=ID,Number=number,Type=type,Description="description">
- * </code>
- *
+ * }
+ * </pre>
+ * <p>
  * In 4.2:
- * <code>
+ * <pre>{@code
  * ##INFO=<ID=ID,Number=number,Type=type,Description="description",Source="source",Version="version">
- * </code>
+ * }
+ * </pre>
  *
  * @author Mark Woon
  */
