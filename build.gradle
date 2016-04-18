@@ -1,3 +1,14 @@
+plugins {
+  id 'java'
+  id 'jacoco'
+  id 'com.github.kt3k.coveralls' version '2.6.3'
+  id 'osgi'
+  id 'signing'
+  id 'com.jfrog.bintray' version '1.6'
+  id 'maven-publish'
+}
+
+
 def getVersionName = {
   try {
     def stdout = new ByteArrayOutputStream()
@@ -5,17 +16,13 @@ def getVersionName = {
       commandLine 'git', 'describe', '--tags'
       standardOutput = stdout
     }
-    return stdout.toString().trim()
+    // strip of leading "v"
+    return stdout.toString().trim().substring(1)
   }
   catch (ignored) {
     return null
   }
 }
-
-
-apply plugin: 'java'
-apply plugin: 'maven'
-apply plugin: 'signing'
 
 
 sourceCompatibility = 1.8
@@ -26,11 +33,20 @@ archivesBaseName = "vcf-parser"
 
 ext {
   description = 'A strict streaming parser for VCF 4.1/4.2.'
+  url = 'https://github.com/PharmGKB/vcf-parser.git'
+  scm = 'scm:git@github.com:PharmGKB/vcf-parser.git'
+  orgName = 'PharmGKB'
+  orgUrl = 'https://www.pharmgkb.org'
+  // grab user/pwd from environment for Travis CI
+  sonatypeUser = project.hasProperty('ossrhUsername') ? ossrhUsername : System.getenv('OSSRH_USERNAME')
+  sonatypePwd  = project.hasProperty('ossrhPassword') ? ossrhPassword : System.getenv('OSSRH_PASSWORD')
+  bintrayUser = project.hasProperty('bintrayUsername') ? bintrayUsername : System.getenv('BINTRAY_USERNAME')
+  bintrayKey  = project.hasProperty('bintrayApiKey')   ? bintrayApiKey   : System.getenv('BINTRAY_API_KEY')
 }
 
 
 repositories {
-  mavenCentral()
+  jcenter()
 }
 
 dependencies {
@@ -51,10 +67,21 @@ task printVersion {
 }
 
 
+jacocoTestReport {
+  reports {
+    xml.enabled = true // coveralls plugin depends on xml format report
+    html.enabled = true
+  }
+}
+
+
 jar {
   manifest {
     attributes 'Implementation-Title': project.name
     attributes 'Implementation-Version': project.version
+    instruction 'Import-Package',
+        'javax.annotation;resolution:=optional',
+        '*'
   }
 }
 
@@ -80,51 +107,73 @@ signing {
 }
 
 
-// This will only upload the archives to Sonatype
-// It will still have to be released manually: http://central.sonatype.org/pages/releasing-the-deployment.html
-//noinspection GroovyAssignabilityCheck
-uploadArchives {
-  repositories {
-    mavenDeployer {
-      beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+bintray {
+  user = project.ext.bintrayUser
+  key = project.ext.bintrayKey
+  publications = [ 'PgkbPublication' ]
+  dryRun = false
+  publish = true
 
-      repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
-        authentication(userName: ossrhUsername, password: ossrhPassword)
+  pkg {
+    repo = 'maven'
+    name = project.name
+    desc = project.ext.description
+    userOrg = 'pharmgkb'
+    licenses = [ 'MPL-2.0' ]
+    issueTrackerUrl = project.ext.url + '/issues'
+    vcsUrl = project.ext.url
+    githubRepo = 'PharmGKB/pgkb-common'
+
+    version {
+      name = project.version
+      vcsTag = 'v' + project.version
+      mavenCentralSync {
+        user = project.ext.sonatypeUser
+        password = project.ext.sonatypePwd
+        close = 1
       }
+    }
+  }
+}
 
-      snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
-        authentication(userName: ossrhUsername, password: ossrhPassword)
-      }
+publishing {
+  publications {
+    PgkbPublication(MavenPublication) {
+      from components.java
+      artifact javadocJar
+      artifact sourcesJar
 
-      pom.project {
-        name project.name
-        packaging 'jar'
-        description description
-        url 'https://github.com/PharmGKB/vcf-parser'
-
-        scm {
-          connection 'scm:git@github.com:PharmGKB/vcf-parser.git'
-          developerConnection 'scm:git@github.com:PharmGKB/vcf-parser.git'
-          url 'https://github.com/PharmGKB/vcf-parser'
-        }
-        licenses {
-          license {
-            name 'MPL 2.0'
-            url 'http://mozilla.org/MPL/2.0/'
+      pom.withXml {
+        asNode().children().last() + {
+          resolveStrategy = Closure.DELEGATE_FIRST
+          name project.name
+          description project.ext.description
+          url project.ext.url
+          scm {
+            url project.ext.url
+            connection project.ext.scm
+            developerConnection project.ext.scm
           }
-        }
-        organization {
-          name 'PharmGKB'
-          url 'https://www.pharmgkb.org'
-        }
-        developers {
-          developer {
-            id 'markwoon'
-            name 'Mark Woon'
+          licenses {
+            license {
+              name 'MPL 2.0'
+              url 'http://mozilla.org/MPL/2.0/'
+              distribution 'repo'
+            }
           }
-          developer {
-            id 'dmyersturnbull'
-            name 'Douglas Myers-Turnbull'
+          organization {
+            name project.ext.orgName
+            url project.ext.orgUrl
+          }
+          developers {
+            developer {
+              id 'markwoon'
+              name 'Mark Woon'
+            }
+            developer {
+              id 'whaleyr'
+              name 'Ryan Whaley'
+            }
           }
         }
       }
