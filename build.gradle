@@ -37,7 +37,8 @@ ext {
   scm = 'scm:git@github.com:PharmGKB/vcf-parser.git'
   orgName = 'PharmGKB'
   orgUrl = 'https://www.pharmgkb.org'
-  // grab user/pwd from environment for Travis CI
+  // grab properties from environment for Travis CI
+  gpgPwd = project.hasProperty('signing.password') ? project.getProperty('signing.password') : System.getenv('SIGNING_PASSWORD')
   sonatypeUser = project.hasProperty('ossrhUsername') ? ossrhUsername : System.getenv('OSSRH_USERNAME')
   sonatypePwd  = project.hasProperty('ossrhPassword') ? ossrhPassword : System.getenv('OSSRH_PASSWORD')
   bintrayUser = project.hasProperty('bintrayUsername') ? bintrayUsername : System.getenv('BINTRAY_USERNAME')
@@ -127,10 +128,15 @@ bintray {
     version {
       name = project.version
       vcsTag = 'v' + project.version
+      gpg {
+        sign = true
+        passphrase = project.ext.gpgPwd
+      }
       mavenCentralSync {
+        sync = true
         user = project.ext.sonatypeUser
         password = project.ext.sonatypePwd
-        close = 1
+        close = '1'
       }
     }
   }
@@ -147,6 +153,7 @@ publishing {
         asNode().children().last() + {
           resolveStrategy = Closure.DELEGATE_FIRST
           name project.name
+          packaging 'jar'
           description project.ext.description
           url project.ext.url
           scm {
