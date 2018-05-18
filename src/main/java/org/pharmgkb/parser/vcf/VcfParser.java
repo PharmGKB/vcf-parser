@@ -27,7 +27,6 @@ import java.util.regex.Pattern;
  * @author Mark Woon
  */
 public class VcfParser implements Closeable {
-
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private static final Pattern sf_tabSplitter = Pattern.compile("\t");
@@ -148,86 +147,94 @@ public class VcfParser implements Closeable {
 
     try {
 
-    List<String> data = toList(sf_tabSplitter, line);
+      List<String> data = toList(sf_tabSplitter, line);
 
-    // CHROM
-    String chromosome = data.get(0);
+      // CHROM
+      String chromosome = data.get(0);
 
-    // POS
-    long position;
-    try {
-      position = Long.parseLong(data.get(1));
-    } catch (NumberFormatException e) {
-      throw new IllegalArgumentException("Position " + data.get(1) + " is not numerical");
-    }
+      // POS
+      long position;
+      try {
+        position = Long.parseLong(data.get(1));
+      } catch (NumberFormatException e) {
+        throw new IllegalArgumentException("Error parsing VCF data line #" + m_lineNumber + ": POS " +
+            data.get(1) + " is not a number");
+      }
 
-    // ID
-    List<String> ids = null;
-    if (!data.get(2).equals(".")) {
-      if (m_rsidsOnly && !VcfUtils.RSID_PATTERN.matcher(data.get(2)).find()) {
+      // ID
+      List<String> ids = null;
+      if (!data.get(2).equals(".")) {
+        if (m_rsidsOnly && !VcfUtils.RSID_PATTERN.matcher(data.get(2)).find()) {
+          return true;
+        }
+        ids = toList(sf_semicolonSplitter, data.get(2));
+      } else if (m_rsidsOnly) {
         return true;
       }
-      ids = toList(sf_semicolonSplitter, data.get(2));
-    } else if (m_rsidsOnly) {
-      return true;
-    }
 
-    // REF
-    String ref = data.get(3);
+      // REF
+      String ref = data.get(3);
 
-    // ALT
-    List<String> alt = null;
-    if (!data.get(7).isEmpty() && !data.get(4).equals(".")) {
-      alt = toList(sf_commaSplitter, data.get(4));
-    }
+      // ALT
+      List<String> alt = null;
+      if (!data.get(7).isEmpty() && !data.get(4).equals(".")) {
+        alt = toList(sf_commaSplitter, data.get(4));
+      }
 
-    // QUAL
-    BigDecimal quality = null;
-    if (!data.get(5).isEmpty() && !data.get(5).equals(".")) {
-      quality = new BigDecimal(data.get(5));
-    }
-
-    // FILTER
-    List<String> filters = null;
-    if (!data.get(6).equals("PASS")) {
-      filters = toList(sf_semicolonSplitter, data.get(6));
-    }
-
-    // INFO
-    ListMultimap<String, String> info = null;
-    if (!data.get(7).equals("") && !data.get(7).equals(".")) {
-      info = ArrayListMultimap.create();
-      List<String> props = toList(sf_semicolonSplitter, data.get(7));
-      for (String prop : props) {
-        int idx = prop.indexOf('=');
-        if (idx == -1) {
-          info.put(prop, "");
-        } else {
-          String key = prop.substring(0, idx);
-          String value = prop.substring(idx + 1);
-          info.putAll(key, toList(sf_commaSplitter, value));
+      // QUAL
+      BigDecimal quality = null;
+      if (!data.get(5).isEmpty() && !data.get(5).equals(".")) {
+        try {
+          quality = new BigDecimal(data.get(5));
+        } catch (NumberFormatException e) {
+          throw new IllegalArgumentException("Error parsing VCF data line #" + m_lineNumber + ": QUAL " +
+              data.get(5) + " is not a number");
         }
       }
-    }
 
-    // FORMAT
-    List<String> format = null;
-    if (data.size() >= 9 && data.get(8) != null) {
-      format = toList(sf_colonSplitter, data.get(8));
-    }
+      // FILTER
+      List<String> filters = null;
+      if (!data.get(6).equals("PASS")) {
+        filters = toList(sf_semicolonSplitter, data.get(6));
+      }
 
-    // samples
-    VcfPosition pos = new VcfPosition(chromosome, position, ids, ref, alt,
-        quality, filters, info, format);
-    List<VcfSample> samples = new ArrayList<>();
-    for (int x = 9; x < data.size(); x++) {
-      samples.add(new VcfSample(format, toList(sf_colonSplitter, (data.get(x)))));
-    }
+      // INFO
+      ListMultimap<String, String> info = null;
+      if (!data.get(7).equals("") && !data.get(7).equals(".")) {
+        info = ArrayListMultimap.create();
+        List<String> props = toList(sf_semicolonSplitter, data.get(7));
+        for (String prop : props) {
+          int idx = prop.indexOf('=');
+          if (idx == -1) {
+            info.put(prop, "");
+          } else {
+            String key = prop.substring(0, idx);
+            String value = prop.substring(idx + 1);
+            info.putAll(key, toList(sf_commaSplitter, value));
+          }
+        }
+      }
 
-    m_vcfLineParser.parseLine(m_vcfMetadata, pos, samples);
+      // FORMAT
+      List<String> format = null;
+      if (data.size() >= 9 && data.get(8) != null) {
+        format = toList(sf_colonSplitter, data.get(8));
+      }
 
-    m_lineNumber++;
+      // samples
+      VcfPosition pos = new VcfPosition(chromosome, position, ids, ref, alt,
+          quality, filters, info, format);
+      List<VcfSample> samples = new ArrayList<>();
+      for (int x = 9; x < data.size(); x++) {
+        samples.add(new VcfSample(format, toList(sf_colonSplitter, (data.get(x)))));
+      }
 
+      m_vcfLineParser.parseLine(m_vcfMetadata, pos, samples);
+
+      m_lineNumber++;
+
+    } catch (IllegalArgumentException ex) {
+      throw ex;
     } catch (RuntimeException e) {
       throw new IllegalArgumentException("Error parsing VCF data line #" + m_lineNumber + ": " + line, e);
     }
