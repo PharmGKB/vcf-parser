@@ -1,15 +1,5 @@
 package org.pharmgkb.parser.vcf;
 
-import com.google.common.base.Preconditions;
-import com.google.common.collect.ArrayListMultimap;
-import com.google.common.collect.ListMultimap;
-import org.apache.commons.io.IOUtils;
-import org.pharmgkb.parser.vcf.model.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.IOException;
@@ -17,8 +7,28 @@ import java.lang.invoke.MethodHandles;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.ListMultimap;
+import com.google.common.io.Closeables;
+import org.pharmgkb.parser.vcf.model.BaseMetadata;
+import org.pharmgkb.parser.vcf.model.ContigMetadata;
+import org.pharmgkb.parser.vcf.model.FormatMetadata;
+import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
+import org.pharmgkb.parser.vcf.model.InfoMetadata;
+import org.pharmgkb.parser.vcf.model.VcfMetadata;
+import org.pharmgkb.parser.vcf.model.VcfPosition;
+import org.pharmgkb.parser.vcf.model.VcfSample;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -116,7 +126,7 @@ public class VcfParser implements Closeable {
     while (hasNext) {
       hasNext = parseNextLine();
     }
-    IOUtils.closeQuietly(m_reader);
+    Closeables.closeQuietly(m_reader);
   }
 
   /**
@@ -243,7 +253,7 @@ public class VcfParser implements Closeable {
 
   @Override
   public void close() {
-    IOUtils.closeQuietly(m_reader);
+    Closeables.closeQuietly(m_reader);
   }
 
 
