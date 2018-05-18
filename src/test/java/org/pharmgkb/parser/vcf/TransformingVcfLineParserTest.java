@@ -1,18 +1,23 @@
 package org.pharmgkb.parser.vcf;
 
-import org.apache.commons.io.IOUtils;
-import org.junit.Test;
-import org.pharmgkb.parser.vcf.model.*;
-
-import javax.annotation.Nonnull;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import javax.annotation.Nonnull;
+import org.apache.commons.io.IOUtils;
+import org.junit.Test;
+import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
+import org.pharmgkb.parser.vcf.model.InfoMetadata;
+import org.pharmgkb.parser.vcf.model.InfoType;
+import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
+import org.pharmgkb.parser.vcf.model.VcfMetadata;
+import org.pharmgkb.parser.vcf.model.VcfPosition;
+import org.pharmgkb.parser.vcf.model.VcfSample;
 
 import static org.junit.Assert.assertEquals;
 
@@ -38,7 +43,7 @@ public class TransformingVcfLineParserTest {
         if (position.getPosition() == 1) {
           // This implies that the correct encoding for a no-value INFO annotation (e.g. DB) is with a single "" value,
           // NOT with an empty list:
-          assertEquals(Arrays.asList(""), position.getInfo().get(ReservedInfoProperty.Imprecise.getId()));
+          assertEquals(Collections.singletonList(""), position.getInfo().get(ReservedInfoProperty.Imprecise.getId()));
           // Similarly, the correct encoding for no info is a nonexistent list, NOT with an empty list:
           position.getInfo().get(ReservedInfoProperty.Imprecise.getId()).clear();
           // Again, put "" INSTEAD OF doing:

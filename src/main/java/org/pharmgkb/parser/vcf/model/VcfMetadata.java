@@ -1,13 +1,17 @@
 package org.pharmgkb.parser.vcf.model;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.SortedSet;
+import java.util.TreeSet;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
 import org.pharmgkb.parser.vcf.VcfUtils;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import java.util.*;
 
 
 /**
@@ -255,8 +259,8 @@ public class VcfMetadata {
    * </ul>
    * However, contains any in {@link #getAssemblies} and {@link #getPedigreeDatabases}.
    */
-  public @Nonnull Set<String> getRawPropertyKeys() {
-    return m_properties.keySet();
+  public @Nonnull SortedSet<String> getRawPropertyKeys() {
+    return new TreeSet<>(m_properties.keySet());
   }
 
   public int getColumnIndex(@Nonnull String column) {
