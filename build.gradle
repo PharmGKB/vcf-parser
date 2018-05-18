@@ -51,13 +51,13 @@ repositories {
 }
 
 dependencies {
-  compile group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.1'
-  compile group: 'com.google.guava', name: 'guava', version: '19.0'
-  compile group: 'commons-io', name: 'commons-io', version: '2.4'
-  compile group: 'org.apache.commons', name: 'commons-lang3', version: '3.4'
-  compile group: 'org.slf4j', name: 'slf4j-api', version: '1.7.21'
+  compile group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.2'
+  compile group: 'com.google.guava', name: 'guava', version: '25.0-jre'
+  compile group: 'commons-io', name: 'commons-io', version: '2.6'
+  compile group: 'org.apache.commons', name: 'commons-lang3', version: '3.7'
+  compile group: 'org.slf4j', name: 'slf4j-api', version: '1.7.25'
 
-  testCompile group: 'junit', name: 'junit', version: '4.11'
+  testCompile group: 'junit', name: 'junit', version: '4.12'
 }
 
 
