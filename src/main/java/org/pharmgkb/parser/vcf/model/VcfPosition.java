@@ -121,7 +121,7 @@ public class VcfPosition {
     if (format != null) {
       for (String f : format) {
         if (!VcfUtils.FORMAT_PATTERN.matcher(f).matches() || f.contains(":")) {
-          throw new IllegalArgumentException("FORMAT column is not alphanumeric");
+          throw new IllegalArgumentException("FORMAT ID does not match VCF spec");
         }
       }
     }

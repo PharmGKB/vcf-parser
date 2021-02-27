@@ -58,7 +58,7 @@ public class VcfUtils {
 
   public static final Pattern REF_BASE_PATTERN = Pattern.compile("[AaCcGgTtNn]+");
   public static final Pattern METADATA_PATTERN = Pattern.compile(",(?=([^\"]*\"[^\"]*\")*[^\"]*$)");
-  public static final Pattern FORMAT_PATTERN = Pattern.compile("[A-Z0-9:]+");
+  public static final Pattern FORMAT_PATTERN = Pattern.compile("^[A-Za-z_][0-9A-Za-z_.]*$");
   public static final Pattern RSID_PATTERN = Pattern.compile("rs\\d+");
   public static final Pattern NUMBER_PATTERN = Pattern.compile("(?:\\d+|[ARG\\.])");
 
