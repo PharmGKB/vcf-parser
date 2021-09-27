@@ -1,10 +1,8 @@
 # Overview
 
 [![Build Status](https://travis-ci.org/PharmGKB/vcf-parser.svg?branch=master)](https://travis-ci.org/PharmGKB/vcf-parser)
-[![Coverage Status](https://coveralls.io/repos/github/PharmGKB/vcf-parser/badge.svg?branch=master)](https://coveralls.io/github/PharmGKB/vcf-parser?branch=master)
 [![codecov.io](https://codecov.io/github/PharmGKB/vcf-parser/coverage.svg?branch=master)](https://codecov.io/github/PharmGKB/vcf-parser?branch=master)
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/org.pharmgkb/vcf-parser/badge.svg)](https://maven-badges.herokuapp.com/maven-central/org.pharmgkb/vcf-parser)
-[ ![Download](https://api.bintray.com/packages/pharmgkb/maven/vcf-parser/images/download.svg) ](https://bintray.com/pharmgkb/maven/vcf-parser/_latestVersion)
 
 This is a strict streaming parser for [VCF](http://en.wikipedia.org/wiki/Variant_Call_Format) 4.1/4.2.
 
@@ -27,7 +25,7 @@ Check out [`VcfParserTest.java`](src/test/java/org/pharmgkb/parser/vcf/VcfParser
   <dependency>
     <groupId>org.pharmgkb</groupId>
     <artifactId>vcf-parser</artifactId>
-    <version>0.2.1</version>
+    <version>0.2.2</version>
   </dependency>
   ...
 </dependencies>
