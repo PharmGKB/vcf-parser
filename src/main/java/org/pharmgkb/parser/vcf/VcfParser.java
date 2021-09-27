@@ -44,10 +44,10 @@ public class VcfParser implements Closeable {
   private static final Pattern sf_colonSplitter = Pattern.compile(":");
   private static final Pattern sf_semicolonSplitter = Pattern.compile(";");
 
-  private boolean m_rsidsOnly;
-  private BufferedReader m_reader;
+  private final boolean m_rsidsOnly;
+  private final BufferedReader m_reader;
   private VcfMetadata m_vcfMetadata;
-  private VcfLineParser m_vcfLineParser;
+  private final VcfLineParser m_vcfLineParser;
 
   private int m_lineNumber;
   private boolean m_alreadyFinished;
@@ -146,6 +146,9 @@ public class VcfParser implements Closeable {
     if (line == null) {
       m_alreadyFinished = true;
       return false;
+    }
+    if (line.startsWith("#")) {
+      return true;
     }
 
     if (m_alreadyFinished) {

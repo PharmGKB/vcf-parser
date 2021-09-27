@@ -1,8 +1,5 @@
 package org.pharmgkb.parser.vcf;
 
-import org.junit.Test;
-import org.pharmgkb.parser.vcf.model.*;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -12,6 +9,12 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
+import org.junit.Test;
+import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
+import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
+import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
+import org.pharmgkb.parser.vcf.model.VcfMetadata;
+import org.pharmgkb.parser.vcf.model.VcfSample;
 
 import static org.junit.Assert.*;
 
@@ -25,6 +28,25 @@ public class VcfParserTest {
   @Test
   public void testBasic() throws IOException {
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream("/basic.vcf")))) {
+      new VcfParser.Builder()
+          .fromReader(reader)
+          .parseWith((metadata, position, sampleData) -> {
+            assertEquals("chr1", position.getChromosome());
+            assertEquals(5, position.getPosition());
+            assertEquals(Arrays.asList("rsa", "rsb"), position.getIds());
+            assertEquals("Aa", position.getRef());
+            assertEquals(Arrays.asList("Tt", "Gg", "Cc"), position.getAltBases());
+            assertEquals(new BigDecimal("5.2e-10"), position.getQuality());
+            assertTrue(position.getFilters().isEmpty());
+            assertTrue(position.getInfo().isEmpty());
+          })
+          .build().parse();
+    }
+  }
+
+  @Test
+  public void testHasComment() throws IOException {
+    try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream("/has_comment.vcf")))) {
       new VcfParser.Builder()
           .fromReader(reader)
           .parseWith((metadata, position, sampleData) -> {
