@@ -1,11 +1,9 @@
 package org.pharmgkb.parser.vcf;
 
 import org.apache.commons.lang3.tuple.Pair;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests {@link VcfUtils}.
@@ -18,7 +16,7 @@ public class VcfUtilsTest {
     System.out.println(VcfUtils.ALT_BASE_PATTERN.pattern());
     String[] shouldPass = {".", "A", "AaT", "*", ".An", "An.", "<3&*FH#>", ".TGCA"};
     for (String test : shouldPass) {
-      assertTrue("String " + test + " was not recognized", VcfUtils.ALT_BASE_PATTERN.matcher(test).matches());
+      assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher(test).matches(), "String " + test + " was not recognized");
     }
   }
 
@@ -35,7 +33,7 @@ public class VcfUtilsTest {
         "A]2 : 321687]", " [2 : 321682[C" };
     for (String test : shouldPass) {
       test = test.replaceAll(" ", "");
-      assertTrue("String " + test + " was not recognized", VcfUtils.ALT_BASE_PATTERN.matcher(test).matches());
+      assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher(test).matches(), "String " + test + " was not recognized");
     }
   }
 
@@ -43,7 +41,7 @@ public class VcfUtilsTest {
   public void testAltBasePatternBad() throws Exception {
     String[] shouldPass = {"<at", "at>", "", "<", "]34[AT", "[34]AT", "[<xxx[AT"};
     for (String test : shouldPass) {
-      assertFalse("String " + test + " was recognized", VcfUtils.ALT_BASE_PATTERN.matcher(test).matches());
+      assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher(test).matches(), "String " + test + " was recognized");
     }
   }
 

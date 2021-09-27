@@ -1,13 +1,12 @@
 package org.pharmgkb.parser.vcf;
 
+import java.util.Arrays;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 
-import java.util.Arrays;
-
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests {@link VcfPosition}.
@@ -39,15 +38,19 @@ public class VcfPositionTest {
     assertTrue(position.isPassingAllFilters());
   }
 
-  @Test(expected = IllegalArgumentException.class)
+  @Test
   public void testBadFilter2() {
-    new VcfPosition("chr", 1, null, "C", null, null, Arrays.asList("bad", "PASS"),
-        null, null);
+    assertThrows(IllegalArgumentException.class, () -> {
+      new VcfPosition("chr", 1, null, "C", null, null, Arrays.asList("bad", "PASS"),
+          null, null);
+    });
   }
 
-  @Test(expected = IllegalArgumentException.class)
+  @Test
   public void testBadChromosome() {
-    new VcfPosition("chr:", 1, null, "C", null, null, null, null, null);
+    assertThrows(IllegalArgumentException.class, () -> {
+      new VcfPosition("chr:", 1, null, "C", null, null, null, null, null);
+    });
   }
 
   @Test
@@ -56,41 +59,55 @@ public class VcfPositionTest {
     new VcfPosition("chr1", -1, null,"C", null, null, null, null, null);
   }
 
-  @Test(expected = IllegalArgumentException.class)
+  @Test
   public void testBadId() {
-    new VcfPosition("chr1", 1, Arrays.asList(";"), "C", null, null, null, null, null);
+    assertThrows(IllegalArgumentException.class, () -> {
+      new VcfPosition("chr1", 1, Arrays.asList(";"), "C", null, null, null, null, null);
+    });
   }
 
-  @Test(expected = IllegalArgumentException.class)
+  @Test
   public void testBadRefBase() {
-    new VcfPosition("chr1", 1, null, "X", null, null, null, null, null);
+    assertThrows(IllegalArgumentException.class, () -> {
+      new VcfPosition("chr1", 1, null, "X", null, null, null, null, null);
+    });
   }
 
-  @Test(expected = IllegalArgumentException.class)
+  @Test
   public void testBadVarBase() {
-    new VcfPosition("chr1", 1, null, "C", Arrays.asList("X"), null, null, null, null);
+    assertThrows(IllegalArgumentException.class, () -> {
+      new VcfPosition("chr1", 1, null, "C", Arrays.asList("X"), null, null, null, null);
+    });
   }
 
-  @Test(expected = IllegalArgumentException.class)
+  @Test
   public void testZeroFilter() {
-    new VcfPosition("chr1", 1, null, "C", null, null, Arrays.asList("0"), null, null);
+    assertThrows(IllegalArgumentException.class, () -> {
+      new VcfPosition("chr1", 1, null, "C", null, null, Arrays.asList("0"), null, null);
+    });
   }
 
-  @Test(expected = IllegalArgumentException.class)
+  @Test
   public void testFilterWithWhitespace() {
-    new VcfPosition("chr1", 1, null, "C", null, null, Arrays.asList("adsf\nsdf"), null, null);
+    assertThrows(IllegalArgumentException.class, () -> {
+      new VcfPosition("chr1", 1, null, "C", null, null, Arrays.asList("adsf\nsdf"), null, null);
+    });
   }
 
-  @Test(expected = IllegalArgumentException.class)
+  @Test
   public void testInfoWithWhitespace() {
-    ListMultimap<String, String> map = ArrayListMultimap.create();
-    map.put("anid", "a\nvalue");
-    new VcfPosition("chr1", 1, null, "C", null, null, null, map, null);
+    assertThrows(IllegalArgumentException.class, () -> {
+      ListMultimap<String, String> map = ArrayListMultimap.create();
+      map.put("anid", "a\nvalue");
+      new VcfPosition("chr1", 1, null, "C", null, null, null, map, null);
+    });
   }
 
-  @Test(expected = IllegalArgumentException.class)
+  @Test
   public void testBadFormat() {
-    new VcfPosition("chr1", 1, null, "C", null, null, null, null, Arrays.asList("+"));
+    assertThrows(IllegalArgumentException.class, () -> {
+      new VcfPosition("chr1", 1, null, "C", null, null, null, null, Arrays.asList("+"));
+    });
   }
 
 }

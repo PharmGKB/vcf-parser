@@ -1,18 +1,17 @@
 package org.pharmgkb.parser.vcf;
 
-import org.junit.Test;
-import org.pharmgkb.parser.vcf.model.InfoMetadata;
-import org.pharmgkb.parser.vcf.model.InfoType;
-import org.pharmgkb.parser.vcf.model.VcfMetadata;
-import org.pharmgkb.parser.vcf.model.VcfPosition;
-
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.math.BigDecimal;
 import java.nio.file.Paths;
 import java.util.Collections;
+import org.junit.jupiter.api.Test;
+import org.pharmgkb.parser.vcf.model.InfoMetadata;
+import org.pharmgkb.parser.vcf.model.InfoType;
+import org.pharmgkb.parser.vcf.model.VcfMetadata;
+import org.pharmgkb.parser.vcf.model.VcfPosition;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Tests {@link VcfWriter}.

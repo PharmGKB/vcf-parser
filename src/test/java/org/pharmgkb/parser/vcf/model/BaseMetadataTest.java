@@ -1,11 +1,12 @@
 package org.pharmgkb.parser.vcf.model;
 
-import org.junit.Test;
-
 import java.util.HashMap;
 import java.util.Map;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
 
 /**
  * Tests {@link BaseMetadata}.
@@ -21,17 +22,21 @@ public class BaseMetadataTest {
     assertEquals("one", metadata.getPropertyRaw("test"));
   }
 
-  @Test(expected = IllegalArgumentException.class)
+  @Test
   public void testKeyNewline() throws Exception {
-    Map<String, String> map = new HashMap<>();
-    map.put("test", "two\nlines");
-    new BaseMetadata(map);
+    assertThrows(IllegalArgumentException.class, () -> {
+      Map<String, String> map = new HashMap<>();
+      map.put("test", "two\nlines");
+      new BaseMetadata(map);
+    });
   }
 
-  @Test(expected = IllegalArgumentException.class)
+  @Test
   public void testValueNewline() throws Exception {
-    Map<String, String> map = new HashMap<>();
-    map.put("second\ntest", "one");
-    new BaseMetadata(map);
+    assertThrows(IllegalArgumentException.class, () -> {
+      Map<String, String> map = new HashMap<>();
+      map.put("second\ntest", "one");
+      new BaseMetadata(map);
+    });
   }
 }

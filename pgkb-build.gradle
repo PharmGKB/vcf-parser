@@ -1,0 +1,136 @@
+// This script plugin contains the standard PGKB gradle build config/tasks.
+//
+//
+
+
+/**
+ * Prints project's version.
+ */
+task printVersion {
+  doLast {
+    println project.version
+  }
+}
+
+
+test {
+  useJUnitPlatform()
+  testLogging {
+    // set options for log level LIFECYCLE
+    events 'passed', 'skipped', 'failed'
+    exceptionFormat 'short'
+
+    // remove standard output/error logging from --info builds
+    // by assigning only 'failed' and 'skipped' events
+    info.events = ['failed', 'skipped']
+
+    // set options for log level DEBUG
+    debug.events = ['started', 'passed', 'skipped', 'failed']
+    debug.exceptionFormat = 'full'
+  }
+
+  // always generate reports after tests are run
+  finalizedBy jacocoTestReport
+}
+
+
+jacocoTestReport {
+  // tests must be run before generating the report
+  dependsOn test
+  reports {
+    xml.required = true // codecov depends on xml format report
+    html.required = true
+  }
+}
+
+
+jar {
+  inputs.property('moduleName', project.ext.moduleName)
+  manifest {
+    attributes 'Automatic-Module-Name': project.ext.moduleName
+    attributes 'Bundle-SymbolicName': project.ext.moduleName
+    attributes 'Implementation-Title': project.name
+    attributes 'Implementation-Version': project.version
+  }
+}
+
+tasks.withType(Javadoc) {
+  // disable the crazy super-strict doclint tool in Java 8
+  options.addStringOption('Xdoclint:none', '-quiet')
+}
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+  archiveClassifier.set('javadoc')
+  from 'build/docs/javadoc'
+}
+
+task sourcesJar(type: Jar) {
+  archiveClassifier.set('sources')
+  from sourceSets.main.allSource
+}
+
+artifacts {
+  archives jar
+  archives javadocJar
+  archives sourcesJar
+}
+
+signing {
+  sign jar
+  sign javadocJar
+  sign sourcesJar
+  sign publishing.publications
+}
+
+
+nexusPublishing {
+  repositories {
+    sonatype {
+      username = project.ext.sonatypeUser
+      password = project.ext.sonatypePwd
+    }
+  }
+}
+
+publishing {
+  publications {
+    release(MavenPublication) {
+      from components.java
+      artifact javadocJar
+      artifact sourcesJar
+
+      pom {
+        name = project.name
+        description = project.ext.description
+        url = project.ext.url
+        packaging = 'jar'
+        scm {
+          url = project.ext.url
+          connection = project.ext.scm
+          developerConnection = project.ext.scm
+        }
+        licenses {
+          license {
+            name = 'MPL 2.0'
+            url = 'http://mozilla.org/MPL/2.0/'
+            distribution = 'repo'
+          }
+        }
+        organization {
+          name = project.ext.orgName
+          url = project.ext.orgUrl
+        }
+        developers {
+          developer {
+            id = 'markwoon'
+            name = 'Mark Woon'
+          }
+          developer {
+            id = 'whaleyr'
+            name = 'Ryan Whaley'
+          }
+        }
+      }
+    }
+  }
+}

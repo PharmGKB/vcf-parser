@@ -1,21 +1,17 @@
 package org.pharmgkb.parser.vcf.model.genotype;
 
+import java.math.BigDecimal;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import javax.annotation.Nonnull;
 import com.google.common.collect.ArrayListMultimap;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
 
-import javax.annotation.Nonnull;
-import java.math.BigDecimal;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class VcfGenotypeTest {
 

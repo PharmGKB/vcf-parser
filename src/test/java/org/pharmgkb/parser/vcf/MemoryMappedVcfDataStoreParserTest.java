@@ -1,14 +1,13 @@
 package org.pharmgkb.parser.vcf;
 
-import org.junit.Test;
-import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
-import org.pharmgkb.parser.vcf.model.VcfSample;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import org.junit.jupiter.api.Test;
+import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
+import org.pharmgkb.parser.vcf.model.VcfSample;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * @author Douglas Myers-Turnbull

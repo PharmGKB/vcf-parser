@@ -10,7 +10,7 @@ import java.util.Collections;
 import java.util.List;
 import javax.annotation.Nonnull;
 import org.apache.commons.io.IOUtils;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
 import org.pharmgkb.parser.vcf.model.InfoMetadata;
 import org.pharmgkb.parser.vcf.model.InfoType;
@@ -19,7 +19,7 @@ import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class TransformingVcfLineParserTest {
 

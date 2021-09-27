@@ -1,10 +1,14 @@
 package org.pharmgkb.parser.vcf.model;
 
-import org.junit.Test;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import org.junit.jupiter.api.Test;
 
-import java.util.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import static org.junit.Assert.assertEquals;
 
 /**
  * Tests {@link VcfSample}.
@@ -36,18 +40,21 @@ public class VcfSampleTest {
     assertEquals(Arrays.asList("2", "1"), new ArrayList<>(sampleReverse.getPropertyKeys()));
   }
 
-  @Test(expected = IllegalArgumentException.class)
+  @Test
   public void testBadConstructor() {
-    List<String> keys = Arrays.asList("key1", "key2");
-    List<String> values = Arrays.asList("value1");
-    new VcfSample(keys, values);
+    assertThrows(IllegalArgumentException.class, () -> {
+      List<String> keys = Arrays.asList("key1", "key2");
+      List<String> values = Arrays.asList("value1");
+      new VcfSample(keys, values);
+    });
   }
 
-  @Test(expected = IllegalArgumentException.class)
+  @Test
   public void testHasNewline() {
-    List<String> keys = Arrays.asList("key1");
-    List<String> values = Arrays.asList("value\n1");
-    new VcfSample(keys, values);
+    assertThrows(IllegalArgumentException.class, () -> {
+      List<String> keys = Arrays.asList("key1");
+      List<String> values = Arrays.asList("value\n1");
+      new VcfSample(keys, values);
+    });
   }
-
 }

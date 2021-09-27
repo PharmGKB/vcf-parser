@@ -9,14 +9,14 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
 import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfSample;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * JUnit test case for {@link VcfParser}.

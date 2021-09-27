@@ -1,37 +1,48 @@
-plugins {
-  id 'java'
-  id 'jacoco'
-  id 'com.github.kt3k.coveralls' version '2.6.3'
-  id 'osgi'
-  id 'signing'
-  id 'com.jfrog.bintray' version '1.6'
-  id 'maven-publish'
+buildscript {
+  repositories {
+    mavenCentral()
+  }
+  dependencies {
+    classpath 'biz.aQute.bnd:biz.aQute.bnd.gradle:5.3.0'
+  }
 }
 
+plugins {
+  id 'java-library'
+  id 'jacoco'
+  id 'signing'
+  id 'maven-publish'
+  id "io.github.gradle-nexus.publish-plugin" version "1.1.0"
+}
+apply plugin: 'biz.aQute.bnd.builder'
 
-def getVersionName = {
+
+def getVersionName() {
+  def errOut = new ByteArrayOutputStream()
   try {
-    def stdout = new ByteArrayOutputStream()
+    def stdOut = new ByteArrayOutputStream()
     exec {
       commandLine 'git', 'describe', '--tags'
-      standardOutput = stdout
+      standardOutput = stdOut
+      errorOutput = errOut
     }
     // strip of leading "v"
-    return stdout.toString().trim().substring(1)
-  }
-  catch (ignored) {
-    return null
+    return stdOut.toString().trim().substring(1)
+  } catch (ignore) {
+    logger.info('Error running git describe (' + errOut.toString().trim() + '), defaulting to 0.0.0')
+    return '0.0.0'
   }
 }
 
 
-sourceCompatibility = 1.8
-targetCompatibility = 1.8
+sourceCompatibility = JavaVersion.VERSION_1_8
+targetCompatibility = JavaVersion.VERSION_1_8
 project.group = 'org.pharmgkb'
 project.version = getVersionName()
-archivesBaseName = "vcf-parser"
 
 ext {
+  baseName = "vcf-parser"
+  moduleName = 'org.pharmgkb.vcf-parser'
   description = 'A strict streaming parser for VCF 4.1/4.2.'
   url = 'https://github.com/PharmGKB/vcf-parser.git'
   scm = 'scm:git@github.com:PharmGKB/vcf-parser.git'
@@ -41,149 +52,38 @@ ext {
   gpgPwd = project.hasProperty('signing.password') ? project.getProperty('signing.password') : System.getenv('SIGNING_PASSWORD')
   sonatypeUser = project.hasProperty('ossrhUsername') ? ossrhUsername : System.getenv('OSSRH_USERNAME')
   sonatypePwd  = project.hasProperty('ossrhPassword') ? ossrhPassword : System.getenv('OSSRH_PASSWORD')
-  bintrayUser = project.hasProperty('bintrayUsername') ? bintrayUsername : System.getenv('BINTRAY_USERNAME')
-  bintrayKey  = project.hasProperty('bintrayApiKey')   ? bintrayApiKey   : System.getenv('BINTRAY_API_KEY')
+  sonatypeStagingProfileId = project.hasProperty('ossrhStagingProfileId') ? ossrhPassword : System.getenv('OSSRH_STAGING_PROFILE_ID')
+}
+
+// cannot modify signing directly, have to do it like this
+// reference: https://getstream.io/blog/publishing-libraries-to-mavencentral-2021/
+ext['signing.keyId'] = ''
+ext['signing.password'] = ''
+ext['signing.secretKeyRingFile'] = ''
+if (project.hasProperty('gpg.keyId')) {
+  ext['signing.keyId'] =  project.getProperty('gpg.keyId')
+  ext['signing.password'] = project.getProperty('gpg.password')
+  ext['signing.secretKeyRingFile'] =  project.getProperty('gpg.secretKeyRingFile')
+} else if (System.getenv('SIGNING_KEY_ID') != null) {
+  ext['signing.keyId'] =  System.getenv('SIGNING_KEY_ID')
+  ext['signing.password'] = System.getenv('SIGNING_PASSWORD')
+  ext['signing.secretKeyRingFile'] =  System.getenv('SIGNING_SECRET_KEY_RING_FILE')
 }
 
 
 repositories {
-  jcenter()
+  mavenCentral()
 }
 
 dependencies {
-  compile group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.2'
-  compile group: 'com.google.guava', name: 'guava', version: '25.0-jre'
-  compile group: 'commons-io', name: 'commons-io', version: '2.6'
-  compile group: 'org.apache.commons', name: 'commons-lang3', version: '3.7'
-  compile group: 'org.slf4j', name: 'slf4j-api', version: '1.7.25'
+  implementation group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.2'
+  implementation group: 'com.google.guava', name: 'guava', version: '30.1.1-jre'
+  implementation group: 'commons-io', name: 'commons-io', version: '2.11.0'
+  implementation group: 'org.apache.commons', name: 'commons-lang3', version: '3.12.0'
+  implementation group: 'org.slf4j', name: 'slf4j-api', version: '1.7.32'
 
-  testCompile group: 'junit', name: 'junit', version: '4.12'
+  testImplementation group: 'org.junit.jupiter', name: 'junit-jupiter', version: '5.7.2'
+  testImplementation group: 'org.hamcrest', name: 'hamcrest', version: '2.2'
 }
 
-
-task printVersion {
-  doLast {
-    println project.version
-  }
-}
-
-
-jacocoTestReport {
-  reports {
-    xml.enabled = true // coveralls plugin depends on xml format report
-    html.enabled = true
-  }
-}
-
-
-jar {
-  manifest {
-    attributes 'Implementation-Title': project.name
-    attributes 'Implementation-Version': project.version
-    instruction 'Import-Package',
-        'javax.annotation;resolution:=optional',
-        '*'
-  }
-}
-
-task javadocJar(type: Jar, dependsOn: javadoc) {
-  classifier = 'javadoc'
-  from 'build/docs/javadoc'
-}
-
-task sourcesJar(type: Jar) {
-  classifier = 'sources'
-  from sourceSets.main.allSource
-}
-
-artifacts {
-  archives jar
-  archives javadocJar
-  archives sourcesJar
-}
-
-
-signing {
-  sign configurations.archives
-}
-
-
-bintray {
-  user = project.ext.bintrayUser
-  key = project.ext.bintrayKey
-  publications = [ 'PgkbPublication' ]
-  dryRun = false
-  publish = true
-
-  pkg {
-    repo = 'maven'
-    name = project.name
-    desc = project.ext.description
-    userOrg = 'pharmgkb'
-    licenses = [ 'MPL-2.0' ]
-    issueTrackerUrl = project.ext.url + '/issues'
-    vcsUrl = project.ext.url
-    githubRepo = 'PharmGKB/pgkb-common'
-
-    version {
-      name = project.version
-      vcsTag = 'v' + project.version
-      gpg {
-        sign = true
-        passphrase = project.ext.gpgPwd
-      }
-      mavenCentralSync {
-        sync = true
-        user = project.ext.sonatypeUser
-        password = project.ext.sonatypePwd
-        close = '1'
-      }
-    }
-  }
-}
-
-publishing {
-  publications {
-    PgkbPublication(MavenPublication) {
-      from components.java
-      artifact javadocJar
-      artifact sourcesJar
-
-      pom.withXml {
-        asNode().children().last() + {
-          resolveStrategy = Closure.DELEGATE_FIRST
-          name project.name
-          packaging 'jar'
-          description project.ext.description
-          url project.ext.url
-          scm {
-            url project.ext.url
-            connection project.ext.scm
-            developerConnection project.ext.scm
-          }
-          licenses {
-            license {
-              name 'MPL 2.0'
-              url 'http://mozilla.org/MPL/2.0/'
-              distribution 'repo'
-            }
-          }
-          organization {
-            name project.ext.orgName
-            url project.ext.orgUrl
-          }
-          developers {
-            developer {
-              id 'markwoon'
-              name 'Mark Woon'
-            }
-            developer {
-              id 'whaleyr'
-              name 'Ryan Whaley'
-            }
-          }
-        }
-      }
-    }
-  }
-}
+apply from: 'pgkb-build.gradle'
