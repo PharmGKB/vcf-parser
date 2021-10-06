@@ -1,11 +1,13 @@
 package org.pharmgkb.parser.vcf.model;
 
-import com.google.common.base.Preconditions;
-import org.pharmgkb.parser.vcf.VcfUtils;
-
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.util.*;
+import com.google.common.base.Preconditions;
+import org.pharmgkb.parser.vcf.VcfUtils;
 
 /**
  * This class contains sample data for a VCF position line.
@@ -25,7 +27,8 @@ public class VcfSample {
     } else if (values == null) {
       throw new IllegalArgumentException("values is null but keys is not");
     }
-    Preconditions.checkArgument(keys.size() == values.size(), "Number of keys does not match number of values");
+    Preconditions.checkArgument(keys.size() == values.size(),
+        "Number of FORMAT entries does not match number of sample entries");
     for (int x = 0; x < keys.size(); x++) {
       m_properties.put(keys.get(x), values.get(x));
     }
