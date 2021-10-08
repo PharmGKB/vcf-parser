@@ -1,3 +1,10 @@
+### [0.2.3](https://github.com/PharmGKB/vcf-parser/compare/v0.2.2...v0.2.3) (2021-10-08)
+
+
+### Bug Fixes
+
+* improve error message when # of format entries does not match # of sample entries ([afbdc47](https://github.com/PharmGKB/vcf-parser/commit/afbdc479041c8f1bbf2fa690c62cd19a17a99760))
+
 ### [0.2.2](https://github.com/PharmGKB/vcf-parser/compare/v0.2.1...v0.2.2) (2021-09-27)
 
 
