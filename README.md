@@ -1,12 +1,9 @@
 # Overview
 
-[![Build Status](https://travis-ci.org/PharmGKB/vcf-parser.svg?branch=master)](https://travis-ci.org/PharmGKB/vcf-parser)
-[![codecov.io](https://codecov.io/github/PharmGKB/vcf-parser/coverage.svg?branch=master)](https://codecov.io/github/PharmGKB/vcf-parser?branch=master)
+[![codecov.io](https://codecov.io/github/PharmGKB/vcf-parser/coverage.svg?branch=main)](https://codecov.io/github/PharmGKB/vcf-parser?branch=master)
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/org.pharmgkb/vcf-parser/badge.svg)](https://maven-badges.herokuapp.com/maven-central/org.pharmgkb/vcf-parser)
 
 This is a strict streaming parser for [VCF](http://en.wikipedia.org/wiki/Variant_Call_Format) 4.1/4.2.
-
-**This is a work in progress.  Code paths in use by PharmGKB are more complete.**
 
 The main parser class ([`VcfParser`](src/main/java/org/pharmgkb/parser/vcf/VcfParser.java)) is responsible for reading all metadata and initial position data.  Then actual handling of each position line is delegated to an implementation of `VcfLineParser`.
 

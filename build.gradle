@@ -48,8 +48,7 @@ ext {
   scm = 'scm:git@github.com:PharmGKB/vcf-parser.git'
   orgName = 'PharmGKB'
   orgUrl = 'https://www.pharmgkb.org'
-  // grab properties from environment for Travis CI
-  gpgPwd = project.hasProperty('signing.password') ? project.getProperty('signing.password') : System.getenv('SIGNING_PASSWORD')
+  // grab properties from environment for CI
   sonatypeUser = project.hasProperty('ossrhUsername') ? ossrhUsername : System.getenv('OSSRH_USERNAME')
   sonatypePwd  = project.hasProperty('ossrhPassword') ? ossrhPassword : System.getenv('OSSRH_PASSWORD')
   sonatypeStagingProfileId = project.hasProperty('ossrhStagingProfileId') ? ossrhPassword : System.getenv('OSSRH_STAGING_PROFILE_ID')
@@ -60,7 +59,13 @@ ext {
 ext['signing.keyId'] = ''
 ext['signing.password'] = ''
 ext['signing.secretKeyRingFile'] = ''
-if (project.hasProperty('gpg.keyId')) {
+if (System.getenv('SIGNING_KEY')) {
+  ext['signing.key'] =  System.getenv('SIGNING_KEY')
+  ext['signing.password'] = System.getenv('SIGNING_PASSWORD')
+}  else if (project.hasProperty('gpg.key')) {
+  ext['signing.key'] =  project.getProperty('gpg.key')
+  ext['signing.password'] = project.getProperty('gpg.password')
+}  else if (project.hasProperty('gpg.keyId')) {
   ext['signing.keyId'] =  project.getProperty('gpg.keyId')
   ext['signing.password'] = project.getProperty('gpg.password')
   ext['signing.secretKeyRingFile'] =  project.getProperty('gpg.secretKeyRingFile')
@@ -76,13 +81,13 @@ repositories {
 }
 
 dependencies {
-  implementation group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.2'
-  implementation group: 'com.google.guava', name: 'guava', version: '30.1.1-jre'
   implementation group: 'commons-io', name: 'commons-io', version: '2.11.0'
+  implementation group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.2'
+  implementation group: 'com.google.guava', name: 'guava', version: '31.1-jre'
   implementation group: 'org.apache.commons', name: 'commons-lang3', version: '3.12.0'
-  implementation group: 'org.slf4j', name: 'slf4j-api', version: '1.7.32'
+  implementation group: 'org.slf4j', name: 'slf4j-api', version: '1.7.36'
 
-  testImplementation group: 'org.junit.jupiter', name: 'junit-jupiter', version: '5.7.2'
+  testImplementation group: 'org.junit.jupiter', name: 'junit-jupiter', version: '5.8.2'
   testImplementation group: 'org.hamcrest', name: 'hamcrest', version: '2.2'
 }
 

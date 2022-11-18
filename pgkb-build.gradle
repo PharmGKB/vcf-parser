@@ -76,6 +76,9 @@ artifacts {
 }
 
 signing {
+  if (System.getenv('SIGNING_KEY')) {
+    useInMemoryPgpKeys(project.ext["signing.key"], project.ext["signing.password"])
+  }
   sign jar
   sign javadocJar
   sign sourcesJar

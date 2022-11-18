@@ -1,23 +1,26 @@
-name: Build & Tests
+name: Upload to Maven Central
 
 on:
-  push:
-    branches:
-      - "*"
-    paths-ignore:
-      - "**.md"
-  pull_request:
-    paths-ignore:
-      - "**.md"
+  release:
+    types: [published]
 
 jobs:
-  build:
-    name: Build and Test
+  release:
+    name: Upload to Maven Central
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+
+      - name: Set appVersion
+        uses: bhowell2/github-substring-action@v1
+        id: appVersion
+        with:
+          value: ${{github.ref}}
+          index_of_str: "refs/tags/v"
+
+      - run: echo "Version = ${{steps.appVersion.outputs.substring}}"
 
       - name: Set up JDK
         uses: actions/setup-java@v3
@@ -29,11 +32,8 @@ jobs:
       - name: Build and test
         run: ./gradlew test
 
-      - name: Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          files: ./build/reports/jacoco/test/jacocoTestReport.xml
-          flags: unittests
+      - name: Publish to Maven Central
+        run: ./gradlew publishToSonatype closeAndReleaseSonatypeStagingRepository
 
       - name: Send Slack notification on failure
         if: failure()

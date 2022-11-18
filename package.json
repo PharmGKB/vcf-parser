@@ -7,18 +7,43 @@
     "url": "https://github.com/PharmGKB/vcf-parser.git"
   },
   "license": "MPL-2.0",
+  "packageManager": "yarn@3.2.1",
   "devDependencies": {
-    "@semantic-release/changelog": "^6.0.0",
-    "@semantic-release/git": "^10.0.0",
-    "conventional-changelog-conventionalcommits": "^4.6.1",
-    "semantic-release": "^18.0.0"
+    "@google/semantic-release-replace-plugin": "^1.1.0",
+    "@semantic-release/changelog": "^6.0.1",
+    "@semantic-release/git": "^10.0.1",
+    "conventional-changelog-conventionalcommits": "^5.0.0",
+    "semantic-release": "^19.0.5"
   },
   "release": {
     "branches": [
-      "master"
+      "main"
     ],
     "plugins": [
       "@semantic-release/commit-analyzer",
+      [
+        "@google/semantic-release-replace-plugin",
+        {
+          "replacements": [
+            {
+              "files": [
+                "README.md"
+              ],
+              "from": "    <version>.*</version>",
+              "to": "    <version>>${nextRelease.version}</version>",
+              "results": [
+                {
+                  "file": "README.md",
+                  "hasChanged": true,
+                  "numMatches": 1,
+                  "numReplacements": 1
+                }
+              ],
+              "countMatches": true
+            }
+          ]
+        }
+      ],
       [
         "@semantic-release/release-notes-generator",
         {
@@ -36,7 +61,16 @@
       "@semantic-release/changelog",
       "@semantic-release/github",
       "@semantic-release/npm",
-      "@semantic-release/git"
+      [
+        "@semantic-release/git",
+        {
+          "assets": [
+            "CHANGELOG.md",
+            "package.json",
+            "README.md"
+          ]
+        }
+      ]
     ],
     "ci": false
   },
