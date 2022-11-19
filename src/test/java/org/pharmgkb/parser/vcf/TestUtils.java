@@ -1,9 +1,10 @@
 package org.pharmgkb.parser.vcf;
 
-import javax.annotation.Nonnull;
 import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Path;
+import javax.annotation.Nonnull;
+
 
 /**
  * Utilities for testing vcf-parser.
@@ -25,5 +26,4 @@ public class TestUtils {
     }
     return sb.toString();
   }
-
 }

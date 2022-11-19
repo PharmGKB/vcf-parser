@@ -1,10 +1,12 @@
 package org.pharmgkb.parser.vcf.model;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import org.pharmgkb.parser.vcf.VcfFormatException;
+
 
 /**
  * A strictly validated VCF metadata ALT code of the form:
@@ -31,7 +33,7 @@ public class AltStructuralVariant {
 
   private static final Pattern sf_colon = Pattern.compile(":");
 
-  private List<String> m_components;
+  private final List<String> m_components;
 
   /**
    * @param string The full code (e.g. INS:ME:LINE:type-a1)
@@ -39,7 +41,7 @@ public class AltStructuralVariant {
   public AltStructuralVariant(@Nonnull String string) {
 
     if (string.isEmpty()) { // could be replaced with javax.validation.constraints.Size(min=1);
-      throw new IllegalArgumentException("Structural variant code must not be empty");
+      throw new VcfFormatException("Structural variant code must not be empty");
     }
 
     String[] components = sf_colon.split(string);
@@ -50,14 +52,14 @@ public class AltStructuralVariant {
 
       // Make sure the top-level code exists
       if (type == null && level == 0) {
-          throw new IllegalArgumentException("Top-level structural variant code was " + components[level]
-          + " but must be a top-level reserved code (e.g. DEL or CNV)");
+          throw new VcfFormatException("Top-level structural variant code was " + components[level] +
+              " but must be a top-level reserved code (e.g. DEL or CNV)");
       }
 
       // If this is a reserved code, make sure the level matches
       if (type != null && level != type.getLevelInSpecification()) {
-        throw new IllegalArgumentException("Structural variant code " + components[level]
-            + " is a reserved code of level " + type.getLevelInSpecification() + ", not " + level);
+        throw new VcfFormatException("Structural variant code " + components[level] +
+            " is a reserved code of level " + type.getLevelInSpecification() + ", not " + level);
       }
 
       // If this is a reserved code, make sure its parent is correct
@@ -68,11 +70,12 @@ public class AltStructuralVariant {
           for (ReservedStructuralVariantCode parent : type.getParentCodes()) {
             if (realParent == parent) {
               foundMatch = true;
+              break;
             }
           }
           if (!foundMatch) {
-            throw new IllegalArgumentException("Structural variant code " + components[level]
-               + " was not a child of reserved code " + realParent.getId());
+            throw new VcfFormatException("Structural variant code " + components[level] +
+                " was not a child of reserved code " + realParent.getId());
           }
         }
       }
@@ -120,5 +123,4 @@ public class AltStructuralVariant {
     }
     return sb.toString();
   }
-
 }

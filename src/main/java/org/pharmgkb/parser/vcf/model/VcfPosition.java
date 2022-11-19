@@ -1,18 +1,22 @@
 package org.pharmgkb.parser.vcf.model;
 
+import java.lang.invoke.MethodHandles;
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
+import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import java.lang.invoke.MethodHandles;
-import java.math.BigDecimal;
-import java.util.*;
-import java.util.regex.Pattern;
 
 
 /**
@@ -42,7 +46,7 @@ public class VcfPosition {
   private List<String> m_ids = new ArrayList<>();
   private String m_refBases;
   private List<String> m_altBases = new ArrayList<>();
-  private List<String> m_alleles = new ArrayList<>();
+  private final List<String> m_alleles = new ArrayList<>();
   private BigDecimal m_quality;
   private List<String> m_filter = new ArrayList<>();
   private ListMultimap<String, String> m_info = ArrayListMultimap.create();
@@ -63,7 +67,7 @@ public class VcfPosition {
      */
 
     if (sf_whitespace.matcher(chr).matches()  || chr.contains(":")) {
-      throw new IllegalArgumentException("CHROM column \"" + chr + "\" contains whitespace or colons");
+      throw new VcfFormatException("CHROM column \"" + chr + "\" contains whitespace or colons");
     }
 
     // allow pos < 1 because that's reserved for telomers
@@ -71,20 +75,20 @@ public class VcfPosition {
     if (ids != null) {
       for (String id : ids) {
         if (sf_whitespace.matcher(id).matches() || id.contains(";")) {
-          throw new IllegalArgumentException("ID \"" + id + "\" contains whitespace or semicolons");
+          throw new VcfFormatException("ID \"" + id + "\" contains whitespace or semicolons");
         }
       }
     }
 
     if (!VcfUtils.REF_BASE_PATTERN.matcher(ref).matches()) {
-      throw new IllegalArgumentException("Invalid reference base '" + ref +
+      throw new VcfFormatException("Invalid reference base '" + ref +
           "' (must match " + VcfUtils.REF_BASE_PATTERN +")");
     }
 
     if (altBases != null) {
       for (String base : altBases) {
         if (!VcfUtils.ALT_BASE_PATTERN.matcher(base).matches()) {
-          throw new IllegalArgumentException("Invalid alternate base '" + base + "' (must be [AaGgCcTtNn\\*]+ or <.+>)");
+          throw new VcfFormatException("Invalid alternate base '" + base + "' (must be [AaGgCcTtNn\\*]+ or <.+>)");
         }
       }
     }
@@ -92,10 +96,10 @@ public class VcfPosition {
     if (filter != null) {
       for (String f : filter) {
         if (sf_whitespace.matcher(f).matches()) {
-          throw new IllegalArgumentException("FILTER column entry \"" + f + "\" contains whitespace");
+          throw new VcfFormatException("FILTER column entry \"" + f + "\" contains whitespace");
         }
         if (f.equals("0")) {
-          throw new IllegalArgumentException("FILTER column entry should not be 0");
+          throw new VcfFormatException("FILTER column entry should not be 0");
         }
         if (f.equals("PASS")) {
           if (filter.size() == 1) { // a user is likely to pass "PASS" instead of an empty list or null
@@ -103,7 +107,7 @@ public class VcfPosition {
             filter = null;
             break; // unnecessary, but gets rid of the warning
           } else { // but this is illegal per VCF spec
-            throw new IllegalArgumentException("FILTER contains PASS along with other filters!");
+            throw new VcfFormatException("FILTER contains PASS along with other filters!");
           }
         }
       }
@@ -112,7 +116,7 @@ public class VcfPosition {
     if (info != null) {
       for (Map.Entry<String, String> entry : info.entries()) {
         if (sf_whitespace.matcher(entry.getKey()).matches() || sf_whitespace.matcher(entry.getValue()).matches()) {
-          throw new IllegalArgumentException("INFO column entry \"" + entry.getKey() + "=" + entry.getValue() +
+          throw new VcfFormatException("INFO column entry \"" + entry.getKey() + "=" + entry.getValue() +
               "\" contains whitespace");
         }
       }
@@ -121,7 +125,7 @@ public class VcfPosition {
     if (format != null) {
       for (String f : format) {
         if (!VcfUtils.FORMAT_PATTERN.matcher(f).matches() || f.contains(":")) {
-          throw new IllegalArgumentException("FORMAT ID does not match VCF spec");
+          throw new VcfFormatException("FORMAT ID does not match VCF spec");
         }
       }
     }

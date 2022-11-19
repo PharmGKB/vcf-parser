@@ -1,10 +1,10 @@
 package org.pharmgkb.parser.vcf.model.genotype;
 
-import org.pharmgkb.parser.vcf.VcfUtils;
-
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.Immutable;
+import org.pharmgkb.parser.vcf.VcfFormatException;
+import org.pharmgkb.parser.vcf.VcfUtils;
 
 /**
  * An Allele matching the VCF 4.2 specification for the ALT and REF columns.
@@ -27,7 +27,7 @@ public class VcfAllele {
    */
   public VcfAllele(@Nonnull String string) {
     if (!VcfUtils.ALT_BASE_PATTERN.matcher(string).matches()) {
-      throw new IllegalArgumentException(string + " does not look like an allele");
+      throw new VcfFormatException(string + " does not look like an allele");
     }
     m_string = string;
   }
@@ -44,11 +44,11 @@ public class VcfAllele {
   /**
    * <strong>Before calling, verify that this VcfAllele is not a breakpoint or a symbolic name.</strong>
    * @return The number of bases in this Allele
-   * @throws IllegalArgumentException If this Allele is a breakpoint or symbolic name
+   * @throws VcfFormatException If this Allele is a breakpoint or symbolic name
    */
   public int length() throws IllegalArgumentException {
     if (isSymbolic() || isBreakpoint() || isDeleted()) {
-      throw new IllegalArgumentException("Length could not be determined because the allele \"" + m_string + "\"is " +
+      throw new VcfFormatException("Length could not be determined because the allele '" + m_string + "' is " +
           "symbolic, deleted upstream, or a breakpoint");
     }
     return m_string.length();

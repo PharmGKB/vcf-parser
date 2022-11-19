@@ -1,19 +1,18 @@
 package org.pharmgkb.parser.vcf;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.tuple.Pair;
-import org.pharmgkb.parser.vcf.model.FormatType;
-import org.pharmgkb.parser.vcf.model.InfoType;
-import org.pharmgkb.parser.vcf.model.ReservedProperty;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
+import org.pharmgkb.parser.vcf.model.FormatType;
+import org.pharmgkb.parser.vcf.model.InfoType;
+import org.pharmgkb.parser.vcf.model.ReservedProperty;
 
 /**
  * Contains static methods for handling properties in INFO and FORMAT fields.
@@ -87,7 +86,7 @@ public class VcfUtils {
       try {
         pair = splitProperty(prop);
       } catch (RuntimeException e) {
-        throw new IllegalArgumentException("Error parsing property \"" + prop + "\"", e);
+        throw new VcfFormatException("Error parsing property \"" + prop + "\"", e);
       }
       map.put(pair.getKey(), pair.getValue());
     }
@@ -101,7 +100,7 @@ public class VcfUtils {
   public static @Nonnull Pair<String, String> splitProperty(@Nonnull String prop) {
     String[] parts = UNQUOTED_EQUAL_SIGN_PATTERN.split(prop);
     if (parts.length != 2) {
-      throw new RuntimeException("There were " + (parts.length - 1) + " equals signs for: " + prop);
+      throw new VcfFormatException("There were " + (parts.length - 1) + " equals signs for: " + prop);
     }
     return Pair.of(parts[0], parts[1]);
   }
@@ -152,7 +151,7 @@ public class VcfUtils {
       try {
         return (T) convertElement(clas, value);
       } catch (ClassCastException e) {
-        throw new IllegalArgumentException("Wrong type specified", e);
+        throw new VcfFormatException("Wrong type specified", e);
       }
     }
     List<Object> list = new ArrayList<>();
@@ -162,7 +161,7 @@ public class VcfUtils {
     try {
       return (T) list;
     } catch (ClassCastException e) {
-      throw new IllegalArgumentException("Wrong type specified", e);
+      throw new VcfFormatException("Wrong type specified", e);
     }
   }
 
@@ -182,7 +181,7 @@ public class VcfUtils {
         clas = String.class;
         break;
       default:
-        throw new RuntimeException(FormatType.class.getSimpleName() + " " + type + " isn't covered?!");
+        throw new VcfFormatException(FormatType.class.getSimpleName() + " " + type + " isn't covered?!");
     }
     return convertProperty(clas, value, false);
   }
@@ -206,7 +205,7 @@ public class VcfUtils {
         clas = Boolean.class;
         break;
       default:
-        throw new RuntimeException(InfoType.class.getSimpleName() + " " + type + " isn't covered?!");
+        throw new VcfFormatException(InfoType.class.getSimpleName() + " " + type + " isn't covered?!");
     }
     return convertProperty(clas, value, false);
   }
@@ -221,7 +220,7 @@ public class VcfUtils {
       if (value.length() == 1) {
         return value;
       } else {
-        throw new IllegalArgumentException("Invalid character value '" + value + "'");
+        throw new VcfFormatException("Invalid character value '" + value + "'");
       }
     } else if (clas == Boolean.class) {
       value = StringUtils.stripToNull(value);
@@ -234,22 +233,22 @@ public class VcfUtils {
       if (value.equals("1") || value.equalsIgnoreCase("true")) {
         return true;
       }
-      throw new IllegalArgumentException("Invalid boolean value: '" + value + "'");
+      throw new VcfFormatException("Invalid boolean value: '" + value + "'");
 
     } else if (clas == BigDecimal.class) {
       try {
         return new BigDecimal(value);
       } catch (NumberFormatException e) {
-        throw new IllegalArgumentException("Expected float; got " + value);
+        throw new VcfFormatException("Expected float; got " + value);
       }
     } else if (clas == Long.class) {
       try {
         return Long.parseLong(value);
       } catch (NumberFormatException e) {
-        throw new IllegalArgumentException("Expected integer; got " + value);
+        throw new VcfFormatException("Expected integer; got " + value);
       }
     }
-    throw new UnsupportedOperationException("Type " + clas + " unrecognized");
+    throw new VcfFormatException("Type " + clas + " unrecognized");
   }
 
 }

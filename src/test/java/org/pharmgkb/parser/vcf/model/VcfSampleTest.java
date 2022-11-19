@@ -2,9 +2,11 @@ package org.pharmgkb.parser.vcf.model;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.pharmgkb.parser.vcf.VcfFormatException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -12,12 +14,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * Tests {@link VcfSample}.
+ *
  * @author Douglas Myers-Turnbull
  */
-public class VcfSampleTest {
+class VcfSampleTest {
 
   @Test
-  public void testGetProperty() {
+  void testGetProperty() {
     List<String> keys = Arrays.asList("key1", "key2");
     List<String> values = Arrays.asList("value1", "value2");
     VcfSample sample = new VcfSample(keys, values);
@@ -26,7 +29,7 @@ public class VcfSampleTest {
   }
 
   @Test
-  public void testOrder() {
+  void testOrder() {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("1", "A");
     map.put("2", "B");
@@ -41,19 +44,19 @@ public class VcfSampleTest {
   }
 
   @Test
-  public void testBadConstructor() {
-    assertThrows(IllegalArgumentException.class, () -> {
+  void testBadConstructor() {
+    assertThrows(VcfFormatException.class, () -> {
       List<String> keys = Arrays.asList("key1", "key2");
-      List<String> values = Arrays.asList("value1");
+      List<String> values = Collections.singletonList("value1");
       new VcfSample(keys, values);
     });
   }
 
   @Test
-  public void testHasNewline() {
-    assertThrows(IllegalArgumentException.class, () -> {
-      List<String> keys = Arrays.asList("key1");
-      List<String> values = Arrays.asList("value\n1");
+  void testHasNewline() {
+    assertThrows(VcfFormatException.class, () -> {
+      List<String> keys = Collections.singletonList("key1");
+      List<String> values = Collections.singletonList("value\n1");
       new VcfSample(keys, values);
     });
   }

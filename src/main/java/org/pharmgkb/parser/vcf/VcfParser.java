@@ -18,7 +18,7 @@ import javax.annotation.Nullable;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
-import com.google.common.io.Closeables;
+import org.apache.commons.lang3.StringUtils;
 import org.pharmgkb.parser.vcf.model.BaseMetadata;
 import org.pharmgkb.parser.vcf.model.ContigMetadata;
 import org.pharmgkb.parser.vcf.model.FormatMetadata;
@@ -77,14 +77,20 @@ public class VcfParser implements Closeable {
       if (line.startsWith("##")) {
         try {
           parseMetadata(mdBuilder, line);
+        } catch (VcfFormatException ex) {
+          ex.addMetadata(m_lineNumber, "metadata");
+          throw ex;
         } catch (RuntimeException e) {
-          throw new IllegalArgumentException("Error parsing metadata on line #" + m_lineNumber + ": " + line, e);
+          throw new VcfFormatException(m_lineNumber, "metadata", e);
         }
       } else if (line.startsWith("#")) {
         try {
           parseColumnInfo(mdBuilder, line);
+        } catch (VcfFormatException ex) {
+          ex.addMetadata(m_lineNumber, "column (# header)");
+          throw ex;
         } catch (RuntimeException e) {
-          throw new IllegalArgumentException("Error parsing column (# header) on line #" + m_lineNumber + ": " + line, e);
+          throw new VcfFormatException(m_lineNumber, "column (# header)", e);
         }
         break;
       }
@@ -118,7 +124,7 @@ public class VcfParser implements Closeable {
 
   /**
    * Parses the entire VCF file (including the metadata).
-   *
+   * <p>
    * This is the preferred way to read a VCF file.
    */
   public void parse() throws IOException {
@@ -126,7 +132,6 @@ public class VcfParser implements Closeable {
     while (hasNext) {
       hasNext = parseNextLine();
     }
-    Closeables.closeQuietly(m_reader);
   }
 
   /**
@@ -135,8 +140,14 @@ public class VcfParser implements Closeable {
    *
    * @return Whether another line may be available to read; false only if and only if this is the last line available
    * @throws IllegalStateException If the stream was already fully parsed
+   * @throws VcfFormatException If a VCF formatting error is found
    */
-  public boolean parseNextLine() throws IOException {
+  public boolean parseNextLine() throws IOException, VcfFormatException {
+
+    if (m_alreadyFinished) {
+      // prevents user errors from causing infinite loops
+      throw new IllegalStateException("Already finished reading the stream");
+    }
 
     if (m_vcfMetadata == null) {
       parseMetadata();
@@ -147,19 +158,15 @@ public class VcfParser implements Closeable {
       m_alreadyFinished = true;
       return false;
     }
+    m_lineNumber++;
     if (line.startsWith("#")) {
       return true;
     }
 
-    if (m_alreadyFinished) {
-      // prevents user errors from causing infinite loops
-      throw new IllegalStateException("Already finished reading the stream");
-    }
-
-    m_lineNumber++;
-
     try {
-
+      if (StringUtils.stripToNull(line) == null) {
+        throw new VcfFormatException("Empty line");
+      }
       List<String> data = toList(sf_tabSplitter, line);
 
       // CHROM
@@ -170,8 +177,7 @@ public class VcfParser implements Closeable {
       try {
         position = Long.parseLong(data.get(1));
       } catch (NumberFormatException e) {
-        throw new IllegalArgumentException("Error parsing VCF data line #" + m_lineNumber + ": POS " +
-            data.get(1) + " is not a number");
+        throw new VcfFormatException("POS '" + data.get(1) + "' is not a number");
       }
 
       // ID
@@ -200,8 +206,7 @@ public class VcfParser implements Closeable {
         try {
           quality = new BigDecimal(data.get(5));
         } catch (NumberFormatException e) {
-          throw new IllegalArgumentException("Error parsing VCF data line #" + m_lineNumber + ": QUAL " +
-              data.get(5) + " is not a number");
+          throw new VcfFormatException("QUAL '" + data.get(5) + "' is not a number");
         }
       }
 
@@ -243,20 +248,23 @@ public class VcfParser implements Closeable {
       }
 
       m_vcfLineParser.parseLine(m_vcfMetadata, pos, samples);
+      return true;
 
-      m_lineNumber++;
-
-    } catch (IllegalArgumentException ex) {
+    } catch (VcfFormatException ex) {
+      ex.addMetadata(m_lineNumber, "data");
       throw ex;
     } catch (RuntimeException e) {
-      throw new IllegalArgumentException("Error parsing VCF data line #" + m_lineNumber + ": " + line, e);
+      throw new VcfFormatException(m_lineNumber, "data", e);
     }
-    return true;
   }
 
   @Override
   public void close() {
-    Closeables.closeQuietly(m_reader);
+    try {
+      m_reader.close();
+    } catch (Exception ex) {
+      sf_logger.info("Error closing reader", ex);
+    }
   }
 
 
@@ -297,11 +305,11 @@ public class VcfParser implements Closeable {
    * Removes double quotation marks around a string.
    * @throws IllegalArgumentException If angle brackets are not present
    */
-  private static @Nonnull String removeAngleBrackets(@Nonnull String string) throws IllegalArgumentException {
+  private static @Nonnull String removeAngleBrackets(@Nonnull String string) throws VcfFormatException {
     if (string.startsWith("<") && string.endsWith(">")) {
       return string.substring(1, string.length() - 1);
     }
-    throw new IllegalArgumentException("Angle brackets not present for: " + string);
+    throw new VcfFormatException("Angle brackets not present for: '" + string + "'");
   }
 
   /**

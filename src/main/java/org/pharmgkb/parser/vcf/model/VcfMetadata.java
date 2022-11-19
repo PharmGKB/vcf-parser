@@ -11,25 +11,26 @@ import javax.annotation.Nullable;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
+import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
 
 
 /**
- * This class captures all of the VCF metadata from a VCF file.
+ * This class captures all the VCF metadata from a VCF file.
  *
  * @author Mark Woon
  */
 public class VcfMetadata {
   private String m_fileFormat;
-  private Map<String, IdDescriptionMetadata> m_alt;
-  private Map<String, InfoMetadata> m_info;
-  private Map<String, IdDescriptionMetadata> m_filter;
-  private Map<String, FormatMetadata> m_format;
-  private List<String> m_columns;
-  private ListMultimap<String, String> m_properties;
-  private Map<String, ContigMetadata> m_contig;
-  private Map<String, IdDescriptionMetadata> m_sample;
-  private List<BaseMetadata> m_pedigree;
+  private final Map<String, IdDescriptionMetadata> m_alt;
+  private final Map<String, InfoMetadata> m_info;
+  private final Map<String, IdDescriptionMetadata> m_filter;
+  private final Map<String, FormatMetadata> m_format;
+  private final List<String> m_columns;
+  private final ListMultimap<String, String> m_properties;
+  private final Map<String, ContigMetadata> m_contig;
+  private final Map<String, IdDescriptionMetadata> m_sample;
+  private final List<BaseMetadata> m_pedigree;
 
 
   private VcfMetadata(@Nonnull String fileFormat, @Nullable Map<String, IdDescriptionMetadata> alt,
@@ -58,7 +59,7 @@ public class VcfMetadata {
 
   public void setFileFormat(@Nonnull String fileFormat) {
     if (!VcfUtils.FILE_FORMAT_PATTERN.matcher(fileFormat).matches()) {
-      throw new IllegalArgumentException("VCF format must look like ex: VCFv4.2; was " + fileFormat);
+      throw new VcfFormatException("VCF format must look like ex: VCFv4.2; was " + fileFormat);
     }
     m_fileFormat = fileFormat;
   }
@@ -168,13 +169,14 @@ public class VcfMetadata {
   /**
    * Adds {@code value} to the list of pedigreeDB.
    * @param value Must be wrapped in angle brackets
-   * @throws IllegalArgumentException If {@code value} is not wrapped in angle brackets
+   * @throws VcfFormatException If {@code value} is not wrapped in angle brackets
    */
   public void addPedigreeDatabase(@Nonnull String value) {
     if (value.startsWith("<") && value.endsWith(">")) {
       m_properties.put("pedigreeDB", value);
     } else {
-      throw new IllegalArgumentException("pedigreeDB string " + value + " should be enclosed in angle brackets according to spec");
+      throw new VcfFormatException("pedigreeDB string " + value +
+          " should be enclosed in angle brackets according to spec");
     }
   }
 
@@ -205,13 +207,14 @@ public class VcfMetadata {
   /**
    * Adds {@code value} to the list of pedigreeDB.
    * @param value Must be wrapped in angle brackets
-   * @throws IllegalArgumentException If {@code value} is not wrapped in angle brackets
+   * @throws VcfFormatException If {@code value} is not wrapped in angle brackets
    */
   public void removePedigreeDb(@Nonnull String value) {
     if (value.startsWith("<") && value.endsWith(">")) {
       m_properties.remove("pedigreeDB", value);
     } else { // be strict to avoid needing to delete both value and <value>
-      throw new IllegalArgumentException("pedigreeDB string " + value + " should be enclosed in angle brackets according to spec");
+      throw new VcfFormatException("pedigreeDB string " + value +
+          " should be enclosed in angle brackets according to spec");
     }
   }
 
@@ -299,15 +302,15 @@ public class VcfMetadata {
 
   public static class Builder {
     private String m_fileFormat;
-    private Map<String, IdDescriptionMetadata> m_alt = new HashMap<>();
-    private Map<String, InfoMetadata> m_info = new HashMap<>();
-    private Map<String, IdDescriptionMetadata> m_filter = new HashMap<>();
-    private Map<String, FormatMetadata> m_format = new HashMap<>();
-    private Map<String, ContigMetadata> m_contig = new HashMap<>();
-    private Map<String, IdDescriptionMetadata> m_sample = new HashMap<>();
-    private List<BaseMetadata> m_pedigree = new ArrayList<>();
+    private final Map<String, IdDescriptionMetadata> m_alt = new HashMap<>();
+    private final Map<String, InfoMetadata> m_info = new HashMap<>();
+    private final Map<String, IdDescriptionMetadata> m_filter = new HashMap<>();
+    private final Map<String, FormatMetadata> m_format = new HashMap<>();
+    private final Map<String, ContigMetadata> m_contig = new HashMap<>();
+    private final Map<String, IdDescriptionMetadata> m_sample = new HashMap<>();
+    private final List<BaseMetadata> m_pedigree = new ArrayList<>();
     private List<String> m_columns = new ArrayList<>();
-    private ListMultimap<String, String> m_properties = ArrayListMultimap.create();
+    private final ListMultimap<String, String> m_properties = ArrayListMultimap.create();
 
     /**
      * Sets the VCF version string.
@@ -316,14 +319,14 @@ public class VcfMetadata {
     public Builder setFileFormat(@Nonnull String fileFormat) {
       m_fileFormat = fileFormat;
       if (!VcfUtils.FILE_FORMAT_PATTERN.matcher(fileFormat).matches()) {
-        throw new IllegalStateException("Not a VCF file: fileformat is " + m_fileFormat);
+        throw new VcfFormatException("Not a VCF file: fileformat is " + m_fileFormat);
       }
       return this;
     }
 
     public Builder addAlt(@Nonnull IdDescriptionMetadata md) {
       if (m_alt.containsKey(md.getId())) {
-        throw new IllegalArgumentException("Duplicate ID " + md.getId() + " for ALT");
+        throw new VcfFormatException("Duplicate ID " + md.getId() + " for ALT");
       }
       m_alt.put(md.getId(), md);
       return this;
@@ -331,7 +334,7 @@ public class VcfMetadata {
 
     public Builder addInfo(@Nonnull InfoMetadata md) {
       if (m_info.containsKey(md.getId())) {
-        throw new IllegalArgumentException("Duplicate ID " + md.getId() + " for INFO");
+        throw new VcfFormatException("Duplicate ID " + md.getId() + " for INFO");
       }
       m_info.put(md.getId(), md);
       return this;
@@ -339,7 +342,7 @@ public class VcfMetadata {
 
     public Builder addFilter(@Nonnull IdDescriptionMetadata md) {
       if (m_filter.containsKey(md.getId())) {
-        throw new IllegalArgumentException("Duplicate ID " + md.getId() + " for FILTER");
+        throw new VcfFormatException("Duplicate ID " + md.getId() + " for FILTER");
       }
       m_filter.put(md.getId(), md);
       return this;
@@ -347,7 +350,7 @@ public class VcfMetadata {
 
     public Builder addFormat(@Nonnull FormatMetadata md) {
       if (m_format.containsKey(md.getId())) {
-        throw new IllegalArgumentException("Duplicate ID " + md.getId() + " for FORMAT");
+        throw new VcfFormatException("Duplicate ID " + md.getId() + " for FORMAT");
       }
       m_format.put(md.getId(), md);
       return this;
@@ -355,7 +358,7 @@ public class VcfMetadata {
 
     public Builder addContig(@Nonnull ContigMetadata md) {
       if (m_contig.containsKey(md.getId())) {
-        throw new IllegalArgumentException("Duplicate ID " + md.getId() + " for CONTIG");
+        throw new VcfFormatException("Duplicate ID " + md.getId() + " for CONTIG");
       }
       m_contig.put(md.getId(), md);
       return this;
@@ -363,7 +366,7 @@ public class VcfMetadata {
 
     public Builder addSample(@Nonnull IdDescriptionMetadata md) {
       if (m_sample.containsKey(md.getId())) {
-        throw new IllegalArgumentException("Duplicate ID " + md.getId() + " for SAMPLE");
+        throw new VcfFormatException("Duplicate ID " + md.getId() + " for SAMPLE");
       }
       m_sample.put(md.getId(), md);
       return this;
@@ -387,7 +390,7 @@ public class VcfMetadata {
     @Nonnull
     public VcfMetadata build() {
       if (m_fileFormat == null) {
-        throw new IllegalStateException("Not a VCF file: no ##fileformat line");
+        throw new VcfFormatException("Not a VCF file: no ##fileformat line");
       }
       return new VcfMetadata(m_fileFormat, m_alt, m_info, m_filter, m_format, m_contig, m_sample, m_pedigree,
           m_columns, m_properties);

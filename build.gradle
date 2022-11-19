@@ -87,8 +87,9 @@ dependencies {
   implementation group: 'org.apache.commons', name: 'commons-lang3', version: '3.12.0'
   implementation group: 'org.slf4j', name: 'slf4j-api', version: '1.7.36'
 
-  testImplementation group: 'org.junit.jupiter', name: 'junit-jupiter', version: '5.8.2'
   testImplementation group: 'org.hamcrest', name: 'hamcrest', version: '2.2'
+  testImplementation group: 'org.junit.jupiter', name: 'junit-jupiter', version: '5.8.2'
+  testImplementation group: 'org.pharmgkb', name: 'pgkb-common', version: '0.5.2'
 }
 
 apply from: 'pgkb-build.gradle'

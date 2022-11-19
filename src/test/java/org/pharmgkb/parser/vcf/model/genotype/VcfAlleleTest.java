@@ -1,6 +1,7 @@
 package org.pharmgkb.parser.vcf.model.genotype;
 
 import org.junit.jupiter.api.Test;
+import org.pharmgkb.parser.vcf.VcfFormatException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -13,14 +14,14 @@ public class VcfAlleleTest {
 
   @Test
   public void testBadLength1() {
-    assertThrows(IllegalArgumentException.class, () -> {
+    assertThrows(VcfFormatException.class, () -> {
       new VcfAllele("<ID>").length();
     });
   }
 
   @Test
   public void testBadLength2() {
-    assertThrows(IllegalArgumentException.class, () -> {
+    assertThrows(VcfFormatException.class, () -> {
       new VcfAllele("ag]20]").length();
     });
   }

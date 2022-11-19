@@ -1,16 +1,15 @@
 package org.pharmgkb.parser.vcf;
 
-import org.pharmgkb.parser.vcf.model.VcfMetadata;
-import org.pharmgkb.parser.vcf.model.VcfPosition;
-import org.pharmgkb.parser.vcf.model.VcfSample;
-
-import javax.annotation.Nonnull;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import javax.annotation.Nonnull;
+import org.pharmgkb.parser.vcf.model.VcfMetadata;
+import org.pharmgkb.parser.vcf.model.VcfPosition;
+import org.pharmgkb.parser.vcf.model.VcfSample;
 
 /**
  * Applies a transformation to a VCF file.
@@ -43,8 +42,8 @@ import java.util.List;
 public class TransformingVcfLineParser implements VcfLineParser, Closeable {
 
   private int m_lines;
-  private List<VcfTransformation> m_transformations;
-  private List<VcfWriter> m_writers;
+  private final List<VcfTransformation> m_transformations;
+  private final List<VcfWriter> m_writers;
 
   private TransformingVcfLineParser(@Nonnull List<VcfTransformation> transformations, @Nonnull List<VcfWriter> writer) {
     m_transformations = transformations;
@@ -70,14 +69,14 @@ public class TransformingVcfLineParser implements VcfLineParser, Closeable {
   }
 
   @Override
-  public void close() throws IOException {
+  public void close() {
     m_writers.forEach(org.pharmgkb.parser.vcf.VcfWriter::close);
   }
 
   public static class Builder {
 
-    private List<VcfTransformation> m_transformations = new ArrayList<>();
-    private List<VcfWriter> m_writers = new ArrayList<>();
+    private final List<VcfTransformation> m_transformations = new ArrayList<>();
+    private final List<VcfWriter> m_writers = new ArrayList<>();
 
     @Nonnull
     public Builder addTransformation(@Nonnull VcfTransformation transformation, @Nonnull Path outputFile)

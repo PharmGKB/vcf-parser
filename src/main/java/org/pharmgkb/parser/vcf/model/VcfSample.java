@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.Set;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import com.google.common.base.Preconditions;
+import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
 
 /**
@@ -23,12 +23,13 @@ public class VcfSample {
       if (values == null || values.size() == 0) {
         return;
       }
-      throw new IllegalArgumentException("keys is null but values is not");
+      throw new VcfFormatException("Sample keys is null but values is not");
     } else if (values == null) {
-      throw new IllegalArgumentException("values is null but keys is not");
+      throw new VcfFormatException("Sample values is null but keys is not");
     }
-    Preconditions.checkArgument(keys.size() == values.size(),
-        "Number of FORMAT entries does not match number of sample entries");
+    if (keys.size() != values.size()) {
+        throw new VcfFormatException("Number of FORMAT entries does not match number of sample entries");
+    }
     for (int x = 0; x < keys.size(); x++) {
       m_properties.put(keys.get(x), values.get(x));
     }
@@ -43,7 +44,7 @@ public class VcfSample {
   private void init() {
     for (Map.Entry<String, String> entry : m_properties.entrySet()) {
       if (entry.getKey().contains("\n") || entry.getValue().contains("\n")) {
-        throw new IllegalArgumentException("FORMAT [[[" + entry.getKey() + "=" + entry.getValue() + "]]] contains a newline");
+        throw new VcfFormatException("FORMAT [[[" + entry.getKey() + "=" + entry.getValue() + "]]] contains a newline");
       }
     }
   }
@@ -55,11 +56,11 @@ public class VcfSample {
   /**
    * Returns the value for the reserved property as the type specified by both {@link ReservedFormatProperty#getType()}
    * and {@link ReservedFormatProperty#isList()}.
+   *
    * @param <T> The type specified by {@code ReservedInfoProperty.getType()} if {@code ReservedFormatProperty.isList()}
    *           is false;
    *           otherwise {@code List<V>} where V is the type specified by {@code ReservedFormatProperty.getType()}.
    */
-  @SuppressWarnings("InfiniteRecursion")
   public @Nullable <T> T getProperty(@Nonnull ReservedFormatProperty key) {
     return VcfUtils.convertProperty(key, getProperty(key.getId()));
   }

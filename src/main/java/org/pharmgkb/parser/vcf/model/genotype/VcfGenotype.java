@@ -1,18 +1,18 @@
 package org.pharmgkb.parser.vcf.model.genotype;
 
-import org.pharmgkb.parser.vcf.VcfUtils;
-import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
-import org.pharmgkb.parser.vcf.model.VcfPosition;
-import org.pharmgkb.parser.vcf.model.VcfSample;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.Immutable;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.Immutable;
+import org.pharmgkb.parser.vcf.VcfFormatException;
+import org.pharmgkb.parser.vcf.VcfUtils;
+import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
+import org.pharmgkb.parser.vcf.model.VcfPosition;
+import org.pharmgkb.parser.vcf.model.VcfSample;
 
 /**
  * A diploid (or haploid; see below) genotype matching the VCF 4.2 specification.
@@ -64,7 +64,7 @@ public class VcfGenotype {
       // the choice of isPhased=true is weird here but really means "phasing is resolved"
       return new VcfGenotype(new VcfAllele(genotype), new VcfAllele(genotype), true);
     }
-    throw new IllegalArgumentException("Genotype " + genotype + " is invalid");
+    throw new VcfFormatException("Genotype " + genotype + " is invalid");
   }
 
   /**
@@ -85,7 +85,6 @@ public class VcfGenotype {
    * @param genotype A string like 0/1
    * @return The genotype, or null if GT is null
    */
-  @Nullable
   public static VcfGenotype fromNumberString(@Nonnull VcfPosition position, @Nonnull String genotype) {
 
     Matcher matcher = sf_numberPattern.matcher(genotype);
@@ -108,7 +107,7 @@ public class VcfGenotype {
       return new VcfGenotype(vcfAllele, vcfAllele, true);
     }
 
-    throw new IllegalArgumentException("Genotype " + genotype + " is invalid");
+    throw new VcfFormatException("Genotype " + genotype + " is invalid");
   }
 
   /**
@@ -143,11 +142,11 @@ public class VcfGenotype {
         return String.valueOf(i + 1);
       }
     }
-    throw new IllegalArgumentException("Allele " + allele + " does not exist");
+    throw new VcfFormatException("Allele " + allele + " does not exist");
   }
 
   /**
-   * @return True iff the the genotype is <em>effectively phased.</em>:
+   * @return True if the genotype is <em>effectively phased.</em>:
    *    returns true for haploid genotypes and homozygous genotypes
    */
   public boolean isPhased() {
@@ -225,10 +224,10 @@ public class VcfGenotype {
     try {
       index = Integer.parseInt(indexString);
     } catch (NumberFormatException e) {
-      throw new IllegalArgumentException("Allele index " + indexString + " is not a number");
+      throw new VcfFormatException("Allele index " + indexString + " is not a number");
     }
     if (index < 0 || index > position.getAltBases().size()) {
-      throw new IllegalArgumentException("Allele index " + indexString + " is out of range: It should be between 0 " +
+      throw new VcfFormatException("Allele index " + indexString + " is out of range: It should be between 0 " +
           "and " + position.getAltBases().size() + ", inclusive");
     }
     if (index == 0) {

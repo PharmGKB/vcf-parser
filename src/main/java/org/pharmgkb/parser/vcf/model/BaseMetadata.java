@@ -1,13 +1,17 @@
 package org.pharmgkb.parser.vcf.model;
 
+import java.lang.invoke.MethodHandles;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import java.lang.invoke.MethodHandles;
-import java.util.*;
 
 /**
  * VCF metadata in the format XXX=&lt;key=value,key=value,...&gt;.
@@ -18,12 +22,12 @@ public class BaseMetadata {
 
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-  private Map<String, String> m_properties;
+  private final Map<String, String> m_properties;
 
   public BaseMetadata(@Nonnull Map<String, String> properties) {
     for (Map.Entry<String, String> entry : properties.entrySet()) {
       if (entry.getKey().contains("\n") || entry.getValue().contains("\n")) {
-        throw new IllegalArgumentException("INFO [[[" + entry.getKey() + "=" + entry.getValue() + "]]] contains a newline");
+        throw new VcfFormatException("INFO [[[" + entry.getKey() + "=" + entry.getValue() + "]]] contains a newline");
       }
     }
     m_properties = properties;

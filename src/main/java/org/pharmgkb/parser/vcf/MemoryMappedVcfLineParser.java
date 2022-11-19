@@ -1,11 +1,10 @@
 package org.pharmgkb.parser.vcf;
 
+import java.util.List;
+import javax.annotation.Nonnull;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
-
-import javax.annotation.Nonnull;
-import java.util.List;
 
 /**
  * A simple {@link org.pharmgkb.parser.vcf.VcfLineParser} that loads an entire VCF file into memory to permit
@@ -49,7 +48,7 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
     MemoryMappedVcfDataStore.Locus locus = new MemoryMappedVcfDataStore.Locus(position.getChromosome(), position.getPosition());
     boolean containsPosition = m_dataStore.getLocusToPosition().containsKey(locus);
     if (containsPosition && m_duplicateLocusHandler == DuplicateHandler.FAIL) {
-      throw new IllegalArgumentException("Duplicate VCF record for position " + locus);
+      throw new VcfFormatException("Duplicate VCF record for position " + locus);
     }
     if (!containsPosition || m_duplicateLocusHandler == DuplicateHandler.KEEP_LAST) {
       m_dataStore.getLocusToPosition().put(locus, position);
@@ -60,7 +59,7 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
     for (String id : position.getIds()) {
       boolean containsId = m_dataStore.getIdToPosition().containsKey(id);
       if (containsId && m_duplicateIdHandler == DuplicateHandler.FAIL) {
-        throw new IllegalArgumentException("Duplicate VCF record for ID " + id);
+        throw new VcfFormatException("Duplicate VCF record for ID " + id);
       }
       if (!containsId || m_duplicateIdHandler == DuplicateHandler.KEEP_LAST) {
         m_dataStore.getIdToPosition().put(id, position);
