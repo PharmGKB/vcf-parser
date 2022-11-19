@@ -12,7 +12,7 @@ plugins {
   id 'jacoco'
   id 'signing'
   id 'maven-publish'
-  id "io.github.gradle-nexus.publish-plugin" version "1.1.0"
+  id 'io.github.gradle-nexus.publish-plugin' version '1.1.0'
 }
 apply plugin: 'biz.aQute.bnd.builder'
 
@@ -26,7 +26,7 @@ def getVersionName() {
       standardOutput = stdOut
       errorOutput = errOut
     }
-    // strip of leading "v"
+    // strip of leading 'v'
     return stdOut.toString().trim().substring(1)
   } catch (ignore) {
     logger.info('Error running git describe (' + errOut.toString().trim() + '), defaulting to 0.0.0')
@@ -41,7 +41,7 @@ project.group = 'org.pharmgkb'
 project.version = getVersionName()
 
 ext {
-  baseName = "vcf-parser"
+  baseName = 'vcf-parser'
   moduleName = 'org.pharmgkb.vcf-parser'
   description = 'A strict streaming parser for VCF 4.1/4.2.'
   url = 'https://github.com/PharmGKB/vcf-parser.git'
