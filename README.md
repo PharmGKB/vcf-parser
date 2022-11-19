@@ -22,7 +22,7 @@ Check out [`VcfParserTest.java`](src/test/java/org/pharmgkb/parser/vcf/VcfParser
   <dependency>
     <groupId>org.pharmgkb</groupId>
     <artifactId>vcf-parser</artifactId>
-    <version>0.2.2</version>
+    <version>>0.3.0</version>
   </dependency>
   ...
 </dependencies>

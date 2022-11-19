@@ -1,3 +1,10 @@
+## [0.3.0](https://github.com/PharmGKB/vcf-parser/compare/v0.2.3...v0.3.0) (2022-11-19)
+
+
+### Features
+
+* throw VcfFormatException instead of IllegalArgumentException ([7b60475](https://github.com/PharmGKB/vcf-parser/commit/7b60475974dc3d584198f4d774ae760b21a4ffe1))
+
 ### [0.2.3](https://github.com/PharmGKB/vcf-parser/compare/v0.2.2...v0.2.3) (2021-10-08)
 
 
