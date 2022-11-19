@@ -14,7 +14,9 @@
 .editorconfig    text
 .gitignore       text
 .gitattributes   text
+gradlew          text eol=lf
 *.bat            text eol=crlf
+*.command        text eol=lf
 *.crt            text
 *.css            text
 *.csv            text
