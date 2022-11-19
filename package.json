@@ -30,7 +30,7 @@
                 "README.md"
               ],
               "from": "    <version>.*</version>",
-              "to": "    <version>>${nextRelease.version}</version>",
+              "to": "    <version>${nextRelease.version}</version>",
               "results": [
                 {
                   "file": "README.md",
