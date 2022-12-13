@@ -1,3 +1,10 @@
+## [0.3.1](https://github.com/PharmGKB/vcf-parser/compare/v0.3.0...v0.3.1) (2022-12-13)
+
+
+### Bug Fixes
+
+* add validation for number of columns ([0a8f47b](https://github.com/PharmGKB/vcf-parser/commit/0a8f47b0afa0835ab979dc168022fd37b7c27a3d))
+
 ## [0.3.0](https://github.com/PharmGKB/vcf-parser/compare/v0.2.3...v0.3.0) (2022-11-19)
 
 
