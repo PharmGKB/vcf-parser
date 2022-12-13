@@ -20,6 +20,12 @@ public class VcfFormatException extends RuntimeException {
     m_baseMessage = msg;
   }
 
+  public VcfFormatException(String msg, int lineNumber) {
+    Preconditions.checkNotNull(msg);
+    m_baseMessage = msg;
+    m_lineNumber = lineNumber;
+  }
+
   public VcfFormatException(String msg, Throwable ex) {
     super(ex);
     m_baseMessage = StringUtils.stripToNull(msg);
@@ -54,6 +60,10 @@ public class VcfFormatException extends RuntimeException {
             .append(m_baseMessage);
     }
     return builder.toString();
+  }
+
+  public int getLineNumber() {
+    return m_lineNumber;
   }
 
   @Override

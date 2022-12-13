@@ -165,9 +165,13 @@ public class VcfParser implements Closeable {
 
     try {
       if (StringUtils.stripToNull(line) == null) {
-        throw new VcfFormatException("Empty line");
+        throw new VcfFormatException("Empty line", m_lineNumber);
       }
       List<String> data = toList(sf_tabSplitter, line);
+      if (data.size() != m_vcfMetadata.getNumColumns()) {
+        throw new VcfFormatException("Data line does not have expected number of columns (got " + data.size() +
+            " vs. " + m_vcfMetadata.getNumColumns() + ")", m_lineNumber);
+      }
 
       // CHROM
       String chromosome = data.get(0);
@@ -355,7 +359,11 @@ public class VcfParser implements Closeable {
   }
 
   private void parseColumnInfo(@Nonnull VcfMetadata.Builder mdBuilder, @Nonnull String line) {
-    mdBuilder.setColumns(Arrays.asList(sf_tabSplitter.split(line)));
+    List<String> cols = Arrays.asList(sf_tabSplitter.split(line));
+    if (cols.size() < 8) {
+      throw new VcfFormatException("Header line does not have mandatory (tab-delimited) columns", m_lineNumber);
+    }
+    mdBuilder.setColumns(cols);
   }
 
 

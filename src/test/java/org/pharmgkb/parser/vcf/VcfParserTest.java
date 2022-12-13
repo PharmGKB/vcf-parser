@@ -17,6 +17,8 @@ import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfSample;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -45,6 +47,43 @@ public class VcfParserTest {
       parser.parse();
     }
   }
+
+  @Test
+  void testHeader()  {
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> {
+      try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/bad_header.vcf"));
+           VcfParser parser = new VcfParser.Builder()
+               .fromReader(reader)
+               .parseWith((metadata, position, sampleData) -> {
+                 fail("Should not reach here");
+               })
+               .build()) {
+        parser.parse();
+      }
+    });
+    assertEquals(2, ex.getLineNumber());
+    assertThat(ex.getMessage(), containsString("Header line"));
+    assertThat(ex.getMessage(), containsString("mandatory (tab-delimited) columns"));
+  }
+
+  @Test
+  void testBadData()  {
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> {
+      try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/bad_data.vcf"));
+           VcfParser parser = new VcfParser.Builder()
+               .fromReader(reader)
+               .parseWith((metadata, position, sampleData) -> {
+                 fail("Should not reach here");
+               })
+               .build()) {
+        parser.parse();
+      }
+    });
+    assertEquals(3, ex.getLineNumber());
+    assertThat(ex.getMessage(), containsString("Data line"));
+    assertThat(ex.getMessage(), containsString("expected number of columns"));
+  }
+
 
   @Test
   void testHasComment() throws IOException {

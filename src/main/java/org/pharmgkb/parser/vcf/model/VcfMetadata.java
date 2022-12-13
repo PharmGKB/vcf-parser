@@ -288,6 +288,14 @@ public class VcfMetadata {
   }
 
   /**
+   * Gets the number of columns in the VCF file.
+   */
+  public int getNumColumns() {
+    return m_columns.size();
+  }
+
+
+  /**
    * Gets the sample name (column name).
    *
    * @param idx sample index, first sample is at index 0
