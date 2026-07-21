@@ -7,8 +7,10 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -278,15 +280,27 @@ public class VcfWriter implements Closeable {
     }
   }
 
+  // the spec's default structured-metadata fields, in order; any other fields follow these in a deterministic order
+  private static final List<String> METADATA_FIELD_ORDER =
+      Arrays.asList("ID", "Number", "Type", "Description", "Source", "Version");
+
   private String getAllProperties(String name, BaseMetadata metadata) {
     StringBuilder sb = new StringBuilder("##");
     sb.append(name).append("=<");
+    Map<String, String> props = metadata.getPropertiesRaw();
+    List<String> keys = new ArrayList<>(props.keySet());
+    // emit the known fields in spec order, then any remaining fields alphabetically, so output does not depend on the
+    // backing map's iteration order
+    keys.sort(Comparator.comparingInt((String k) -> {
+      int idx = METADATA_FIELD_ORDER.indexOf(k);
+      return idx >= 0 ? idx : METADATA_FIELD_ORDER.size();
+    }).thenComparing(Comparator.naturalOrder()));
     int i = 0;
-    for (Map.Entry<String, String> entry : metadata.getPropertiesRaw().entrySet()) {
+    for (String key : keys) {
       if (i > 0) {
         sb.append(",");
       }
-      sb.append(entry.getKey()).append("=").append(entry.getValue());
+      sb.append(key).append("=").append(props.get(key));
       i++;
     }
     sb.append(">");
