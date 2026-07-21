@@ -221,7 +221,15 @@ public class VcfParser implements Closeable {
       pos.setRawInfo(data.get(7));
       List<VcfSample> samples = new ArrayList<>();
       for (int x = 9; x < data.size(); x++) {
-        samples.add(new VcfSample(format, toList(COLON, data.get(x))));
+        List<String> values = toList(COLON, data.get(x));
+        // per the VCF spec, trailing FORMAT sub-fields may be dropped from a sample; pad any missing ones with the
+        // missing value so the sample's value count matches the FORMAT key count
+        if (format != null) {
+          while (values.size() < format.size()) {
+            values.add(".");
+          }
+        }
+        samples.add(new VcfSample(format, values));
       }
 
       m_vcfLineParser.parseLine(m_vcfMetadata, pos, samples);

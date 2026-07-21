@@ -191,6 +191,28 @@ public class VcfParserTest {
   }
 
   @Test
+  void testDroppedTrailingFormatFields() throws IOException {
+    // per the VCF spec, trailing FORMAT sub-fields may be dropped; the sample "0/1" under FORMAT GT:DP:GQ must parse,
+    // with the dropped fields read as the missing value rather than throwing
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n" +
+        "chr1\t100\t.\tA\tT\t.\tPASS\t.\tGT:DP:GQ\t0/1\n";
+    List<VcfSample> captured = new ArrayList<>();
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, position, sampleData) -> captured.addAll(sampleData))
+             .build()) {
+      parser.parse();
+    }
+    assertEquals(1, captured.size());
+    VcfSample sample = captured.get(0);
+    assertEquals("0/1", sample.getProperty("GT"));
+    assertEquals(".", sample.getProperty("DP"));
+    assertEquals(".", sample.getProperty("GQ"));
+  }
+
+  @Test
   void testIsModifiable() throws IOException {
     try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/vcfposition.vcf"));
          VcfParser parser = new VcfParser.Builder()
