@@ -3,7 +3,7 @@ buildscript {
     mavenCentral()
   }
   dependencies {
-    classpath 'biz.aQute.bnd:biz.aQute.bnd.gradle:5.3.0'
+    classpath 'biz.aQute.bnd:biz.aQute.bnd.gradle:7.3.0'
   }
 }
 
@@ -12,32 +12,43 @@ plugins {
   id 'jacoco'
   id 'signing'
   id 'maven-publish'
-  id 'io.github.gradle-nexus.publish-plugin' version '1.1.0'
+  id 'io.github.gradle-nexus.publish-plugin' version '2.0.0'
 }
 apply plugin: 'biz.aQute.bnd.builder'
 
 
-def getVersionName() {
-  def errOut = new ByteArrayOutputStream()
+def getDevVersionName() {
   try {
-    def stdOut = new ByteArrayOutputStream()
-    exec {
-      commandLine 'git', 'describe', '--tags'
-      standardOutput = stdOut
-      errorOutput = errOut
-    }
-    // strip of leading 'v'
-    return stdOut.toString().trim().substring(1)
+    def output = providers.exec {
+      executable 'git'
+      args = ['describe', '--tags']
+    }.standardOutput.asText.get().trim()
+    // strip of leading "v"
+    return output.substring(1)
   } catch (ignore) {
-    logger.info('Error running git describe (' + errOut.toString().trim() + '), defaulting to 0.0.0')
+    println(ignore)
+    logger.info('Error running git describe (' + ignore + '), defaulting to 0.0.0')
     return '0.0.0'
   }
 }
 
+def getVersionName() {
+  try {
+    def output = providers.exec {
+      executable 'git'
+      args = ['describe', '--tags', '--abbrev=0']
+    }.standardOutput.asText.get().trim()
+    // strip of leading "v"
+    output = output.substring(1)
+  } catch (ignore) {
+    println(ignore)
+    logger.info('Error running git describe (' + ignore + '), defaulting to 0.0.0')
+    return '0.0.0'
+  }
+}
 
-sourceCompatibility = JavaVersion.VERSION_1_8
-targetCompatibility = JavaVersion.VERSION_1_8
 project.group = 'org.pharmgkb'
+// always use base version to reduce churn with IDEA's external.system.module.version
 project.version = getVersionName()
 
 ext {
@@ -81,15 +92,22 @@ repositories {
 }
 
 dependencies {
-  implementation group: 'commons-io', name: 'commons-io', version: '2.11.0'
-  implementation group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.2'
-  implementation group: 'com.google.guava', name: 'guava', version: '31.1-jre'
-  implementation group: 'org.apache.commons', name: 'commons-lang3', version: '3.12.0'
-  implementation group: 'org.slf4j', name: 'slf4j-api', version: '1.7.36'
+  implementation 'commons-io:commons-io:2.11.0'
+  implementation 'com.google.code.findbugs:jsr305:3.0.2'
+  implementation 'com.google.guava:guava:31.1-jre'
+  implementation 'org.apache.commons:commons-lang3:3.12.0'
+  implementation 'org.slf4j:slf4j-api:1.7.36'
 
-  testImplementation group: 'org.hamcrest', name: 'hamcrest', version: '2.2'
-  testImplementation group: 'org.junit.jupiter', name: 'junit-jupiter', version: '5.8.2'
-  testImplementation group: 'org.pharmgkb', name: 'pgkb-common', version: '0.5.2'
+  testImplementation 'org.hamcrest:hamcrest:2.2'
+  testImplementation 'org.junit.jupiter:junit-jupiter:5.8.2'
+  testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.8.2'
+  testImplementation 'org.pharmgkb:pgkb-common:0.5.2'
+}
+
+
+java {
+  sourceCompatibility = JavaVersion.VERSION_1_8
+  targetCompatibility = JavaVersion.VERSION_1_8
 }
 
 apply from: 'pgkb-build.gradle'

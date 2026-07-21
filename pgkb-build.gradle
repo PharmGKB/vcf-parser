@@ -13,23 +13,21 @@ task printVersion {
 }
 
 
-test {
+tasks.withType(Test).configureEach {
+  minHeapSize = "512m"
+  maxHeapSize = "4096m"
+  // hide restricted method warnings
+  jvmArgs '--enable-native-access=ALL-UNNAMED'
   useJUnitPlatform()
   testLogging {
     // set options for log level LIFECYCLE
-    events 'passed', 'skipped', 'failed'
-    exceptionFormat 'short'
-
-    // remove standard output/error logging from --info builds
-    // by assigning only 'failed' and 'skipped' events
-    info.events = ['failed', 'skipped']
-
-    // set options for log level DEBUG
-    debug.events = ['started', 'passed', 'skipped', 'failed']
-    debug.exceptionFormat = 'full'
+    events 'failed', 'standard_error'
+    exceptionFormat = 'full'
+    showStackTraces = true
   }
+}
 
-  // always generate reports after tests are run
+test {
   finalizedBy jacocoTestReport
 }
 
@@ -69,10 +67,8 @@ task sourcesJar(type: Jar) {
   from sourceSets.main.allSource
 }
 
-artifacts {
-  archives jar
-  archives javadocJar
-  archives sourcesJar
+assemble {
+  dependsOn javadocJar, sourcesJar
 }
 
 signing {
@@ -115,7 +111,7 @@ publishing {
         licenses {
           license {
             name = 'MPL 2.0'
-            url = 'http://mozilla.org/MPL/2.0/'
+            url = 'https://mozilla.org/MPL/2.0/'
             distribution = 'repo'
           }
         }
