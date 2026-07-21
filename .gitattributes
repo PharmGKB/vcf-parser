@@ -53,6 +53,7 @@ gradlew          text eol=lf
 *.tag            text
 *.tsv            text
 *.txt            text
+*.vcf            text eol=lf
 *.vm             text
 *.xml            text
 *.xsd            text
