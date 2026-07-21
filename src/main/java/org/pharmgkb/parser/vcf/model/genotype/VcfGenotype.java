@@ -15,7 +15,11 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
 
 
 /**
- * A diploid (or haploid; see below) genotype matching the VCF 4.2 specification.
+ * A diploid or haploid genotype.
+ * <p>
+ * <strong>Note:</strong> this class models at most two alleles and does not support arbitrary (polyploid) ploidy, even
+ * though VCF 4.2 permits it (e.g. a triploid {@code 0/0/1}); parsing such a genotype throws {@link VcfFormatException}.
+ * The file parser preserves a polyploid GT as raw sample data instead.
  * <p>
  * For example:
  * <ul>
