@@ -56,7 +56,6 @@ public class VcfUtils {
   );
 
   public static final Pattern REF_BASE_PATTERN = Pattern.compile("[AaCcGgTtNn]+");
-  public static final Pattern METADATA_PATTERN = Pattern.compile(",(?=([^\"]*\"[^\"]*\")*[^\"]*$)");
   public static final Pattern FORMAT_PATTERN = Pattern.compile("^[A-Za-z_][0-9A-Za-z_.]*$");
   public static final Pattern RSID_PATTERN = Pattern.compile("rs\\d+");
   public static final Pattern NUMBER_PATTERN = Pattern.compile("(?:\\d+|[ARG.])");
@@ -64,24 +63,9 @@ public class VcfUtils {
   // VCFv<major>.<minor> with major >= 4 (VCF 4.0 is the supported floor); also rejects malformed versions like VCFv4..2
   public static final Pattern FILE_FORMAT_PATTERN = Pattern.compile("VCFv(?:[4-9]|[1-9]\\d+)\\.\\d+");
 
-  public static final Pattern UNQUOTED_EQUAL_SIGN_PATTERN = Pattern.compile("=(?=([^\"]*\"[^\"]*\")*[^\"]*$)");
-
   public static Map<String, String> extractPropertiesFromLine(String value) {
-    // The VCF spec allows an escaped backslash ("\\") and an escaped double-quote ("\"") inside a quoted value. Mask
-    // them with placeholder sequences so the quote-aware comma and equals splits are not confused by an escaped quote,
-    // then restore them in the parsed values. Mask "\\" before "\"" so its backslashes are not read as the start of a
-    // "\"" sequence. Use literal String.replace, not replaceAll (whose replacement string treats "\" specially).
-    boolean wasEscaped = value.indexOf('\\') >= 0;
-    String masked = value;
-    if (wasEscaped) {
-      masked = masked.replace("\\\\", "~~~~").replace("\\\"", "~!~!");
-    }
-    String[] cols = VcfUtils.METADATA_PATTERN.split(masked);
-    Map<String, String> map = extractProperties(cols);
-    if (wasEscaped) {
-      map.replaceAll((k, v) -> v.replace("~~~~", "\\\\").replace("~!~!", "\\\""));
-    }
-    return map;
+    // split on top-level commas (those not inside a double-quoted value); splitTopLevel preserves escaped characters
+    return extractProperties(splitTopLevel(value, ',').toArray(new String[0]));
   }
 
   public static Map<String, String> extractProperties(String... props) {
@@ -103,11 +87,39 @@ public class VcfUtils {
    * @param prop In the form "key=value"
    */
   public static Pair<String, String> splitProperty(String prop) {
-    String[] parts = UNQUOTED_EQUAL_SIGN_PATTERN.split(prop);
-    if (parts.length != 2) {
-      throw new VcfFormatException("There were " + (parts.length - 1) + " equals signs for: " + prop);
+    List<String> parts = splitTopLevel(prop, '=');
+    if (parts.size() != 2) {
+      throw new VcfFormatException("There were " + (parts.size() - 1) + " equals signs for: " + prop);
     }
-    return Pair.of(parts[0], parts[1]);
+    return Pair.of(parts.get(0), parts.get(1));
+  }
+
+  /**
+   * Splits {@code s} on top-level occurrences of {@code delim} — those not inside a double-quoted substring. A
+   * backslash escapes the following character (so {@code \"} does not toggle quoting and {@code \\} is a literal
+   * backslash); escaped sequences are preserved verbatim in the output.
+   */
+  private static List<String> splitTopLevel(String s, char delim) {
+    List<String> parts = new ArrayList<>();
+    StringBuilder cur = new StringBuilder();
+    boolean inQuotes = false;
+    for (int i = 0; i < s.length(); i++) {
+      char c = s.charAt(i);
+      if (c == '\\' && i + 1 < s.length()) {
+        cur.append(c).append(s.charAt(i + 1));
+        i++;
+      } else if (c == '"') {
+        inQuotes = !inQuotes;
+        cur.append(c);
+      } else if (c == delim && !inQuotes) {
+        parts.add(cur.toString());
+        cur.setLength(0);
+      } else {
+        cur.append(c);
+      }
+    }
+    parts.add(cur.toString());
+    return parts;
   }
 
   /**

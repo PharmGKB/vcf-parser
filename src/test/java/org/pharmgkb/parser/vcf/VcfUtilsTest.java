@@ -56,6 +56,16 @@ public class VcfUtilsTest {
   }
 
   @Test
+  public void testExtractPropertiesNoPlaceholderCollision() {
+    // a value literally containing the old "~~~~" placeholder must be preserved, and an escaped quote must not be
+    // treated as a real quote (so the comma inside the quoted value is not a top-level delimiter)
+    Map<String, String> props = VcfUtils.extractPropertiesFromLine(
+        "ID=X,Description=\"literal ~~~~ and \\\"q, v\\\"\"");
+    assertEquals("X", props.get("ID"));
+    assertEquals("\"literal ~~~~ and \\\"q, v\\\"\"", props.get("Description"));
+  }
+
+  @Test
   public void testSplitProp() throws Exception {
     assertEquals(Pair.of("abc", "\"d=ef\""), VcfUtils.splitProperty("abc=\"d=ef\""));
     assertEquals(Pair.of("\"a=bc\"", "\"d=ef\""), VcfUtils.splitProperty("\"a=bc\"=\"d=ef\""));
