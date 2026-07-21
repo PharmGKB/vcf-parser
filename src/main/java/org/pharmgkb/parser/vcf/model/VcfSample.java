@@ -1,5 +1,6 @@
 package org.pharmgkb.parser.vcf.model;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,15 +13,25 @@ import org.pharmgkb.parser.vcf.VcfUtils;
 /**
  * This class contains sample data for a VCF position line.
  *
+ * <p>To avoid allocating a map for every sample on every line (the common parse-then-read path), the FORMAT keys and
+ * their values are kept as parallel lists and read by a short linear scan. A {@link LinkedHashMap} is materialized only
+ * when the sample is mutated or its keys/entries are iterated.</p>
+ *
  * @author Mark Woon
  */
 public class VcfSample {
 
-  private LinkedHashMap<String, String> m_properties = new LinkedHashMap<>();
+  // Lean representation used on the parse path; both null once m_properties has been materialized.
+  private @Nullable List<String> m_keys;
+  private @Nullable List<String> m_values;
+  // Materialized on demand (mutation / key or entry iteration), or supplied directly via the map constructor.
+  private @Nullable LinkedHashMap<String, String> m_properties;
 
   public VcfSample(@Nullable List<String> keys, @Nullable List<String> values) {
     if (keys == null) {
-      if (values == null || values.size() == 0) {
+      if (values == null || values.isEmpty()) {
+        m_keys = Collections.emptyList();
+        m_values = Collections.emptyList();
         return;
       }
       throw new VcfFormatException("Sample keys is null but values is not");
@@ -28,20 +39,19 @@ public class VcfSample {
       throw new VcfFormatException("Sample values is null but keys is not");
     }
     if (keys.size() != values.size()) {
-        throw new VcfFormatException("Number of FORMAT entries does not match number of sample entries");
+      throw new VcfFormatException("Number of FORMAT entries does not match number of sample entries");
     }
     for (int x = 0; x < keys.size(); x++) {
-      m_properties.put(keys.get(x), values.get(x));
+      if (keys.get(x).contains("\n") || values.get(x).contains("\n")) {
+        throw new VcfFormatException("FORMAT [[[" + keys.get(x) + "=" + values.get(x) + "]]] contains a newline");
+      }
     }
-    init();
+    m_keys = keys;
+    m_values = values;
   }
 
   public VcfSample(@Nonnull LinkedHashMap<String, String> properties) {
     m_properties = properties;
-    init();
-  }
-
-  private void init() {
     for (Map.Entry<String, String> entry : m_properties.entrySet()) {
       if (entry.getKey().contains("\n") || entry.getValue().contains("\n")) {
         throw new VcfFormatException("FORMAT [[[" + entry.getKey() + "=" + entry.getValue() + "]]] contains a newline");
@@ -49,8 +59,37 @@ public class VcfSample {
     }
   }
 
+  /**
+   * Materializes (and caches) the property map, dropping the lean parallel-list representation.
+   */
+  private @Nonnull LinkedHashMap<String, String> properties() {
+    if (m_properties == null) {
+      LinkedHashMap<String, String> map = new LinkedHashMap<>();
+      List<String> keys = m_keys;
+      List<String> values = m_values;
+      assert keys != null && values != null;
+      for (int x = 0; x < keys.size(); x++) {
+        map.put(keys.get(x), values.get(x));
+      }
+      m_properties = map;
+      m_keys = null;
+      m_values = null;
+    }
+    return m_properties;
+  }
+
   public @Nullable String getProperty(@Nonnull String key) {
-    return m_properties.get(key);
+    if (m_properties != null) {
+      return m_properties.get(key);
+    }
+    List<String> keys = m_keys;
+    assert keys != null && m_values != null;
+    for (int x = 0; x < keys.size(); x++) {
+      if (keys.get(x).equals(key)) {
+        return m_values.get(x);
+      }
+    }
+    return null;
   }
 
   /**
@@ -66,31 +105,36 @@ public class VcfSample {
   }
 
   public boolean containsProperty(@Nonnull String key) {
-    return m_properties.containsKey(key);
+    if (m_properties != null) {
+      return m_properties.containsKey(key);
+    }
+    List<String> keys = m_keys;
+    assert keys != null;
+    return keys.contains(key);
   }
 
   public boolean containsProperty(@Nonnull ReservedFormatProperty key) {
-    return m_properties.containsKey(key.getId());
+    return containsProperty(key.getId());
   }
 
   public void putProperty(@Nonnull String key, @Nullable String value) {
-    m_properties.put(key, value);
+    properties().put(key, value);
   }
 
   public void putProperty(@Nonnull ReservedFormatProperty key, @Nullable String value) {
-    m_properties.put(key.getId(), value);
+    properties().put(key.getId(), value);
   }
 
   public void removeProperty(@Nonnull String key) {
-    m_properties.remove(key);
+    properties().remove(key);
   }
 
   public void removeProperty(@Nonnull ReservedFormatProperty key) {
-    m_properties.remove(key.getId());
+    properties().remove(key.getId());
   }
 
   public void clearProperties() {
-    m_properties.clear();
+    properties().clear();
   }
 
   /**
@@ -99,12 +143,12 @@ public class VcfSample {
   @Nonnull
   public Set<String> getPropertyKeys() {
     // LinkedHashMap.keySet() returns a LinkedKeySet, which has guaranteed order
-    return m_properties.keySet();
+    return properties().keySet();
   }
 
   @Nonnull
   public Set<Map.Entry<String, String>> propertyEntrySet() {
-    return m_properties.entrySet();
+    return properties().entrySet();
   }
 
 }
