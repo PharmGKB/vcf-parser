@@ -44,6 +44,7 @@ public class VcfParser implements Closeable {
 
   private int m_lineNumber;
   private boolean m_alreadyFinished;
+  private boolean m_metadataDelivered;
 
 
 
@@ -144,6 +145,10 @@ public class VcfParser implements Closeable {
 
     if (m_vcfMetadata == null) {
       parseMetadata();
+    }
+    if (!m_metadataDelivered) {
+      m_metadataDelivered = true;
+      m_vcfLineParser.parseMetadata(m_vcfMetadata);
     }
 
     String line = m_reader.readLine();

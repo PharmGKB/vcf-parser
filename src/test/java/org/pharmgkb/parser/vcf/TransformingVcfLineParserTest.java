@@ -3,6 +3,7 @@ package org.pharmgkb.parser.vcf;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.PrintWriter;
+import java.io.StringReader;
 import java.io.StringWriter;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -71,6 +72,47 @@ public class TransformingVcfLineParserTest {
       expectedResult = IOUtils.toString(br);
     }
     assertEquals(expectedResult, actualResult);
+  }
+
+  /**
+   * An identity transformation (no changes) must reproduce its input exactly, given input already in the writer's
+   * canonical form. {@code transformed.vcf} is the writer's own output, so reading and re-writing it must be idempotent.
+   */
+  @Test
+  public void testIdentityRoundTrip() throws Exception {
+    StringWriter sw = new StringWriter();
+    TransformingVcfLineParser lineParser = new TransformingVcfLineParser.Builder()
+        .addTransformation(new VcfTransformation() {}, new PrintWriter(sw)).build();
+    Path dataFile = Paths.get(VcfParserTest.class.getResource("/transformed.vcf").toURI());
+    try (VcfParser parser = new VcfParser.Builder().parseWith(lineParser).fromFile(dataFile).build()) {
+      parser.parse();
+    }
+
+    String input;
+    try (BufferedReader br = new BufferedReader(new FileReader(dataFile.toFile()))) {
+      input = IOUtils.toString(br);
+    }
+    assertEquals(input, sw.toString());
+  }
+
+  /**
+   * A VCF with metadata but no data lines must still get its header written (the header write must not depend on a data
+   * line being present).
+   */
+  @Test
+  public void testHeaderOnlyVcfWritesHeader() throws Exception {
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    StringWriter sw = new StringWriter();
+    TransformingVcfLineParser lineParser = new TransformingVcfLineParser.Builder()
+        .addTransformation(new VcfTransformation() {}, new PrintWriter(sw)).build();
+    try (VcfParser parser = new VcfParser.Builder()
+        .parseWith(lineParser)
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .build()) {
+      parser.parse();
+    }
+    assertEquals(vcf, sw.toString());
   }
 
 }

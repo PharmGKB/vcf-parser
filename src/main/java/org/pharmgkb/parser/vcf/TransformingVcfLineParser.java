@@ -41,7 +41,7 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
  */
 public class TransformingVcfLineParser implements VcfLineParser, Closeable {
 
-  private int m_lines;
+  private boolean m_headerWritten;
   private final List<VcfTransformation> m_transformations;
   private final List<VcfWriter> m_writers;
 
@@ -50,22 +50,36 @@ public class TransformingVcfLineParser implements VcfLineParser, Closeable {
     m_writers = writer;
   }
 
+  @Override
+  public void parseMetadata(VcfMetadata metadata) {
+    writeHeaders(metadata);
+  }
+
   public void parseLine(VcfMetadata metadata, VcfPosition position,
       List<VcfSample> sampleData) {
+    // fallback in case parseMetadata was not invoked (e.g. parseLine called directly, not through VcfParser); this
+    // always happens before transformDataLine, so transformDataLine can't change the metadata output
+    writeHeaders(metadata);
     for (int i = 0; i < m_transformations.size(); i++) {
-
-      // notice that this always happens before transformDataLine gets called
-      // this means that transformDataLine can't change the metadata output
-      if (m_lines == 0) {
-        m_transformations.get(i).transformMetadata(metadata);
-        m_writers.get(i).writeHeader(metadata);
-      }
       boolean keep = m_transformations.get(i).transformDataLine(metadata, position, sampleData);
       if (keep) {
         m_writers.get(i).writeLine(metadata, position, sampleData);
       }
     }
-    m_lines++;
+  }
+
+  /**
+   * Applies each transformation's metadata step and writes each header, exactly once.
+   */
+  private void writeHeaders(VcfMetadata metadata) {
+    if (m_headerWritten) {
+      return;
+    }
+    m_headerWritten = true;
+    for (int i = 0; i < m_transformations.size(); i++) {
+      m_transformations.get(i).transformMetadata(metadata);
+      m_writers.get(i).writeHeader(metadata);
+    }
   }
 
   @Override
