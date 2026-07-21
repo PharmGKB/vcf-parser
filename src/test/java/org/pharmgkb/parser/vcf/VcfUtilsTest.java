@@ -1,5 +1,6 @@
 package org.pharmgkb.parser.vcf;
 
+import java.util.Map;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.Test;
 
@@ -43,6 +44,15 @@ public class VcfUtilsTest {
     for (String test : shouldPass) {
       assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher(test).matches(), "String " + test + " was recognized");
     }
+  }
+
+  @Test
+  public void testExtractPropertiesWithEscapes() {
+    // an escaped backslash (\\) and an escaped double-quote (\") inside a quoted Description must not crash and must be
+    // preserved (the split must not treat the escaped quote as a real quote)
+    Map<String, String> props = VcfUtils.extractPropertiesFromLine("ID=X,Description=\"a \\\\ b \\\" c\"");
+    assertEquals("X", props.get("ID"));
+    assertEquals("\"a \\\\ b \\\" c\"", props.get("Description"));
   }
 
   @Test

@@ -66,17 +66,21 @@ public class VcfUtils {
   public static final Pattern UNQUOTED_EQUAL_SIGN_PATTERN = Pattern.compile("=(?=([^\"]*\"[^\"]*\")*[^\"]*$)");
 
   public static Map<String, String> extractPropertiesFromLine(String value) {
-    String unescapedValue = value.replaceAll("\\\\", "~~~~");
-    unescapedValue = unescapedValue.replaceAll("\\\\\"", "~!~!");
-    boolean wasEscaped = !unescapedValue.equals(value);
-    String[] cols = VcfUtils.METADATA_PATTERN.split(unescapedValue);
+    // The VCF spec allows an escaped backslash ("\\") and an escaped double-quote ("\"") inside a quoted value. Mask
+    // them with placeholder sequences so the quote-aware comma and equals splits are not confused by an escaped quote,
+    // then restore them in the parsed values. Mask "\\" before "\"" so its backslashes are not read as the start of a
+    // "\"" sequence. Use literal String.replace, not replaceAll (whose replacement string treats "\" specially).
+    boolean wasEscaped = value.indexOf('\\') >= 0;
+    String masked = value;
     if (wasEscaped) {
-      for (int x = 0; x < cols.length; x++) {
-        cols[x] = cols[x].replaceAll("~~~~", "\\");
-        cols[x] = cols[x].replaceAll("~!~!", "\"");
-      }
+      masked = masked.replace("\\\\", "~~~~").replace("\\\"", "~!~!");
     }
-    return extractProperties(cols);
+    String[] cols = VcfUtils.METADATA_PATTERN.split(masked);
+    Map<String, String> map = extractProperties(cols);
+    if (wasEscaped) {
+      map.replaceAll((k, v) -> v.replace("~~~~", "\\\\").replace("~!~!", "\\\""));
+    }
+    return map;
   }
 
   public static Map<String, String> extractProperties(String... props) {
