@@ -5,6 +5,8 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * Tests {@link ContigMetadata}.
@@ -49,6 +51,14 @@ public class ContigMetadataTest {
     map.put(ContigMetadata.URL, "url");
     ContigMetadata contig = new ContigMetadata(map);
     assertEquals(23, contig.getLength());
+  }
+
+  @Test
+  public void testNullUrlNotSerialized() {
+    // a null URL argument must not be stored (it would otherwise serialize as the literal "URL=null")
+    ContigMetadata contig = new ContigMetadata("chr1", 10, "asm", null, null, null, null);
+    assertNull(contig.getUrl());
+    assertFalse(contig.getPropertyKeys().contains(ContigMetadata.URL));
   }
 
   @Test

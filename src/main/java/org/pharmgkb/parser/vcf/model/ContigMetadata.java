@@ -45,8 +45,8 @@ public class ContigMetadata extends IdMetadata {
       } catch (MalformedURLException e) {
         sf_logger.warn("URL {} is malformed", url, e);
       }
+      putPropertyRaw(URL, url);
     }
-    putPropertyRaw(URL, url);
     init();
   }
 
