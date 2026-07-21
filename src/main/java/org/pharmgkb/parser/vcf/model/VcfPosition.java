@@ -71,14 +71,8 @@ public class VcfPosition {
       1. Check the arguments, in order
      */
 
-    if (chr.isEmpty() || sf_whitespace.matcher(chr).matches() || chr.contains(":")) {
-      throw new VcfFormatException("CHROM column \"" + chr + "\" is empty or contains whitespace or colons");
-    }
-
-    // POS 0 is reserved for telomeres, but a negative position is invalid
-    if (pos < 0) {
-      throw new VcfFormatException("POS " + pos + " is negative");
-    }
+    checkChromosome(chr);
+    checkPosition(pos);
 
     if (ids != null) {
       for (String id : ids) {
@@ -88,10 +82,7 @@ public class VcfPosition {
       }
     }
 
-    if (!VcfUtils.REF_BASE_PATTERN.matcher(ref).matches()) {
-      throw new VcfFormatException("Invalid reference base '" + ref +
-          "' (must match " + VcfUtils.REF_BASE_PATTERN +")");
-    }
+    checkRef(ref);
 
     if (altBases != null) {
       for (String base : altBases) {
@@ -184,10 +175,34 @@ public class VcfPosition {
   }
 
   public VcfPosition(String chromosome, long position, String refBases, BigDecimal quality) {
+    checkChromosome(chromosome);
+    checkPosition(position);
+    checkRef(refBases);
     m_chromosome = chromosome;
     m_position = position;
     m_refBases = refBases;
     m_quality = quality;
+  }
+
+  private static void checkChromosome(String chr) {
+    // the VCF spec forbids whitespace in CHROM (but not other characters, e.g. colons)
+    if (chr.isEmpty() || sf_whitespace.matcher(chr).matches()) {
+      throw new VcfFormatException("CHROM column \"" + chr + "\" is empty or contains whitespace");
+    }
+  }
+
+  private static void checkPosition(long pos) {
+    // POS 0 is reserved for telomeres, but a negative position is invalid
+    if (pos < 0) {
+      throw new VcfFormatException("POS " + pos + " is negative");
+    }
+  }
+
+  private static void checkRef(String ref) {
+    if (!VcfUtils.REF_BASE_PATTERN.matcher(ref).matches()) {
+      throw new VcfFormatException("Invalid reference base '" + ref +
+          "' (must match " + VcfUtils.REF_BASE_PATTERN + ")");
+    }
   }
 
   /**

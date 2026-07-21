@@ -172,8 +172,21 @@ public class VcfPositionTest {
   @Test
   public void testBadChromosome() {
     assertThrows(VcfFormatException.class, () -> {
-      new VcfPosition("chr:", 1, null, "C", null, null, null, null, null);
+      new VcfPosition("chr 1", 1, null, "C", null, null, null, null, null); // whitespace is not allowed
     });
+  }
+
+  @Test
+  public void testColonInChromosomeAllowed() {
+    // the VCF spec forbids only whitespace in CHROM; a colon is allowed
+    new VcfPosition("chr:1", 1, null, "C", null, null, null, null, null);
+  }
+
+  @Test
+  public void testShortConstructorValidates() {
+    assertThrows(VcfFormatException.class, () -> new VcfPosition("", 1, "C", new BigDecimal("0")));      // empty CHROM
+    assertThrows(VcfFormatException.class, () -> new VcfPosition("chr1", -1, "C", new BigDecimal("0"))); // negative POS
+    assertThrows(VcfFormatException.class, () -> new VcfPosition("chr1", 1, "X", new BigDecimal("0")));  // invalid REF
   }
 
   @Test
