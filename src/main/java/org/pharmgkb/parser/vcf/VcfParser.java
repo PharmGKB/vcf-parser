@@ -69,9 +69,22 @@ public class VcfParser implements Closeable {
     VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder();
     String line;
     boolean foundHeader = false;
+    boolean seenFileFormat = false;
+    boolean seenOtherMetadata = false;
     while ((line = m_reader.readLine()) != null) {
       m_lineNumber++;
       if (line.startsWith("##")) {
+        if (line.startsWith("##fileformat=")) {
+          if (seenFileFormat) {
+            throw new VcfFormatException("Duplicate ##fileformat line", m_lineNumber);
+          }
+          if (seenOtherMetadata) {
+            throw new VcfFormatException("##fileformat must be the first line", m_lineNumber);
+          }
+          seenFileFormat = true;
+        } else {
+          seenOtherMetadata = true;
+        }
         try {
           parseMetadata(mdBuilder, line);
         } catch (VcfFormatException ex) {

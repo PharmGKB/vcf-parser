@@ -174,6 +174,40 @@ public class VcfParserTest {
 
 
   @Test
+  void testDuplicateFileFormatThrows() throws IOException {
+    String vcf = "##fileformat=VCFv4.2\n##fileformat=VCFv4.1\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
+  }
+
+  @Test
+  void testFileFormatNotFirstThrows() throws IOException {
+    String vcf = "##INFO=<ID=NS,Number=1,Type=Integer,Description=\"n\">\n##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
+  }
+
+  @Test
+  void testUnsupportedFileFormatVersionThrows() throws IOException {
+    // below the 4.0 floor
+    assertThrows(VcfFormatException.class,
+        () -> parseMetadataOf("##fileformat=VCFv3.3\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"));
+    // malformed version
+    assertThrows(VcfFormatException.class,
+        () -> parseMetadataOf("##fileformat=VCFv4..2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"));
+  }
+
+  private static void parseMetadataOf(String vcf) throws IOException {
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, position, sampleData) -> { })
+             .build()) {
+      parser.parseMetadata();
+    }
+  }
+
+  @Test
   void testMissingHeaderThrows() throws IOException {
     // metadata present but no "#CHROM" column header before EOF must be rejected (not silently yield zero records)
     String vcf = "##fileformat=VCFv4.2\n" +

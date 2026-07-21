@@ -61,7 +61,8 @@ public class VcfUtils {
   public static final Pattern RSID_PATTERN = Pattern.compile("rs\\d+");
   public static final Pattern NUMBER_PATTERN = Pattern.compile("(?:\\d+|[ARG.])");
 
-  public static final Pattern FILE_FORMAT_PATTERN = Pattern.compile("VCFv[\\d.]+");
+  // VCFv<major>.<minor> with major >= 4 (VCF 4.0 is the supported floor); also rejects malformed versions like VCFv4..2
+  public static final Pattern FILE_FORMAT_PATTERN = Pattern.compile("VCFv(?:[4-9]|[1-9]\\d+)\\.\\d+");
 
   public static final Pattern UNQUOTED_EQUAL_SIGN_PATTERN = Pattern.compile("=(?=([^\"]*\"[^\"]*\")*[^\"]*$)");
 
