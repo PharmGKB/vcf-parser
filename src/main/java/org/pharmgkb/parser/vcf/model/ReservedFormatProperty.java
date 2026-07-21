@@ -19,11 +19,11 @@ public enum ReservedFormatProperty implements ReservedProperty {
   GenotypeLikelihoodsOfHeterogenousPloidy("GLE",
       "genotype likelihoods of heterogeneous ploidy, used in presence of uncertain copy number.",
       String.class, true),
-  PhredScaledGenotypeLikelihoods("PL", "the phred-scaled genotype likelihoods rounded to the closest integer" +
+  PhredScaledGenotypeLikelihoods("PL", "the phred-scaled genotype likelihoods rounded to the closest integer " +
       "(and otherwise defined precisely as the GL field)", Long.class, true, "G"),
   GenotypePosteriorProbabilitiesPhredScaled("GP", "The phred-scaled genotype posterior probabilities (and otherwise defined " +
       "precisely as the GL field); intended to store imputed genotype probabilities", BigDecimal.class, true, "G"),
-  GenotypeQualityConditional("GQ", "conditional genotype quality, encoded as a phred quality" +
+  GenotypeQualityConditional("GQ", "conditional genotype quality, encoded as a phred quality " +
       "−10log10p(genotype call is wrong, conditioned on the site’s being variant)", Long.class, false, "1"),
   HaplotypeQualities("HQ", "Haplotype qualities, two comma separated phred qualities", Long.class, true),
   PhaseSet("PS", "Phase set; see specification.", Long.class, false),
