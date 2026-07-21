@@ -145,6 +145,9 @@ public class VcfPosition {
           throw new VcfFormatException("FORMAT ID does not match VCF spec");
         }
       }
+      if (format.indexOf("GT") > 0) {
+        throw new VcfFormatException("FORMAT GT must be the first sub-field when present");
+      }
     }
 
     /*

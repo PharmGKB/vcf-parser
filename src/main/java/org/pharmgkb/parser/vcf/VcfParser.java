@@ -7,8 +7,10 @@ import java.lang.invoke.MethodHandles;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import com.google.common.base.Preconditions;
 import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
@@ -407,6 +409,12 @@ public class VcfParser implements Closeable {
     if (cols.size() > 8 && !cols.get(8).equals("FORMAT")) {
       throw new VcfFormatException("Header column 9 must be 'FORMAT' when sample columns are present but was '" +
           cols.get(8) + "'", m_lineNumber);
+    }
+    Set<String> sampleNames = new HashSet<>();
+    for (int i = 9; i < cols.size(); i++) {
+      if (!sampleNames.add(cols.get(i))) {
+        throw new VcfFormatException("Duplicate sample name '" + cols.get(i) + "' in header", m_lineNumber);
+      }
     }
     mdBuilder.setColumns(cols);
   }

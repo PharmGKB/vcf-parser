@@ -184,6 +184,13 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testGtMustBeFirstFormat() {
+    new VcfPosition("chr1", 1, null, "C", null, null, null, null, Arrays.asList("GT", "DP")); // valid
+    assertThrows(VcfFormatException.class, () -> // GT not first is invalid
+        new VcfPosition("chr1", 1, null, "C", null, null, null, null, Arrays.asList("DP", "GT")));
+  }
+
+  @Test
   public void testEmptyChromosome() {
     assertThrows(VcfFormatException.class, () ->
         new VcfPosition("", 1, null, "C", null, null, null, null, null));

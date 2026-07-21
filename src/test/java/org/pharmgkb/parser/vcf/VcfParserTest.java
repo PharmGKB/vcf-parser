@@ -197,6 +197,13 @@ public class VcfParserTest {
         () -> parseMetadataOf("##fileformat=VCFv4..2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"));
   }
 
+  @Test
+  void testDuplicateSampleNameThrows() throws IOException {
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\ts1\n";
+    assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
+  }
+
   private static void parseMetadataOf(String vcf) throws IOException {
     try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
          VcfParser parser = new VcfParser.Builder()
