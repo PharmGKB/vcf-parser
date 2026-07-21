@@ -178,8 +178,15 @@ public class VcfPositionTest {
 
   @Test
   public void testTelomericPositions() {
-    new VcfPosition("chr1", 0, null, "C", null, null, null, null, null);
-    new VcfPosition("chr1", -1, null,"C", null, null, null, null, null);
+    new VcfPosition("chr1", 0, null, "C", null, null, null, null, null); // telomere at start is valid
+    assertThrows(VcfFormatException.class, () -> // a negative POS is invalid
+        new VcfPosition("chr1", -1, null, "C", null, null, null, null, null));
+  }
+
+  @Test
+  public void testEmptyChromosome() {
+    assertThrows(VcfFormatException.class, () ->
+        new VcfPosition("", 1, null, "C", null, null, null, null, null));
   }
 
   @Test

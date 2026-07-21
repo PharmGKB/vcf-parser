@@ -71,11 +71,14 @@ public class VcfPosition {
       1. Check the arguments, in order
      */
 
-    if (sf_whitespace.matcher(chr).matches()  || chr.contains(":")) {
-      throw new VcfFormatException("CHROM column \"" + chr + "\" contains whitespace or colons");
+    if (chr.isEmpty() || sf_whitespace.matcher(chr).matches() || chr.contains(":")) {
+      throw new VcfFormatException("CHROM column \"" + chr + "\" is empty or contains whitespace or colons");
     }
 
-    // allow pos < 1 because that's reserved for telomers
+    // POS 0 is reserved for telomeres, but a negative position is invalid
+    if (pos < 0) {
+      throw new VcfFormatException("POS " + pos + " is negative");
+    }
 
     if (ids != null) {
       for (String id : ids) {

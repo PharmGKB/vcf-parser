@@ -250,6 +250,21 @@ public class VcfParserTest {
   }
 
   @Test
+  void testEmptyFixedFieldRejected() throws IOException {
+    // an empty fixed field (here ALT) is invalid; the missing value must be "."
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t100\t.\tA\t\t.\tPASS\t.\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, position, sampleData) -> { })
+             .build()) {
+      assertThrows(VcfFormatException.class, parser::parse);
+    }
+  }
+
+  @Test
   void testEmptyInfoRejected() throws IOException {
     // an empty INFO field is malformed (the missing value must be "."); the strict parser must reject it
     String vcf = "##fileformat=VCFv4.2\n" +

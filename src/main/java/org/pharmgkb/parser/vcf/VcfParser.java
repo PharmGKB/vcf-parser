@@ -39,6 +39,9 @@ public class VcfParser implements Closeable {
   // the mandatory fixed columns, in order, that every VCF header line must start with
   private static final List<String> REQUIRED_COLUMNS =
       List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO");
+  // the mandatory fixed data fields, in order (same as REQUIRED_COLUMNS without the leading '#')
+  private static final List<String> FIXED_FIELD_NAMES =
+      List.of("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO");
 
   private final boolean m_rsidsOnly;
   private final BufferedReader m_reader;
@@ -192,9 +195,12 @@ public class VcfParser implements Closeable {
             " vs. " + m_vcfMetadata.getNumColumns() + ")", m_lineNumber);
       }
 
-      // INFO is a mandatory field; an empty field is invalid (the missing value must be ".")
-      if (data.get(7).isEmpty()) {
-        throw new VcfFormatException("INFO field is empty; the missing value must be '.'", m_lineNumber);
+      // every fixed field is mandatory; an empty field is invalid (the missing value must be ".")
+      for (int i = 0; i < FIXED_FIELD_NAMES.size(); i++) {
+        if (data.get(i).isEmpty()) {
+          throw new VcfFormatException(FIXED_FIELD_NAMES.get(i) + " field is empty; the missing value must be '.'",
+              m_lineNumber);
+        }
       }
 
       // CHROM
