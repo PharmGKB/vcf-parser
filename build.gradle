@@ -63,7 +63,7 @@ ext {
   // grab properties from environment for CI
   sonatypeUser = project.hasProperty('ossrhUsername') ? ossrhUsername : System.getenv('OSSRH_USERNAME')
   sonatypePwd  = project.hasProperty('ossrhPassword') ? ossrhPassword : System.getenv('OSSRH_PASSWORD')
-  sonatypeStagingProfileId = project.hasProperty('ossrhStagingProfileId') ? ossrhPassword : System.getenv('OSSRH_STAGING_PROFILE_ID')
+  sonatypeStagingProfileId = project.hasProperty('ossrhStagingProfileId') ? ossrhStagingProfileId : System.getenv('OSSRH_STAGING_PROFILE_ID')
 }
 
 // cannot modify signing directly, have to do it like this
