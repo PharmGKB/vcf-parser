@@ -45,6 +45,30 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testWriteFilterStatus() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+
+    VcfPosition none = new VcfPosition("chr1", 1, null, "A", null, null, Collections.singletonList("."), null, null);
+    none.getAltBases().add("T");
+    VcfPosition passed = new VcfPosition("chr1", 2, null, "A", null, null, Collections.singletonList("PASS"),
+        null, null);
+    passed.getAltBases().add("T");
+    VcfPosition failed = new VcfPosition("chr1", 3, null, "A", null, null, Collections.singletonList("q10"), null, null);
+    failed.getAltBases().add("T");
+
+    writer.writeLine(metadata, none, Collections.emptyList());
+    writer.writeLine(metadata, passed, Collections.emptyList());
+    writer.writeLine(metadata, failed, Collections.emptyList());
+
+    String[] lines = sw.toString().split("\n");
+    assertEquals(".", lines[0].split("\t")[6]);    // NONE -> missing value, not PASS
+    assertEquals("PASS", lines[1].split("\t")[6]); // PASSED
+    assertEquals("q10", lines[2].split("\t")[6]);  // FAILED
+  }
+
+  @Test
   public void testWriteLineWithoutFormatMetadata() throws Exception {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();

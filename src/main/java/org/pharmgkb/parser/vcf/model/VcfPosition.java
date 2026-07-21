@@ -49,6 +49,8 @@ public class VcfPosition {
   private @Nullable BigDecimal m_quality;
   private @Nullable String m_rawQuality;
   private List<String> m_filter = new ArrayList<>();
+  // false only when FILTER was the missing value "." (filters not applied); distinguishes NONE from PASSED.
+  private boolean m_filtersApplied = true;
   // INFO is stored either as a parsed multimap (eager constructor path) or as raw text parsed lazily on first access
   // (parser path via setRawInfo); at most one is non-null at a time.
   private @Nullable ListMultimap<String, String> m_info;
@@ -111,6 +113,15 @@ public class VcfPosition {
             break; // unnecessary, but gets rid of the warning
           } else { // but this is illegal per VCF spec
             throw new VcfFormatException("FILTER contains PASS along with other filters!");
+          }
+        }
+        if (f.equals(".")) {
+          if (filter.size() == 1) { // "." is the missing value: filters were not applied (FilterStatus.NONE)
+            m_filtersApplied = false;
+            filter = null;
+            break;
+          } else { // "." must not be combined with actual filter codes
+            throw new VcfFormatException("FILTER contains '.' (missing value) along with other filters!");
           }
         }
       }
@@ -264,12 +275,34 @@ public class VcfPosition {
     m_rawQuality = null;
   }
 
+  /**
+   * Returns the FILTER status for this position:
+   * <ul>
+   *   <li>{@link FilterStatus#NONE} if filters were not applied (FILTER was the missing value "{@code .}")</li>
+   *   <li>{@link FilterStatus#PASSED} if the position passed all filters (FILTER was "{@code PASS}", or no filters are
+   *       set)</li>
+   *   <li>{@link FilterStatus#FAILED} if the position failed one or more filters</li>
+   * </ul>
+   */
+  public FilterStatus getFilterStatus() {
+    if (!m_filter.isEmpty()) {
+      return FilterStatus.FAILED;
+    }
+    return m_filtersApplied ? FilterStatus.PASSED : FilterStatus.NONE;
+  }
+
+  /**
+   * Returns true if this position did not fail any filters. Note that this is true for both {@link FilterStatus#PASSED}
+   * and {@link FilterStatus#NONE} (no filters applied is treated as passing); use {@link #getFilterStatus()} to
+   * distinguish those two cases.
+   */
   public boolean isPassingAllFilters() {
     return m_filter.isEmpty();
   }
 
   /**
-   * Returns a list of filters this position failed, if any.
+   * Returns a list of filters this position failed, if any. This is empty for both {@link FilterStatus#PASSED} and
+   * {@link FilterStatus#NONE}; use {@link #getFilterStatus()} to distinguish those cases.
    */
   public List<String> getFilters() {
     return m_filter;
@@ -381,5 +414,17 @@ public class VcfPosition {
 
   public Set<String> getInfoKeys() {
     return info().keySet();
+  }
+
+  /**
+   * The FILTER status of a position, per the VCF spec. See {@link VcfPosition#getFilterStatus()}.
+   */
+  public enum FilterStatus {
+    /** Filters were not applied (FILTER was the missing value "{@code .}"). */
+    NONE,
+    /** The position passed all filters (FILTER was "{@code PASS}"). */
+    PASSED,
+    /** The position failed one or more filters. */
+    FAILED
   }
 }

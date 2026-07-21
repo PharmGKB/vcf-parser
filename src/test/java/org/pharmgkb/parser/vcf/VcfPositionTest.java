@@ -91,6 +91,35 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testFilterStatus() {
+    VcfPosition none = new VcfPosition("chr1", 1, null, "C", null, null, Collections.singletonList("."),
+        null, null);
+    assertEquals(VcfPosition.FilterStatus.NONE, none.getFilterStatus());
+    assertTrue(none.isPassingAllFilters()); // no filters applied is treated as passing
+    assertTrue(none.getFilters().isEmpty());
+
+    VcfPosition passed = new VcfPosition("chr1", 1, null, "C", null, null, Collections.singletonList("PASS"),
+        null, null);
+    assertEquals(VcfPosition.FilterStatus.PASSED, passed.getFilterStatus());
+    assertTrue(passed.isPassingAllFilters());
+
+    VcfPosition noFilters = new VcfPosition("chr1", 1, null, "C", null, null, null, null, null);
+    assertEquals(VcfPosition.FilterStatus.PASSED, noFilters.getFilterStatus());
+
+    VcfPosition failed = new VcfPosition("chr1", 1, null, "C", null, null, Collections.singletonList("q10"),
+        null, null);
+    assertEquals(VcfPosition.FilterStatus.FAILED, failed.getFilterStatus());
+    assertFalse(failed.isPassingAllFilters());
+    assertEquals(Collections.singletonList("q10"), failed.getFilters());
+  }
+
+  @Test
+  public void testBadFilterDotWithOthers() {
+    assertThrows(VcfFormatException.class, () ->
+        new VcfPosition("chr1", 1, null, "C", null, null, Arrays.asList("q10", "."), null, null));
+  }
+
+  @Test
   public void testNoFilters() {
     VcfPosition position = new VcfPosition("chr", 1, null, "C", null, null, null, null, null);
     assertTrue(position.getFilters().isEmpty());

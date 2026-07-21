@@ -91,7 +91,11 @@ public class VcfWriter implements Closeable {
     addListOrElse(Arrays.asList(position.getRef()), ",", ".", sb);
     addListOrElse(position.getAltBases(), ",", ".", sb);
     addStringOrElse(position.getQuality(), ".", sb);
-    addListOrElse(position.getFilters(), ";", "PASS", sb);
+    if (position.getFilterStatus() == VcfPosition.FilterStatus.NONE) {
+      sb.append(".\t"); // filters not applied: write the missing value rather than PASS
+    } else {
+      addListOrElse(position.getFilters(), ";", "PASS", sb);
+    }
     addInfoOrDot(metadata, position, sb);
 
     position.getFilters().stream().filter(key -> !metadata.getFilters().containsKey(key)).forEach(key -> {
