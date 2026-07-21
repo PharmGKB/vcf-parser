@@ -167,7 +167,7 @@ public class VcfWriter implements Closeable {
         try {
           number = Integer.parseInt(format.getNumber());
         } catch (NumberFormatException ignored) {}
-        if (number != null && number == 1) {
+        if (number != null && number == 1 && format.getType() != null) {
           try {
             VcfUtils.convertProperty(format.getType(), value);
           } catch (IllegalArgumentException e) {
@@ -216,7 +216,7 @@ public class VcfWriter implements Closeable {
           } catch (NumberFormatException ignored) {}
           // if the number is anything but 1, it might be a list of something else, represented as a string
           // in that case, we can't compare
-          if (number != null && number == 1) {
+          if (number != null && number == 1 && info.getType() != null) {
             try {
               VcfUtils.convertProperty(info.getType(), value); // just test
             } catch (IllegalArgumentException e) {

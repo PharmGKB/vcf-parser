@@ -46,9 +46,18 @@ public class FormatMetadata extends IdDescriptionMetadata {
     if (number == null) {
       sf_logger.warn("Required metadata property \"{}\" is missing", NUMBER);
     } else if (!VcfUtils.NUMBER_PATTERN.matcher(number).matches()) {
-      sf_logger.warn("{} is not a VCF number: '{}'", NUMBER, number);
+      sf_logger.warn("{} is not a valid VCF number: '{}'", NUMBER, number);
     }
-    m_type = FormatType.valueOf(getPropertyRaw(TYPE));
+    String type = getPropertyRaw(TYPE);
+    if (type == null) {
+      sf_logger.warn("Required metadata property \"{}\" is missing", TYPE);
+    } else {
+      try {
+        m_type = FormatType.valueOf(type);
+      } catch (IllegalArgumentException e) {
+        sf_logger.warn("{} '{}' is not a valid FORMAT type", TYPE, type);
+      }
+    }
     ensureNoExtras(ID, DESCRIPTION, NUMBER, TYPE);
   }
 

@@ -69,6 +69,20 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testWriteInfoWithoutType() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    // INFO metadata with no Type -> getType() is null; the writer must not NPE
+    InfoMetadata info = new InfoMetadata(VcfUtils.extractProperties("ID=NS", "Number=1", "Description=\"n\""));
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+    position.getInfo().put("NS", "3");
+    writer.writeLine(metadata, position, Collections.emptyList());
+    assertTrue(sw.toString().contains("NS=3"));
+  }
+
+  @Test
   public void testWriteLineWithoutFormatMetadata() throws Exception {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.VcfUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 
 public class InfoMetadataTest {
@@ -55,5 +56,21 @@ public class InfoMetadataTest {
     InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(
         "ID=X", "Number=1", "Type=String", "Description=unquoted"));
     assertEquals("X", md.getId());
+  }
+
+  @Test
+  public void testInvalidTypeWarns() {
+    // an invalid Type should warn (not throw); the type is left null
+    InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(
+        "ID=X", "Number=1", "Type=NotAType", "Description=\"d\""));
+    assertNull(md.getType());
+  }
+
+  @Test
+  public void testMissingTypeWarns() {
+    // a missing Type should warn (not throw); the type is left null
+    InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(
+        "ID=X", "Number=1", "Description=\"d\""));
+    assertNull(md.getType());
   }
 }
