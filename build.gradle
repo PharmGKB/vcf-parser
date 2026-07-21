@@ -13,6 +13,7 @@ plugins {
   id 'signing'
   id 'maven-publish'
   id 'io.github.gradle-nexus.publish-plugin' version '2.0.0'
+  id 'com.github.ben-manes.versions' version '0.54.0'
 }
 apply plugin: 'biz.aQute.bnd.builder'
 
@@ -92,16 +93,21 @@ repositories {
 }
 
 dependencies {
-  implementation 'commons-io:commons-io:2.11.0'
-  implementation 'com.google.code.findbugs:jsr305:3.0.2'
-  implementation 'com.google.guava:guava:31.1-jre'
-  implementation 'org.apache.commons:commons-lang3:3.12.0'
-  implementation 'org.slf4j:slf4j-api:1.7.36'
+  implementation(
+    'commons-io:commons-io:2.22.0',
+    'com.google.code.findbugs:jsr305:3.0.2',
+    'com.google.guava:guava:33.6.0-jre',
+    'org.apache.commons:commons-lang3:3.20.0',
+    'org.slf4j:slf4j-api:2.26.1'
+  )
 
-  testImplementation 'org.hamcrest:hamcrest:2.2'
-  testImplementation 'org.junit.jupiter:junit-jupiter:5.8.2'
-  testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.8.2'
-  testImplementation 'org.pharmgkb:pgkb-common:0.5.2'
+  testImplementation(
+      'org.hamcrest:hamcrest:3.0',
+      'org.jsoup:jsoup:1.22.2',
+      'org.junit.jupiter:junit-jupiter:6.1.2',
+      'org.junit.platform:junit-platform-launcher:6.1.2',
+      'org.pharmgkb:pgkb-common:0.7.3',
+  )
 }
 
 
