@@ -3,7 +3,6 @@ package org.pharmgkb.parser.vcf.model;
 import java.lang.invoke.MethodHandles;
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -47,9 +46,15 @@ public class VcfPosition {
   private String m_refBases;
   private List<String> m_altBases = new ArrayList<>();
   private final List<String> m_alleles = new ArrayList<>();
-  private BigDecimal m_quality;
+  // QUAL is stored either as a parsed BigDecimal (eager path) or as raw text parsed lazily on first getQuality()
+  // (parser path via setRawQuality); many consumers never read QUAL.
+  private @Nullable BigDecimal m_quality;
+  private @Nullable String m_rawQuality;
   private List<String> m_filter = new ArrayList<>();
-  private ListMultimap<String, String> m_info = ArrayListMultimap.create();
+  // INFO is stored either as a parsed multimap (eager constructor path) or as raw text parsed lazily on first access
+  // (parser path via setRawInfo); at most one is non-null at a time.
+  private @Nullable ListMultimap<String, String> m_info;
+  private @Nullable String m_rawInfo;
   private List<String> m_format = new ArrayList<>();
 
 
@@ -232,11 +237,32 @@ public class VcfPosition {
 
 
   public @Nullable BigDecimal getQuality() {
+    if (m_quality == null && m_rawQuality != null) {
+      String raw = m_rawQuality;
+      m_rawQuality = null;
+      if (!raw.isEmpty() && !raw.equals(".")) {
+        try {
+          m_quality = new BigDecimal(raw);
+        } catch (NumberFormatException e) {
+          throw new VcfFormatException("QUAL '" + raw + "' is not a number");
+        }
+      }
+    }
     return m_quality;
+  }
+
+  /**
+   * Sets the raw QUAL column text, to be parsed lazily on first {@link #getQuality()}. Used by the parser so positions
+   * whose QUAL is never read do not pay to build a {@link BigDecimal}.
+   */
+  public void setRawQuality(@Nullable String rawQuality) {
+    m_rawQuality = rawQuality;
+    m_quality = null;
   }
 
   public void setQuality(@Nullable BigDecimal quality) {
     m_quality = quality;
+    m_rawQuality = null;
   }
 
   public boolean isPassingAllFilters() {
@@ -251,10 +277,52 @@ public class VcfPosition {
   }
 
   /**
+   * Sets the raw INFO column text, to be parsed lazily on first access. Used by the parser so positions whose INFO is
+   * never read do not pay to build the INFO multimap.
+   */
+  public void setRawInfo(@Nullable String rawInfo) {
+    m_rawInfo = rawInfo;
+    m_info = null;
+  }
+
+  /**
+   * Returns the INFO multimap, parsing (and validating) the raw INFO text on first access.
+   */
+  private @Nonnull ListMultimap<String, String> info() {
+    ListMultimap<String, String> info = m_info;
+    if (info == null) {
+      info = ArrayListMultimap.create();
+      String raw = m_rawInfo;
+      if (raw != null && !raw.isEmpty() && !raw.equals(".")) {
+        for (String prop : raw.split(";")) {
+          int idx = prop.indexOf('=');
+          if (idx == -1) {
+            info.put(prop, "");
+          } else {
+            String key = prop.substring(0, idx);
+            for (String value : prop.substring(idx + 1).split(",")) {
+              info.put(key, value);
+            }
+          }
+        }
+        for (Map.Entry<String, String> entry : info.entries()) {
+          if (sf_whitespace.matcher(entry.getKey()).matches() || sf_whitespace.matcher(entry.getValue()).matches()) {
+            throw new VcfFormatException("INFO column entry \"" + entry.getKey() + "=" + entry.getValue() +
+                "\" contains whitespace");
+          }
+        }
+      }
+      m_info = info;
+      m_rawInfo = null;
+    }
+    return info;
+  }
+
+  /**
    * Gets all INFO fields for every key.
    */
   public @Nonnull ListMultimap<String, String> getInfo() {
-    return m_info;
+    return info();
   }
 
   /**
@@ -263,8 +331,9 @@ public class VcfPosition {
    * @return list of values or null if there is no INFO metadata for the specified id
    */
   public @Nullable List<String> getInfo(@Nonnull String id) {
-    if (hasInfo(id)) {
-      return m_info.get(id);
+    ListMultimap<String, String> info = info();
+    if (info.containsKey(id)) {
+      return info.get(id);
     }
     return null;
   }
@@ -286,10 +355,7 @@ public class VcfPosition {
    *           otherwise {@code List<V>} where V is the type specified by {@code ReservedInfoProperty.getType()}.
    */
   public @Nullable <T> T getInfo(@Nonnull ReservedInfoProperty key) {
-    if (!hasInfo(key.getId())) {
-      return null;
-    }
-    List<String> list = m_info.get(key.getId());
+    List<String> list = info().get(key.getId());
     if (list.isEmpty()) {
       return null;
     }
@@ -300,7 +366,7 @@ public class VcfPosition {
    * Checks if there is INFO metadata with the specified ID.
    */
   public boolean hasInfo(@Nonnull String id) {
-    return m_info != null && m_info.containsKey(id);
+    return info().containsKey(id);
   }
 
   /**
@@ -316,10 +382,7 @@ public class VcfPosition {
 
   @Nonnull
   public Set<String> getInfoKeys() {
-    if (m_info == null) {
-      return new HashSet<>(0);
-    }
-    return m_info.keySet();
+    return info().keySet();
   }
 
 }

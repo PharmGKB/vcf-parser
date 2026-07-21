@@ -4,7 +4,6 @@ import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
-import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -13,8 +12,6 @@ import java.util.Map;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import com.google.common.base.Preconditions;
-import com.google.common.collect.ArrayListMultimap;
-import com.google.common.collect.ListMultimap;
 import org.apache.commons.lang3.StringUtils;
 import org.pharmgkb.parser.vcf.model.BaseMetadata;
 import org.pharmgkb.parser.vcf.model.ContigMetadata;
@@ -201,37 +198,10 @@ public class VcfParser implements Closeable {
         alt = toList(COMMA, data.get(4));
       }
 
-      // QUAL
-      BigDecimal quality = null;
-      if (!data.get(5).isEmpty() && !data.get(5).equals(".")) {
-        try {
-          quality = new BigDecimal(data.get(5));
-        } catch (NumberFormatException e) {
-          throw new VcfFormatException("QUAL '" + data.get(5) + "' is not a number");
-        }
-      }
-
       // FILTER
       List<String> filters = null;
       if (!data.get(6).equals("PASS")) {
         filters = toList(SEMICOLON, data.get(6));
-      }
-
-      // INFO
-      ListMultimap<String, String> info = null;
-      if (!data.get(7).equals("") && !data.get(7).equals(".")) {
-        info = ArrayListMultimap.create();
-        List<String> props = toList(SEMICOLON, data.get(7));
-        for (String prop : props) {
-          int idx = prop.indexOf('=');
-          if (idx == -1) {
-            info.put(prop, "");
-          } else {
-            String key = prop.substring(0, idx);
-            String value = prop.substring(idx + 1);
-            info.putAll(key, toList(COMMA, value));
-          }
-        }
       }
 
       // FORMAT
@@ -240,9 +210,11 @@ public class VcfParser implements Closeable {
         format = toList(COLON, data.get(8));
       }
 
-      // samples
+      // QUAL and INFO are parsed lazily by VcfPosition (see setRawQuality/setRawInfo); many consumers never read them.
       VcfPosition pos = new VcfPosition(chromosome, position, ids, ref, alt,
-          quality, filters, info, format);
+          null, filters, null, format);
+      pos.setRawQuality(data.get(5));
+      pos.setRawInfo(data.get(7));
       List<VcfSample> samples = new ArrayList<>();
       for (int x = 9; x < data.size(); x++) {
         samples.add(new VcfSample(format, toList(COLON, data.get(x))));

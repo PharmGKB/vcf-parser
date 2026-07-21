@@ -1,5 +1,6 @@
 package org.pharmgkb.parser.vcf;
 
+import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.Collections;
 import com.google.common.collect.ArrayListMultimap;
@@ -14,6 +15,54 @@ import static org.junit.jupiter.api.Assertions.*;
  * @author Douglas Myers-Turnbull
  */
 public class VcfPositionTest {
+
+  @Test
+  public void testLazyQuality() {
+    VcfPosition value = newPosition();
+    value.setRawQuality("29.5");
+    assertEquals(new BigDecimal("29.5"), value.getQuality());
+    assertEquals(new BigDecimal("29.5"), value.getQuality()); // stable across repeated reads
+
+    VcfPosition missing = newPosition();
+    missing.setRawQuality(".");
+    assertNull(missing.getQuality());
+
+    VcfPosition empty = newPosition();
+    empty.setRawQuality("");
+    assertNull(empty.getQuality());
+
+    // an invalid QUAL is validated lazily: setting it does not throw, reading it does
+    VcfPosition bad = newPosition();
+    bad.setRawQuality("not-a-number");
+    assertThrows(VcfFormatException.class, bad::getQuality);
+
+    // setQuality overrides any pending raw value
+    VcfPosition override = newPosition();
+    override.setRawQuality("1");
+    override.setQuality(new BigDecimal("2"));
+    assertEquals(new BigDecimal("2"), override.getQuality());
+  }
+
+  @Test
+  public void testLazyInfo() {
+    VcfPosition p = newPosition();
+    p.setRawInfo("DP=35;AF=0.5,0.25;FLAG");
+    assertEquals(Collections.singletonList("35"), p.getInfo("DP"));
+    assertEquals(Arrays.asList("0.5", "0.25"), p.getInfo("AF"));
+    assertTrue(p.hasInfo("FLAG"));
+    assertEquals(Collections.singletonList(""), p.getInfo("FLAG"));
+    assertNull(p.getInfo("MISSING"));
+    assertFalse(p.hasInfo("MISSING"));
+
+    VcfPosition dot = newPosition();
+    dot.setRawInfo(".");
+    assertTrue(dot.getInfo().isEmpty());
+    assertFalse(dot.hasInfo("X"));
+  }
+
+  private static VcfPosition newPosition() {
+    return new VcfPosition("chr", 1, null, "C", null, null, null, null, null);
+  }
 
   @Test
   public void testNoFilters() {
