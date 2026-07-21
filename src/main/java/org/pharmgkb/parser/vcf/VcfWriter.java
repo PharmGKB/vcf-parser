@@ -326,7 +326,9 @@ public class VcfWriter implements Closeable {
       throw new RuntimeException("Something went wrong writing line #" + m_lineNumber + ": [[[" + string +
           "]]] contains more than one line");
     }
-    m_writer.println(line);
+    // always terminate with LF (not the platform separator from println) so output is deterministic across platforms
+    m_writer.print(string);
+    m_writer.print('\n');
     m_lineNumber++;
     if (m_lineNumber % 1000 == 0) {
       sf_logger.info("Wrote {} lines{}", m_lineNumber, (m_file == null ? "" : " to " + m_file));
