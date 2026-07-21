@@ -174,20 +174,60 @@ public class VcfParserTest {
 
 
   @Test
-  void testAltWithEmptyInfo() throws IOException {
-    // a data line with samples and an empty INFO field: ALT must still be parsed (ALT parsing must not depend on INFO)
+  void testMissingHeaderThrows() throws IOException {
+    // metadata present but no "#CHROM" column header before EOF must be rejected (not silently yield zero records)
     String vcf = "##fileformat=VCFv4.2\n" +
-        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n" +
-        "chr1\t100\t.\tA\tT\t.\tPASS\t\tGT\t0/1\n";
-    List<String> altBases = new ArrayList<>();
+        "chr1\t100\t.\tA\tT\t.\tPASS\t.\n";
     try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> altBases.addAll(position.getAltBases()))
+             .parseWith((metadata, position, sampleData) -> { })
              .build()) {
-      parser.parse();
+      assertThrows(VcfFormatException.class, parser::parseMetadata);
     }
-    assertEquals(Collections.singletonList("T"), altBases);
+  }
+
+  @Test
+  void testBadColumnNameThrows() throws IOException {
+    // the 8 fixed columns must have their exact spec names in order
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tWRONG\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, position, sampleData) -> { })
+             .build()) {
+      assertThrows(VcfFormatException.class, parser::parseMetadata);
+    }
+  }
+
+  @Test
+  void testBadFormatColumnThrows() throws IOException {
+    // when sample columns are present, column 9 must be "FORMAT"
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tNOTFORMAT\tsample1\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, position, sampleData) -> { })
+             .build()) {
+      assertThrows(VcfFormatException.class, parser::parseMetadata);
+    }
+  }
+
+  @Test
+  void testEmptyInfoRejected() throws IOException {
+    // an empty INFO field is malformed (the missing value must be "."); the strict parser must reject it
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n" +
+        "chr1\t100\t.\tA\tT\t.\tPASS\t\tGT\t0/1\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, position, sampleData) -> { })
+             .build()) {
+      assertThrows(VcfFormatException.class, parser::parse);
+    }
   }
 
   @Test

@@ -36,6 +36,9 @@ public class VcfParser implements Closeable {
   private static final char COMMA = ',';
   private static final char COLON = ':';
   private static final char SEMICOLON = ';';
+  // the mandatory fixed columns, in order, that every VCF header line must start with
+  private static final List<String> REQUIRED_COLUMNS =
+      List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO");
 
   private final boolean m_rsidsOnly;
   private final BufferedReader m_reader;
@@ -66,6 +69,7 @@ public class VcfParser implements Closeable {
     }
     VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder();
     String line;
+    boolean foundHeader = false;
     while ((line = m_reader.readLine()) != null) {
       m_lineNumber++;
       if (line.startsWith("##")) {
@@ -86,10 +90,16 @@ public class VcfParser implements Closeable {
         } catch (RuntimeException e) {
           throw new VcfFormatException(m_lineNumber, "column (# header)", e);
         }
+        foundHeader = true;
         break;
       }
     }
+    // build() validates the ##fileformat line first, so an entirely non-VCF file reports that before this
     m_vcfMetadata = mdBuilder.build();
+    if (!foundHeader) {
+      throw new VcfFormatException("No column header line (starting with #CHROM) was found before the end of the file",
+          m_lineNumber);
+    }
 
     // check sample lists
     if (m_vcfMetadata.getNumSamples() == m_vcfMetadata.getSamples().size()) {
@@ -169,6 +179,11 @@ public class VcfParser implements Closeable {
       if (data.size() != m_vcfMetadata.getNumColumns()) {
         throw new VcfFormatException("Data line does not have expected number of columns (got " + data.size() +
             " vs. " + m_vcfMetadata.getNumColumns() + ")", m_lineNumber);
+      }
+
+      // INFO is a mandatory field; an empty field is invalid (the missing value must be ".")
+      if (data.get(7).isEmpty()) {
+        throw new VcfFormatException("INFO field is empty; the missing value must be '.'", m_lineNumber);
       }
 
       // CHROM
@@ -365,6 +380,16 @@ public class VcfParser implements Closeable {
     List<String> cols = toList(TAB, line);
     if (cols.size() < 8) {
       throw new VcfFormatException("Header line does not have mandatory (tab-delimited) columns", m_lineNumber);
+    }
+    for (int i = 0; i < REQUIRED_COLUMNS.size(); i++) {
+      if (!cols.get(i).equals(REQUIRED_COLUMNS.get(i))) {
+        throw new VcfFormatException("Header column " + (i + 1) + " must be '" + REQUIRED_COLUMNS.get(i) +
+            "' but was '" + cols.get(i) + "'", m_lineNumber);
+      }
+    }
+    if (cols.size() > 8 && !cols.get(8).equals("FORMAT")) {
+      throw new VcfFormatException("Header column 9 must be 'FORMAT' when sample columns are present but was '" +
+          cols.get(8) + "'", m_lineNumber);
     }
     mdBuilder.setColumns(cols);
   }
