@@ -53,6 +53,12 @@ public class MemoryMappedVcfDataStoreParserTest {
       assertNull(dataStore.getSampleAtLocus("chrX", 999, "sample1"));
       assertNull(dataStore.getGenotypeAtLocus("chrX", 999, "sample1"));
 
+      // an unknown sample name (for a known record) returns null instead of throwing IndexOutOfBoundsException
+      assertNull(dataStore.getSampleForId("rsb", "nosuchsample"));
+      assertNull(dataStore.getGenotypeForId("rsb", "nosuchsample"));
+      assertNull(dataStore.getSampleAtLocus("chr1", 2, "nosuchsample"));
+      assertNull(dataStore.getGenotypeAtLocus("chr1", 2, "nosuchsample"));
+
       // a partial no-call ("0/.") keeps the missing allele as "." instead of failing to parse it
       MemoryMappedVcfDataStore.Genotype partial = dataStore.getGenotypeForId("rse", "sample1");
       assertNotNull(partial);

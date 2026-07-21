@@ -77,7 +77,11 @@ public class MemoryMappedVcfDataStore {
 
   public @Nullable VcfSample getSampleForId(String positionId, String sampleId) {
     List<VcfSample> samples = m_idToSamples.get(positionId);
-    return samples == null ? null : samples.get(m_metadata.getSampleIndex(sampleId));
+    if (samples == null) {
+      return null;
+    }
+    int idx = m_metadata.getSampleIndex(sampleId);
+    return idx < 0 ? null : samples.get(idx);
   }
 
   public @Nullable VcfSample getSampleForId(String positionId, int sampleIndex) {
@@ -87,7 +91,11 @@ public class MemoryMappedVcfDataStore {
 
   public @Nullable VcfSample getSampleAtLocus(String chromosome, long position, String sampleId) {
     List<VcfSample> samples = m_locusToSamples.get(new Locus(chromosome, position));
-    return samples == null ? null : samples.get(m_metadata.getSampleIndex(sampleId));
+    if (samples == null) {
+      return null;
+    }
+    int idx = m_metadata.getSampleIndex(sampleId);
+    return idx < 0 ? null : samples.get(idx);
   }
 
   public @Nullable VcfSample getSampleAtLocus(String chromosome, long position, int sampleIndex) {
@@ -101,7 +109,11 @@ public class MemoryMappedVcfDataStore {
     if (position == null || samples == null) {
       return null;
     }
-    return doGetGenotype(position, samples.get(m_metadata.getSampleIndex(sampleId)));
+    int idx = m_metadata.getSampleIndex(sampleId);
+    if (idx < 0) {
+      return null;
+    }
+    return doGetGenotype(position, samples.get(idx));
   }
 
   public @Nullable Genotype getGenotypeAtLocus(String chromosome, long position, String sampleId) {
@@ -111,7 +123,11 @@ public class MemoryMappedVcfDataStore {
     if (pos == null || samples == null) {
       return null;
     }
-    return doGetGenotype(pos, samples.get(m_metadata.getSampleIndex(sampleId)));
+    int idx = m_metadata.getSampleIndex(sampleId);
+    if (idx < 0) {
+      return null;
+    }
+    return doGetGenotype(pos, samples.get(idx));
   }
 
   public @Nullable Genotype getGenotypeForId(String positionId, int sampleIndex) {
