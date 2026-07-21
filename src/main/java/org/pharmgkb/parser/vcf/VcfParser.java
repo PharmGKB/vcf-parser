@@ -8,11 +8,8 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import com.google.common.base.Preconditions;
@@ -39,10 +36,10 @@ import org.slf4j.LoggerFactory;
 public class VcfParser implements Closeable {
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-  private static final Pattern sf_tabSplitter = Pattern.compile("\t");
-  private static final Pattern sf_commaSplitter = Pattern.compile(",");
-  private static final Pattern sf_colonSplitter = Pattern.compile(":");
-  private static final Pattern sf_semicolonSplitter = Pattern.compile(";");
+  private static final char TAB = '\t';
+  private static final char COMMA = ',';
+  private static final char COLON = ':';
+  private static final char SEMICOLON = ';';
 
   private final boolean m_rsidsOnly;
   private final BufferedReader m_reader;
@@ -167,7 +164,7 @@ public class VcfParser implements Closeable {
       if (StringUtils.stripToNull(line) == null) {
         throw new VcfFormatException("Empty line", m_lineNumber);
       }
-      List<String> data = toList(sf_tabSplitter, line);
+      List<String> data = toList(TAB, line);
       if (data.size() != m_vcfMetadata.getNumColumns()) {
         throw new VcfFormatException("Data line does not have expected number of columns (got " + data.size() +
             " vs. " + m_vcfMetadata.getNumColumns() + ")", m_lineNumber);
@@ -190,7 +187,7 @@ public class VcfParser implements Closeable {
         if (m_rsidsOnly && !VcfUtils.RSID_PATTERN.matcher(data.get(2)).find()) {
           return true;
         }
-        ids = toList(sf_semicolonSplitter, data.get(2));
+        ids = toList(SEMICOLON, data.get(2));
       } else if (m_rsidsOnly) {
         return true;
       }
@@ -201,7 +198,7 @@ public class VcfParser implements Closeable {
       // ALT
       List<String> alt = null;
       if (!data.get(7).isEmpty() && !data.get(4).equals(".")) {
-        alt = toList(sf_commaSplitter, data.get(4));
+        alt = toList(COMMA, data.get(4));
       }
 
       // QUAL
@@ -217,14 +214,14 @@ public class VcfParser implements Closeable {
       // FILTER
       List<String> filters = null;
       if (!data.get(6).equals("PASS")) {
-        filters = toList(sf_semicolonSplitter, data.get(6));
+        filters = toList(SEMICOLON, data.get(6));
       }
 
       // INFO
       ListMultimap<String, String> info = null;
       if (!data.get(7).equals("") && !data.get(7).equals(".")) {
         info = ArrayListMultimap.create();
-        List<String> props = toList(sf_semicolonSplitter, data.get(7));
+        List<String> props = toList(SEMICOLON, data.get(7));
         for (String prop : props) {
           int idx = prop.indexOf('=');
           if (idx == -1) {
@@ -232,7 +229,7 @@ public class VcfParser implements Closeable {
           } else {
             String key = prop.substring(0, idx);
             String value = prop.substring(idx + 1);
-            info.putAll(key, toList(sf_commaSplitter, value));
+            info.putAll(key, toList(COMMA, value));
           }
         }
       }
@@ -240,7 +237,7 @@ public class VcfParser implements Closeable {
       // FORMAT
       List<String> format = null;
       if (data.size() >= 9 && data.get(8) != null) {
-        format = toList(sf_colonSplitter, data.get(8));
+        format = toList(COLON, data.get(8));
       }
 
       // samples
@@ -248,7 +245,7 @@ public class VcfParser implements Closeable {
           quality, filters, info, format);
       List<VcfSample> samples = new ArrayList<>();
       for (int x = 9; x < data.size(); x++) {
-        samples.add(new VcfSample(format, toList(sf_colonSplitter, (data.get(x)))));
+        samples.add(new VcfSample(format, toList(COLON, data.get(x))));
       }
 
       m_vcfLineParser.parseLine(m_vcfMetadata, pos, samples);
@@ -347,10 +344,32 @@ public class VcfParser implements Closeable {
     }
   }
 
-  private @Nonnull List<String> toList(@Nonnull Pattern pattern, @Nullable String string) {
-    String[] array = pattern.split(string);
-    List<String> list = new ArrayList<>(array.length);
-    Collections.addAll(list, array);
+  /**
+   * Splits {@code string} on the single character {@code delim}, matching
+   * {@code Pattern.compile(String.valueOf(delim)).split(string)} with the default limit: leading and interior empty
+   * fields are kept, trailing empty fields are removed, and a string containing no delimiter yields a single-element
+   * list. Avoids the regex engine, which is a meaningful per-line cost when parsing large VCFs.
+   */
+  // package-private for differential testing against Pattern.split
+  static @Nonnull List<String> toList(char delim, @Nonnull String string) {
+    int idx = string.indexOf(delim);
+    if (idx < 0) {
+      List<String> single = new ArrayList<>(1);
+      single.add(string);
+      return single;
+    }
+    List<String> list = new ArrayList<>();
+    int start = 0;
+    while (idx >= 0) {
+      list.add(string.substring(start, idx));
+      start = idx + 1;
+      idx = string.indexOf(delim, start);
+    }
+    list.add(string.substring(start));
+    // drop trailing empty fields to match Pattern.split with the default limit of 0
+    for (int i = list.size() - 1; i >= 0 && list.get(i).isEmpty(); i -= 1) {
+      list.remove(i);
+    }
     return list;
   }
 
@@ -359,7 +378,7 @@ public class VcfParser implements Closeable {
   }
 
   private void parseColumnInfo(@Nonnull VcfMetadata.Builder mdBuilder, @Nonnull String line) {
-    List<String> cols = Arrays.asList(sf_tabSplitter.split(line));
+    List<String> cols = toList(TAB, line);
     if (cols.size() < 8) {
       throw new VcfFormatException("Header line does not have mandatory (tab-delimited) columns", m_lineNumber);
     }

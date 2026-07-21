@@ -9,6 +9,7 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.common.util.PathUtils;
 import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
@@ -27,6 +28,29 @@ import static org.junit.jupiter.api.Assertions.*;
  * @author Mark Woon
  */
 public class VcfParserTest {
+
+  /**
+   * The char-based {@link VcfParser#toList} must behave exactly like the {@code Pattern.split} it replaced (default
+   * limit: interior/leading empties kept, trailing empties dropped, no-delimiter yields a single element). Verify that
+   * differentially across the delimiters used and a range of edge-case inputs.
+   */
+  @Test
+  void testToListMatchesPatternSplit() {
+    String[] inputs = {
+        "", "a", "abc",
+        "a,b", "a:b:c", "x;y;z", "p\tq\tr",
+        "a,", "a,,", ",a", ",,a", "a,,b", ",a,",
+        ",", ",,", ";", ":", "\t", "\t\t\t",
+        "0/1:35,40:75", "GT:AD:DP", "0|1", "./.", "PASS",
+    };
+    for (char delim : new char[] { '\t', ':', ',', ';' }) {
+      for (String input : inputs) {
+        List<String> expected = Arrays.asList(Pattern.compile(String.valueOf(delim)).split(input));
+        assertEquals(expected, VcfParser.toList(delim, input),
+            () -> "delim='" + delim + "' input='" + input + "'");
+      }
+    }
+  }
 
   @Test
   void testBasic() throws IOException {
