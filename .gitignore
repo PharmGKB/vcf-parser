@@ -13,6 +13,12 @@
 .gradle/
 /bower_components/
 /node_modules/
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
 
 # Temporary files
 .DS_Store
