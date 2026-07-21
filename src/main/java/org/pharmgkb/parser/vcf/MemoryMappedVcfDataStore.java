@@ -76,57 +76,83 @@ public class MemoryMappedVcfDataStore {
   }
 
   public @Nullable VcfSample getSampleForId(String positionId, String sampleId) {
-    return m_idToSamples.get(positionId).get(m_metadata.getSampleIndex(sampleId));
+    List<VcfSample> samples = m_idToSamples.get(positionId);
+    return samples == null ? null : samples.get(m_metadata.getSampleIndex(sampleId));
   }
 
   public @Nullable VcfSample getSampleForId(String positionId, int sampleIndex) {
-    return m_idToSamples.get(positionId).get(sampleIndex);
+    List<VcfSample> samples = m_idToSamples.get(positionId);
+    return samples == null ? null : samples.get(sampleIndex);
   }
 
   public @Nullable VcfSample getSampleAtLocus(String chromosome, long position, String sampleId) {
-    return m_locusToSamples.get(new Locus(chromosome, position)).get(m_metadata.getSampleIndex(sampleId));
+    List<VcfSample> samples = m_locusToSamples.get(new Locus(chromosome, position));
+    return samples == null ? null : samples.get(m_metadata.getSampleIndex(sampleId));
   }
 
   public @Nullable VcfSample getSampleAtLocus(String chromosome, long position, int sampleIndex) {
-    return m_locusToSamples.get(new Locus(chromosome, position)).get(sampleIndex);
+    List<VcfSample> samples = m_locusToSamples.get(new Locus(chromosome, position));
+    return samples == null ? null : samples.get(sampleIndex);
   }
 
   public @Nullable Genotype getGenotypeForId(String positionId, String sampleId) {
     VcfPosition position = m_idToPosition.get(positionId);
-    VcfSample sample = m_idToSamples.get(positionId).get(m_metadata.getSampleIndex(sampleId));
-    return doGetGenotype(position, sample);
+    List<VcfSample> samples = m_idToSamples.get(positionId);
+    if (position == null || samples == null) {
+      return null;
+    }
+    return doGetGenotype(position, samples.get(m_metadata.getSampleIndex(sampleId)));
   }
 
   public @Nullable Genotype getGenotypeAtLocus(String chromosome, long position, String sampleId) {
-    VcfPosition position1 = m_locusToPosition.get(new Locus(chromosome, position));
-    VcfSample sample = m_locusToSamples.get(new Locus(chromosome, position)).get(m_metadata.getSampleIndex(sampleId));
-    return doGetGenotype(position1, sample);
+    Locus locus = new Locus(chromosome, position);
+    VcfPosition pos = m_locusToPosition.get(locus);
+    List<VcfSample> samples = m_locusToSamples.get(locus);
+    if (pos == null || samples == null) {
+      return null;
+    }
+    return doGetGenotype(pos, samples.get(m_metadata.getSampleIndex(sampleId)));
   }
 
   public @Nullable Genotype getGenotypeForId(String positionId, int sampleIndex) {
     VcfPosition position = m_idToPosition.get(positionId);
-    VcfSample sample = m_idToSamples.get(positionId).get(sampleIndex);
-    return doGetGenotype(position, sample);
+    List<VcfSample> samples = m_idToSamples.get(positionId);
+    if (position == null || samples == null) {
+      return null;
+    }
+    return doGetGenotype(position, samples.get(sampleIndex));
   }
 
   public @Nullable Genotype getGenotypeAtLocus(String chromosome, long position, int sampleIndex) {
-    VcfPosition position1 = m_locusToPosition.get(new Locus(chromosome, position));
-    VcfSample sample = m_locusToSamples.get(new Locus(chromosome, position)).get(sampleIndex);
-    return doGetGenotype(position1, sample);
+    Locus locus = new Locus(chromosome, position);
+    VcfPosition pos = m_locusToPosition.get(locus);
+    List<VcfSample> samples = m_locusToSamples.get(locus);
+    if (pos == null || samples == null) {
+      return null;
+    }
+    return doGetGenotype(pos, samples.get(sampleIndex));
   }
 
   private @Nullable Genotype doGetGenotype(VcfPosition position, VcfSample sample) {
     String genotype = sample.getProperty(ReservedFormatProperty.Genotype);
-    if (genotype == null || genotype.isEmpty() || genotype.equals(".")) {
+    if (genotype == null || genotype.isEmpty()) {
       return null;
     }
     boolean isPhased = genotype.contains("|");
     String[] bases = genotype.split("[\\|/]");
     List<String> alleles = new ArrayList<>(bases.length);
+    boolean allMissing = true;
     for (String base : bases) {
-      alleles.add(position.getAllele(Integer.parseInt(base)));
+      if (base.equals(".")) {
+        // a missing allele (".") is kept as-is rather than parsed as an index
+        alleles.add(".");
+      } else {
+        allMissing = false;
+        alleles.add(position.getAllele(Integer.parseInt(base)));
+      }
     }
-    return new Genotype(alleles, isPhased);
+    // a fully missing call (e.g. "." or "./.") has no genotype
+    return allMissing ? null : new Genotype(alleles, isPhased);
   }
 
   protected Map<String, VcfPosition> getIdToPosition() {

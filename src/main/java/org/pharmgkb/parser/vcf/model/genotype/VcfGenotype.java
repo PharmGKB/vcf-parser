@@ -51,15 +51,26 @@ public class VcfGenotype {
 
   /**
    * @param genotype A string like A/TT
+   *
+   * <p>The missing-value token {@code .} is treated as a no-call: it maps to a {@code null} allele, consistent with
+   * {@link #fromNumberString}. A call with both alleles missing (e.g. {@code .} or {@code ./.}) is a no-call
+   * ({@link #isNoCall()} is {@code true}); a partial call such as {@code A/.} keeps its concrete allele and is not a
+   * no-call.</p>
    */
   public static VcfGenotype fromString(String genotype) {
     Matcher matcher = sf_genotypePattern.matcher(genotype);
     if (matcher.matches() && !matcher.group(1).isEmpty() && !matcher.group(2).isEmpty()) {
       String allele1 = matcher.group(1);
       String allele2 = matcher.group(2);
-      boolean isPhased = allele1.equals(allele2) || genotype.contains(sf_phasedDelimiter); // A/A -> A|A
-      return new VcfGenotype(new VcfAllele(allele1), new VcfAllele(allele2), isPhased);
+      VcfAllele vcfAllele1 = allele1.equals(sf_noData) ? null : new VcfAllele(allele1);
+      VcfAllele vcfAllele2 = allele2.equals(sf_noData) ? null : new VcfAllele(allele2);
+      // A/A -> A|A:
+      boolean isPhased = !allele1.equals(sf_noData) && allele1.equals(allele2) || genotype.contains(sf_phasedDelimiter);
+      return new VcfGenotype(vcfAllele1, vcfAllele2, isPhased);
     } else if (VcfUtils.ALT_BASE_PATTERN.matcher(genotype).matches()) { // for haploid calls in chrM, chrX, and chrY
+      if (genotype.equals(sf_noData)) {
+        return new VcfGenotype(null, null, true);
+      }
       // the choice of isPhased=true is weird here but really means "phasing is resolved"
       return new VcfGenotype(new VcfAllele(genotype), new VcfAllele(genotype), true);
     }

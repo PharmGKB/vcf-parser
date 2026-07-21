@@ -35,4 +35,32 @@ public class MemoryMappedVcfDataStoreParserTest {
       assertNull(dataStore.getGenotypeForId("rsa", "sample1"));
     }
   }
+
+  @Test
+  public void testMissingAndUnknownLookups() throws IOException {
+    try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream(
+        "/vcfposition.vcf")))) {
+      MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+      new VcfParser.Builder()
+          .fromReader(reader)
+          .parseWith(lineParser)
+          .build().parse();
+      MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
+
+      // unknown id / locus lookups return null instead of throwing
+      assertNull(dataStore.getSampleForId("nope", "sample1"));
+      assertNull(dataStore.getGenotypeForId("nope", "sample1"));
+      assertNull(dataStore.getSampleAtLocus("chrX", 999, "sample1"));
+      assertNull(dataStore.getGenotypeAtLocus("chrX", 999, "sample1"));
+
+      // a partial no-call ("0/.") keeps the missing allele as "." instead of failing to parse it
+      MemoryMappedVcfDataStore.Genotype partial = dataStore.getGenotypeForId("rse", "sample1");
+      assertNotNull(partial);
+      assertEquals("A", partial.getAlleles().get(0));
+      assertEquals(".", partial.getAlleles().get(1));
+
+      // a fully missing call ("./.") has no genotype
+      assertNull(dataStore.getGenotypeForId("rsf", "sample1"));
+    }
+  }
 }
