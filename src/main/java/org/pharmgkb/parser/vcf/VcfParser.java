@@ -38,10 +38,7 @@ public class VcfParser implements Closeable {
   private static final char COMMA = ',';
   private static final char COLON = ':';
   private static final char SEMICOLON = ';';
-  // the mandatory fixed columns, in order, that every VCF header line must start with
-  private static final List<String> REQUIRED_COLUMNS =
-      List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO");
-  // the mandatory fixed data fields, in order (same as REQUIRED_COLUMNS without the leading '#')
+  // the mandatory fixed fields, in order; in the column-header line CHROM is written as "#CHROM"
   private static final List<String> FIXED_FIELD_NAMES =
       List.of("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO");
 
@@ -400,9 +397,10 @@ public class VcfParser implements Closeable {
     if (cols.size() < 8) {
       throw new VcfFormatException("Header line does not have mandatory (tab-delimited) columns", m_lineNumber);
     }
-    for (int i = 0; i < REQUIRED_COLUMNS.size(); i++) {
-      if (!cols.get(i).equals(REQUIRED_COLUMNS.get(i))) {
-        throw new VcfFormatException("Header column " + (i + 1) + " must be '" + REQUIRED_COLUMNS.get(i) +
+    for (int i = 0; i < FIXED_FIELD_NAMES.size(); i++) {
+      String expected = i == 0 ? "#" + FIXED_FIELD_NAMES.get(0) : FIXED_FIELD_NAMES.get(i);
+      if (!cols.get(i).equals(expected)) {
+        throw new VcfFormatException("Header column " + (i + 1) + " must be '" + expected +
             "' but was '" + cols.get(i) + "'", m_lineNumber);
       }
     }
