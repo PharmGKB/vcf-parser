@@ -69,32 +69,24 @@ public class VcfParser implements Closeable {
       throw new IllegalStateException("Metadata has already been parsed.");
     }
     VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder();
+
+    // the first physical line must be the single ##fileformat declaration
+    String first = m_reader.readLine();
+    m_lineNumber++;
+    if (first == null || !first.startsWith("##fileformat=")) {
+      throw new VcfFormatException("Not a VCF file: the first line must be ##fileformat", m_lineNumber);
+    }
+    parseMetadataLine(mdBuilder, first);
+
     String line;
     boolean foundHeader = false;
-    boolean seenFileFormat = false;
-    boolean seenOtherMetadata = false;
     while ((line = m_reader.readLine()) != null) {
       m_lineNumber++;
       if (line.startsWith("##")) {
         if (line.startsWith("##fileformat=")) {
-          if (seenFileFormat) {
-            throw new VcfFormatException("Duplicate ##fileformat line", m_lineNumber);
-          }
-          if (seenOtherMetadata) {
-            throw new VcfFormatException("##fileformat must be the first line", m_lineNumber);
-          }
-          seenFileFormat = true;
-        } else {
-          seenOtherMetadata = true;
+          throw new VcfFormatException("Duplicate ##fileformat line", m_lineNumber);
         }
-        try {
-          parseMetadata(mdBuilder, line);
-        } catch (VcfFormatException ex) {
-          ex.addMetadata(m_lineNumber, "metadata");
-          throw ex;
-        } catch (RuntimeException e) {
-          throw new VcfFormatException(m_lineNumber, "metadata", e);
-        }
+        parseMetadataLine(mdBuilder, line);
       } else if (line.startsWith("#")) {
         try {
           parseColumnInfo(mdBuilder, line);
@@ -106,9 +98,11 @@ public class VcfParser implements Closeable {
         }
         foundHeader = true;
         break;
+      } else {
+        throw new VcfFormatException("Unexpected line before the #CHROM header (only ## metadata lines are allowed here)",
+            m_lineNumber);
       }
     }
-    // build() validates the ##fileformat line first, so an entirely non-VCF file reports that before this
     m_vcfMetadata = mdBuilder.build();
     if (!foundHeader) {
       throw new VcfFormatException("No column header line (starting with #CHROM) was found before the end of the file",
@@ -283,6 +277,20 @@ public class VcfParser implements Closeable {
     }
   }
 
+
+  /**
+   * Parses a ## metadata line, annotating any failure with the line number.
+   */
+  private void parseMetadataLine(VcfMetadata.Builder mdBuilder, String line) {
+    try {
+      parseMetadata(mdBuilder, line);
+    } catch (VcfFormatException ex) {
+      ex.addMetadata(m_lineNumber, "metadata");
+      throw ex;
+    } catch (RuntimeException e) {
+      throw new VcfFormatException(m_lineNumber, "metadata", e);
+    }
+  }
 
   /**
    * Parses a metadata line (starts with ##).

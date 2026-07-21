@@ -198,6 +198,18 @@ public class VcfParserTest {
   }
 
   @Test
+  void testBlankFirstLineThrows() throws IOException {
+    String vcf = "\n##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
+  }
+
+  @Test
+  void testStrayLineBeforeHeaderThrows() throws IOException {
+    String vcf = "##fileformat=VCFv4.2\nnot-metadata\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
+  }
+
+  @Test
   void testDuplicateSampleNameThrows() throws IOException {
     String vcf = "##fileformat=VCFv4.2\n" +
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\ts1\n";
