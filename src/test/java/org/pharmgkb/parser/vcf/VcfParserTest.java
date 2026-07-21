@@ -2,10 +2,12 @@ package org.pharmgkb.parser.vcf;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.StringReader;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -170,6 +172,23 @@ public class VcfParserTest {
     }
   }
 
+
+  @Test
+  void testAltWithEmptyInfo() throws IOException {
+    // a data line with samples and an empty INFO field: ALT must still be parsed (ALT parsing must not depend on INFO)
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n" +
+        "chr1\t100\t.\tA\tT\t.\tPASS\t\tGT\t0/1\n";
+    List<String> altBases = new ArrayList<>();
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, position, sampleData) -> altBases.addAll(position.getAltBases()))
+             .build()) {
+      parser.parse();
+    }
+    assertEquals(Collections.singletonList("T"), altBases);
+  }
 
   @Test
   void testIsModifiable() throws IOException {

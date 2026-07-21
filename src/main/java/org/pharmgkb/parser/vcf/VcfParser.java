@@ -39,7 +39,7 @@ public class VcfParser implements Closeable {
 
   private final boolean m_rsidsOnly;
   private final BufferedReader m_reader;
-  private VcfMetadata m_vcfMetadata;
+  private @Nullable VcfMetadata m_vcfMetadata;
   private final VcfLineParser m_vcfLineParser;
 
   private int m_lineNumber;
@@ -193,7 +193,7 @@ public class VcfParser implements Closeable {
 
       // ALT
       List<String> alt = null;
-      if (!data.get(7).isEmpty() && !data.get(4).equals(".")) {
+      if (!data.get(4).isEmpty() && !data.get(4).equals(".")) {
         alt = toList(COMMA, data.get(4));
       }
 
