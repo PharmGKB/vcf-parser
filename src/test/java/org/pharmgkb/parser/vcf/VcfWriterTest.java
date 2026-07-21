@@ -5,13 +5,17 @@ import java.io.StringWriter;
 import java.math.BigDecimal;
 import java.nio.file.Paths;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.model.InfoMetadata;
 import org.pharmgkb.parser.vcf.model.InfoType;
+import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
+import org.pharmgkb.parser.vcf.model.VcfSample;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests {@link VcfWriter}.
@@ -38,6 +42,37 @@ public class VcfWriterTest {
     writer.writeLine(metadata, second, Collections.emptyList());
     String expected = TestUtils.readFileToString(Paths.get(getClass().getResource("/no_samples.vcf").toURI()));
     assertEquals(expected, sw.toString());
+  }
+
+  @Test
+  public void testWriteLineWithoutFormatMetadata() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+    position.getFormat().add("GT");
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    sample.putProperty(ReservedFormatProperty.Genotype, "0/1");
+    // FORMAT metadata is absent: this previously threw NullPointerException
+    writer.writeLine(metadata, position, Collections.singletonList(sample));
+    assertTrue(sw.toString().contains("\tGT\t0/1"));
+  }
+
+  @Test
+  public void testWriteLineWithMissingSampleProperty() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+    position.getFormat().add("GT");
+    position.getFormat().add("DP");
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    sample.putProperty(ReservedFormatProperty.Genotype, "0/1"); // no DP property
+    // sample has fewer properties than FORMAT: this previously threw NoSuchElementException
+    writer.writeLine(metadata, position, Collections.singletonList(sample));
+    assertTrue(sw.toString().contains("\tGT:DP\t0/1:."));
   }
 
 }

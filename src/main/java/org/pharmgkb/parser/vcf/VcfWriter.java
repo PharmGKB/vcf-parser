@@ -140,14 +140,13 @@ public class VcfWriter implements Closeable {
   private void addSampleConditionally(VcfMetadata metadata, int sampleIndex,
       VcfPosition position, VcfSample sample, StringBuilder sb) {
 
-    Iterator<String> keys = sample.getPropertyKeys().iterator();
-    if (!keys.hasNext() && position.getFormat().isEmpty()) {
+    List<String> formatKeys = position.getFormat();
+    if (sample.getPropertyKeys().isEmpty() && formatKeys.isEmpty()) {
       return;
     }
 
-    for (String key : position.getFormat()) {
-
-      keys.next();
+    for (int i = 0; i < formatKeys.size(); i++) {
+      String key = formatKeys.get(i);
 
       if (!metadata.getFormats().containsKey(key)) {
         sf_logger.warn("Sample #{} for {}:{} contains FORMAT {}, but there is no FORMAT metadata with that name " +
@@ -155,29 +154,31 @@ public class VcfWriter implements Closeable {
             sampleIndex, position.getChromosome(), position.getPosition(), key, m_lineNumber);
       }
 
-      if (!sample.containsProperty(key)) {
+      String value = sample.getProperty(key);
+      if (value == null) {
         sf_logger.warn("Sample #{} is missing property {}" +
             " (on line {})", sampleIndex, key, m_lineNumber);
+        value = ".";
       }
 
-      String value = sample.getProperty(key);
-
       FormatMetadata format = metadata.getFormats().get(key);
-      Integer number = null;
-      try {
-        number = Integer.parseInt(format.getNumber());
-      } catch (NumberFormatException ignored) {}
-      if (number != null && number == 1) {
+      if (format != null) {
+        Integer number = null;
         try {
-          VcfUtils.convertProperty(format.getType(), value);
-        } catch (IllegalArgumentException e) {
-          sf_logger.warn("Property {} for sample #{} is not of type {}" +
-              " (on line {})", key, sampleIndex, format.getType(), m_lineNumber);
+          number = Integer.parseInt(format.getNumber());
+        } catch (NumberFormatException ignored) {}
+        if (number != null && number == 1) {
+          try {
+            VcfUtils.convertProperty(format.getType(), value);
+          } catch (IllegalArgumentException e) {
+            sf_logger.warn("Property {} for sample #{} is not of type {}" +
+                " (on line {})", key, sampleIndex, format.getType(), m_lineNumber);
+          }
         }
       }
 
       sb.append(value);
-      if (keys.hasNext()) {
+      if (i < formatKeys.size() - 1) {
         sb.append(":");
       }
     }
