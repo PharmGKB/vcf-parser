@@ -64,6 +64,9 @@ public class InfoMetadata extends IdDescriptionMetadata {
       sf_logger.warn("{} is not a number: '{}'", NUMBER, number);
     }
     m_type = InfoType.valueOf(getPropertyRaw(TYPE));
+    if (m_type == InfoType.Flag && !"0".equals(number)) {
+      sf_logger.warn("INFO {} has Type=Flag but Number is '{}' (should be 0)", getId(), number);
+    }
     ensureNoExtras(ID, DESCRIPTION, NUMBER, TYPE, SOURCE, VERSION);
   }
 

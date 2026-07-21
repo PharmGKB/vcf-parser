@@ -39,4 +39,21 @@ public class InfoMetadataTest {
       new InfoMetadata(VcfUtils.extractProperties(props));
     }
   }
+
+  @Test
+  public void testFlagWithNonZeroNumberWarns() {
+    // Type=Flag with Number != 0 is malformed; it should warn, not throw
+    InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(
+        "ID=X", "Number=1", "Type=Flag", "Description=\"d\""));
+    assertEquals("1", md.getNumber());
+    assertEquals(InfoType.Flag, md.getType());
+  }
+
+  @Test
+  public void testUnquotedDescriptionWarns() {
+    // an unquoted Description is malformed; it should warn, not throw
+    InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(
+        "ID=X", "Number=1", "Type=String", "Description=unquoted"));
+    assertEquals("X", md.getId());
+  }
 }

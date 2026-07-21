@@ -42,8 +42,11 @@ public class IdDescriptionMetadata extends IdMetadata {
   }
 
   private void init(boolean isBaseType) {
-    if (getPropertyRaw(DESCRIPTION) == null) {
+    String description = getPropertyRaw(DESCRIPTION);
+    if (description == null) {
       sf_logger.warn("Required metadata property \"{}\" is missing", DESCRIPTION);
+    } else if (!description.startsWith("\"") || !description.endsWith("\"")) {
+      sf_logger.warn("Metadata property \"{}\" should be quoted but was: {}", DESCRIPTION, description);
     }
     if (isBaseType) {
       ensureNoExtras(ID, DESCRIPTION);
