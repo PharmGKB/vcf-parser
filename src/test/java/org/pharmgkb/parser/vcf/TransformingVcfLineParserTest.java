@@ -115,4 +115,24 @@ public class TransformingVcfLineParserTest {
     assertEquals(vcf, sw.toString());
   }
 
+  /**
+   * Calling parseMetadata() directly (without parsing any data lines) must still deliver the metadata callback and write
+   * the header.
+   */
+  @Test
+  public void testParseMetadataOnlyWritesHeader() throws Exception {
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    StringWriter sw = new StringWriter();
+    TransformingVcfLineParser lineParser = new TransformingVcfLineParser.Builder()
+        .addTransformation(new VcfTransformation() {}, new PrintWriter(sw)).build();
+    try (VcfParser parser = new VcfParser.Builder()
+        .parseWith(lineParser)
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .build()) {
+      parser.parseMetadata();
+    }
+    assertEquals(vcf, sw.toString());
+  }
+
 }
