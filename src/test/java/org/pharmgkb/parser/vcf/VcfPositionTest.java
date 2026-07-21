@@ -70,6 +70,15 @@ public class VcfPositionTest {
     assertEquals(new BigDecimal("52.4"), p.getInfo(ReservedInfoProperty.MappingQuality));
   }
 
+  @Test
+  public void testGetInfoHomologySequence() {
+    // HomologySequence must resolve the HOMSEQ key (it was previously misdefined as HOMLEN)
+    assertEquals("HOMSEQ", ReservedInfoProperty.HomologySequence.getId());
+    VcfPosition p = newPosition();
+    p.setRawInfo("HOMSEQ=ACGT");
+    assertEquals("ACGT", p.getInfo(ReservedInfoProperty.HomologySequence));
+  }
+
   private static VcfPosition newPosition() {
     return new VcfPosition("chr", 1, null, "C", null, null, null, null, null);
   }

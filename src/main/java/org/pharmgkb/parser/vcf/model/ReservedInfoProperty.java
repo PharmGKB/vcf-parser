@@ -47,7 +47,7 @@ public enum ReservedInfoProperty implements ReservedProperty {
   ConfidenceIntervalForPosition("CIPOS", "Confidence interval around POS for imprecise variants", Long.class, true, "2"),
   ConfidenceIntervalForEnd("CIEND", "Confidence interval around END for imprecise variants", Long.class, true, "2"),
   HomologyLength("HOMLEN", "Length of base pair identical micro-homology at event breakpoints", Long.class, false, "."),
-  HomologySequence("HOMLEN", "Sequence of base pair identical micro-homology at event breakpoints", String.class, false, "."),
+  HomologySequence("HOMSEQ", "Sequence of base pair identical micro-homology at event breakpoints", String.class, false, "."),
 
   BreakpointId("BKPTID", "ID of the assembled alternate allele in the assembly file", String.class, false, "."),
 
