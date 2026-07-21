@@ -24,7 +24,7 @@ public enum ReservedInfoProperty implements ReservedProperty {
   Depth("DP", "Combined depth across samples", BigDecimal.class, false, "1"),
   Hapmap2("H2", "Membership in HapMap2", Boolean.class, false, "0"),
   Hapmap3("H3", "Membership in HapMap2", Boolean.class, false, "0"),
-  MappingQuality("MQ", "RMS mapping quality, e.g. MQ=52", Float.class, false, "1"),
+  MappingQuality("MQ", "RMS mapping quality, e.g. MQ=52", BigDecimal.class, false, "1"),
   MappingQualityZeroCount("MQ0", "Number of MAPQ == 0 reads covering this record", Long.class, false, "1"),
   NumberOfSamples("NS", "Number of samples with data", Long.class, false, "1"),
   StrandBias("SB", "Strand bias at this position", Long.class, true, "."),

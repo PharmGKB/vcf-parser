@@ -7,6 +7,7 @@ import java.util.Collections;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
 import org.junit.jupiter.api.Test;
+import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -59,6 +60,14 @@ public class VcfPositionTest {
     dot.setRawInfo(".");
     assertTrue(dot.getInfo().isEmpty());
     assertFalse(dot.hasInfo("X"));
+  }
+
+  @Test
+  public void testGetInfoMappingQuality() {
+    // MQ is a float reserved property; getInfo must convert it (it was previously typed Float.class, which threw)
+    VcfPosition p = newPosition();
+    p.setRawInfo("MQ=52.4");
+    assertEquals(new BigDecimal("52.4"), p.getInfo(ReservedInfoProperty.MappingQuality));
   }
 
   private static VcfPosition newPosition() {
