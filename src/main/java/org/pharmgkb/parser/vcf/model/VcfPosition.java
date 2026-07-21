@@ -44,7 +44,6 @@ public class VcfPosition {
   private List<String> m_ids = new ArrayList<>();
   private String m_refBases;
   private List<String> m_altBases = new ArrayList<>();
-  private final List<String> m_alleles = new ArrayList<>();
   // QUAL is stored either as a parsed BigDecimal (eager path) or as raw text parsed lazily on first getQuality()
   // (parser path via setRawQuality); many consumers never read QUAL.
   private @Nullable BigDecimal m_quality;
@@ -147,11 +146,9 @@ public class VcfPosition {
     }
 
     m_refBases = ref; // required
-    m_alleles.add(m_refBases);
 
     if (altBases != null) {
       m_altBases = altBases;
-      m_alleles.addAll(altBases);
     }
 
     m_quality = qual; // required
@@ -231,7 +228,10 @@ public class VcfPosition {
    * @throws IndexOutOfBoundsException if index is out of range
    */
   public String getAllele(int index) {
-    return m_alleles.get(index);
+    if (index == 0) {
+      return m_refBases;
+    }
+    return m_altBases.get(index - 1);
   }
 
 

@@ -1,6 +1,7 @@
 package org.pharmgkb.parser.vcf;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import com.google.common.collect.ArrayListMultimap;
@@ -62,6 +63,31 @@ public class VcfPositionTest {
 
   private static VcfPosition newPosition() {
     return new VcfPosition("chr", 1, null, "C", null, null, null, null, null);
+  }
+
+  @Test
+  public void testGetAllele() {
+    VcfPosition position = new VcfPosition("chr1", 1, null, "C", new ArrayList<>(Arrays.asList("A", "T")), null, null,
+        null, null);
+    assertEquals("C", position.getAllele(0));
+    assertEquals("A", position.getAllele(1));
+    assertEquals("T", position.getAllele(2));
+    assertThrows(IndexOutOfBoundsException.class, () -> position.getAllele(3));
+
+    // lookup reflects a mutation to REF (no stale cache)
+    position.setRef("G");
+    assertEquals("G", position.getAllele(0));
+
+    // lookup reflects a mutation to the ALT list (no stale cache)
+    position.getAltBases().add("N");
+    assertEquals("N", position.getAllele(3));
+  }
+
+  @Test
+  public void testGetAlleleShortConstructor() {
+    VcfPosition position = new VcfPosition("chr1", 1, "C", new BigDecimal("0.0"));
+    assertEquals("C", position.getAllele(0));
+    assertThrows(IndexOutOfBoundsException.class, () -> position.getAllele(1));
   }
 
   @Test
