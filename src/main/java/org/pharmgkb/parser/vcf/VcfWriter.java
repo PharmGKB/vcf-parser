@@ -1,16 +1,28 @@
 package org.pharmgkb.parser.vcf;
 
+import java.io.BufferedWriter;
+import java.io.Closeable;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.lang.invoke.MethodHandles;
+import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import org.apache.commons.io.IOUtils;
-import org.pharmgkb.parser.vcf.model.*;
+import org.jspecify.annotations.Nullable;
+import org.pharmgkb.parser.vcf.model.BaseMetadata;
+import org.pharmgkb.parser.vcf.model.FormatMetadata;
+import org.pharmgkb.parser.vcf.model.InfoMetadata;
+import org.pharmgkb.parser.vcf.model.VcfMetadata;
+import org.pharmgkb.parser.vcf.model.VcfPosition;
+import org.pharmgkb.parser.vcf.model.VcfSample;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import java.io.*;
-import java.lang.invoke.MethodHandles;
-import java.nio.file.Path;
-import java.util.*;
 
 /**
  * Writes to VCF format from a {@link VcfSample}, {@link VcfPosition VcfPositions}, and {@link VcfMetadata}.
@@ -24,16 +36,16 @@ public class VcfWriter implements Closeable {
 
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-  private final Path m_file;
+  private final @Nullable Path m_file;
   private final PrintWriter m_writer;
   private int m_lineNumber;
 
-  private VcfWriter(@Nullable Path file, @Nonnull PrintWriter writer) {
+  private VcfWriter(@Nullable Path file, PrintWriter writer) {
     m_file = file;
     m_writer = writer;
   }
 
-  public void writeHeader(@Nonnull VcfMetadata metadata) {
+  public void writeHeader(VcfMetadata metadata) {
 
     // file format
     printLine("##fileformat=" + metadata.getFileFormat());
@@ -65,8 +77,8 @@ public class VcfWriter implements Closeable {
     sf_logger.info("Wrote {} lines of header{}", m_lineNumber, (m_file == null ? "" : " to " + m_file));
   }
 
-  public void writeLine(@Nonnull VcfMetadata metadata, @Nonnull VcfPosition position,
-      @Nonnull List<VcfSample> samples) {
+  public void writeLine(VcfMetadata metadata, VcfPosition position,
+      List<VcfSample> samples) {
 
     StringBuilder sb = new StringBuilder();
 
@@ -111,7 +123,7 @@ public class VcfWriter implements Closeable {
     IOUtils.closeQuietly(m_writer);
   }
 
-  private void addFormatConditionally(@Nonnull VcfPosition position, @Nonnull StringBuilder sb) {
+  private void addFormatConditionally(VcfPosition position, StringBuilder sb) {
     Iterator<String> formats = position.getFormat().iterator();
     if (!formats.hasNext()) {
       return;
@@ -125,8 +137,8 @@ public class VcfWriter implements Closeable {
     sb.append("\t");
   }
 
-  private void addSampleConditionally(@Nonnull VcfMetadata metadata, int sampleIndex,
-      @Nonnull VcfPosition position, @Nonnull VcfSample sample, @Nonnull StringBuilder sb) {
+  private void addSampleConditionally(VcfMetadata metadata, int sampleIndex,
+      VcfPosition position, VcfSample sample, StringBuilder sb) {
 
     Iterator<String> keys = sample.getPropertyKeys().iterator();
     if (!keys.hasNext() && position.getFormat().isEmpty()) {
@@ -178,7 +190,7 @@ public class VcfWriter implements Closeable {
     sb.append("\t");
   }
 
-  private void addInfoOrDot(@Nonnull VcfMetadata metadata, @Nonnull VcfPosition position, @Nonnull StringBuilder sb) {
+  private void addInfoOrDot(VcfMetadata metadata, VcfPosition position, StringBuilder sb) {
 
     Iterator<String> keys = position.getInfoKeys().iterator();
     if (!keys.hasNext()) {
@@ -227,7 +239,7 @@ public class VcfWriter implements Closeable {
     sb.append("\t");
   }
 
-  private void addStringOrElse(@Nullable Object object, @Nonnull String missingValue, @Nonnull StringBuilder sb) {
+  private void addStringOrElse(@Nullable Object object, String missingValue, StringBuilder sb) {
     if (object == null || object.toString().isEmpty()) {
       sb.append(missingValue);
     } else {
@@ -236,8 +248,8 @@ public class VcfWriter implements Closeable {
     sb.append("\t");
   }
 
-  private void addListOrElse(@Nonnull List<String> list, @Nonnull String delimiter, @Nonnull String missingValue,
-      @Nonnull StringBuilder sb) {
+  private void addListOrElse(List<String> list, String delimiter, String missingValue,
+      StringBuilder sb) {
     if (list.isEmpty()) {
       sb.append(missingValue);
     } else {
@@ -249,19 +261,19 @@ public class VcfWriter implements Closeable {
     sb.append("\t");
   }
 
-  private void printPropertyLines(@Nonnull String name, @Nonnull Collection<String> list) {
+  private void printPropertyLines(String name, Collection<String> list) {
     for (String string : list) {
       printLine("##" + name + "=" + string);
     }
   }
 
-  private void printLines(@Nonnull String name, @Nonnull Collection<? extends BaseMetadata> list) {
+  private void printLines(String name, Collection<? extends BaseMetadata> list) {
     for (BaseMetadata metadata : list) {
       printLine(getAllProperties(name, metadata));
     }
   }
 
-  private String getAllProperties(@Nonnull String name, @Nonnull BaseMetadata metadata) {
+  private String getAllProperties(String name, BaseMetadata metadata) {
     StringBuilder sb = new StringBuilder("##");
     sb.append(name).append("=<");
     int i = 0;
@@ -303,7 +315,7 @@ public class VcfWriter implements Closeable {
 
   }
 
-  private void printLine(@Nonnull Object line) {
+  private void printLine(Object line) {
     String string = line.toString();
     if (string.contains("\n")) {
       throw new RuntimeException("Something went wrong writing line #" + m_lineNumber + ": [[[" + string +

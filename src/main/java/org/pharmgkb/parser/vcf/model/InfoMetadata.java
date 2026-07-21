@@ -1,13 +1,11 @@
 package org.pharmgkb.parser.vcf.model;
 
+import java.lang.invoke.MethodHandles;
+import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import java.lang.invoke.MethodHandles;
-import java.util.Map;
 
 
 /**
@@ -40,7 +38,7 @@ public class InfoMetadata extends IdDescriptionMetadata {
 
   private InfoType m_type;
 
-  public InfoMetadata(@Nonnull String id, @Nonnull String description, @Nonnull InfoType type, @Nonnull String number,
+  public InfoMetadata(String id, String description, InfoType type, String number,
       @Nullable String source, @Nullable String version) {
     super(id, description);
     putPropertyRaw(NUMBER, number);
@@ -54,7 +52,7 @@ public class InfoMetadata extends IdDescriptionMetadata {
     init();
   }
 
-  public InfoMetadata(@Nonnull Map<String, String> properties) {
+  public InfoMetadata(Map<String, String> properties) {
     super(properties, false);
     init();
   }

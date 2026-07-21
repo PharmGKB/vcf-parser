@@ -1,10 +1,10 @@
 package org.pharmgkb.parser.vcf;
 
 import java.util.List;
-import javax.annotation.Nonnull;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
+
 
 /**
  * A simple {@link org.pharmgkb.parser.vcf.VcfLineParser} that loads an entire VCF file into memory to permit
@@ -28,13 +28,13 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
   private DuplicateHandler m_duplicateLocusHandler;
 
 
-  private MemoryMappedVcfLineParser(@Nonnull DuplicateHandler idHandler, @Nonnull DuplicateHandler locusHandler) {
+  private MemoryMappedVcfLineParser(DuplicateHandler idHandler, DuplicateHandler locusHandler) {
     m_duplicateIdHandler = idHandler;
     m_duplicateLocusHandler = locusHandler;
   }
 
 
-  public @Nonnull MemoryMappedVcfDataStore getDataStore() {
+  public MemoryMappedVcfDataStore getDataStore() {
     return  m_dataStore;
   }
 
@@ -80,7 +80,7 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
      * This is independent of {@link #setDuplicateLocusHandler(DuplicateHandler)}, except when either is set to
      * {@link DuplicateHandler#FAIL}.
      */
-    public @Nonnull Builder setDuplicateIdHandler(@Nonnull DuplicateHandler handler) {
+    public Builder setDuplicateIdHandler(DuplicateHandler handler) {
       m_duplicateIdHandler = handler;
       return this;
     }
@@ -92,7 +92,7 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
      * This is independent of {@link #setDuplicateIdHandler(DuplicateHandler)}, except when either is set to
      * {@link DuplicateHandler#FAIL}.
      */
-    public @Nonnull Builder setDuplicateLocusHandler(@Nonnull DuplicateHandler handler) {
+    public Builder setDuplicateLocusHandler(DuplicateHandler handler) {
       m_duplicateLocusHandler = handler;
       return this;
     }

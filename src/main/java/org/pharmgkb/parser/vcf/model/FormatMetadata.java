@@ -1,13 +1,11 @@
 package org.pharmgkb.parser.vcf.model;
 
+import java.lang.invoke.MethodHandles;
+import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import java.lang.invoke.MethodHandles;
-import java.util.Map;
 
 
 /**
@@ -31,14 +29,14 @@ public class FormatMetadata extends IdDescriptionMetadata {
 
   private FormatType m_type;
 
-  public FormatMetadata(@Nonnull String id, @Nonnull String description, @Nonnull String number, @Nonnull FormatType type) {
+  public FormatMetadata(String id, String description, String number, FormatType type) {
     super(id, description, false);
     putPropertyRaw(NUMBER, number);
     putPropertyRaw(TYPE, type.name());
     init();
   }
 
-  public FormatMetadata(@Nonnull Map<String, String> properties) {
+  public FormatMetadata(Map<String, String> properties) {
     super(properties, false);
     init();
   }

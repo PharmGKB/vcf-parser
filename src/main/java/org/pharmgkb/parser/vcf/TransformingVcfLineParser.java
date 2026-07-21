@@ -6,10 +6,10 @@ import java.io.PrintWriter;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import javax.annotation.Nonnull;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
+
 
 /**
  * Applies a transformation to a VCF file.
@@ -45,13 +45,13 @@ public class TransformingVcfLineParser implements VcfLineParser, Closeable {
   private final List<VcfTransformation> m_transformations;
   private final List<VcfWriter> m_writers;
 
-  private TransformingVcfLineParser(@Nonnull List<VcfTransformation> transformations, @Nonnull List<VcfWriter> writer) {
+  private TransformingVcfLineParser(List<VcfTransformation> transformations, List<VcfWriter> writer) {
     m_transformations = transformations;
     m_writers = writer;
   }
 
-  public void parseLine(@Nonnull VcfMetadata metadata, @Nonnull VcfPosition position,
-      @Nonnull List<VcfSample> sampleData) {
+  public void parseLine(VcfMetadata metadata, VcfPosition position,
+      List<VcfSample> sampleData) {
     for (int i = 0; i < m_transformations.size(); i++) {
 
       // notice that this always happens before transformDataLine gets called
@@ -78,31 +78,27 @@ public class TransformingVcfLineParser implements VcfLineParser, Closeable {
     private final List<VcfTransformation> m_transformations = new ArrayList<>();
     private final List<VcfWriter> m_writers = new ArrayList<>();
 
-    @Nonnull
-    public Builder addTransformation(@Nonnull VcfTransformation transformation, @Nonnull Path outputFile)
+    public Builder addTransformation(VcfTransformation transformation, Path outputFile)
         throws IOException {
       m_transformations.add(transformation);
       m_writers.add(new VcfWriter.Builder().toFile(outputFile).build());
       return this;
     }
 
-    @Nonnull
-    public Builder addTransformation(@Nonnull VcfTransformation transformation, @Nonnull PrintWriter writer)
+    public Builder addTransformation(VcfTransformation transformation, PrintWriter writer)
         throws IOException {
       m_transformations.add(transformation);
       m_writers.add(new VcfWriter.Builder().toWriter(writer).build());
       return this;
     }
 
-    @Nonnull
-    public Builder addTransformation(@Nonnull VcfTransformation transformation, @Nonnull VcfWriter writer)
+    public Builder addTransformation(VcfTransformation transformation, VcfWriter writer)
         throws IOException {
       m_transformations.add(transformation);
       m_writers.add(writer);
       return this;
     }
 
-    @Nonnull
     public TransformingVcfLineParser build() {
       if (m_transformations.isEmpty()) {
         throw new IllegalStateException("Must add at least one transformation");
@@ -110,5 +106,4 @@ public class TransformingVcfLineParser implements VcfLineParser, Closeable {
       return new TransformingVcfLineParser(m_transformations, m_writers);
     }
   }
-
 }

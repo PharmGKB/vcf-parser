@@ -1,10 +1,10 @@
 package org.pharmgkb.parser.vcf.model.genotype;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.Immutable;
+import com.google.errorprone.annotations.Immutable;
+import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
+
 
 /**
  * An Allele matching the VCF 4.2 specification for the ALT and REF columns.
@@ -15,6 +15,7 @@ import org.pharmgkb.parser.vcf.VcfUtils;
  *     <li>]34]ATGC</li>
  *     <li>]34:55]&lt;IDxx&gt;</li>
  * </ul>
+ *
  * @author Douglas Myers-Turnbull
  */
 @Immutable
@@ -25,7 +26,7 @@ public class VcfAllele {
   /**
    * @param string A string following the VCF specification for the REF or ALT columns
    */
-  public VcfAllele(@Nonnull String string) {
+  public VcfAllele(String string) {
     if (!VcfUtils.ALT_BASE_PATTERN.matcher(string).matches()) {
       throw new VcfFormatException(string + " does not look like an allele");
     }
@@ -35,7 +36,6 @@ public class VcfAllele {
   /**
    * @return The allele string from the constructor
    */
-  @Nonnull
   @Override
   public String toString() {
     return m_string;
@@ -112,7 +112,6 @@ public class VcfAllele {
   /**
    * @return A string where every base is in lowercase; symbolic names (e.g. &lt;IDxx&gt;) will not be lowercased
    */
-  @Nonnull
   public String withLowercaseBases() {
 
     if (!isSymbolic()) {
@@ -162,9 +161,9 @@ public class VcfAllele {
 
   /**
    * @return Whether this Allele contains one or more of the characters (case-sensitive) in {@code bases},
-   * restricted to bases (i.e. symbolic names like &lt;IDxx&gt; are excluded)
+   * restricted to bases (i.e., symbolic names like &lt;IDxx&gt; are excluded)
    */
-  public boolean containsBase(@Nonnull char... bases) {
+  public boolean containsBase(char... bases) {
     boolean isInside = false;
     for (char c : m_string.toCharArray()) {
       if (c == '<') {

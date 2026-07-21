@@ -5,14 +5,14 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.Immutable;
+import com.google.errorprone.annotations.Immutable;
+import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
+
 
 /**
  * A diploid (or haploid; see below) genotype matching the VCF 4.2 specification.
@@ -20,7 +20,7 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
  * For example:
  * <ul>
  *   <li>A/A (an unphased homozygous genotype)</li>
- *   <li>A|ATG (an phased heterozygous 2bp insertion of TG)</li>
+ *   <li>A|ATG (a phased heterozygous 2bp insertion of TG)</li>
  * </ul>
  *
  * This class can also handle haploid genotypes (e.g. A), but note that:
@@ -39,25 +39,24 @@ public class VcfGenotype {
   private static final String sf_phasedDelimiter = "|";
   private static final String sf_unphasedDelimiter = "/";
   private static final Pattern sf_genotypePattern = Pattern.compile('(' + VcfUtils.ALT_BASE_PATTERN.pattern() + ")" +
-      "[\\|/](" + VcfUtils.ALT_BASE_PATTERN.pattern() + ')');
+      "[|/](" + VcfUtils.ALT_BASE_PATTERN.pattern() + ')');
   private static final Pattern sf_digitPattern = Pattern.compile("(\\d+|\\.)");
-  private static final Pattern sf_numberPattern = Pattern.compile(sf_digitPattern + "[\\|/]" + sf_digitPattern);
+  private static final Pattern sf_numberPattern = Pattern.compile(sf_digitPattern + "[|/]" + sf_digitPattern);
 
-  private final VcfAllele m_allele1;
+  private final @Nullable VcfAllele m_allele1;
 
-  private final VcfAllele m_allele2;
+  private final @Nullable VcfAllele m_allele2;
 
   private final boolean m_isPhased;
 
   /**
    * @param genotype A string like A/TT
    */
-  @Nonnull
-  public static VcfGenotype fromString(@Nonnull String genotype) {
+  public static VcfGenotype fromString(String genotype) {
     Matcher matcher = sf_genotypePattern.matcher(genotype);
     if (matcher.matches() && !matcher.group(1).isEmpty() && !matcher.group(2).isEmpty()) {
-      @Nonnull String allele1 = matcher.group(1);
-      @Nonnull String allele2 = matcher.group(2);
+      String allele1 = matcher.group(1);
+      String allele2 = matcher.group(2);
       boolean isPhased = allele1.equals(allele2) || genotype.contains(sf_phasedDelimiter); // A/A -> A|A
       return new VcfGenotype(new VcfAllele(allele1), new VcfAllele(allele2), isPhased);
     } else if (VcfUtils.ALT_BASE_PATTERN.matcher(genotype).matches()) { // for haploid calls in chrM, chrX, and chrY
@@ -71,7 +70,7 @@ public class VcfGenotype {
    * @return The genotype, or null if GT is null
    */
   @Nullable
-  public static VcfGenotype fromVcf(@Nonnull VcfPosition position, @Nonnull VcfSample sample) {
+  public static VcfGenotype fromVcf(VcfPosition position, VcfSample sample) {
 
     String genotype = sample.getProperty(ReservedFormatProperty.Genotype.getId());
     if (genotype == null) {
@@ -85,25 +84,25 @@ public class VcfGenotype {
    * @param genotype A string like 0/1
    * @return The genotype, or null if GT is null
    */
-  public static VcfGenotype fromNumberString(@Nonnull VcfPosition position, @Nonnull String genotype) {
+  public static VcfGenotype fromNumberString(VcfPosition position, String genotype) {
 
     Matcher matcher = sf_numberPattern.matcher(genotype);
 
     if (matcher.matches() && !matcher.group(1).isEmpty() && !matcher.group(2).isEmpty()) {
 
-      @Nullable String allele1 = getAlleleFromIndex(position, matcher.group(1)); // null if dot
-      @Nullable String allele2 = getAlleleFromIndex(position, matcher.group(2)); // null if dot
+      String allele1 = getAlleleFromIndex(position, matcher.group(1)); // null if dot
+      String allele2 = getAlleleFromIndex(position, matcher.group(2)); // null if dot
 
-      @Nullable VcfAllele vcfAllele1 = allele1==null? null : new VcfAllele(allele1);
-      @Nullable VcfAllele vcfAllele2 = allele2==null? null : new VcfAllele(allele2);
+      VcfAllele vcfAllele1 = allele1==null? null : new VcfAllele(allele1);
+      VcfAllele vcfAllele2 = allele2==null? null : new VcfAllele(allele2);
       // A/A -> A|A:
       boolean isPhased = allele1 != null && allele1.equals(allele2) || genotype.contains(sf_phasedDelimiter);
 
       return new VcfGenotype(vcfAllele1, vcfAllele2, isPhased);
 
     } else if (sf_digitPattern.matcher(genotype).matches()) {
-      @Nullable String allele = getAlleleFromIndex(position, genotype); // null if dot
-      @Nullable VcfAllele vcfAllele = allele==null? null : new VcfAllele(allele);
+      String allele = getAlleleFromIndex(position, genotype); // null if dot
+      VcfAllele vcfAllele = allele==null? null : new VcfAllele(allele);
       return new VcfGenotype(vcfAllele, vcfAllele, true);
     }
 
@@ -125,14 +124,13 @@ public class VcfGenotype {
     m_isPhased = isPhased;
   }
 
-  @Nonnull
-  public String makeGt(@Nonnull VcfPosition position) {
+  public String makeGt(VcfPosition position) {
     return (m_allele1==null? sf_noData : getAlleleIndex(position, m_allele1.toString()))
         + (m_isPhased? sf_phasedDelimiter : sf_unphasedDelimiter)
         + (m_allele2==null? sf_noData : getAlleleIndex(position, m_allele2.toString()));
   }
 
-  private String getAlleleIndex(@Nonnull VcfPosition position, @Nonnull String allele) {
+  private String getAlleleIndex(VcfPosition position, String allele) {
     if (position.getRef().equals(allele)) {
       return "0";
     }
@@ -174,7 +172,6 @@ public class VcfGenotype {
     return m_allele2;
   }
 
-  @Nonnull
   public Set<VcfAllele> getAlleleSet() {
     Set<VcfAllele> set = new HashSet<>();
     if (m_allele1 != null) {
@@ -197,26 +194,25 @@ public class VcfGenotype {
   }
 
   @Override
-  public boolean equals(Object o) {
+  public boolean equals(@Nullable Object o) {
     if (this == o) {
       return true;
     }
-    if (o == null || getClass() != o.getClass()) {
+    if (!(o instanceof VcfGenotype g)) {
       return false;
     }
-    VcfGenotype genotype = (VcfGenotype) o;
-    return m_isPhased == genotype.m_isPhased
-        && (m_allele1 != null && m_allele1.equals(genotype.m_allele1) || m_allele1 == genotype.m_allele1)
-        && (m_allele2 != null && m_allele2.equals(genotype.m_allele2) || m_allele2 == genotype.m_allele2);
+    return m_isPhased == g.m_isPhased
+        && Objects.equals(m_allele1, g.m_allele1)
+        && Objects.equals(m_allele2, g.m_allele2);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(m_allele1, m_allele2, m_isPhased);
+    return Objects.hash(m_isPhased, m_allele1, m_allele2);
   }
 
   @Nullable
-  private static String getAlleleFromIndex(@Nonnull VcfPosition position, @Nonnull String indexString) {
+  private static String getAlleleFromIndex(VcfPosition position, String indexString) {
     if (indexString.equals(sf_noData)) {
       return null;
     }

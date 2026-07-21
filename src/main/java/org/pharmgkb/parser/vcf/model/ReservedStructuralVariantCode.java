@@ -1,9 +1,9 @@
 package org.pharmgkb.parser.vcf.model;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
+
 
 /**
  * A reserved identifier for VCF ALT codes of structural variants.
@@ -25,7 +25,7 @@ public enum ReservedStructuralVariantCode {
   private final List<ReservedStructuralVariantCode> m_parentCodes;
 
   @Nullable
-  public static ReservedStructuralVariantCode fromId(@Nonnull String id) {
+  public static ReservedStructuralVariantCode fromId(String id) {
     switch(id) {
       case "DEL":
         return Deletion;
@@ -44,12 +44,12 @@ public enum ReservedStructuralVariantCode {
     }
   }
 
-  private ReservedStructuralVariantCode(@Nonnull String id) {
+  private ReservedStructuralVariantCode(String id) {
     this(id, 0);
   }
 
-  private ReservedStructuralVariantCode(@Nonnull String id, int level,
-      @Nonnull ReservedStructuralVariantCode... parentCodes) {
+  private ReservedStructuralVariantCode(String id, int level,
+      ReservedStructuralVariantCode... parentCodes) {
     m_id = id;
     m_level = level;
     m_parentCodes = Arrays.asList(parentCodes);

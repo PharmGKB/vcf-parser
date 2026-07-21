@@ -5,10 +5,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
+import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
+
 
 /**
  * This class contains sample data for a VCF position line.
@@ -50,7 +50,7 @@ public class VcfSample {
     m_values = values;
   }
 
-  public VcfSample(@Nonnull LinkedHashMap<String, String> properties) {
+  public VcfSample(LinkedHashMap<String, String> properties) {
     m_properties = properties;
     for (Map.Entry<String, String> entry : m_properties.entrySet()) {
       if (entry.getKey().contains("\n") || entry.getValue().contains("\n")) {
@@ -62,7 +62,7 @@ public class VcfSample {
   /**
    * Materializes (and caches) the property map, dropping the lean parallel-list representation.
    */
-  private @Nonnull LinkedHashMap<String, String> properties() {
+  private LinkedHashMap<String, String> properties() {
     if (m_properties == null) {
       LinkedHashMap<String, String> map = new LinkedHashMap<>();
       List<String> keys = m_keys;
@@ -78,7 +78,7 @@ public class VcfSample {
     return m_properties;
   }
 
-  public @Nullable String getProperty(@Nonnull String key) {
+  public @Nullable String getProperty(String key) {
     if (m_properties != null) {
       return m_properties.get(key);
     }
@@ -100,11 +100,11 @@ public class VcfSample {
    *           is false;
    *           otherwise {@code List<V>} where V is the type specified by {@code ReservedFormatProperty.getType()}.
    */
-  public @Nullable <T> T getProperty(@Nonnull ReservedFormatProperty key) {
+  public @Nullable <T> T getProperty(ReservedFormatProperty key) {
     return VcfUtils.convertProperty(key, getProperty(key.getId()));
   }
 
-  public boolean containsProperty(@Nonnull String key) {
+  public boolean containsProperty(String key) {
     if (m_properties != null) {
       return m_properties.containsKey(key);
     }
@@ -113,23 +113,23 @@ public class VcfSample {
     return keys.contains(key);
   }
 
-  public boolean containsProperty(@Nonnull ReservedFormatProperty key) {
+  public boolean containsProperty(ReservedFormatProperty key) {
     return containsProperty(key.getId());
   }
 
-  public void putProperty(@Nonnull String key, @Nullable String value) {
+  public void putProperty(String key, @Nullable String value) {
     properties().put(key, value);
   }
 
-  public void putProperty(@Nonnull ReservedFormatProperty key, @Nullable String value) {
+  public void putProperty(ReservedFormatProperty key, @Nullable String value) {
     properties().put(key.getId(), value);
   }
 
-  public void removeProperty(@Nonnull String key) {
+  public void removeProperty(String key) {
     properties().remove(key);
   }
 
-  public void removeProperty(@Nonnull ReservedFormatProperty key) {
+  public void removeProperty(ReservedFormatProperty key) {
     properties().remove(key.getId());
   }
 
@@ -140,15 +140,12 @@ public class VcfSample {
   /**
    * @return A set of the property keys, which has guaranteed order
    */
-  @Nonnull
   public Set<String> getPropertyKeys() {
     // LinkedHashMap.keySet() returns a LinkedKeySet, which has guaranteed order
     return properties().keySet();
   }
 
-  @Nonnull
   public Set<Map.Entry<String, String>> propertyEntrySet() {
     return properties().entrySet();
   }
-
 }

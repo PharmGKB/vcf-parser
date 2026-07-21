@@ -8,7 +8,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.List;
-import javax.annotation.Nonnull;
 import org.apache.commons.io.IOUtils;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
@@ -21,6 +20,7 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+
 public class TransformingVcfLineParserTest {
 
   @Test
@@ -28,14 +28,14 @@ public class TransformingVcfLineParserTest {
 
     VcfTransformation transformation = new VcfTransformation() {
       @Override
-      public void transformMetadata(@Nonnull VcfMetadata metadata) {
+      public void transformMetadata(VcfMetadata metadata) {
         // this is the only place where we can alter the metadata
         metadata.getInfo().put("TestInfo", new InfoMetadata("an_id", "a_description", InfoType.String, "G", null, null));
         metadata.getFilters().put("Transformation", new IdDescriptionMetadata("Transformation", "A transformation was applied"));
       }
 
       @Override
-      public boolean transformDataLine(@Nonnull VcfMetadata metadata, @Nonnull VcfPosition position, @Nonnull List<VcfSample> sampleData) {
+      public boolean transformDataLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
 
         position.getFilters().clear();
         metadata.getFilters().clear(); // since we're in transformatDataLine, this should do nothing!

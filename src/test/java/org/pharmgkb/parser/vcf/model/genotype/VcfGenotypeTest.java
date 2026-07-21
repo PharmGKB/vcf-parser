@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
-import javax.annotation.Nonnull;
 import com.google.common.collect.ArrayListMultimap;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
@@ -12,6 +11,7 @@ import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
 
 import static org.junit.jupiter.api.Assertions.*;
+
 
 public class VcfGenotypeTest {
 
@@ -72,7 +72,7 @@ public class VcfGenotypeTest {
 
   }
 
-  private VcfGenotype makeGenotype(@Nonnull VcfPosition position, @Nonnull String genotype) {
+  private VcfGenotype makeGenotype(VcfPosition position, String genotype) {
     VcfSample sample = new VcfSample(new LinkedHashMap<>());
     sample.putProperty(ReservedFormatProperty.Genotype, genotype);
     return VcfGenotype.fromVcf(position, sample);

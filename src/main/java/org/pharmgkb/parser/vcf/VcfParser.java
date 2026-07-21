@@ -9,10 +9,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import com.google.common.base.Preconditions;
 import org.apache.commons.lang3.StringUtils;
+import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.model.BaseMetadata;
 import org.pharmgkb.parser.vcf.model.ContigMetadata;
 import org.pharmgkb.parser.vcf.model.FormatMetadata;
@@ -48,7 +47,7 @@ public class VcfParser implements Closeable {
 
 
 
-  private VcfParser(@Nonnull BufferedReader reader, boolean rsidsOnly, @Nonnull VcfLineParser lineParser) {
+  private VcfParser(BufferedReader reader, boolean rsidsOnly, VcfLineParser lineParser) {
     m_reader = reader;
     m_rsidsOnly = rsidsOnly;
     m_vcfLineParser = lineParser;
@@ -59,7 +58,7 @@ public class VcfParser implements Closeable {
    * Parses metadata only.
    * This method should be if only the metadata is needed; otherwise, {@link #parse()} is preferred.
    */
-  public @Nonnull VcfMetadata parseMetadata() throws IOException {
+  public VcfMetadata parseMetadata() throws IOException {
 
     if (m_vcfMetadata != null) {
       throw new IllegalStateException("Metadata has already been parsed.");
@@ -244,7 +243,7 @@ public class VcfParser implements Closeable {
   /**
    * Parses a metadata line (starts with ##).
    */
-  private void parseMetadata(@Nonnull VcfMetadata.Builder mdBuilder, @Nonnull String line) {
+  private void parseMetadata(VcfMetadata.Builder mdBuilder, String line) {
 
     int idx = line.indexOf("=");
     String propName = line.substring(2, idx).trim();
@@ -278,7 +277,7 @@ public class VcfParser implements Closeable {
    * Removes double quotation marks around a string.
    * @throws IllegalArgumentException If angle brackets are not present
    */
-  private static @Nonnull String removeAngleBrackets(@Nonnull String string) throws VcfFormatException {
+  private static String removeAngleBrackets(String string) throws VcfFormatException {
     if (string.startsWith("<") && string.endsWith(">")) {
       return string.substring(1, string.length() - 1);
     }
@@ -288,8 +287,8 @@ public class VcfParser implements Closeable {
   /**
    * Converts metadata name-value pair into object.
    */
-  private void parseMetadataProperty(@Nonnull VcfMetadata.Builder mdBuilder,
-      @Nonnull String propName, @Nonnull String value) {
+  private void parseMetadataProperty(VcfMetadata.Builder mdBuilder,
+      String propName, String value) {
     Map<String, String> props = VcfUtils.extractPropertiesFromLine(value);
     switch (propName.toLowerCase()) {
       case "alt":
@@ -323,7 +322,7 @@ public class VcfParser implements Closeable {
    * list. Avoids the regex engine, which is a meaningful per-line cost when parsing large VCFs.
    */
   // package-private for differential testing against Pattern.split
-  static @Nonnull List<String> toList(char delim, @Nonnull String string) {
+  static List<String> toList(char delim, String string) {
     int idx = string.indexOf(delim);
     if (idx < 0) {
       List<String> single = new ArrayList<>(1);
@@ -349,7 +348,7 @@ public class VcfParser implements Closeable {
     return m_lineNumber;
   }
 
-  private void parseColumnInfo(@Nonnull VcfMetadata.Builder mdBuilder, @Nonnull String line) {
+  private void parseColumnInfo(VcfMetadata.Builder mdBuilder, String line) {
     List<String> cols = toList(TAB, line);
     if (cols.size() < 8) {
       throw new VcfFormatException("Header line does not have mandatory (tab-delimited) columns", m_lineNumber);
@@ -368,7 +367,7 @@ public class VcfParser implements Closeable {
     /**
      * Provides the {@link Path} to the VCF file to parse.
      */
-    public Builder fromFile(@Nonnull Path dataFile) {
+    public Builder fromFile(Path dataFile) {
       Preconditions.checkNotNull(dataFile);
       if (m_reader != null) {
         throw new IllegalStateException("Already loading from reader");
@@ -383,7 +382,7 @@ public class VcfParser implements Closeable {
     /**
      * Provides a {@link BufferedReader} to the beginning of the VCF file to parse.
      */
-    public Builder fromReader(@Nonnull BufferedReader reader) {
+    public Builder fromReader(BufferedReader reader) {
       Preconditions.checkNotNull(reader);
       if (m_vcfFile != null) {
         throw new IllegalStateException("Already loading from file");
@@ -400,7 +399,7 @@ public class VcfParser implements Closeable {
       return this;
     }
 
-    public Builder parseWith(@Nonnull VcfLineParser lineParser) {
+    public Builder parseWith(VcfLineParser lineParser) {
       Preconditions.checkNotNull(lineParser);
       m_vcfLineParser = lineParser;
       return this;

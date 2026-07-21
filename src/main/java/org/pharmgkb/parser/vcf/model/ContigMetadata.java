@@ -1,14 +1,13 @@
 package org.pharmgkb.parser.vcf.model;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.lang.invoke.MethodHandles;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 
 /**
  * VCF metadata for contig=&lt;&gt; elements.
@@ -26,7 +25,7 @@ public class ContigMetadata extends IdMetadata {
   public static final String TAXONOMY = "taxonomy";
   public static final String URL = "URL";
 
-  public ContigMetadata(@Nonnull String id, long length, @Nonnull String assembly, @Nullable String md5,
+  public ContigMetadata(String id, long length, String assembly, @Nullable String md5,
       @Nullable String species, @Nullable String taxonomy, @Nullable String url) {
     super(id, false);
     putPropertyRaw(LENGTH, String.valueOf(length));
@@ -51,7 +50,7 @@ public class ContigMetadata extends IdMetadata {
     init();
   }
 
-  public ContigMetadata(@Nonnull Map<String, String> properties) {
+  public ContigMetadata(Map<String, String> properties) {
     super(properties, false);
     init();
   }

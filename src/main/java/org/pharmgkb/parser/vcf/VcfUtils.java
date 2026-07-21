@@ -6,13 +6,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
+import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.model.FormatType;
 import org.pharmgkb.parser.vcf.model.InfoType;
 import org.pharmgkb.parser.vcf.model.ReservedProperty;
+
 
 /**
  * Contains static methods for handling properties in INFO and FORMAT fields.
@@ -40,8 +40,8 @@ public class VcfUtils {
         "\\.?"                                                      + // optional opening dot
         "(?:"                                                       + // start breakpoint types
           "(?:" + sf_simpleAltPattern + "?\\[" + sf_number + "\\[)"  + // breakpoint type 1: t[p[
-          "|(?:" + sf_simpleAltPattern + "?\\]" + sf_number + "\\])" + // breakpoint type 2: t]p]
-          "|(?:\\]" + sf_number + "\\]" + sf_simpleAltPattern + "?)" + // breakpoint type 3: ]p]t
+          "|(?:" + sf_simpleAltPattern + "?]" + sf_number + "])" + // breakpoint type 2: t]p]
+          "|(?:\\]" + sf_number + "]" + sf_simpleAltPattern + "?)" + // breakpoint type 3: ]p]t
           "|(?:\\[" + sf_number + "\\[" + sf_simpleAltPattern + "?)" + // breakpoint type 4: [p[t
         ")"                                                         + // end breakpoint types
         "\\.?"                                                      + // optional closing dot
@@ -59,13 +59,13 @@ public class VcfUtils {
   public static final Pattern METADATA_PATTERN = Pattern.compile(",(?=([^\"]*\"[^\"]*\")*[^\"]*$)");
   public static final Pattern FORMAT_PATTERN = Pattern.compile("^[A-Za-z_][0-9A-Za-z_.]*$");
   public static final Pattern RSID_PATTERN = Pattern.compile("rs\\d+");
-  public static final Pattern NUMBER_PATTERN = Pattern.compile("(?:\\d+|[ARG\\.])");
+  public static final Pattern NUMBER_PATTERN = Pattern.compile("(?:\\d+|[ARG.])");
 
-  public static final Pattern FILE_FORMAT_PATTERN = Pattern.compile("VCFv[\\d\\.]+");
+  public static final Pattern FILE_FORMAT_PATTERN = Pattern.compile("VCFv[\\d.]+");
 
   public static final Pattern UNQUOTED_EQUAL_SIGN_PATTERN = Pattern.compile("=(?=([^\"]*\"[^\"]*\")*[^\"]*$)");
 
-  public static @Nonnull Map<String, String> extractPropertiesFromLine(@Nonnull String value) {
+  public static Map<String, String> extractPropertiesFromLine(String value) {
     String unescapedValue = value.replaceAll("\\\\", "~~~~");
     unescapedValue = unescapedValue.replaceAll("\\\\\"", "~!~!");
     boolean wasEscaped = !unescapedValue.equals(value);
@@ -79,7 +79,7 @@ public class VcfUtils {
     return extractProperties(cols);
   }
 
-  public static @Nonnull Map<String, String> extractProperties(@Nonnull String... props) {
+  public static Map<String, String> extractProperties(String... props) {
     Map<String, String> map = new HashMap<>();
     for (String prop : props) {
       Pair<String, String> pair;
@@ -97,7 +97,7 @@ public class VcfUtils {
    * Splits a property into a key-value pair.
    * @param prop In the form "key=value"
    */
-  public static @Nonnull Pair<String, String> splitProperty(@Nonnull String prop) {
+  public static Pair<String, String> splitProperty(String prop) {
     String[] parts = UNQUOTED_EQUAL_SIGN_PATTERN.split(prop);
     if (parts.length != 2) {
       throw new VcfFormatException("There were " + (parts.length - 1) + " equals signs for: " + prop);
@@ -108,16 +108,14 @@ public class VcfUtils {
   /**
    * Adds double quotation marks around a string.
    */
-  @Nonnull
-  public static String quote(@Nonnull String string) {
+  public static String quote(String string) {
     return "\"" + string + "\"";
   }
 
   /**
    * Removes double quotation marks around a string if they are present.
    */
-  @Nonnull
-  public static String unquote(@Nonnull String string) {
+  public static String unquote(String string) {
     if (string.startsWith("\"") && string.endsWith("\"")) {
       return string.substring(1, string.length() - 1);
     }
@@ -135,7 +133,7 @@ public class VcfUtils {
    *   <li>A List of any of the above types</li>
    * </ul>
    */
-  public static @Nullable <T> T convertProperty(@Nonnull ReservedProperty key, @Nullable String value) {
+  public static @Nullable <T> T convertProperty(ReservedProperty key, @Nullable String value) {
    return convertProperty(key.getType(), value, key.isList());
   }
 
@@ -143,7 +141,7 @@ public class VcfUtils {
    * @see #convertProperty(ReservedProperty, String)
    */
   @SuppressWarnings("unchecked")
-  public static @Nullable <T> T convertProperty(@Nonnull Class<?> clas, @Nullable String value, boolean isList) {
+  public static @Nullable <T> T convertProperty(Class<?> clas, @Nullable String value, boolean isList) {
     if (value == null || ".".equals(value)) {
       return null;
     }
@@ -165,7 +163,7 @@ public class VcfUtils {
     }
   }
 
-  public static @Nullable <T> T convertProperty(@Nonnull FormatType type, @Nullable String value) {
+  public static @Nullable <T> T convertProperty(FormatType type, @Nullable String value) {
     Class<?> clas;
     switch (type) {
       case Integer:
@@ -186,7 +184,7 @@ public class VcfUtils {
     return convertProperty(clas, value, false);
   }
 
-  public static @Nullable <T> T convertProperty(@Nonnull InfoType type, @Nullable String value) {
+  public static @Nullable <T> T convertProperty(InfoType type, @Nullable String value) {
     Class<?> clas;
     switch (type) {
       case Integer:
@@ -210,7 +208,7 @@ public class VcfUtils {
     return convertProperty(clas, value, false);
   }
 
-  private static @Nullable Object convertElement(@Nonnull Class<?> clas, @Nullable String value) {
+  private static @Nullable Object convertElement(Class<?> clas, @Nullable String value) {
     if (value == null || ".".equals(value)) {
       return null;
     }

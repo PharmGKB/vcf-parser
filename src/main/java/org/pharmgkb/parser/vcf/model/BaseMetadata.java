@@ -6,12 +6,12 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
+import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 
 /**
  * VCF metadata in the format XXX=&lt;key=value,key=value,...&gt;.
@@ -24,7 +24,7 @@ public class BaseMetadata {
 
   private final Map<String, String> m_properties;
 
-  public BaseMetadata(@Nonnull Map<String, String> properties) {
+  public BaseMetadata(Map<String, String> properties) {
     for (Map.Entry<String, String> entry : properties.entrySet()) {
       if (entry.getKey().contains("\n") || entry.getValue().contains("\n")) {
         throw new VcfFormatException("INFO [[[" + entry.getKey() + "=" + entry.getValue() + "]]] contains a newline");
@@ -34,7 +34,7 @@ public class BaseMetadata {
   }
 
   @Nullable
-  public String getPropertyUnquoted(@Nonnull String key) {
+  public String getPropertyUnquoted(String key) {
     String got = m_properties.get(key);
     if (got == null) {
       return null;
@@ -43,11 +43,10 @@ public class BaseMetadata {
   }
 
   @Nullable
-  public String getPropertyRaw(@Nonnull String key) {
+  public String getPropertyRaw(String key) {
     return m_properties.get(key);
   }
 
-  @Nonnull
   public Map<String, String> getPropertiesUnquoted() {
     Map<String, String> map = new HashMap<>();
     for (Map.Entry<String, String>  entry : m_properties.entrySet()) {
@@ -56,17 +55,15 @@ public class BaseMetadata {
     return map;
   }
 
-  @Nonnull
   public Map<String, String> getPropertiesRaw() {
     return m_properties;
   }
 
-  @Nonnull
   public Set<String> getPropertyKeys() {
     return m_properties.keySet();
   }
 
-  public void putAndQuoteProperty(@Nonnull String key, @Nullable String value) {
+  public void putAndQuoteProperty(String key, @Nullable String value) {
     if (value == null) {
       m_properties.remove(key);
     } else {
@@ -74,7 +71,7 @@ public class BaseMetadata {
     }
   }
 
-  public void putPropertyRaw(@Nonnull String key, @Nullable String value) {
+  public void putPropertyRaw(String key, @Nullable String value) {
     m_properties.put(key, value);
   }
 
@@ -83,7 +80,7 @@ public class BaseMetadata {
    * Logs a warning if this metadata contains a property key not in the array passed.
    * @param names An array of permitted property keys
    */
-  protected void ensureNoExtras(@Nonnull String... names) {
+  protected void ensureNoExtras(String... names) {
     Set<String> set = new HashSet<>();
     Collections.addAll(set, names);
     m_properties.keySet().stream().filter(property -> !set.contains(property)).forEach(property -> {

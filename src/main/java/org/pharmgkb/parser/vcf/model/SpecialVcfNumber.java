@@ -1,7 +1,7 @@
 package org.pharmgkb.parser.vcf.model;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
+import org.jspecify.annotations.Nullable;
+
 
 /**
  * A reserved value for the "Number" field in INFO and FORMAT metadata entries.
@@ -15,7 +15,7 @@ public enum SpecialVcfNumber {
   UNKNOWN_OR_UNBOUNDED(".");
 
   @Nullable
-  public static SpecialVcfNumber fromId(@Nonnull String id) {
+  public static SpecialVcfNumber fromId(String id) {
     switch(id) {
       case "A": return ONE_PER_ALT;
       case "R": return ONE_PER_ALT_OR_REF;
@@ -31,7 +31,6 @@ public enum SpecialVcfNumber {
     m_id = id;
   }
 
-  @Nonnull
   public String getId() {
     return m_id;
   }

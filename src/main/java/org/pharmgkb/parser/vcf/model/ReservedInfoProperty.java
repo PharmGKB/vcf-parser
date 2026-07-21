@@ -1,7 +1,7 @@
 package org.pharmgkb.parser.vcf.model;
 
-import javax.annotation.Nonnull;
 import java.math.BigDecimal;
+
 
 /**
  * An INFO field specified as reserved in the VCF specification.
@@ -69,18 +69,18 @@ public enum ReservedInfoProperty implements ReservedProperty {
   ConfidenceIntervalForAdjacencyCopyNumber("CICNADJ", "Confidence interval around copy number for the adjacency", Long.class, true, "2");
 
 
-  private final @Nonnull String m_id;
+  private final String m_id;
 
-  private final @Nonnull String m_description;
+  private final String m_description;
 
-  private final @Nonnull Class m_type;
+  private final Class m_type;
 
-  private final @Nonnull String m_number;
+  private final String m_number;
 
   private final boolean m_isList;
 
-  ReservedInfoProperty(@Nonnull String id, @Nonnull String description, @Nonnull Class type, boolean isList,
-      @Nonnull String number) {
+  ReservedInfoProperty(String id, String description, Class type, boolean isList,
+      String number) {
     m_id = id;
     m_description = description;
     m_type = type;
@@ -88,22 +88,18 @@ public enum ReservedInfoProperty implements ReservedProperty {
     m_number = number;
   }
 
-  @Nonnull
   public String getId() {
     return m_id;
   }
 
-  @Nonnull
   public String getDescription() {
     return m_description;
   }
 
-  @Nonnull
   public Class getType() {
     return m_type;
   }
 
-  @Nonnull
   public String getNumber() {
     return m_number;
   }

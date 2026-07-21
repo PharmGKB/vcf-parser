@@ -1,12 +1,10 @@
 package org.pharmgkb.parser.vcf.model;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.lang.invoke.MethodHandles;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -28,16 +26,16 @@ public class IdDescriptionMetadata extends IdMetadata {
   public static final String ID = "ID";
   public static final String DESCRIPTION = "Description";
 
-  public IdDescriptionMetadata(@Nonnull String id, @Nonnull String description) {
+  public IdDescriptionMetadata(String id, String description) {
     this(id, description, true);
   }
 
-  public IdDescriptionMetadata(@Nonnull Map<String, String> properties, boolean isBaseType) {
+  public IdDescriptionMetadata(Map<String, String> properties, boolean isBaseType) {
     super(properties, false);
     init(isBaseType);
   }
 
-  protected IdDescriptionMetadata(@Nonnull String id, @Nonnull String description, boolean isBaseType) {
+  protected IdDescriptionMetadata(String id, String description, boolean isBaseType) {
     super(id);
     putAndQuoteProperty(DESCRIPTION, description);
     init(isBaseType);

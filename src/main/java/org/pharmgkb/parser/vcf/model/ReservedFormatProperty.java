@@ -1,8 +1,8 @@
 package org.pharmgkb.parser.vcf.model;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.math.BigDecimal;
+import org.jspecify.annotations.Nullable;
+
 
 /**
  * A FORMAT field specified as reserved in the VCF specification.
@@ -42,21 +42,21 @@ public enum ReservedFormatProperty implements ReservedProperty {
   HaplotypeId("HAP", "Unique haplotype identifier", String.class, false, "1"),
   AncestralHaplotypeId("AHAP", "Unique identifier of ancestral haplotype", String.class, false, "1");
 
-  private final @Nonnull String m_id;
+  private final String m_id;
 
-  private final @Nonnull String m_description;
+  private final String m_description;
 
-  private final @Nonnull Class m_type;
+  private final Class m_type;
 
   private final boolean m_isList;
 
   private final @Nullable String m_number;
 
-  ReservedFormatProperty(@Nonnull String id, @Nonnull String description, @Nonnull Class type, boolean isList) {
+  ReservedFormatProperty(String id, String description, Class type, boolean isList) {
     this(id, description, type, isList, null);
   }
 
-  ReservedFormatProperty(@Nonnull String id, @Nonnull String description, @Nonnull Class type, boolean isList, @Nullable String number) {
+  ReservedFormatProperty(String id, String description, Class type, boolean isList, @Nullable String number) {
     m_id = id;
     m_description = description;
     m_type = type;
@@ -64,17 +64,14 @@ public enum ReservedFormatProperty implements ReservedProperty {
     m_number = number;
   }
 
-  @Nonnull
   public String getId() {
     return m_id;
   }
 
-  @Nonnull
   public String getDescription() {
     return m_description;
   }
 
-  @Nonnull
   public Class getType() {
     return m_type;
   }

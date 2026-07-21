@@ -1,15 +1,19 @@
 package org.pharmgkb.parser.vcf;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import com.google.common.base.Joiner;
+import com.google.errorprone.annotations.Immutable;
+import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.Immutable;
-import java.util.*;
 
 /**
  * See {@link MemoryMappedVcfLineParser}.
@@ -55,57 +59,57 @@ public class MemoryMappedVcfDataStore {
     m_metadata = metadata;
   }
 
-  public @Nullable VcfPosition getPositionForId(@Nonnull String id) {
+  public @Nullable VcfPosition getPositionForId(String id) {
     return m_idToPosition.get(id);
   }
 
-  public @Nullable List<VcfSample> getSamplesForId(@Nonnull String id) {
+  public @Nullable List<VcfSample> getSamplesForId(String id) {
     return m_idToSamples.get(id);
   }
 
-  public @Nullable VcfPosition getPositionAtLocus(@Nonnull String chromosome, long position) {
+  public @Nullable VcfPosition getPositionAtLocus(String chromosome, long position) {
     return m_locusToPosition.get(new Locus(chromosome, position));
   }
 
-  public @Nullable List<VcfSample> getSamplesAtLocus(@Nonnull String chromosome, long position) {
+  public @Nullable List<VcfSample> getSamplesAtLocus(String chromosome, long position) {
     return m_locusToSamples.get(new Locus(chromosome, position));
   }
 
-  public @Nullable VcfSample getSampleForId(@Nonnull String positionId, @Nonnull String sampleId) {
+  public @Nullable VcfSample getSampleForId(String positionId, String sampleId) {
     return m_idToSamples.get(positionId).get(m_metadata.getSampleIndex(sampleId));
   }
 
-  public @Nullable VcfSample getSampleForId(@Nonnull String positionId, int sampleIndex) {
+  public @Nullable VcfSample getSampleForId(String positionId, int sampleIndex) {
     return m_idToSamples.get(positionId).get(sampleIndex);
   }
 
-  public @Nullable VcfSample getSampleAtLocus(@Nonnull String chromosome, long position, @Nonnull String sampleId) {
+  public @Nullable VcfSample getSampleAtLocus(String chromosome, long position, String sampleId) {
     return m_locusToSamples.get(new Locus(chromosome, position)).get(m_metadata.getSampleIndex(sampleId));
   }
 
-  public @Nullable VcfSample getSampleAtLocus(@Nonnull String chromosome, long position, int sampleIndex) {
+  public @Nullable VcfSample getSampleAtLocus(String chromosome, long position, int sampleIndex) {
     return m_locusToSamples.get(new Locus(chromosome, position)).get(sampleIndex);
   }
 
-  public @Nullable Genotype getGenotypeForId(@Nonnull String positionId, String sampleId) {
+  public @Nullable Genotype getGenotypeForId(String positionId, String sampleId) {
     VcfPosition position = m_idToPosition.get(positionId);
     VcfSample sample = m_idToSamples.get(positionId).get(m_metadata.getSampleIndex(sampleId));
     return doGetGenotype(position, sample);
   }
 
-  public @Nullable Genotype getGenotypeAtLocus(@Nonnull String chromosome, long position, String sampleId) {
+  public @Nullable Genotype getGenotypeAtLocus(String chromosome, long position, String sampleId) {
     VcfPosition position1 = m_locusToPosition.get(new Locus(chromosome, position));
     VcfSample sample = m_locusToSamples.get(new Locus(chromosome, position)).get(m_metadata.getSampleIndex(sampleId));
     return doGetGenotype(position1, sample);
   }
 
-  public @Nullable Genotype getGenotypeForId(@Nonnull String positionId, int sampleIndex) {
+  public @Nullable Genotype getGenotypeForId(String positionId, int sampleIndex) {
     VcfPosition position = m_idToPosition.get(positionId);
     VcfSample sample = m_idToSamples.get(positionId).get(sampleIndex);
     return doGetGenotype(position, sample);
   }
 
-  public @Nullable Genotype getGenotypeAtLocus(@Nonnull String chromosome, long position, int sampleIndex) {
+  public @Nullable Genotype getGenotypeAtLocus(String chromosome, long position, int sampleIndex) {
     VcfPosition position1 = m_locusToPosition.get(new Locus(chromosome, position));
     VcfSample sample = m_locusToSamples.get(new Locus(chromosome, position)).get(sampleIndex);
     return doGetGenotype(position1, sample);

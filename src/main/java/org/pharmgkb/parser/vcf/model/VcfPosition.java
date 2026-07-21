@@ -7,11 +7,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
+import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
 import org.slf4j.Logger;
@@ -58,9 +57,9 @@ public class VcfPosition {
   private List<String> m_format = new ArrayList<>();
 
 
-  public VcfPosition(@Nonnull String chr, long pos,
+  public VcfPosition(String chr, long pos,
       @Nullable List<String> ids,
-      @Nonnull String ref,
+      String ref,
       @Nullable List<String> altBases,
       @Nullable BigDecimal qual,
       @Nullable List<String> filter,
@@ -170,7 +169,7 @@ public class VcfPosition {
     }
   }
 
-  public VcfPosition(@Nonnull String chromosome, long position, @Nonnull String refBases, @Nonnull BigDecimal quality) {
+  public VcfPosition(String chromosome, long position, String refBases, BigDecimal quality) {
     m_chromosome = chromosome;
     m_position = position;
     m_refBases = refBases;
@@ -181,15 +180,15 @@ public class VcfPosition {
    * Gets an identifier from the reference genome or an angle-bracketed ID String ("{@code <ID>}") pointing to a contig
    * in the assembly file.
    */
-  public @Nonnull String getChromosome() {
+  public String getChromosome() {
     return m_chromosome;
   }
 
-  public void setChromosome(@Nonnull String chromosome) {
+  public void setChromosome(String chromosome) {
     m_chromosome = chromosome;
   }
 
-  public void setRef(@Nonnull String ref) {
+  public void setRef(String ref) {
     m_refBases = ref;
   }
 
@@ -204,14 +203,14 @@ public class VcfPosition {
   /**
    * Gets the list of unique identifiers for this position.
    */
-  public @Nonnull List<String> getIds() {
+  public List<String> getIds() {
     return m_ids;
   }
 
   /**
    * Gets the reference base(s) for this position.  Each base must be an A, C, G, T, or N.
    */
-  public @Nonnull String getRef() {
+  public String getRef() {
     return m_refBases;
   }
 
@@ -222,7 +221,7 @@ public class VcfPosition {
    * ID strings should reference a specific ALT metadata (obtainable via {@link VcfMetadata#getAlt(java.lang.String)}).
    * </p>
    */
-  public @Nonnull List<String> getAltBases() {
+  public List<String> getAltBases() {
     return m_altBases;
   }
 
@@ -231,7 +230,7 @@ public class VcfPosition {
    *
    * @throws IndexOutOfBoundsException if index is out of range
    */
-  public @Nonnull String getAllele(int index) {
+  public String getAllele(int index) {
     return m_alleles.get(index);
   }
 
@@ -272,7 +271,7 @@ public class VcfPosition {
   /**
    * Returns a list of filters this position failed, if any.
    */
-  public @Nonnull List<String> getFilters() {
+  public List<String> getFilters() {
     return m_filter;
   }
 
@@ -288,7 +287,7 @@ public class VcfPosition {
   /**
    * Returns the INFO multimap, parsing (and validating) the raw INFO text on first access.
    */
-  private @Nonnull ListMultimap<String, String> info() {
+  private ListMultimap<String, String> info() {
     ListMultimap<String, String> info = m_info;
     if (info == null) {
       info = ArrayListMultimap.create();
@@ -321,7 +320,7 @@ public class VcfPosition {
   /**
    * Gets all INFO fields for every key.
    */
-  public @Nonnull ListMultimap<String, String> getInfo() {
+  public ListMultimap<String, String> getInfo() {
     return info();
   }
 
@@ -330,7 +329,7 @@ public class VcfPosition {
    *
    * @return list of values or null if there is no INFO metadata for the specified id
    */
-  public @Nullable List<String> getInfo(@Nonnull String id) {
+  public @Nullable List<String> getInfo(String id) {
     ListMultimap<String, String> info = info();
     if (info.containsKey(id)) {
       return info.get(id);
@@ -354,7 +353,7 @@ public class VcfPosition {
    *           is false;
    *           otherwise {@code List<V>} where V is the type specified by {@code ReservedInfoProperty.getType()}.
    */
-  public @Nullable <T> T getInfo(@Nonnull ReservedInfoProperty key) {
+  public @Nullable <T> T getInfo(ReservedInfoProperty key) {
     List<String> list = info().get(key.getId());
     if (list.isEmpty()) {
       return null;
@@ -365,24 +364,22 @@ public class VcfPosition {
   /**
    * Checks if there is INFO metadata with the specified ID.
    */
-  public boolean hasInfo(@Nonnull String id) {
+  public boolean hasInfo(String id) {
     return info().containsKey(id);
   }
 
   /**
    * Checks if there is INFO metadata with the specified ID.
    */
-  public boolean hasInfo(@Nonnull ReservedInfoProperty key) {
+  public boolean hasInfo(ReservedInfoProperty key) {
     return hasInfo(key.getId());
   }
 
-  public @Nonnull List<String> getFormat() {
+  public List<String> getFormat() {
     return m_format;
   }
 
-  @Nonnull
   public Set<String> getInfoKeys() {
     return info().keySet();
   }
-
 }

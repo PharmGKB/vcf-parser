@@ -3,8 +3,7 @@ package org.pharmgkb.parser.vcf.model;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
+import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfFormatException;
 
 
@@ -38,7 +37,7 @@ public class AltStructuralVariant {
   /**
    * @param string The full code (e.g. INS:ME:LINE:type-a1)
    */
-  public AltStructuralVariant(@Nonnull String string) {
+  public AltStructuralVariant(String string) {
 
     if (string.isEmpty()) { // could be replaced with javax.validation.constraints.Size(min=1);
       throw new VcfFormatException("Structural variant code must not be empty");
@@ -88,7 +87,6 @@ public class AltStructuralVariant {
   /**
    * @return The list of codes in order from level 0 to level n; for example ("INS", "ME", "LINE")
    */
-  @Nonnull
   public List<String> getComponents() {
     return m_components;
   }
@@ -97,7 +95,6 @@ public class AltStructuralVariant {
    * @return The code at the specified level (e.g. CNV)
    * @throws ArrayIndexOutOfBoundsException
    */
-  @Nonnull
   public String getComponent(int level) {
     return m_components.get(level);
   }
@@ -115,7 +112,6 @@ public class AltStructuralVariant {
    * @return The original string (e.g. INS:ME:LINE:type-a1)
    */
   @Override
-  @Nonnull
   public String toString() {
     StringBuilder sb = new StringBuilder(m_components.get(0));
     for (int i = 1; i < m_components.size(); i++) {
