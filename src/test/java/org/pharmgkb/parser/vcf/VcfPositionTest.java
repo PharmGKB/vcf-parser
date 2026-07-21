@@ -210,6 +210,13 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testDuplicateIdRejected() {
+    new VcfPosition("chr1", 1, Arrays.asList("rs1", "rs2"), "C", null, null, null, null, null); // unique IDs are fine
+    assertThrows(VcfFormatException.class, () ->
+        new VcfPosition("chr1", 1, Arrays.asList("rs1", "rs1"), "C", null, null, null, null, null));
+  }
+
+  @Test
   public void testBadId() {
     assertThrows(VcfFormatException.class, () -> {
       new VcfPosition("chr1", 1, Collections.singletonList(";"), "C", null, null, null, null, null);

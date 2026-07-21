@@ -3,6 +3,7 @@ package org.pharmgkb.parser.vcf.model;
 import java.lang.invoke.MethodHandles;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -75,9 +76,13 @@ public class VcfPosition {
     checkPosition(pos);
 
     if (ids != null) {
+      Set<String> seenIds = new HashSet<>();
       for (String id : ids) {
         if (sf_whitespace.matcher(id).matches() || id.contains(";")) {
           throw new VcfFormatException("ID \"" + id + "\" contains whitespace or semicolons");
+        }
+        if (!seenIds.add(id)) {
+          throw new VcfFormatException("Duplicate ID \"" + id + "\"");
         }
       }
     }
