@@ -82,6 +82,17 @@ public class VcfWriter implements Closeable {
   public void writeLine(VcfMetadata metadata, VcfPosition position,
       List<VcfSample> samples) {
 
+    int numSamples = metadata.getNumSamples();
+    if (numSamples == 0) {
+      if (!samples.isEmpty() || !position.getFormat().isEmpty()) {
+        throw new VcfFormatException("Position " + position.getChromosome() + ":" + position.getPosition() +
+            " has FORMAT or sample data, but the header declares no samples");
+      }
+    } else if (samples.size() != numSamples) {
+      throw new VcfFormatException("Position " + position.getChromosome() + ":" + position.getPosition() +
+          " has " + samples.size() + " sample(s), but the header declares " + numSamples);
+    }
+
     StringBuilder sb = new StringBuilder();
 
     sb.append(position.getChromosome()).append("\t");

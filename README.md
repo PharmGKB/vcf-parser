@@ -45,6 +45,9 @@ invalid:
   sample's `GT` value, or an `##assembly` line) containing a line terminator.
 - A `VcfSample` key or value set through its constructors or `putProperty` containing a colon or tab, which would
   otherwise add a spurious FORMAT sub-field or sample column when written back out.
+- `VcfWriter.writeLine` is given a number of samples that disagrees with the header's declared sample count, or any
+  FORMAT/sample data at all when the header declares no samples: the output would not parse back against its own
+  header.
 
 These checks run when a `VcfPosition` is constructed (including by the parser). Its setters and the mutable lists
 returned by its accessors (e.g. `getAltBases()`, `getFilters()`) do *not* re-run them, to support transformation

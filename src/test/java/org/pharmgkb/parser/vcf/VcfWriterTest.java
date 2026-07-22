@@ -6,6 +6,7 @@ import java.io.StringReader;
 import java.io.StringWriter;
 import java.math.BigDecimal;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import org.junit.jupiter.api.Test;
@@ -127,7 +128,9 @@ public class VcfWriterTest {
   public void testWriteLineWithoutFormatMetadata() throws Exception {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "SAMPLE1"))
+        .build();
     VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
     position.getAltBases().add("T");
     position.getFormat().add("GT");
@@ -142,7 +145,9 @@ public class VcfWriterTest {
   public void testWriteLineWithMissingSampleProperty() throws Exception {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "SAMPLE1"))
+        .build();
     VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
     position.getAltBases().add("T");
     position.getFormat().add("GT");
@@ -175,7 +180,9 @@ public class VcfWriterTest {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     FormatMetadata format = new FormatMetadata("DP", "d", "1", FormatType.Integer);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(format).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(format)
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "SAMPLE1"))
+        .build();
     VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
     position.getAltBases().add("T");
     position.getFormat().add("DP");
@@ -183,6 +190,57 @@ public class VcfWriterTest {
     sample.putProperty("DP", "not-a-number"); // Type=Integer declared, but the value doesn't parse as one
     writer.writeLine(metadata, position, Collections.singletonList(sample));
     assertTrue(sw.toString().contains("\tDP\tnot-a-number"));
+  }
+
+  @Test
+  public void testWriteLineRejectsTooFewSamples() throws Exception {
+    // header declares 2 samples, but only 1 is provided: the output would not parse back against its own header
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1", "S2"))
+        .build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+    position.getFormat().add("GT");
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    sample.putProperty(ReservedFormatProperty.Genotype, "0/1");
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
+  }
+
+  @Test
+  public void testWriteLineRejectsTooManySamples() throws Exception {
+    // header declares 1 sample, but 2 are provided
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+    position.getFormat().add("GT");
+    VcfSample sample1 = new VcfSample(new LinkedHashMap<>());
+    sample1.putProperty(ReservedFormatProperty.Genotype, "0/1");
+    VcfSample sample2 = new VcfSample(new LinkedHashMap<>());
+    sample2.putProperty(ReservedFormatProperty.Genotype, "1/1");
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Arrays.asList(sample1, sample2)));
+  }
+
+  @Test
+  public void testWriteLineRejectsSampleDataWhenHeaderHasNoSamples() throws Exception {
+    // header declares no samples (no setColumns call), but FORMAT/sample data is provided anyway
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+    position.getFormat().add("GT");
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    sample.putProperty(ReservedFormatProperty.Genotype, "0/1");
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
   }
 
   @Test
