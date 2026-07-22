@@ -63,6 +63,46 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testLazyInfoWithEmptyEntries() {
+    // VCF does not allow zero-length fields; these warn and normalize rather than throw or silently drop-then-hide
+    // the problem (see EMPTY_FIELD_HANDLING.md). DP=10;;AF=0.5 -> the empty prop between ';'s is dropped entirely.
+    VcfPosition emptyProp = newPosition();
+    emptyProp.setRawInfo("DP=10;;AF=0.5");
+    assertEquals(Collections.singletonList("10"), emptyProp.getInfo("DP"));
+    assertEquals(Collections.singletonList("0.5"), emptyProp.getInfo("AF"));
+    assertEquals(2, emptyProp.getInfo().size());
+
+    // a trailing ';' is the same as an interior empty prop
+    VcfPosition trailingProp = newPosition();
+    trailingProp.setRawInfo("DP=10;");
+    assertEquals(Collections.singletonList("10"), trailingProp.getInfo("DP"));
+    assertEquals(1, trailingProp.getInfo().size());
+
+    // AD=1,,2 -> the empty value between ','s is treated as the missing value '.'
+    VcfPosition emptyValue = newPosition();
+    emptyValue.setRawInfo("AD=1,,2");
+    assertEquals(Arrays.asList("1", ".", "2"), emptyValue.getInfo("AD"));
+
+    // a trailing ',' is the same as an interior empty value
+    VcfPosition trailingValue = newPosition();
+    trailingValue.setRawInfo("AD=1,2,");
+    assertEquals(Arrays.asList("1", "2", "."), trailingValue.getInfo("AD"));
+
+    // AD= (no comma at all) -> a single missing value, not a flag (which is stored the same way internally, but only
+    // when there is no '=' sign at all)
+    VcfPosition wholeEmpty = newPosition();
+    wholeEmpty.setRawInfo("AD=");
+    assertEquals(Collections.singletonList("."), wholeEmpty.getInfo("AD"));
+
+    // a flag (no '=' sign) is unaffected: its sentinel empty value must not be confused with a real empty field
+    VcfPosition flag = newPosition();
+    flag.setRawInfo("DB;DP=10");
+    assertTrue(flag.hasInfo("DB"));
+    assertEquals(Collections.singletonList(""), flag.getInfo("DB"));
+    assertEquals(Collections.singletonList("10"), flag.getInfo("DP"));
+  }
+
+  @Test
   public void testGetInfoMappingQuality() {
     // MQ is a float reserved property; getInfo must convert it (it was previously typed Float.class, which threw)
     VcfPosition p = newPosition();
@@ -167,6 +207,50 @@ public class VcfPositionTest {
       new VcfPosition("chr", 1, null, "C", null, null, Arrays.asList("bad", "PASS"),
           null, null);
     });
+  }
+
+  @Test
+  public void testEmptyIdEntriesDropped() {
+    // VCF does not allow zero-length fields; ID is a position-independent list, so an empty entry is dropped rather
+    // than throwing (see EMPTY_FIELD_HANDLING.md)
+    VcfPosition interior = new VcfPosition("chr", 1, new ArrayList<>(Arrays.asList("rs1", "", "rs2")), "C", null, null,
+        null, null, null);
+    assertEquals(Arrays.asList("rs1", "rs2"), interior.getIds());
+
+    VcfPosition trailing = new VcfPosition("chr", 1, new ArrayList<>(Arrays.asList("rs3", "")), "C", null, null,
+        null, null, null);
+    assertEquals(Collections.singletonList("rs3"), trailing.getIds());
+  }
+
+  @Test
+  public void testEmptyFilterEntriesDropped() {
+    VcfPosition interior = new VcfPosition("chr", 1, null, "C", null, null,
+        new ArrayList<>(Arrays.asList("q10", "", "q20")), null, null);
+    assertEquals(Arrays.asList("q10", "q20"), interior.getFilters());
+
+    VcfPosition trailing = new VcfPosition("chr", 1, null, "C", null, null,
+        new ArrayList<>(Arrays.asList("q10", "")), null, null);
+    assertEquals(Collections.singletonList("q10"), trailing.getFilters());
+  }
+
+  @Test
+  public void testEmptyAltEntriesDropped() {
+    VcfPosition interior = new VcfPosition("chr", 1, null, "C",
+        new ArrayList<>(Arrays.asList("T", "", "G")), null, null, null, null);
+    assertEquals(Arrays.asList("T", "G"), interior.getAltBases());
+
+    VcfPosition trailing = new VcfPosition("chr", 1, null, "C",
+        new ArrayList<>(Arrays.asList("T", "")), null, null, null, null);
+    assertEquals(Collections.singletonList("T"), trailing.getAltBases());
+  }
+
+  @Test
+  public void testEmptyFormatSubFieldKeptAsIs() {
+    // unlike ID/FILTER/ALT, an empty FORMAT key is kept (not dropped): every sample's colon-split values are matched
+    // to FORMAT keys by index, and dropping this key would misalign every sample's values with the wrong key
+    VcfPosition position = new VcfPosition("chr", 1, null, "C", null, null, null, null,
+        new ArrayList<>(Arrays.asList("GT", "", "GQ")));
+    assertEquals(Arrays.asList("GT", "", "GQ"), position.getFormat());
   }
 
   @Test

@@ -12,6 +12,7 @@ import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.model.FormatType;
 import org.pharmgkb.parser.vcf.model.InfoType;
 import org.pharmgkb.parser.vcf.model.ReservedProperty;
+import org.slf4j.Logger;
 
 
 /**
@@ -172,6 +173,42 @@ public class VcfUtils {
   public static void checkNoLineTerminator(String key, @Nullable String value) {
     if (key.contains("\n") || key.contains("\r") || (value != null && (value.contains("\n") || value.contains("\r")))) {
       throw new VcfFormatException("Property [[[" + key + "=" + value + "]]] contains a line terminator");
+    }
+  }
+
+  /**
+   * Warns about and drops any empty string in {@code list}, for a position-independent delimited field (e.g. ID,
+   * FILTER) where an empty entry has nothing salvageable. See {@code EMPTY_FIELD_HANDLING.md} for the rationale.
+   *
+   * @return {@code list} unchanged if it contained no empty entries, or a new list with them removed
+   */
+  public static List<String> dropEmptyEntries(Logger logger, String fieldName, List<String> list) {
+    List<String> result = list;
+    for (int i = 0; i < result.size(); i++) {
+      if (result.get(i).isEmpty()) {
+        if (result == list) {
+          result = new ArrayList<>(list);
+        }
+        logger.warn("{} contains an empty entry (VCF does not allow zero-length fields); dropping it", fieldName);
+        result.remove(i);
+        i--;
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Warns about and replaces, in place, any empty string in {@code list} with {@code "."} (the VCF missing-value
+   * sentinel), for a position-dependent delimited field (e.g. a sample's FORMAT-keyed values) where dropping an
+   * entry would misalign it with its corresponding key. See {@code EMPTY_FIELD_HANDLING.md} for the rationale.
+   */
+  public static void fillEmptyEntriesWithDot(Logger logger, String fieldName, List<String> list) {
+    for (int i = 0; i < list.size(); i++) {
+      if (list.get(i).isEmpty()) {
+        logger.warn("{} contains an empty entry (VCF does not allow zero-length fields); treating it as the " +
+            "missing value '.'", fieldName);
+        list.set(i, ".");
+      }
     }
   }
 

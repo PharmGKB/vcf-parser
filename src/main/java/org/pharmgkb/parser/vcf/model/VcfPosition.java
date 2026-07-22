@@ -77,14 +77,14 @@ public class VcfPosition {
     checkChromosome(chr);
     checkPosition(pos);
     if (ids != null) {
-      checkIds(ids);
+      ids = checkIds(ids);
     }
     checkRef(ref);
     if (altBases != null) {
-      checkAltBases(altBases);
+      altBases = checkAltBases(altBases);
     }
     if (filter != null) {
-      checkFilters(filter);
+      filter = checkFilters(filter);
     }
     if (info != null) {
       checkInfoEntries(info.entries());
@@ -163,7 +163,12 @@ public class VcfPosition {
     }
   }
 
-  private static void checkIds(List<String> ids) {
+  /**
+   * @return {@code ids} unchanged, or a new list with any empty entry dropped (with a warning); see
+   * {@code EMPTY_FIELD_HANDLING.md}
+   */
+  private static List<String> checkIds(List<String> ids) {
+    ids = VcfUtils.dropEmptyEntries(sf_logger, "ID", ids);
     Set<String> seenIds = new HashSet<>();
     for (String id : ids) {
       if (sf_whitespace.matcher(id).find() || id.contains(";")) {
@@ -173,9 +178,15 @@ public class VcfPosition {
         throw new VcfFormatException("Duplicate ID \"" + id + "\"");
       }
     }
+    return ids;
   }
 
-  private static void checkAltBases(List<String> altBases) {
+  /**
+   * @return {@code altBases} unchanged, or a new list with any empty entry dropped (with a warning); see
+   * {@code EMPTY_FIELD_HANDLING.md}
+   */
+  private static List<String> checkAltBases(List<String> altBases) {
+    altBases = VcfUtils.dropEmptyEntries(sf_logger, "ALT", altBases);
     for (String base : altBases) {
       if (!VcfUtils.ALT_BASE_PATTERN.matcher(base).matches()) {
         throw new VcfFormatException("Invalid alternate base '" + base + "' (must match " + VcfUtils.ALT_BASE_PATTERN + ")");
@@ -185,13 +196,18 @@ public class VcfPosition {
     if (altBases.size() > 1 && altBases.contains(".")) {
       throw new VcfFormatException("ALT contains '.' (missing value) along with other alleles");
     }
+    return altBases;
   }
 
   /**
    * Checks the given FILTER values for validity. This does not perform the construction-time normalization of a lone
    * {@code "PASS"} or {@code "."} value (see the constructor); those are legal single-element lists on their own.
+   *
+   * @return {@code filters} unchanged, or a new list with any empty entry dropped (with a warning); see
+   * {@code EMPTY_FIELD_HANDLING.md}
    */
-  private static void checkFilters(List<String> filters) {
+  private static List<String> checkFilters(List<String> filters) {
+    filters = VcfUtils.dropEmptyEntries(sf_logger, "FILTER", filters);
     for (String f : filters) {
       if (sf_whitespace.matcher(f).find()) {
         throw new VcfFormatException("FILTER column entry \"" + f + "\" contains whitespace");
@@ -206,6 +222,7 @@ public class VcfPosition {
         throw new VcfFormatException("FILTER contains '.' (missing value) along with other filters!");
       }
     }
+    return filters;
   }
 
   private static void checkInfoEntries(Iterable<Map.Entry<String, String>> entries) {
@@ -228,6 +245,14 @@ public class VcfPosition {
 
   private static void checkFormat(List<String> format) {
     for (String f : format) {
+      // an empty sub-field name is kept as-is rather than dropped: every sample's colon-split values are matched to
+      // FORMAT keys by index, and dropping this key would misalign every sample's values with the wrong key. See
+      // EMPTY_FIELD_HANDLING.md.
+      if (f.isEmpty()) {
+        sf_logger.warn("FORMAT contains an empty sub-field name (VCF does not allow zero-length fields); keeping " +
+            "it as-is, but it cannot be looked up in metadata");
+        continue;
+      }
       if (!VcfUtils.FORMAT_PATTERN.matcher(f).matches() || f.contains(":")) {
         throw new VcfFormatException("FORMAT ID does not match VCF spec");
       }
@@ -269,9 +294,9 @@ public class VcfPosition {
     checkChromosome(m_chromosome);
     checkPosition(m_position);
     checkRef(m_refBases);
-    checkIds(m_ids);
-    checkAltBases(m_altBases);
-    checkFilters(m_filter);
+    m_ids = checkIds(m_ids);
+    m_altBases = checkAltBases(m_altBases);
+    m_filter = checkFilters(m_filter);
     normalizeFilters();
     checkInfoEntries(info().entries());
     checkFormat(m_format);
@@ -419,13 +444,30 @@ public class VcfPosition {
       info = ArrayListMultimap.create();
       String raw = m_rawInfo;
       if (raw != null && !raw.isEmpty() && !raw.equals(".")) {
-        for (String prop : raw.split(";")) {
+        // limit -1 preserves an empty prop/value (e.g. a trailing ';' or ','), handled below rather than silently
+        // dropped; VCF does not allow zero-length fields. See EMPTY_FIELD_HANDLING.md.
+        for (String prop : raw.split(";", -1)) {
+          if (prop.isEmpty()) {
+            sf_logger.warn("INFO contains an empty entry between ';'s (VCF does not allow zero-length fields); " +
+                "dropping it");
+            continue;
+          }
           int idx = prop.indexOf('=');
           if (idx == -1) {
             info.put(prop, "");
           } else {
             String key = prop.substring(0, idx);
-            for (String value : prop.substring(idx + 1).split(",")) {
+            if (key.isEmpty()) {
+              sf_logger.warn("INFO entry \"{}\" has an empty key (VCF does not allow zero-length fields); " +
+                  "dropping it", prop);
+              continue;
+            }
+            for (String value : prop.substring(idx + 1).split(",", -1)) {
+              if (value.isEmpty()) {
+                sf_logger.warn("INFO value for key \"{}\" contains an empty entry (VCF does not allow zero-length " +
+                    "fields); treating it as the missing value '.'", key);
+                value = ".";
+              }
               info.put(key, value);
             }
           }

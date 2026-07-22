@@ -32,9 +32,10 @@ import static org.junit.jupiter.api.Assertions.*;
 public class VcfParserTest {
 
   /**
-   * The char-based {@link VcfParser#toList} must behave exactly like the {@code Pattern.split} it replaced (default
-   * limit: interior/leading empties kept, trailing empties dropped, no-delimiter yields a single element). Verify that
-   * differentially across the delimiters used and a range of edge-case inputs.
+   * The char-based {@link VcfParser#toList} must behave exactly like {@code Pattern.split} with limit -1 (leading,
+   * interior, and trailing empty fields are all kept; a string containing no delimiter yields a single-element list).
+   * Callers are responsible for handling any empty entries in the result. Verify that differentially across the
+   * delimiters used and a range of edge-case inputs.
    */
   @Test
   void testToListMatchesPatternSplit() {
@@ -47,7 +48,7 @@ public class VcfParserTest {
     };
     for (char delim : new char[] { '\t', ':', ',', ';' }) {
       for (String input : inputs) {
-        List<String> expected = Arrays.asList(Pattern.compile(String.valueOf(delim)).split(input));
+        List<String> expected = Arrays.asList(Pattern.compile(String.valueOf(delim)).split(input, -1));
         assertEquals(expected, VcfParser.toList(delim, input),
             () -> "delim='" + delim + "' input='" + input + "'");
       }
@@ -319,6 +320,33 @@ public class VcfParserTest {
     assertEquals("0/1", sample.getProperty("GT"));
     assertEquals(".", sample.getProperty("DP"));
     assertEquals(".", sample.getProperty("GQ"));
+  }
+
+  @Test
+  void testEmptySampleValueFilledWithDot() throws IOException {
+    // unlike a genuinely dropped trailing sub-field (above), an explicit empty sub-field (interior or trailing) is
+    // not allowed by VCF as a zero-length field; it's filled with the missing value '.' rather than thrown, since
+    // dropping it (like ID/FILTER/ALT) would misalign the remaining values with their FORMAT keys
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\tsample2\n" +
+        "chr1\t100\t.\tA\tT\t.\tPASS\t.\tGT:DP:GQ\t0/1::30\t0/1:\n";
+    List<VcfSample> captured = new ArrayList<>();
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, position, sampleData) -> captured.addAll(sampleData))
+             .build()) {
+      parser.parse();
+    }
+    assertEquals(2, captured.size());
+    VcfSample interior = captured.get(0);
+    assertEquals("0/1", interior.getProperty("GT"));
+    assertEquals(".", interior.getProperty("DP"));
+    assertEquals("30", interior.getProperty("GQ"));
+    VcfSample trailing = captured.get(1);
+    assertEquals("0/1", trailing.getProperty("GT"));
+    assertEquals(".", trailing.getProperty("DP"));
+    assertEquals(".", trailing.getProperty("GQ"));
   }
 
   @Test

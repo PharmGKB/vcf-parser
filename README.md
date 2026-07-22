@@ -63,6 +63,12 @@ this also re-normalizes a lone `PASS` or `.` `FILTER` value left by such a mutat
 - The writer's consistency checks (a value that does not match its declared type, a record referring to undeclared
   `FILTER`/`INFO`/`FORMAT` metadata, a missing or extra sample sub-field, and similar).
 
+An empty ("zero-length") entry in a delimited record field — e.g. `ID=rs1;;rs2`, `ALT=T,`, `FILTER=q10;`,
+`FORMAT=GT:DP:`, a sample value like `0/1:`, or `INFO=AD=1,,2` — is also lenient rather than strict, for the same
+reason: bcftools, the reference implementation most of the ecosystem treats as canonical, tolerates all of these in
+practice. See [`EMPTY_FIELD_HANDLING.md`](EMPTY_FIELD_HANDLING.md) for the full field-by-field table of what each
+case normalizes to and why.
+
 Typed metadata accessors (e.g. `InfoMetadata.getType()` and `getNumber()`) are annotated `@Nullable` and return `null`
 when the corresponding metadata was malformed.
 

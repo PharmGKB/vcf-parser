@@ -250,6 +250,7 @@ public class VcfParser implements Closeable {
       List<VcfSample> samples = new ArrayList<>();
       for (int x = 9; x < data.size(); x++) {
         List<String> values = toList(COLON, data.get(x));
+        VcfUtils.fillEmptyEntriesWithDot(sf_logger, "sample value", values);
         // per the VCF spec, trailing FORMAT sub-fields may be dropped from a sample; pad any missing ones with the
         // missing value so the sample's value count matches the FORMAT key count
         if (format != null) {
@@ -372,9 +373,12 @@ public class VcfParser implements Closeable {
 
   /**
    * Splits {@code string} on the single character {@code delim}, matching
-   * {@code Pattern.compile(String.valueOf(delim)).split(string)} with the default limit: leading and interior empty
-   * fields are kept, trailing empty fields are removed, and a string containing no delimiter yields a single-element
-   * list. Avoids the regex engine, which is a meaningful per-line cost when parsing large VCFs.
+   * {@code Pattern.compile(String.valueOf(delim)).split(string, -1)}: leading, interior, and trailing empty fields
+   * are all kept, and a string containing no delimiter yields a single-element list. Avoids the regex engine, which
+   * is a meaningful per-line cost when parsing large VCFs.
+   * <p>
+   * Callers are responsible for handling any empty entries in the result (VCF does not allow zero-length fields); see
+   * {@code EMPTY_FIELD_HANDLING.md} for how each field type handles them.
    */
   // package-private for differential testing against Pattern.split
   static List<String> toList(char delim, String string) {
@@ -392,10 +396,6 @@ public class VcfParser implements Closeable {
       idx = string.indexOf(delim, start);
     }
     list.add(string.substring(start));
-    // drop trailing empty fields to match Pattern.split with the default limit of 0
-    for (int i = list.size() - 1; i >= 0 && list.get(i).isEmpty(); i -= 1) {
-      list.remove(i);
-    }
     return list;
   }
 
