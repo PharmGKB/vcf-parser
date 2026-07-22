@@ -35,6 +35,8 @@ public enum ReservedStructuralVariantCode {
         return Duplication;
       case "INV":
         return Inversion;
+      case "CNV":
+        return Cnv;
       case "TANDEM":
         return Tandem;
       case "ME":
