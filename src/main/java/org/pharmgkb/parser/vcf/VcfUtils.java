@@ -95,9 +95,11 @@ public class VcfUtils {
   }
 
   /**
-   * Splits {@code s} on top-level occurrences of {@code delim} — those not inside a double-quoted substring. A
-   * backslash escapes the following character (so {@code \"} does not toggle quoting and {@code \\} is a literal
-   * backslash); escaped sequences are preserved verbatim in the output.
+   * Splits {@code s} on top-level occurrences of {@code delim} — those not inside a double-quoted substring. Only
+   * {@code \\} and {@code \"} are recognized escape sequences (per the VCF spec; matches {@link #unquote}): {@code \"}
+   * does not toggle quoting and {@code \\} is a literal backslash, and both are preserved verbatim in the output. A
+   * backslash before any other character (or at the end of the string) has no special meaning and does not consume or
+   * protect the following character, so a delimiter or quote immediately after it is still recognized.
    */
   private static List<String> splitTopLevel(String s, char delim) {
     List<String> parts = new ArrayList<>();
@@ -105,7 +107,7 @@ public class VcfUtils {
     boolean inQuotes = false;
     for (int i = 0; i < s.length(); i++) {
       char c = s.charAt(i);
-      if (c == '\\' && i + 1 < s.length()) {
+      if (c == '\\' && i + 1 < s.length() && (s.charAt(i + 1) == '\\' || s.charAt(i + 1) == '"')) {
         cur.append(c).append(s.charAt(i + 1));
         i++;
       } else if (c == '"') {

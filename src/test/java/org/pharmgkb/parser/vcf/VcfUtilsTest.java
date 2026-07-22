@@ -56,6 +56,16 @@ public class VcfUtilsTest {
   }
 
   @Test
+  public void testStrayBackslashDoesNotSuppressDelimiter() {
+    // a backslash not followed by "\\" or "\"" has no defined escape meaning and must not consume/protect the following
+    // delimiter; before the fix, the comma here was incorrectly treated as escaped, merging both properties into one
+    // blob with two "=" signs, which then threw instead of parsing to two properties
+    Map<String, String> props = VcfUtils.extractPropertiesFromLine("Source=A\\,Number=1");
+    assertEquals("A\\", props.get("Source"));
+    assertEquals("1", props.get("Number"));
+  }
+
+  @Test
   public void testExtractPropertiesNoPlaceholderCollision() {
     // a value literally containing the old "~~~~" placeholder must be preserved, and an escaped quote must not be
     // treated as a real quote (so the comma inside the quoted value is not a top-level delimiter)
