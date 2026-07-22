@@ -127,8 +127,8 @@ public class VcfGenotype {
   /**
    * Note:
    * <pre>{@code
-   *   VcfGenotype homozygous = new VcfGenotype("A", "A", false);
-   *   homogyzgous.isPhased(); // false
+   *   VcfGenotype homozygous = new VcfGenotype(new VcfAllele("A"), new VcfAllele("A"), false);
+   *   homozygous.isPhased(); // false
    * }
    * </pre>
    * The same logic applies with haploid genotypes.
