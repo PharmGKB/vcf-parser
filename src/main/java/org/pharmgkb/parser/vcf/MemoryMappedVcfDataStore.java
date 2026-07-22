@@ -164,11 +164,30 @@ public class MemoryMappedVcfDataStore {
         alleles.add(".");
       } else {
         allMissing = false;
-        alleles.add(position.getAllele(Integer.parseInt(base)));
+        alleles.add(position.getAllele(parseAlleleIndex(base, position)));
       }
     }
     // a fully missing call (e.g. "." or "./.") has no genotype
     return allMissing ? null : new Genotype(alleles, isPhased);
+  }
+
+  /**
+   * Parses a GT allele index, converting a malformed or out-of-range value into {@link VcfFormatException} rather than
+   * letting {@link NumberFormatException} or {@link IndexOutOfBoundsException} leak out of {@link #doGetGenotype},
+   * consistent with {@code VcfGenotype.getAlleleFromIndex}.
+   */
+  private static int parseAlleleIndex(String base, VcfPosition position) {
+    int index;
+    try {
+      index = Integer.parseInt(base);
+    } catch (NumberFormatException e) {
+      throw new VcfFormatException("Allele index \"" + base + "\" is not a number");
+    }
+    if (index < 0 || index > position.getAltBases().size()) {
+      throw new VcfFormatException("Allele index " + index + " is out of range: should be between 0 and " +
+          position.getAltBases().size() + ", inclusive");
+    }
+    return index;
   }
 
   protected Map<String, VcfPosition> getIdToPosition() {
@@ -209,7 +228,7 @@ public class MemoryMappedVcfDataStore {
     private final boolean m_isPhased;
 
     public Genotype(List<String> alleles, boolean isPhased) {
-      m_alleles = alleles;
+      m_alleles = List.copyOf(alleles);
       m_isPhased = isPhased;
     }
 
