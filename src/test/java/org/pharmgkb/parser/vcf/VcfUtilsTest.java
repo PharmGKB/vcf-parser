@@ -66,6 +66,15 @@ public class VcfUtilsTest {
   }
 
   @Test
+  public void testSymbolicAltRejectsWhitespace() {
+    // an angle-bracketed ALT ID may not contain whitespace, commas, or angle brackets
+    assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher("<DEL>").matches());
+    assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher("<DEL bad>").matches());
+    assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher("<a,b>").matches());
+    assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher("<a<b>").matches());
+  }
+
+  @Test
   public void testSplitProp() throws Exception {
     assertEquals(Pair.of("abc", "\"d=ef\""), VcfUtils.splitProperty("abc=\"d=ef\""));
     assertEquals(Pair.of("\"a=bc\"", "\"d=ef\""), VcfUtils.splitProperty("\"a=bc\"=\"d=ef\""));

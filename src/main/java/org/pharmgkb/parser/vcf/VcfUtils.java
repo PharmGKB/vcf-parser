@@ -24,14 +24,14 @@ public class VcfUtils {
       "(?:"                   + // wrap the whole expression
         "(?:"                 + // allow nucleotides, symbolic IDs, or both
           "(?:[AaCcGgTtNn]+)" + // nucleotides
-          "|(?:<.+>)"         + // symbolic IDs (declared in ALT metadata)
+          "|(?:<[^\\s,<>]+>)" + // symbolic IDs (no whitespace, commas, or angle brackets inside)
           ")+"                + // allow things like C<ctg1> (apparently)
         "|\\*"                + // indicates that the position doesn't exist due to an upstream deletion
       ")";
 
   private static final String sf_number =
       "(?:"                 + // wrap the whole expression
-        "(?:\\d+|(?:<.+>))" + // numbers or symbolic IDs
+        "(?:\\d+|(?:<[^\\s,<>]+>))" + // numbers or symbolic IDs (no whitespace, commas, or angle brackets inside)
         "(?::\\d+)?"        + // optional insertion
       ")";                    // ends the nc group of the first line
 
