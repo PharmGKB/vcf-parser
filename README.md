@@ -12,7 +12,7 @@ The main parser class ([`VcfParser`](src/main/java/org/pharmgkb/parser/vcf/VcfPa
 
 Check out [`VcfParserTest.java`](src/test/java/org/pharmgkb/parser/vcf/VcfParserTest.java) for a quick and dirty view of it in action.
 
-[`MemoryMappedVcfLineParser`](src/main/java/org/pharmgkb/parser/vcf/MemoryMappedVcfLineParser.java) is a implementation of `VcfLineParser` that reads everything into memory.
+[`MemoryMappedVcfLineParser`](src/main/java/org/pharmgkb/parser/vcf/MemoryMappedVcfLineParser.java) is an implementation of `VcfLineParser` that reads everything into memory.
 
 
 ## Validation: strict vs. lenient

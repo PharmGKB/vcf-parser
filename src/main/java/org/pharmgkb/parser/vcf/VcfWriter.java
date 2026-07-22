@@ -32,7 +32,7 @@ import org.slf4j.LoggerFactory;
  * is currently package-accessible only.
  *
  * @author Douglas Myers-Turnbull
- * @see TransformingVcfLineParser TransformingVcfLineParser - a read-transform-write streamer that is publically accessible
+ * @see TransformingVcfLineParser TransformingVcfLineParser - a read-transform-write streamer that is publicly accessible
  */
 public class VcfWriter implements Closeable {
 

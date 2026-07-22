@@ -25,7 +25,7 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
  *   };
  *   VcfTransformation transformation2 = new VcfTransformation() {
  *       public void transformDataLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
- *           position.setQuality("0");
+ *           position.setQuality(new BigDecimal("0"));
  *       }
  *   };
  *   TransformingVcfLineParser.Builder builder = new TransformingVcfLineParser.Builder();
