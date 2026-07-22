@@ -23,13 +23,15 @@ The parser draws a deliberate line between the **structure of a VCF record**, wh
 **Strict — throws `VcfFormatException`.** The parser rejects a file whose structure or mandatory record fields are
 invalid:
 
-- A missing, duplicate, or non-first `##fileformat`, or a version below the `VCFv4.0` floor.
+- A missing, duplicate, or non-first `##fileformat`; a version below the `VCFv4.0` floor; or any line other than a `##`
+  metadata line before the `#CHROM` header.
 - A missing `#CHROM` header, wrong fixed column names, a missing `FORMAT` column when samples are present, or duplicate
   sample names.
 - A data line with the wrong number of tab-separated columns.
 - An empty mandatory fixed field (the missing value must be `.`), an empty `CHROM`, or a negative `POS`.
-- Invalid `REF`/`ALT` bases; whitespace where the spec forbids it (`CHROM`, `ID`, `FILTER`, `INFO`); a `FILTER` of `0`
-  or `PASS` combined with other filters; or a `FORMAT` in which `GT` is present but not the first sub-field.
+- Invalid `REF`/`ALT` bases; whitespace where the spec forbids it (`CHROM`, `ID`, `FILTER`, `INFO`); a duplicate
+  identifier within a single `ID` field; a `FILTER` of `0` or `PASS` combined with other filters; or a `FORMAT` in which
+  `GT` is present but not the first sub-field.
 - A sample with more sub-fields than its `FORMAT` declares (trailing sub-fields may be dropped, but not added).
 - An invalid genotype passed to `VcfGenotype`, or a failed conversion when a typed value is requested.
 
