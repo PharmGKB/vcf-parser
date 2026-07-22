@@ -117,4 +117,13 @@ public class VcfUtilsTest {
     assertEquals(Pair.of("\"a=b=c\"", "\"d=ef\""), VcfUtils.splitProperty("\"a=b=c\"=\"d=ef\""));
   }
 
+  @Test
+  public void testCheckNoLineTerminator() {
+    VcfUtils.checkNoLineTerminator("key", "value"); // no line terminator: does not throw
+    VcfUtils.checkNoLineTerminator("key", null); // a null value is not checked (nothing to check)
+    assertThrows(VcfFormatException.class, () -> VcfUtils.checkNoLineTerminator("bad\nkey", "value"));
+    assertThrows(VcfFormatException.class, () -> VcfUtils.checkNoLineTerminator("key", "bad\nvalue"));
+    assertThrows(VcfFormatException.class, () -> VcfUtils.checkNoLineTerminator("key", "bad\rvalue"));
+  }
+
 }

@@ -7,7 +7,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
-import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,20 +25,9 @@ public class BaseMetadata {
 
   public BaseMetadata(Map<String, String> properties) {
     for (Map.Entry<String, String> entry : properties.entrySet()) {
-      checkNoLineTerminator(entry.getKey(), entry.getValue());
+      VcfUtils.checkNoLineTerminator(entry.getKey(), entry.getValue());
     }
     m_properties = properties;
-  }
-
-  /**
-   * Rejects a key or value containing a line terminator: such a property would corrupt the single-line structure of a
-   * written {@code ##} metadata line (see {@link org.pharmgkb.parser.vcf.VcfWriter}), so this is checked here rather
-   * than deferred to write time.
-   */
-  private static void checkNoLineTerminator(String key, @Nullable String value) {
-    if (key.contains("\n") || key.contains("\r") || (value != null && (value.contains("\n") || value.contains("\r")))) {
-      throw new VcfFormatException("Metadata property [[[" + key + "=" + value + "]]] contains a line terminator");
-    }
   }
 
   @Nullable
@@ -76,13 +64,13 @@ public class BaseMetadata {
     if (value == null) {
       m_properties.remove(key);
     } else {
-      checkNoLineTerminator(key, value);
+      VcfUtils.checkNoLineTerminator(key, value);
       m_properties.put(key, VcfUtils.quote(value));
     }
   }
 
   public void putPropertyRaw(String key, @Nullable String value) {
-    checkNoLineTerminator(key, value);
+    VcfUtils.checkNoLineTerminator(key, value);
     m_properties.put(key, value);
   }
 

@@ -162,7 +162,7 @@ public class VcfMetadata {
    * @param value Should not be wrapped in angle brackets
    */
   public void addAssembly(String value) {
-    checkNoLineTerminator(value);
+    VcfUtils.checkNoLineTerminator("assembly", value);
     m_properties.put("assembly", value);
   }
 
@@ -173,22 +173,11 @@ public class VcfMetadata {
    */
   public void addPedigreeDatabase(String value) {
     if (value.startsWith("<") && value.endsWith(">")) {
-      checkNoLineTerminator(value);
+      VcfUtils.checkNoLineTerminator("pedigreeDB", value);
       m_properties.put("pedigreeDB", value);
     } else {
       throw new VcfFormatException("pedigreeDB string " + value +
           " should be enclosed in angle brackets according to spec");
-    }
-  }
-
-  /**
-   * Rejects a value containing a line terminator: such a property would corrupt the single-line structure of a
-   * written {@code ##} metadata line (see {@link org.pharmgkb.parser.vcf.VcfWriter}), so this is checked here rather
-   * than deferred to write time.
-   */
-  private static void checkNoLineTerminator(String value) {
-    if (value.contains("\n") || value.contains("\r")) {
-      throw new VcfFormatException("Metadata property value \"" + value + "\" contains a line terminator");
     }
   }
 
@@ -401,8 +390,7 @@ public class VcfMetadata {
     }
 
     public Builder addRawProperty(String name, String value) {
-      checkNoLineTerminator(name);
-      checkNoLineTerminator(value);
+      VcfUtils.checkNoLineTerminator(name, value);
       m_properties.put(name, value);
       return this;
     }

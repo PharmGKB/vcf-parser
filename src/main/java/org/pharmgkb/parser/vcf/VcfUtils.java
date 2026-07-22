@@ -162,6 +162,20 @@ public class VcfUtils {
   }
 
   /**
+   * Rejects a key or value containing a line terminator: such a property would corrupt the single-line structure of a
+   * written {@code ##} metadata line or data line (see {@link VcfWriter}), so this should be checked at the point of
+   * construction or mutation rather than deferred to write time.
+   *
+   * @param value if there is no value to check (e.g. a single-string property with no separate key), pass the same
+   *              string as both {@code key} and {@code value}
+   */
+  public static void checkNoLineTerminator(String key, @Nullable String value) {
+    if (key.contains("\n") || key.contains("\r") || (value != null && (value.contains("\n") || value.contains("\r")))) {
+      throw new VcfFormatException("Property [[[" + key + "=" + value + "]]] contains a line terminator");
+    }
+  }
+
+  /**
    * Converts a String representation of a property into a more useful type.
    * Specifically, can return:
    * <ul>
