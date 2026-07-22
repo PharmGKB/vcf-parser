@@ -40,4 +40,22 @@ public class BaseMetadataTest {
       new BaseMetadata(map);
     });
   }
+
+  @Test
+  public void testPutPropertyRawRejectsLineTerminator() {
+    BaseMetadata metadata = new BaseMetadata(new HashMap<>());
+    assertThrows(VcfFormatException.class, () -> metadata.putPropertyRaw("key", "bad\nvalue"));
+    assertThrows(VcfFormatException.class, () -> metadata.putPropertyRaw("key", "bad\rvalue"));
+    assertThrows(VcfFormatException.class, () -> metadata.putPropertyRaw("bad\nkey", "value"));
+  }
+
+  @Test
+  public void testPutAndQuotePropertyRejectsLineTerminator() {
+    BaseMetadata metadata = new BaseMetadata(new HashMap<>());
+    assertThrows(VcfFormatException.class, () -> metadata.putAndQuoteProperty("key", "bad\nvalue"));
+    assertThrows(VcfFormatException.class, () -> metadata.putAndQuoteProperty("key", "bad\rvalue"));
+    // removing a property (value == null) is not subject to the check
+    metadata.putAndQuoteProperty("key", "fine");
+    metadata.putAndQuoteProperty("key", null);
+  }
 }

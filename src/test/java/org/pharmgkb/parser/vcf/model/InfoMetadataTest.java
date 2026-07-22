@@ -1,10 +1,12 @@
 package org.pharmgkb.parser.vcf.model;
 
 import org.junit.jupiter.api.Test;
+import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 
 public class InfoMetadataTest {
@@ -72,5 +74,15 @@ public class InfoMetadataTest {
     InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(
         "ID=X", "Number=1", "Description=\"d\""));
     assertNull(md.getType());
+  }
+
+  @Test
+  public void testDescriptionWithLineTerminatorRejectedAtConstruction() {
+    // a Description containing a newline must be rejected here, not deferred to a generic RuntimeException at write
+    // time (see VcfWriter.printLine's single-line check)
+    assertThrows(VcfFormatException.class, () ->
+        new InfoMetadata("ID", "bad\ndescription", InfoType.String, "1", null, null));
+    assertThrows(VcfFormatException.class, () ->
+        new InfoMetadata("ID", "bad\rdescription", InfoType.String, "1", null, null));
   }
 }
