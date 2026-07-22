@@ -39,7 +39,9 @@ public class VcfPosition {
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private static final Joiner sf_commaJoiner = Joiner.on(",");
-  private static final Pattern sf_whitespace = Pattern.compile(".*\\s.*");
+  // matched with find(), not matches(): a wrapping ".*\s.*" pattern would fail to detect whitespace in a string
+  // containing 2+ line-terminator characters, since "." does not match line terminators without DOTALL
+  private static final Pattern sf_whitespace = Pattern.compile("\\s");
   private String m_chromosome;
   private long m_position;
   private List<String> m_ids = new ArrayList<>();
@@ -78,7 +80,7 @@ public class VcfPosition {
     if (ids != null) {
       Set<String> seenIds = new HashSet<>();
       for (String id : ids) {
-        if (sf_whitespace.matcher(id).matches() || id.contains(";")) {
+        if (sf_whitespace.matcher(id).find() || id.contains(";")) {
           throw new VcfFormatException("ID \"" + id + "\" contains whitespace or semicolons");
         }
         if (!seenIds.add(id)) {
@@ -92,14 +94,14 @@ public class VcfPosition {
     if (altBases != null) {
       for (String base : altBases) {
         if (!VcfUtils.ALT_BASE_PATTERN.matcher(base).matches()) {
-          throw new VcfFormatException("Invalid alternate base '" + base + "' (must be [AaGgCcTtNn\\*]+ or <.+>)");
+          throw new VcfFormatException("Invalid alternate base '" + base + "' (must match " + VcfUtils.ALT_BASE_PATTERN + ")");
         }
       }
     }
 
     if (filter != null) {
       for (String f : filter) {
-        if (sf_whitespace.matcher(f).matches()) {
+        if (sf_whitespace.matcher(f).find()) {
           throw new VcfFormatException("FILTER column entry \"" + f + "\" contains whitespace");
         }
         if (f.equals("0")) {
@@ -128,7 +130,7 @@ public class VcfPosition {
 
     if (info != null) {
       for (Map.Entry<String, String> entry : info.entries()) {
-        if (sf_whitespace.matcher(entry.getKey()).matches() || sf_whitespace.matcher(entry.getValue()).matches()) {
+        if (sf_whitespace.matcher(entry.getKey()).find() || sf_whitespace.matcher(entry.getValue()).find()) {
           throw new VcfFormatException("INFO column entry \"" + entry.getKey() + "=" + entry.getValue() +
               "\" contains whitespace");
         }
@@ -191,7 +193,7 @@ public class VcfPosition {
 
   private static void checkChromosome(String chr) {
     // the VCF spec forbids whitespace in CHROM (but not other characters, e.g. colons)
-    if (chr.isEmpty() || sf_whitespace.matcher(chr).matches()) {
+    if (chr.isEmpty() || sf_whitespace.matcher(chr).find()) {
       throw new VcfFormatException("CHROM column \"" + chr + "\" is empty or contains whitespace");
     }
   }
@@ -364,7 +366,7 @@ public class VcfPosition {
           }
         }
         for (Map.Entry<String, String> entry : info.entries()) {
-          if (sf_whitespace.matcher(entry.getKey()).matches() || sf_whitespace.matcher(entry.getValue()).matches()) {
+          if (sf_whitespace.matcher(entry.getKey()).find() || sf_whitespace.matcher(entry.getValue()).find()) {
             throw new VcfFormatException("INFO column entry \"" + entry.getKey() + "=" + entry.getValue() +
                 "\" contains whitespace");
           }

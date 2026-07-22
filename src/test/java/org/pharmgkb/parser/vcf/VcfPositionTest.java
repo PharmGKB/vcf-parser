@@ -252,6 +252,15 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testFilterWithMultipleNewlinesRejected() {
+    // a wrapping ".*\s.*" pattern matched with matches() would fail to detect whitespace here (2+ line terminators);
+    // the whitespace check must still catch it
+    assertThrows(VcfFormatException.class, () -> {
+      new VcfPosition("chr1", 1, null, "C", null, null, Collections.singletonList("a\nb\nc"), null, null);
+    });
+  }
+
+  @Test
   public void testInfoWithWhitespace() {
     assertThrows(VcfFormatException.class, () -> {
       ListMultimap<String, String> map = ArrayListMultimap.create();
