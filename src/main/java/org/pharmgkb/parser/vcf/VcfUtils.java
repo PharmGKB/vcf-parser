@@ -123,20 +123,40 @@ public class VcfUtils {
   }
 
   /**
-   * Adds double quotation marks around a string.
+   * Adds double quotation marks around a string, escaping any embedded backslash or double-quote character (as the VCF
+   * spec requires: {@code \} becomes {@code \\}, {@code "} becomes {@code \"}). Reverse with {@link #unquote}.
    */
   public static String quote(String string) {
-    return "\"" + string + "\"";
+    StringBuilder sb = new StringBuilder(string.length() + 2).append('"');
+    for (int i = 0; i < string.length(); i++) {
+      char c = string.charAt(i);
+      if (c == '\\' || c == '"') {
+        sb.append('\\');
+      }
+      sb.append(c);
+    }
+    return sb.append('"').toString();
   }
 
   /**
-   * Removes double quotation marks around a string if they are present.
+   * Removes double quotation marks around a string if they are present, decoding any escaped backslash ({@code \\}) or
+   * double-quote ({@code \"}) inside. Reverse of {@link #quote}.
    */
   public static String unquote(String string) {
-    if (string.startsWith("\"") && string.endsWith("\"")) {
-      return string.substring(1, string.length() - 1);
+    if (string.length() < 2 || !string.startsWith("\"") || !string.endsWith("\"")) {
+      return string;
     }
-    return string;
+    String inner = string.substring(1, string.length() - 1);
+    StringBuilder sb = new StringBuilder(inner.length());
+    for (int i = 0; i < inner.length(); i++) {
+      char c = inner.charAt(i);
+      if (c == '\\' && i + 1 < inner.length() && (inner.charAt(i + 1) == '\\' || inner.charAt(i + 1) == '"')) {
+        sb.append(inner.charAt(++i));
+      } else {
+        sb.append(c);
+      }
+    }
+    return sb.toString();
   }
 
   /**

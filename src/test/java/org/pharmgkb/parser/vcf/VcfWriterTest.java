@@ -1,6 +1,8 @@
 package org.pharmgkb.parser.vcf;
 
+import java.io.BufferedReader;
 import java.io.PrintWriter;
+import java.io.StringReader;
 import java.io.StringWriter;
 import java.math.BigDecimal;
 import java.nio.file.Paths;
@@ -80,6 +82,26 @@ public class VcfWriterTest {
     position.getInfo().put("NS", "3");
     writer.writeLine(metadata, position, Collections.emptyList());
     assertTrue(sw.toString().contains("NS=3"));
+  }
+
+  @Test
+  public void testWriteHeaderEscapesAndRoundTripsQuotedDescription() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    InfoMetadata info = new InfoMetadata("NS", "a \"quoted\" description with a \\ backslash", InfoType.Integer, "1",
+        null, null);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
+    writer.writeHeader(metadata);
+    String output = sw.toString();
+    // the embedded quote and backslash must be escaped in the written line, not left to break the quoted string
+    assertTrue(output.contains("Description=\"a \\\"quoted\\\" description with a \\\\ backslash\""), output);
+
+    // round-trip: re-parsing the written header must decode back to the original, unescaped description
+    try (BufferedReader reader = new BufferedReader(new StringReader(output));
+         VcfParser parser = new VcfParser.Builder().fromReader(reader).parseWith((m, p, s) -> { }).build()) {
+      VcfMetadata reparsed = parser.parseMetadata();
+      assertEquals("a \"quoted\" description with a \\ backslash", reparsed.getInfo().get("NS").getDescription());
+    }
   }
 
   @Test

@@ -75,6 +75,32 @@ public class VcfUtilsTest {
   }
 
   @Test
+  public void testQuoteEscapesBackslashAndQuote() {
+    assertEquals("\"plain\"", VcfUtils.quote("plain"));
+    assertEquals("\"a \\\\ b\"", VcfUtils.quote("a \\ b"));
+    assertEquals("\"a \\\"quoted\\\" b\"", VcfUtils.quote("a \"quoted\" b"));
+  }
+
+  @Test
+  public void testUnquoteDecodesEscapes() {
+    assertEquals("plain", VcfUtils.unquote("\"plain\""));
+    assertEquals("a \\ b", VcfUtils.unquote("\"a \\\\ b\""));
+    assertEquals("a \"quoted\" b", VcfUtils.unquote("\"a \\\"quoted\\\" b\""));
+    // not wrapped in quotes: returned as-is
+    assertEquals("unquoted", VcfUtils.unquote("unquoted"));
+    // single-quote-character input must not crash (previously threw StringIndexOutOfBoundsException)
+    assertEquals("\"", VcfUtils.unquote("\""));
+  }
+
+  @Test
+  public void testQuoteUnquoteRoundTrip() {
+    String[] values = { "plain", "a \\ b", "a \"quoted\" b", "\\\"both\\\"", "" };
+    for (String value : values) {
+      assertEquals(value, VcfUtils.unquote(VcfUtils.quote(value)), "round-trip failed for: " + value);
+    }
+  }
+
+  @Test
   public void testSplitProp() throws Exception {
     assertEquals(Pair.of("abc", "\"d=ef\""), VcfUtils.splitProperty("abc=\"d=ef\""));
     assertEquals(Pair.of("\"a=bc\"", "\"d=ef\""), VcfUtils.splitProperty("\"a=bc\"=\"d=ef\""));
