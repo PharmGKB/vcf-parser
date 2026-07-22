@@ -43,10 +43,16 @@ public class AltStructuralVariant {
       throw new VcfFormatException("Structural variant code must not be empty");
     }
 
-    String[] components = sf_colon.split(string);
+    // limit -1 preserves trailing empty components (e.g. a trailing colon), which are rejected below rather than
+    // silently dropped as Pattern.split's default limit of 0 would do
+    String[] components = sf_colon.split(string, -1);
     m_components = new ArrayList<>(components.length);
 
     for (int level = 0; level < components.length; level++) {
+      if (components[level].isEmpty()) {
+        throw new VcfFormatException("Structural variant code \"" + string + "\" has an empty component at level " +
+            level);
+      }
       ReservedStructuralVariantCode type = ReservedStructuralVariantCode.fromId(components[level]);
 
       // Make sure the top-level code exists

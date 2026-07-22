@@ -52,4 +52,15 @@ public class AltStructuralVariantTest {
   public void testEmptyCodeRejected() {
     assertThrows(VcfFormatException.class, () -> new AltStructuralVariant(""));
   }
+
+  @Test
+  public void testTrailingEmptyComponentRejected() {
+    // a trailing colon must not be silently dropped (Pattern.split's default limit drops trailing empty strings)
+    assertThrows(VcfFormatException.class, () -> new AltStructuralVariant("INS:ME:"));
+  }
+
+  @Test
+  public void testInteriorEmptyComponentRejected() {
+    assertThrows(VcfFormatException.class, () -> new AltStructuralVariant("INS::LINE"));
+  }
 }
