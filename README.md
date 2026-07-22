@@ -47,13 +47,19 @@ invalid:
 - A `VcfSample` key or value set through its constructors or `putProperty` containing a colon or tab, which would
   otherwise add a spurious FORMAT sub-field or sample column when written back out.
 - `VcfWriter.writeLine` is given a number of samples that disagrees with the header's declared sample count, any
-  FORMAT/sample data at all when the header declares no samples, or an empty `FORMAT` when the header declares one or
-  more samples: in every case the output would not parse back against its own header.
+  FORMAT/sample data at all when the header declares no samples, an empty `FORMAT` when the header declares one or
+  more samples, or an empty `REF` (which has no missing-value sentinel in the spec, unlike `ALT`/`ID`/`FILTER`): in
+  every case the output would not be valid, re-parseable VCF.
 
 These checks run when a `VcfPosition` is constructed (including by the parser). Its setters and the mutable lists
 returned by its accessors (e.g. `getAltBases()`, `getFilters()`) do *not* re-run them, to support transformation
 pipelines that mutate a position in place; call `VcfPosition.validate()` after such mutations to re-check validity —
 this also re-normalizes a lone `PASS` or `.` `FILTER` value left by such a mutation, matching construction.
+`VcfWriter` itself does not call `validate()` before writing by default (to avoid that cost on every line); build one
+with `VcfWriter.Builder.validateBeforeWrite()` to have it do so, rejecting a position mutated into an invalid state
+instead of silently writing it. Without that flag, a mutated-invalid position (e.g. bad `ALT`/`INFO` content left by
+a `VcfTransformation`) is written without error — it is the caller's responsibility to validate first or otherwise
+guarantee validity.
 
 **Lenient — logs a warning and keeps parsing.** Malformed *metadata declarations* (`##INFO`, `##FORMAT`, `##contig`,
 `##FILTER`, `##ALT`, ...) warn rather than throw, and the declaration is still stored:

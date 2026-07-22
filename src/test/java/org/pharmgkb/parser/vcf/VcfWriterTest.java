@@ -30,19 +30,43 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class VcfWriterTest {
 
   @Test
-  public void testWriteLineWithEmptyRef() throws Exception {
-    // REF cannot be empty through the constructor, but setRef() does not validate; the writer must still emit "."
-    // rather than a blank field (addListOrElse(Arrays.asList(emptyString), ...) never sees an "empty list", since a
-    // single-element list wrapping an empty string is not itself empty)
+  public void testWriteLineRejectsEmptyRef() throws Exception {
+    // REF cannot be empty through the constructor, but setRef() does not validate. REF has no missing-value
+    // sentinel in the spec, so writing "." here would not be valid VCF either -- just a placeholder that avoids
+    // crashing. The writer now rejects this outright instead of emitting non-compliant output.
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
     position.getAltBases().add("T");
     position.setRef("");
+    assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.emptyList()));
+  }
+
+  @Test
+  public void testWriteLineDoesNotValidateByDefault() throws Exception {
+    // getAltBases() is mutable and does not re-validate (by design, to support transformation pipelines); by
+    // default, writeLine does not call position.validate() either, so a position mutated into an invalid state is
+    // written without error
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("not-a-valid-base");
     writer.writeLine(metadata, position, Collections.emptyList());
-    String[] fields = sw.toString().split("\t");
-    assertEquals(".", fields[3]); // REF column
+    assertTrue(sw.toString().contains("not-a-valid-base"));
+  }
+
+  @Test
+  public void testWriteLineValidatesWhenBuiltWithValidateBeforeWrite() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("not-a-valid-base");
+    assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.emptyList()));
   }
 
   @Test

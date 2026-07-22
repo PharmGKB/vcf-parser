@@ -40,11 +40,13 @@ public class VcfWriter implements Closeable {
 
   private final @Nullable Path m_file;
   private final PrintWriter m_writer;
+  private final boolean m_validateBeforeWrite;
   private int m_lineNumber;
 
-  private VcfWriter(@Nullable Path file, PrintWriter writer) {
+  private VcfWriter(@Nullable Path file, PrintWriter writer, boolean validateBeforeWrite) {
     m_file = file;
     m_writer = writer;
+    m_validateBeforeWrite = validateBeforeWrite;
   }
 
   public void writeHeader(VcfMetadata metadata) {
@@ -79,8 +81,22 @@ public class VcfWriter implements Closeable {
     sf_logger.info("Wrote {} lines of header{}", m_lineNumber, (m_file == null ? "" : " to " + m_file));
   }
 
+  /**
+   * Writes a single data line.
+   * <p>
+   * By default, this does <em>not</em> call {@link VcfPosition#validate()} on {@code position} first (to avoid
+   * paying that cost on every write). If this writer was not built with {@link Builder#validateBeforeWrite()}, a
+   * {@code position} that was mutated (e.g. by a {@link VcfTransformation}) into an invalid state (bad {@code REF},
+   * {@code ALT}, {@code FORMAT}, or {@code INFO} content) can be written without any error. It is the caller's
+   * responsibility, in that case, to either call {@link VcfPosition#validate()} before this method or otherwise
+   * guarantee {@code position} is still valid.
+   */
   public void writeLine(VcfMetadata metadata, VcfPosition position,
       List<VcfSample> samples) {
+
+    if (m_validateBeforeWrite) {
+      position.validate();
+    }
 
     int numSamples = metadata.getNumSamples();
     if (numSamples == 0) {
@@ -98,18 +114,19 @@ public class VcfWriter implements Closeable {
       throw new VcfFormatException("Position " + position.getChromosome() + ":" + position.getPosition() +
           " has no FORMAT, but the header declares " + numSamples + " sample(s)");
     }
+    if (position.getRef().isEmpty()) {
+      // REF has no missing-value sentinel in the spec ("." means something else entirely for other columns); writing
+      // "." here would not actually be valid VCF, just a placeholder that avoids crashing on a mutated position
+      throw new VcfFormatException("Position " + position.getChromosome() + ":" + position.getPosition() +
+          " has an empty REF, which the VCF spec does not allow (REF has no missing-value sentinel)");
+    }
 
     StringBuilder sb = new StringBuilder();
 
     sb.append(position.getChromosome()).append("\t");
     sb.append(position.getPosition()).append("\t");
     addListOrElse(position.getIds(), ";", ".", sb);
-    if (position.getRef().isEmpty()) {
-      sf_logger.warn("No REF bases, but the column is required (on line {})", m_lineNumber);
-    }
-    // must use addStringOrElse, not addListOrElse(Arrays.asList(...), ...): a single-element list wrapping an empty
-    // string is never "empty" as a list, so addListOrElse would never fall back to the missing value here
-    addStringOrElse(position.getRef(), ".", sb);
+    sb.append(position.getRef()).append("\t");
     addListOrElse(position.getAltBases(), ",", ".", sb);
     addStringOrElse(position.getQuality(), ".", sb);
     if (position.getFilterStatus() == VcfPosition.FilterStatus.NONE) {
@@ -324,6 +341,7 @@ public class VcfWriter implements Closeable {
 
     private Path m_file;
     private PrintWriter m_writer;
+    private boolean m_validateBeforeWrite;
 
     public Builder toFile(Path file) {
       m_file = file;
@@ -335,6 +353,17 @@ public class VcfWriter implements Closeable {
       return this;
     }
 
+    /**
+     * Makes the built {@link VcfWriter} call {@link VcfPosition#validate()} before writing every line, rejecting a
+     * position that was mutated into an invalid state instead of silently writing it. This is off by default: it
+     * adds the cost of re-validating every position to every write, so if it is not set, the caller is responsible
+     * for either validating positions themselves before writing or otherwise guaranteeing they are still valid.
+     */
+    public Builder validateBeforeWrite() {
+      m_validateBeforeWrite = true;
+      return this;
+    }
+
     public VcfWriter build() throws IOException {
       if (m_file != null) {
         m_writer = new PrintWriter(new BufferedWriter(new FileWriter(m_file.toFile()), 65536));
@@ -342,7 +371,7 @@ public class VcfWriter implements Closeable {
       if (m_writer == null) {
         throw new IllegalStateException("Must specify either file or writer");
       }
-      return new VcfWriter(m_file, m_writer);
+      return new VcfWriter(m_file, m_writer, m_validateBeforeWrite);
     }
 
   }
