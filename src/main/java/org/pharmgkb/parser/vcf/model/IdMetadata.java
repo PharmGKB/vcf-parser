@@ -37,9 +37,7 @@ public class IdMetadata extends BaseMetadata {
   }
 
   private void init(boolean isBaseType) {
-    if (getPropertyRaw(ID) == null) {
-      sf_logger.warn("Required metadata property \"{}\" is missing", ID);
-    }
+    warnIfMissing(sf_logger, ID, getPropertyRaw(ID));
     if (isBaseType) {
       ensureNoExtras(ID);
     }

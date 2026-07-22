@@ -87,4 +87,26 @@ public class BaseMetadata {
     });
   }
 
+  /**
+   * Logs a warning (using the caller's own logger, so the warning is attributed to the caller's class) if
+   * {@code value} is null, i.e. the required property {@code propertyName} is absent.
+   */
+  protected static void warnIfMissing(Logger logger, String propertyName, @Nullable String value) {
+    if (value == null) {
+      logger.warn("Required metadata property \"{}\" is missing", propertyName);
+    }
+  }
+
+  /**
+   * Validates a VCF {@code Number} property value, warning (via the caller's own logger) if it is missing or does not
+   * match {@link VcfUtils#NUMBER_PATTERN}. Shared by the metadata types ({@code INFO}, {@code FORMAT}) that declare a
+   * {@code Number} field with identical semantics.
+   */
+  protected static void checkNumberProperty(Logger logger, @Nullable String number) {
+    warnIfMissing(logger, "Number", number);
+    if (number != null && !VcfUtils.NUMBER_PATTERN.matcher(number).matches()) {
+      logger.warn("Number is not a valid VCF number: '{}'", number);
+    }
+  }
+
 }

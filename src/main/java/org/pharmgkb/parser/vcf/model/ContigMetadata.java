@@ -89,13 +89,10 @@ public class ContigMetadata extends IdMetadata {
   }
 
   private void init() {
-    if (getPropertyUnquoted(ASSEMBLY) == null) {
-      sf_logger.warn("Required metadata property \"{}\" is missing", ASSEMBLY);
-    }
+    warnIfMissing(sf_logger, ASSEMBLY, getPropertyUnquoted(ASSEMBLY));
     String length = getPropertyUnquoted(LENGTH);
-    if (length == null) {
-      sf_logger.warn("Required metadata property \"{}\" is missing", LENGTH);
-    } else {
+    warnIfMissing(sf_logger, LENGTH, length);
+    if (length != null) {
       try {
         //noinspection ResultOfMethodCallIgnored
         Long.parseLong(length);

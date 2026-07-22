@@ -3,7 +3,6 @@ package org.pharmgkb.parser.vcf.model;
 import java.lang.invoke.MethodHandles;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
-import org.pharmgkb.parser.vcf.VcfUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,15 +42,10 @@ public class FormatMetadata extends IdDescriptionMetadata {
 
   public void init() {
     String number = getPropertyRaw(NUMBER);
-    if (number == null) {
-      sf_logger.warn("Required metadata property \"{}\" is missing", NUMBER);
-    } else if (!VcfUtils.NUMBER_PATTERN.matcher(number).matches()) {
-      sf_logger.warn("{} is not a valid VCF number: '{}'", NUMBER, number);
-    }
+    checkNumberProperty(sf_logger, number);
     String type = getPropertyRaw(TYPE);
-    if (type == null) {
-      sf_logger.warn("Required metadata property \"{}\" is missing", TYPE);
-    } else {
+    warnIfMissing(sf_logger, TYPE, type);
+    if (type != null) {
       try {
         m_type = FormatType.valueOf(type);
       } catch (IllegalArgumentException e) {
