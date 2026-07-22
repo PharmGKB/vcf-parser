@@ -210,9 +210,18 @@ public class VcfPosition {
 
   private static void checkInfoEntries(Iterable<Map.Entry<String, String>> entries) {
     for (Map.Entry<String, String> entry : entries) {
-      if (sf_whitespace.matcher(entry.getKey()).find() || sf_whitespace.matcher(entry.getValue()).find()) {
-        throw new VcfFormatException("INFO column entry \"" + entry.getKey() + "=" + entry.getValue() +
-            "\" contains whitespace");
+      String key = entry.getKey();
+      String value = entry.getValue();
+      if (sf_whitespace.matcher(key).find() || sf_whitespace.matcher(value).find()) {
+        throw new VcfFormatException("INFO column entry \"" + key + "=" + value + "\" contains whitespace");
+      }
+      // a parsed value can never contain these (they were already split on to arrive at this value), but a value set
+      // directly via getInfo().put(...) could; reject them so the writer's output remains re-parseable
+      if (key.contains(";") || key.contains("=")) {
+        throw new VcfFormatException("INFO key \"" + key + "\" contains ';' or '='");
+      }
+      if (value.contains(";") || value.contains(",")) {
+        throw new VcfFormatException("INFO value \"" + value + "\" for key \"" + key + "\" contains ';' or ','");
       }
     }
   }

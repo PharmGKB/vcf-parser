@@ -326,4 +326,26 @@ public class VcfPositionTest {
     });
   }
 
+  @Test
+  public void testInfoValueWithStructuralCharactersRejected() {
+    // a raw ";" or "," in an INFO value (or ";"/"=" in a key) would corrupt round-trip parsing (a parsed value can
+    // never contain them, since they were already split on to arrive at the value); reject them, including via a
+    // direct mutation through getInfo(), not just at construction
+    VcfPosition semicolonInValue = newPosition();
+    semicolonInValue.getInfo().put("KEY", "a;b");
+    assertThrows(VcfFormatException.class, semicolonInValue::validate);
+
+    VcfPosition commaInValue = newPosition();
+    commaInValue.getInfo().put("KEY", "a,b");
+    assertThrows(VcfFormatException.class, commaInValue::validate);
+
+    VcfPosition semicolonInKey = newPosition();
+    semicolonInKey.getInfo().put("KEY;X", "value");
+    assertThrows(VcfFormatException.class, semicolonInKey::validate);
+
+    VcfPosition equalsInKey = newPosition();
+    equalsInKey.getInfo().put("KEY=X", "value");
+    assertThrows(VcfFormatException.class, equalsInKey::validate);
+  }
+
 }
