@@ -29,11 +29,15 @@ invalid:
   sample names.
 - A data line with the wrong number of tab-separated columns.
 - An empty mandatory fixed field (the missing value must be `.`), an empty `CHROM`, or a negative `POS`.
-- Invalid `REF`/`ALT` bases; whitespace where the spec forbids it (`CHROM`, `ID`, `FILTER`, `INFO`); a duplicate
-  identifier within a single `ID` field; a `FILTER` of `0` or `PASS` combined with other filters; or a `FORMAT` in which
-  `GT` is present but not the first sub-field.
+- Invalid `REF`/`ALT` bases; an `ALT` missing value (`.`) combined with a real allele; whitespace where the spec forbids
+  it (`CHROM`, `ID`, `FILTER`, `INFO`); a duplicate identifier within a single `ID` field; a `FILTER` of `0` or `PASS`
+  combined with other filters; or a `FORMAT` in which `GT` is present but not the first sub-field.
 - A sample with more sub-fields than its `FORMAT` declares (trailing sub-fields may be dropped, but not added).
 - An invalid genotype passed to `VcfGenotype`, or a failed conversion when a typed value is requested.
+
+These checks run when a `VcfPosition` is constructed (including by the parser). Its setters and the mutable lists
+returned by its accessors (e.g. `getAltBases()`, `getFilters()`) do *not* re-run them, to support transformation
+pipelines that mutate a position in place; call `VcfPosition.validate()` after such mutations to re-check validity.
 
 **Lenient — logs a warning and keeps parsing.** Malformed *metadata declarations* (`##INFO`, `##FORMAT`, `##contig`,
 `##FILTER`, `##ALT`, ...) warn rather than throw, and the declaration is still stored:
