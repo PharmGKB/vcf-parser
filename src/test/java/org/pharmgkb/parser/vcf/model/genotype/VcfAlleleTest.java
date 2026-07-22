@@ -65,4 +65,15 @@ public class VcfAlleleTest {
     assertFalse(new VcfAllele("<TT>").containsBase('T'));
     assertTrue(new VcfAllele("A").containsBase('T', 'A'));
   }
+
+  @Test
+  public void testGetPrimaryType() {
+    // "." (the no-variant missing value) has length 1 like a real base, but must not be classified as SINGLE_BASE
+    assertEquals(VcfAllele.PrimaryType.NO_VARIATION, new VcfAllele(".").getPrimaryType());
+    assertEquals(VcfAllele.PrimaryType.SINGLE_BASE, new VcfAllele("A").getPrimaryType());
+    assertEquals(VcfAllele.PrimaryType.MULTI_BASE, new VcfAllele("AT").getPrimaryType());
+    assertEquals(VcfAllele.PrimaryType.SYMBOLIC, new VcfAllele("<TT>").getPrimaryType());
+    assertEquals(VcfAllele.PrimaryType.DELETED, new VcfAllele("*").getPrimaryType());
+    assertEquals(VcfAllele.PrimaryType.BREAKPOINT, new VcfAllele("C[<ctg1>:1[").getPrimaryType());
+  }
 }

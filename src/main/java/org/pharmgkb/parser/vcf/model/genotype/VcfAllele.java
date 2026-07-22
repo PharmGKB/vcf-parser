@@ -46,7 +46,7 @@ public class VcfAllele {
    * @return The number of bases in this Allele
    * @throws VcfFormatException If this Allele is a breakpoint or symbolic name
    */
-  public int length() throws IllegalArgumentException {
+  public int length() {
     if (isSymbolic() || isBreakpoint() || isDeleted()) {
       throw new VcfFormatException("Length could not be determined because the allele '" + m_string + "' is " +
           "symbolic, deleted upstream, or a breakpoint");
@@ -99,14 +99,17 @@ public class VcfAllele {
     if (isSymbolic()) {
       return PrimaryType.SYMBOLIC;
     }
-      int length = length();
-      if (length == 0) {
-        return PrimaryType.NO_VARIATION;
-      }
-      if (length == 1) {
-        return PrimaryType.SINGLE_BASE;
-      }
-      return PrimaryType.MULTI_BASE;
+    // "." (the no-variant missing value) has length 1, like a real single-base allele, so it must be checked
+    // explicitly rather than relying on length(): ALT_BASE_PATTERN never matches an empty string, so length() == 0
+    // cannot otherwise occur
+    if (m_string.equals(".")) {
+      return PrimaryType.NO_VARIATION;
+    }
+    int length = length();
+    if (length == 1) {
+      return PrimaryType.SINGLE_BASE;
+    }
+    return PrimaryType.MULTI_BASE;
   }
 
   /**
