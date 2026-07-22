@@ -42,7 +42,7 @@ public class VcfSample {
       throw new VcfFormatException("Number of FORMAT entries does not match number of sample entries");
     }
     for (int x = 0; x < keys.size(); x++) {
-      VcfUtils.checkNoLineTerminator(keys.get(x), values.get(x));
+      checkNoStructuralDelimiter(keys.get(x), values.get(x));
     }
     m_keys = keys;
     m_values = values;
@@ -51,7 +51,24 @@ public class VcfSample {
   public VcfSample(LinkedHashMap<String, String> properties) {
     m_properties = properties;
     for (Map.Entry<String, String> entry : m_properties.entrySet()) {
-      VcfUtils.checkNoLineTerminator(entry.getKey(), entry.getValue());
+      checkNoStructuralDelimiter(entry.getKey(), entry.getValue());
+    }
+  }
+
+  /**
+   * Rejects a key or value containing a line terminator, a colon, or a tab: a parsed key/value can never contain
+   * these (they were already split on to arrive at this key/value), but one set directly via {@link #putProperty} or
+   * {@link #propertyEntrySet()} could; reject them so the writer's output remains re-parseable (a colon would add a
+   * spurious FORMAT subfield, and a tab would add a spurious sample column).
+   */
+  private static void checkNoStructuralDelimiter(String key, @Nullable String value) {
+    VcfUtils.checkNoLineTerminator(key, value);
+    if (key.contains(":") || key.contains("\t")) {
+      throw new VcfFormatException("Sample property key \"" + key + "\" contains ':' or a tab");
+    }
+    if (value != null && (value.contains(":") || value.contains("\t"))) {
+      throw new VcfFormatException("Sample property value \"" + value + "\" for key \"" + key +
+          "\" contains ':' or a tab");
     }
   }
 
@@ -114,7 +131,7 @@ public class VcfSample {
   }
 
   public void putProperty(String key, @Nullable String value) {
-    VcfUtils.checkNoLineTerminator(key, value);
+    checkNoStructuralDelimiter(key, value);
     properties().put(key, value);
   }
 
@@ -144,7 +161,7 @@ public class VcfSample {
 
   /**
    * @return The backing, mutable property entries. Unlike {@link #putProperty}, mutating an entry's value directly
-   * (e.g. via {@link Map.Entry#setValue}) does not run the line-terminator check.
+   * (e.g. via {@link Map.Entry#setValue}) does not check for a line terminator, colon, or tab.
    */
   public Set<Map.Entry<String, String>> propertyEntrySet() {
     return properties().entrySet();

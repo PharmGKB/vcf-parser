@@ -71,4 +71,26 @@ class VcfSampleTest {
     // the ReservedFormatProperty overload must not bypass the check either
     assertThrows(VcfFormatException.class, () -> sample.putProperty(ReservedFormatProperty.Genotype, "0/1\nextra"));
   }
+
+  @Test
+  void testPutPropertyRejectsStructuralDelimiters() {
+    // a colon would add a spurious FORMAT subfield, and a tab would add a spurious sample column, when written back out
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    assertThrows(VcfFormatException.class, () -> sample.putProperty("DP", "1:2"));
+    assertThrows(VcfFormatException.class, () -> sample.putProperty("DP", "1\t2"));
+    assertThrows(VcfFormatException.class, () -> sample.putProperty("bad:key", "value"));
+    assertThrows(VcfFormatException.class, () -> sample.putProperty("bad\tkey", "value"));
+  }
+
+  @Test
+  void testConstructorRejectsStructuralDelimiters() {
+    assertThrows(VcfFormatException.class, () -> {
+      List<String> keys = Collections.singletonList("DP");
+      List<String> values = Collections.singletonList("1:2");
+      new VcfSample(keys, values);
+    });
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("DP", "1:2");
+    assertThrows(VcfFormatException.class, () -> new VcfSample(map));
+  }
 }

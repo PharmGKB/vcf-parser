@@ -43,6 +43,8 @@ invalid:
   `MemoryMappedVcfDataStore`, or a failed conversion when a typed value is requested.
 - A key or value set through `BaseMetadata`'s, `VcfSample`'s, or `VcfMetadata`'s mutators (e.g. a `Description`, a
   sample's `GT` value, or an `##assembly` line) containing a line terminator.
+- A `VcfSample` key or value set through its constructors or `putProperty` containing a colon or tab, which would
+  otherwise add a spurious FORMAT sub-field or sample column when written back out.
 
 These checks run when a `VcfPosition` is constructed (including by the parser). Its setters and the mutable lists
 returned by its accessors (e.g. `getAltBases()`, `getFilters()`) do *not* re-run them, to support transformation
