@@ -82,13 +82,6 @@ public class VcfAllele {
     return m_string.equals("*");
   }
 
-  /**
-   * @return Whether this Allele is not symbolic, deleted, or a breakpoint
-   */
-  public boolean isSimple() {
-    return !isBreakpoint() && !isSymbolic() && !isDeleted();
-  }
-
   public PrimaryType getPrimaryType() {
     if (isBreakpoint()) {
       return PrimaryType.BREAKPOINT;

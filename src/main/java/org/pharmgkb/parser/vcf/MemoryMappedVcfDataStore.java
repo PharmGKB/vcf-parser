@@ -21,11 +21,11 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
  */
 public class MemoryMappedVcfDataStore {
 
-  private VcfMetadata m_metadata;
-  private Map<String, VcfPosition> m_idToPosition = new HashMap<>();
-  private Map<Locus, VcfPosition> m_locusToPosition = new HashMap<>();
-  private Map<String, List<VcfSample>> m_idToSamples = new HashMap<>();
-  private Map<Locus, List<VcfSample>> m_locusToSamples = new HashMap<>();
+  private @Nullable VcfMetadata m_metadata;
+  private final Map<String, VcfPosition> m_idToPosition = new HashMap<>();
+  private final Map<Locus, VcfPosition> m_locusToPosition = new HashMap<>();
+  private final Map<String, List<VcfSample>> m_idToSamples = new HashMap<>();
+  private final Map<Locus, List<VcfSample>> m_locusToSamples = new HashMap<>();
 
   /**
    * @return Every position read, or null if none no lines read.
@@ -194,32 +194,16 @@ public class MemoryMappedVcfDataStore {
     return m_idToPosition;
   }
 
-  protected void setIdToPosition(Map<String, VcfPosition> idToPosition) {
-    m_idToPosition = idToPosition;
-  }
-
   protected Map<Locus, VcfPosition> getLocusToPosition() {
     return m_locusToPosition;
-  }
-
-  protected void setLocusToPosition(Map<Locus, VcfPosition> locusToPosition) {
-    m_locusToPosition = locusToPosition;
   }
 
   protected Map<String, List<VcfSample>> getIdToSamples() {
     return m_idToSamples;
   }
 
-  protected void setIdToSamples(Map<String, List<VcfSample>> idToSamples) {
-    m_idToSamples = idToSamples;
-  }
-
   protected Map<Locus, List<VcfSample>> getLocusToSamples() {
     return m_locusToSamples;
-  }
-
-  protected void setLocusToSamples(Map<Locus, List<VcfSample>> locusToSamples) {
-    m_locusToSamples = locusToSamples;
   }
 
   @Immutable
