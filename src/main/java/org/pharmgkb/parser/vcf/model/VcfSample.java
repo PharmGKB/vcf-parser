@@ -42,9 +42,7 @@ public class VcfSample {
       throw new VcfFormatException("Number of FORMAT entries does not match number of sample entries");
     }
     for (int x = 0; x < keys.size(); x++) {
-      if (keys.get(x).contains("\n") || values.get(x).contains("\n")) {
-        throw new VcfFormatException("FORMAT [[[" + keys.get(x) + "=" + values.get(x) + "]]] contains a newline");
-      }
+      checkNoLineTerminator(keys.get(x), values.get(x));
     }
     m_keys = keys;
     m_values = values;
@@ -53,9 +51,18 @@ public class VcfSample {
   public VcfSample(LinkedHashMap<String, String> properties) {
     m_properties = properties;
     for (Map.Entry<String, String> entry : m_properties.entrySet()) {
-      if (entry.getKey().contains("\n") || entry.getValue().contains("\n")) {
-        throw new VcfFormatException("FORMAT [[[" + entry.getKey() + "=" + entry.getValue() + "]]] contains a newline");
-      }
+      checkNoLineTerminator(entry.getKey(), entry.getValue());
+    }
+  }
+
+  /**
+   * Rejects a key or value containing a line terminator: such a property would corrupt the single-line structure of a
+   * written data line (see {@link org.pharmgkb.parser.vcf.VcfWriter}), so this is checked here rather than deferred to
+   * write time.
+   */
+  private static void checkNoLineTerminator(String key, @Nullable String value) {
+    if (key.contains("\n") || key.contains("\r") || (value != null && (value.contains("\n") || value.contains("\r")))) {
+      throw new VcfFormatException("FORMAT [[[" + key + "=" + value + "]]] contains a line terminator");
     }
   }
 
@@ -118,11 +125,12 @@ public class VcfSample {
   }
 
   public void putProperty(String key, @Nullable String value) {
+    checkNoLineTerminator(key, value);
     properties().put(key, value);
   }
 
   public void putProperty(ReservedFormatProperty key, @Nullable String value) {
-    properties().put(key.getId(), value);
+    putProperty(key.getId(), value);
   }
 
   public void removeProperty(String key) {

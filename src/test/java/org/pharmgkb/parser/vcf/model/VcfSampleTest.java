@@ -60,4 +60,15 @@ class VcfSampleTest {
       new VcfSample(keys, values);
     });
   }
+
+  @Test
+  void testPutPropertyRejectsLineTerminator() {
+    // putProperty previously had no line-terminator check at all, unlike the constructors
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    assertThrows(VcfFormatException.class, () -> sample.putProperty("GT", "0/1\nextra"));
+    assertThrows(VcfFormatException.class, () -> sample.putProperty("GT", "0/1\rextra"));
+    assertThrows(VcfFormatException.class, () -> sample.putProperty("bad\nkey", "value"));
+    // the ReservedFormatProperty overload must not bypass the check either
+    assertThrows(VcfFormatException.class, () -> sample.putProperty(ReservedFormatProperty.Genotype, "0/1\nextra"));
+  }
 }
