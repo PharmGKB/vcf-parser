@@ -271,9 +271,12 @@ public class VcfMetadata {
 
   /**
    * Sample numbering starts at 0.
+   *
+   * @return the sample's index, or {@code -1} if {@code sampleId} is not a sample column
    */
   public int getSampleIndex(String sampleId) {
-    return m_columns.indexOf(sampleId) - 9;
+    int idx = m_columns.indexOf(sampleId);
+    return idx < 9 ? -1 : idx - 9;
   }
 
   /**
