@@ -212,6 +212,25 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testValidateNormalizesLoneFilterSentinel() {
+    VcfPosition dot = new VcfPosition("chr1", 1, null, "C", null, null, null, null, null);
+    dot.getFilters().add(".");
+    dot.validate();
+    assertEquals(VcfPosition.FilterStatus.NONE, dot.getFilterStatus());
+    assertTrue(dot.getFilters().isEmpty());
+
+    VcfPosition pass = new VcfPosition("chr1", 1, null, "C", null, null, null, null, null);
+    pass.getFilters().add("PASS");
+    pass.validate();
+    assertEquals(VcfPosition.FilterStatus.PASSED, pass.getFilterStatus());
+    assertTrue(pass.getFilters().isEmpty());
+
+    // validate() is idempotent: calling it again after normalization is a no-op
+    dot.validate();
+    assertEquals(VcfPosition.FilterStatus.NONE, dot.getFilterStatus());
+  }
+
+  @Test
   public void testTelomericPositions() {
     new VcfPosition("chr1", 0, null, "C", null, null, null, null, null); // telomere at start is valid
     assertThrows(VcfFormatException.class, () -> // a negative POS is invalid

@@ -93,18 +93,6 @@ public class VcfPosition {
       checkFormat(format);
     }
 
-    // normalize a lone "PASS" or "." FILTER value to null (only meaningful at construction time; see checkFilters for
-    // the validity checks that apply both here and to later mutation via validate())
-    if (filter != null && filter.size() == 1) {
-      if (filter.get(0).equals("PASS")) { // a user is likely to pass "PASS" instead of an empty list or null
-        sf_logger.warn("FILTER is PASS, but should have been passed as null. Converting to null");
-        filter = null;
-      } else if (filter.get(0).equals(".")) { // "." is the missing value: filters were not applied (FilterStatus.NONE)
-        m_filtersApplied = false;
-        filter = null;
-      }
-    }
-
     /*
       2. Set the fields, in order
      */
@@ -136,6 +124,12 @@ public class VcfPosition {
     if (format != null) {
       m_format = format;
     }
+
+    /*
+      3. Normalize a lone "PASS" or "." FILTER value, now that m_filter is set
+     */
+
+    normalizeFilters();
   }
 
   public VcfPosition(String chromosome, long position, String refBases, BigDecimal quality) {
@@ -235,7 +229,26 @@ public class VcfPosition {
   }
 
   /**
+   * Normalizes a lone {@code "PASS"} or {@code "."} in {@link #m_filter} to an empty list (setting
+   * {@link #m_filtersApplied} for {@code "."}), exactly as the constructor does. Assumes {@link #checkFilters} has
+   * already validated {@link #m_filter}. Idempotent: a no-op once {@link #m_filter} no longer has exactly one element.
+   */
+  private void normalizeFilters() {
+    if (m_filter.size() == 1) {
+      if (m_filter.get(0).equals("PASS")) { // a user is likely to pass "PASS" instead of an empty list or null
+        sf_logger.warn("FILTER is PASS, but should have been passed as null. Converting to null");
+        m_filter = new ArrayList<>();
+      } else if (m_filter.get(0).equals(".")) { // "." is the missing value: filters were not applied (FilterStatus.NONE)
+        m_filtersApplied = false;
+        m_filter = new ArrayList<>();
+      }
+    }
+  }
+
+  /**
    * Re-validates this position's current field values, throwing {@link VcfFormatException} if any are no longer valid.
+   * As a side effect (matching the constructor), normalizes a lone {@code "PASS"} or {@code "."} FILTER value left by a
+   * mutation so that {@link #getFilterStatus()} continues to report correctly.
    * <p>
    * The constructors validate their arguments, but {@link #setChromosome}, {@link #setRef}, {@link #setPosition}, and
    * the mutable lists returned by {@link #getIds}, {@link #getAltBases}, {@link #getFilters}, {@link #getFormat}, and
@@ -250,6 +263,7 @@ public class VcfPosition {
     checkIds(m_ids);
     checkAltBases(m_altBases);
     checkFilters(m_filter);
+    normalizeFilters();
     checkInfoEntries(info().entries());
     checkFormat(m_format);
   }
