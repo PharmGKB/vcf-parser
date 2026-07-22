@@ -233,6 +233,9 @@ public class VcfMetadata {
    *   <li>{@link #getSamples}</li>
    * </ul>
    * However, contains any in {@link #getAssemblies} and {@link #getPedigreeDatabases}.
+   * <p>
+   * This is the backing, mutable multimap. Unlike {@link #addAssembly} and {@link #addPedigreeDatabase}, mutations
+   * made directly through it do not run the line-terminator check.
    */
   public ListMultimap<String, String> getRawProperties() {
     return m_properties;

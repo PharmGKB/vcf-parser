@@ -332,9 +332,9 @@ public class VcfWriter implements Closeable {
 
   private void printLine(Object line) {
     String string = line.toString();
-    if (string.contains("\n")) {
+    if (string.contains("\n") || string.contains("\r")) {
       throw new RuntimeException("Something went wrong writing line #" + m_lineNumber + ": [[[" + string +
-          "]]] contains more than one line");
+          "]]] contains a line terminator");
     }
     // always terminate with LF (not the platform separator from println) so output is deterministic across platforms
     m_writer.print(string);

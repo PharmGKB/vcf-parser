@@ -142,6 +142,10 @@ public class VcfSample {
     return properties().keySet();
   }
 
+  /**
+   * @return The backing, mutable property entries. Unlike {@link #putProperty}, mutating an entry's value directly
+   * (e.g. via {@link Map.Entry#setValue}) does not run the line-terminator check.
+   */
   public Set<Map.Entry<String, String>> propertyEntrySet() {
     return properties().entrySet();
   }

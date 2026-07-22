@@ -52,6 +52,10 @@ public class BaseMetadata {
     return map;
   }
 
+  /**
+   * @return The backing, mutable properties map. Unlike {@link #putPropertyRaw} and {@link #putAndQuoteProperty},
+   * mutations made directly through this map do not run {@link VcfUtils#checkNoLineTerminator}.
+   */
   public Map<String, String> getPropertiesRaw() {
     return m_properties;
   }

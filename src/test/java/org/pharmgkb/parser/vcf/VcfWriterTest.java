@@ -19,6 +19,7 @@ import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -182,6 +183,18 @@ public class VcfWriterTest {
     sample.putProperty("DP", "not-a-number"); // Type=Integer declared, but the value doesn't parse as one
     writer.writeLine(metadata, position, Collections.singletonList(sample));
     assertTrue(sw.toString().contains("\tDP\tnot-a-number"));
+  }
+
+  @Test
+  public void testWriteHeaderRejectsLoneCarriageReturnInjectedThroughRawView() throws Exception {
+    // getPropertiesRaw() bypasses checkNoLineTerminator (see its javadoc); printLine previously only checked for
+    // "\n", so a lone "\r" injected this way would silently corrupt the output instead of failing loudly
+    InfoMetadata info = new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null);
+    info.getPropertiesRaw().put("Description", "bad\rvalue");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    assertThrows(RuntimeException.class, () -> writer.writeHeader(metadata));
   }
 
 }
