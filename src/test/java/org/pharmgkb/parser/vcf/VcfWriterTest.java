@@ -9,6 +9,8 @@ import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import org.junit.jupiter.api.Test;
+import org.pharmgkb.parser.vcf.model.FormatMetadata;
+import org.pharmgkb.parser.vcf.model.FormatType;
 import org.pharmgkb.parser.vcf.model.InfoMetadata;
 import org.pharmgkb.parser.vcf.model.InfoType;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
@@ -149,6 +151,37 @@ public class VcfWriterTest {
     // sample has fewer properties than FORMAT: this previously threw NoSuchElementException
     writer.writeLine(metadata, position, Collections.singletonList(sample));
     assertTrue(sw.toString().contains("\tGT:DP\t0/1:."));
+  }
+
+  @Test
+  public void testWriteInfoValueNotMatchingDeclaredTypeWarnsInsteadOfThrowing() throws Exception {
+    // VcfUtils.convertProperty/convertElement only ever throw VcfFormatException for a bad value, never
+    // IllegalArgumentException; addInfoOrDot's "just test" conversion caught IllegalArgumentException, so this
+    // previously propagated out of writeLine uncaught instead of just logging a warning
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    InfoMetadata info = new InfoMetadata("AN", "d", InfoType.Integer, "1", null, null);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+    position.getInfo().put("AN", "not-a-number"); // Type=Integer declared, but the value doesn't parse as one
+    writer.writeLine(metadata, position, Collections.emptyList());
+    assertTrue(sw.toString().contains("AN=not-a-number"));
+  }
+
+  @Test
+  public void testWriteSamplePropertyNotMatchingDeclaredTypeWarnsInsteadOfThrowing() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    FormatMetadata format = new FormatMetadata("DP", "d", "1", FormatType.Integer);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(format).build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+    position.getFormat().add("DP");
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    sample.putProperty("DP", "not-a-number"); // Type=Integer declared, but the value doesn't parse as one
+    writer.writeLine(metadata, position, Collections.singletonList(sample));
+    assertTrue(sw.toString().contains("\tDP\tnot-a-number"));
   }
 
 }

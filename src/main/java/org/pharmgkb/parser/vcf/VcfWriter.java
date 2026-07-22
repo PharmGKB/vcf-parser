@@ -172,7 +172,7 @@ public class VcfWriter implements Closeable {
         if (number != null && number == 1 && format.getType() != null) {
           try {
             VcfUtils.convertProperty(format.getType(), value);
-          } catch (IllegalArgumentException e) {
+          } catch (VcfFormatException e) {
             sf_logger.warn("Property {} for sample #{} is not of type {}" +
                 " (on line {})", key, sampleIndex, format.getType(), m_lineNumber);
           }
@@ -221,7 +221,7 @@ public class VcfWriter implements Closeable {
           if (number != null && number == 1 && info.getType() != null) {
             try {
               VcfUtils.convertProperty(info.getType(), value); // just test
-            } catch (IllegalArgumentException e) {
+            } catch (VcfFormatException e) {
               sf_logger.warn("Property {} is not of type {} (on line {})", key, info.getType(), m_lineNumber);
             }
           }
