@@ -112,7 +112,8 @@ public class VcfParserTest {
 
 
   @Test
-  void testHasComment() throws IOException {
+  void testCommentAfterHeaderRejected() throws IOException {
+    // VCF has no comment syntax; a "#"-prefixed line after the column header must be rejected, not silently skipped
     try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/has_comment.vcf"));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
@@ -127,7 +128,7 @@ public class VcfParserTest {
                assertTrue(position.getInfo().isEmpty());
              })
              .build()) {
-      parser.parse();
+      assertThrows(VcfFormatException.class, parser::parse);
     }
   }
 

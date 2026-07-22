@@ -175,7 +175,10 @@ public class VcfParser implements Closeable {
     }
     m_lineNumber++;
     if (line.startsWith("#")) {
-      return true;
+      // the VCF spec has no comment syntax: "#" is significant only for "##" metadata lines and the single column
+      // header line, both of which are only valid before the first data line (and are already consumed by then)
+      throw new VcfFormatException("Unexpected line starting with '#' after the column header; VCF has no comment "
+          + "syntax", m_lineNumber);
     }
 
     try {
@@ -435,6 +438,13 @@ public class VcfParser implements Closeable {
 
     /**
      * Provides the {@link Path} to the VCF file to parse.
+     * <p>
+     * This reads the file as plain, uncompressed text; it does not accept a compressed VCF (e.g. {@code .vcf.gz}) and
+     * does not attempt to decompress one. This is deliberate: {@link java.util.zip.GZIPInputStream} cannot reliably read
+     * BGZF (block gzip), the format most bioinformatics tools use for compressed VCF, since a BGZF stream is a sequence
+     * of independent gzip blocks with trailing extra data that plain {@code GZIPInputStream} does not expect and can
+     * mishandle. To read a compressed VCF, decompress it with a library appropriate to how it was compressed (BGZF vs.
+     * plain gzip) and pass the result to {@link #fromReader}.
      */
     public Builder fromFile(Path dataFile) {
       Preconditions.checkNotNull(dataFile);
