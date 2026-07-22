@@ -55,7 +55,7 @@ project.version = getVersionName()
 ext {
   baseName = 'vcf-parser'
   moduleName = 'org.pharmgkb.vcf-parser'
-  description = 'A strict streaming parser for VCF 4.1/4.2.'
+  description = 'A streaming parser for VCF 4.1/4.2.'
   url = 'https://github.com/PharmGKB/vcf-parser.git'
   scm = 'scm:git@github.com:PharmGKB/vcf-parser.git'
   orgName = 'PharmGKB'
