@@ -22,7 +22,7 @@ import org.pharmgkb.parser.vcf.VcfFormatException;
  *   alt.getReservedComponent(0); // ReservedStructuralVariantCode.Insertion
  *   alt.getReservedComponent(1); // ReservedStructuralVariantCode.MobileElement
  *   alt.getReservedComponent(2); // null, because it's not a reserved code
- *   alt.getComponent(); // "LINE"
+ *   alt.getComponent(2); // "LINE"
  * }
  * </pre>
  *
