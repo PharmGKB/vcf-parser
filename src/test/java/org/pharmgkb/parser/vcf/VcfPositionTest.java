@@ -190,6 +190,28 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testValidateCatchesUnvalidatedMutation() {
+    VcfPosition position = new VcfPosition("chr1", 1, null, "C", new ArrayList<>(Arrays.asList("A", "T")), null, null,
+        null, null);
+    position.validate(); // valid as constructed
+
+    // setters and the mutable lists returned by accessors do not validate on their own...
+    position.setRef("X");
+    // ...but validate() catches the resulting invalid state
+    assertThrows(VcfFormatException.class, position::validate);
+
+    position.setRef("C");
+    position.validate(); // valid again
+
+    position.getAltBases().add("A"); // duplicate is fine for ALT (only "." exclusivity and pattern are checked)
+    position.validate();
+
+    position.getIds().add("rs1");
+    position.getIds().add("rs1"); // duplicate ID
+    assertThrows(VcfFormatException.class, position::validate);
+  }
+
+  @Test
   public void testTelomericPositions() {
     new VcfPosition("chr1", 0, null, "C", null, null, null, null, null); // telomere at start is valid
     assertThrows(VcfFormatException.class, () -> // a negative POS is invalid
@@ -235,6 +257,15 @@ public class VcfPositionTest {
     assertThrows(VcfFormatException.class, () -> {
       new VcfPosition("chr1", 1, null, "C", Collections.singletonList("X"), null, null, null, null);
     });
+  }
+
+  @Test
+  public void testAltMissingValueCombinedWithAlleleRejected() {
+    new VcfPosition("chr1", 1, null, "C", Collections.singletonList("."), null, null, null, null); // "." alone is fine
+    assertThrows(VcfFormatException.class, () -> // "." cannot be combined with a real allele
+        new VcfPosition("chr1", 1, null, "C", Arrays.asList("A", "."), null, null, null, null));
+    assertThrows(VcfFormatException.class, () ->
+        new VcfPosition("chr1", 1, null, "C", Arrays.asList(".", "A"), null, null, null, null));
   }
 
   @Test

@@ -76,75 +76,32 @@ public class VcfPosition {
 
     checkChromosome(chr);
     checkPosition(pos);
-
     if (ids != null) {
-      Set<String> seenIds = new HashSet<>();
-      for (String id : ids) {
-        if (sf_whitespace.matcher(id).find() || id.contains(";")) {
-          throw new VcfFormatException("ID \"" + id + "\" contains whitespace or semicolons");
-        }
-        if (!seenIds.add(id)) {
-          throw new VcfFormatException("Duplicate ID \"" + id + "\"");
-        }
-      }
+      checkIds(ids);
     }
-
     checkRef(ref);
-
     if (altBases != null) {
-      for (String base : altBases) {
-        if (!VcfUtils.ALT_BASE_PATTERN.matcher(base).matches()) {
-          throw new VcfFormatException("Invalid alternate base '" + base + "' (must match " + VcfUtils.ALT_BASE_PATTERN + ")");
-        }
-      }
+      checkAltBases(altBases);
     }
-
     if (filter != null) {
-      for (String f : filter) {
-        if (sf_whitespace.matcher(f).find()) {
-          throw new VcfFormatException("FILTER column entry \"" + f + "\" contains whitespace");
-        }
-        if (f.equals("0")) {
-          throw new VcfFormatException("FILTER column entry should not be 0");
-        }
-        if (f.equals("PASS")) {
-          if (filter.size() == 1) { // a user is likely to pass "PASS" instead of an empty list or null
-            sf_logger.warn("FILTER is PASS, but should have been passed as null. Converting to null");
-            filter = null;
-            break; // unnecessary, but gets rid of the warning
-          } else { // but this is illegal per VCF spec
-            throw new VcfFormatException("FILTER contains PASS along with other filters!");
-          }
-        }
-        if (f.equals(".")) {
-          if (filter.size() == 1) { // "." is the missing value: filters were not applied (FilterStatus.NONE)
-            m_filtersApplied = false;
-            filter = null;
-            break;
-          } else { // "." must not be combined with actual filter codes
-            throw new VcfFormatException("FILTER contains '.' (missing value) along with other filters!");
-          }
-        }
-      }
+      checkFilters(filter);
     }
-
     if (info != null) {
-      for (Map.Entry<String, String> entry : info.entries()) {
-        if (sf_whitespace.matcher(entry.getKey()).find() || sf_whitespace.matcher(entry.getValue()).find()) {
-          throw new VcfFormatException("INFO column entry \"" + entry.getKey() + "=" + entry.getValue() +
-              "\" contains whitespace");
-        }
-      }
+      checkInfoEntries(info.entries());
+    }
+    if (format != null) {
+      checkFormat(format);
     }
 
-    if (format != null) {
-      for (String f : format) {
-        if (!VcfUtils.FORMAT_PATTERN.matcher(f).matches() || f.contains(":")) {
-          throw new VcfFormatException("FORMAT ID does not match VCF spec");
-        }
-      }
-      if (format.indexOf("GT") > 0) {
-        throw new VcfFormatException("FORMAT GT must be the first sub-field when present");
+    // normalize a lone "PASS" or "." FILTER value to null (only meaningful at construction time; see checkFilters for
+    // the validity checks that apply both here and to later mutation via validate())
+    if (filter != null && filter.size() == 1) {
+      if (filter.get(0).equals("PASS")) { // a user is likely to pass "PASS" instead of an empty list or null
+        sf_logger.warn("FILTER is PASS, but should have been passed as null. Converting to null");
+        filter = null;
+      } else if (filter.get(0).equals(".")) { // "." is the missing value: filters were not applied (FilterStatus.NONE)
+        m_filtersApplied = false;
+        filter = null;
       }
     }
 
@@ -210,6 +167,91 @@ public class VcfPosition {
       throw new VcfFormatException("Invalid reference base '" + ref +
           "' (must match " + VcfUtils.REF_BASE_PATTERN + ")");
     }
+  }
+
+  private static void checkIds(List<String> ids) {
+    Set<String> seenIds = new HashSet<>();
+    for (String id : ids) {
+      if (sf_whitespace.matcher(id).find() || id.contains(";")) {
+        throw new VcfFormatException("ID \"" + id + "\" contains whitespace or semicolons");
+      }
+      if (!seenIds.add(id)) {
+        throw new VcfFormatException("Duplicate ID \"" + id + "\"");
+      }
+    }
+  }
+
+  private static void checkAltBases(List<String> altBases) {
+    for (String base : altBases) {
+      if (!VcfUtils.ALT_BASE_PATTERN.matcher(base).matches()) {
+        throw new VcfFormatException("Invalid alternate base '" + base + "' (must match " + VcfUtils.ALT_BASE_PATTERN + ")");
+      }
+    }
+    // "." is the missing value, representing "no alternate allele"; it cannot be combined with a real allele
+    if (altBases.size() > 1 && altBases.contains(".")) {
+      throw new VcfFormatException("ALT contains '.' (missing value) along with other alleles");
+    }
+  }
+
+  /**
+   * Checks the given FILTER values for validity. This does not perform the construction-time normalization of a lone
+   * {@code "PASS"} or {@code "."} value (see the constructor); those are legal single-element lists on their own.
+   */
+  private static void checkFilters(List<String> filters) {
+    for (String f : filters) {
+      if (sf_whitespace.matcher(f).find()) {
+        throw new VcfFormatException("FILTER column entry \"" + f + "\" contains whitespace");
+      }
+      if (f.equals("0")) {
+        throw new VcfFormatException("FILTER column entry should not be 0");
+      }
+      if (f.equals("PASS") && filters.size() > 1) {
+        throw new VcfFormatException("FILTER contains PASS along with other filters!");
+      }
+      if (f.equals(".") && filters.size() > 1) {
+        throw new VcfFormatException("FILTER contains '.' (missing value) along with other filters!");
+      }
+    }
+  }
+
+  private static void checkInfoEntries(Iterable<Map.Entry<String, String>> entries) {
+    for (Map.Entry<String, String> entry : entries) {
+      if (sf_whitespace.matcher(entry.getKey()).find() || sf_whitespace.matcher(entry.getValue()).find()) {
+        throw new VcfFormatException("INFO column entry \"" + entry.getKey() + "=" + entry.getValue() +
+            "\" contains whitespace");
+      }
+    }
+  }
+
+  private static void checkFormat(List<String> format) {
+    for (String f : format) {
+      if (!VcfUtils.FORMAT_PATTERN.matcher(f).matches() || f.contains(":")) {
+        throw new VcfFormatException("FORMAT ID does not match VCF spec");
+      }
+    }
+    if (format.indexOf("GT") > 0) {
+      throw new VcfFormatException("FORMAT GT must be the first sub-field when present");
+    }
+  }
+
+  /**
+   * Re-validates this position's current field values, throwing {@link VcfFormatException} if any are no longer valid.
+   * <p>
+   * The constructors validate their arguments, but {@link #setChromosome}, {@link #setRef}, {@link #setPosition}, and
+   * the mutable lists returned by {@link #getIds}, {@link #getAltBases}, {@link #getFilters}, {@link #getFormat}, and
+   * {@link #getInfo()} do <em>not</em> validate their input, to support transformation pipelines (e.g.
+   * {@link org.pharmgkb.parser.vcf.VcfTransformation}) that mutate a position in place. Call this method after such
+   * mutations if you need to confirm the position is still valid.
+   */
+  public void validate() {
+    checkChromosome(m_chromosome);
+    checkPosition(m_position);
+    checkRef(m_refBases);
+    checkIds(m_ids);
+    checkAltBases(m_altBases);
+    checkFilters(m_filter);
+    checkInfoEntries(info().entries());
+    checkFormat(m_format);
   }
 
   /**
@@ -365,12 +407,7 @@ public class VcfPosition {
             }
           }
         }
-        for (Map.Entry<String, String> entry : info.entries()) {
-          if (sf_whitespace.matcher(entry.getKey()).find() || sf_whitespace.matcher(entry.getValue()).find()) {
-            throw new VcfFormatException("INFO column entry \"" + entry.getKey() + "=" + entry.getValue() +
-                "\" contains whitespace");
-          }
-        }
+        checkInfoEntries(info.entries());
       }
       m_info = info;
       m_rawInfo = null;
@@ -406,7 +443,7 @@ public class VcfPosition {
    * <p>
    * For example:
    * <pre>{@code
-   *   BigDecimal bq = vcfPosition.getInfoConverted(ReservedInfoProperty.BaseQuality);
+   *   BigDecimal bq = vcfPosition.getInfo(ReservedInfoProperty.BaseQuality);
    * }
    * </pre>
    *
