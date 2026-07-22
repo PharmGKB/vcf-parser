@@ -5,6 +5,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
+import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,7 +58,12 @@ public class ContigMetadata extends IdMetadata {
 
   @SuppressWarnings("ConstantConditions")
   public long getLength() {
-    return Long.parseLong(getPropertyRaw(LENGTH));
+    String length = getPropertyRaw(LENGTH);
+    try {
+      return Long.parseLong(length);
+    } catch (NumberFormatException e) {
+      throw new VcfFormatException("Contig " + getId() + " length '" + length + "' is not a number", e);
+    }
   }
 
   /**

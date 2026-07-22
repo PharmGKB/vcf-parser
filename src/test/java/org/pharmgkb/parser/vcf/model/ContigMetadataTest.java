@@ -3,10 +3,12 @@ package org.pharmgkb.parser.vcf.model;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.pharmgkb.parser.vcf.VcfFormatException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * Tests {@link ContigMetadata}.
@@ -70,6 +72,28 @@ public class ContigMetadataTest {
     map.put(ContigMetadata.URL, "url");
     ContigMetadata contig = new ContigMetadata(map);
     assertEquals("url", contig.getUrl());
+  }
+
+  @Test
+  public void testGetLengthMissingThrowsVcfFormatException() {
+    // length is not required by the spec (init() only warns for it), but getLength() previously let a raw,
+    // confusing NumberFormatException("Cannot parse null string") leak out instead of VcfFormatException, unlike
+    // every other typed getter in the codebase (getQuality, convertProperty, parseAlleleIndex, etc.)
+    Map<String, String> map = new HashMap<>();
+    map.put(ContigMetadata.ID, "id");
+    map.put(ContigMetadata.ASSEMBLY, "assembly");
+    ContigMetadata contig = new ContigMetadata(map);
+    assertThrows(VcfFormatException.class, contig::getLength);
+  }
+
+  @Test
+  public void testGetLengthNotANumberThrowsVcfFormatException() {
+    Map<String, String> map = new HashMap<>();
+    map.put(ContigMetadata.ID, "id");
+    map.put(ContigMetadata.ASSEMBLY, "assembly");
+    map.put(ContigMetadata.LENGTH, "not-a-number");
+    ContigMetadata contig = new ContigMetadata(map);
+    assertThrows(VcfFormatException.class, contig::getLength);
   }
 
 }
