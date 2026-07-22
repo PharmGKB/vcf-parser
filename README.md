@@ -41,7 +41,8 @@ invalid:
 - A sample with more sub-fields than its `FORMAT` declares (trailing sub-fields may be dropped, but not added).
 - An invalid genotype passed to `VcfGenotype`, a malformed or out-of-range `GT` allele index looked up through
   `MemoryMappedVcfDataStore`, or a failed conversion when a typed value is requested.
-- A metadata property value set through `BaseMetadata`'s mutators (e.g. a `Description`) containing a line terminator.
+- A key or value set through `BaseMetadata`'s, `VcfSample`'s, or `VcfMetadata`'s mutators (e.g. a `Description`, a
+  sample's `GT` value, or an `##assembly` line) containing a line terminator.
 
 These checks run when a `VcfPosition` is constructed (including by the parser). Its setters and the mutable lists
 returned by its accessors (e.g. `getAltBases()`, `getFilters()`) do *not* re-run them, to support transformation
