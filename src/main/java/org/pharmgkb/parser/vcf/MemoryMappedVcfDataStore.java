@@ -1,5 +1,6 @@
 package org.pharmgkb.parser.vcf;
 
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -13,6 +14,8 @@ import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -20,6 +23,8 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
  * @author Douglas Myers-Turnbull
  */
 public class MemoryMappedVcfDataStore {
+
+  private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private @Nullable VcfMetadata m_metadata;
   private final Map<String, VcfPosition> m_idToPosition = new HashMap<>();
@@ -155,11 +160,18 @@ public class MemoryMappedVcfDataStore {
       return null;
     }
     boolean isPhased = genotype.contains("|");
-    String[] bases = genotype.split("[\\|/]");
+    // limit -1 preserves an empty allele (e.g. a trailing '/', which should have been '.'), handled below rather
+    // than silently dropped -- dropping it would silently change the call's ploidy. VCF does not allow zero-length
+    // fields. See EMPTY_FIELD_HANDLING.md.
+    String[] bases = genotype.split("[\\|/]", -1);
     List<String> alleles = new ArrayList<>(bases.length);
     boolean allMissing = true;
     for (String base : bases) {
-      if (base.equals(".")) {
+      if (base.isEmpty()) {
+        sf_logger.warn("GT \"{}\" contains an empty allele (VCF does not allow zero-length fields); treating it " +
+            "as the missing value '.'", genotype);
+      }
+      if (base.isEmpty() || base.equals(".")) {
         // a missing allele (".") is kept as-is rather than parsed as an index
         alleles.add(".");
       } else {

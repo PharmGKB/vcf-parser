@@ -93,4 +93,22 @@ class VcfSampleTest {
     map.put("DP", "1:2");
     assertThrows(VcfFormatException.class, () -> new VcfSample(map));
   }
+
+  @Test
+  void testGetPropertyReservedListTypeWithEmptyEntries() {
+    // HQ is a list-typed reserved FORMAT property (Long); getProperty(ReservedFormatProperty) previously routed
+    // through VcfUtils.convertProperty's plain value.split(","), which silently dropped a trailing empty entry and
+    // threw an unhelpful generic exception for an interior one, unlike the rest of the empty-field handling
+    LinkedHashMap<String, String> trailing = new LinkedHashMap<>();
+    trailing.put("HQ", "1,2,");
+    VcfSample trailingSample = new VcfSample(trailing);
+    assertEquals(Arrays.asList(1L, 2L, null),
+        trailingSample.getProperty(ReservedFormatProperty.HaplotypeQualities));
+
+    LinkedHashMap<String, String> interior = new LinkedHashMap<>();
+    interior.put("HQ", "1,,2");
+    VcfSample interiorSample = new VcfSample(interior);
+    assertEquals(Arrays.asList(1L, null, 2L),
+        interiorSample.getProperty(ReservedFormatProperty.HaplotypeQualities));
+  }
 }

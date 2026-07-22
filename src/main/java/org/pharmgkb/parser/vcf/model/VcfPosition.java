@@ -244,6 +244,9 @@ public class VcfPosition {
   }
 
   private static void checkFormat(List<String> format) {
+    // duplicate keys are explicitly disallowed by the VCF spec (VCFv4.3+ states this outright; empty keys are
+    // excluded from this check since they're already handled, and warned about, separately below)
+    Set<String> seenKeys = new HashSet<>();
     for (String f : format) {
       // an empty sub-field name is kept as-is rather than dropped: every sample's colon-split values are matched to
       // FORMAT keys by index, and dropping this key would misalign every sample's values with the wrong key. See
@@ -255,6 +258,9 @@ public class VcfPosition {
       }
       if (!VcfUtils.FORMAT_PATTERN.matcher(f).matches() || f.contains(":")) {
         throw new VcfFormatException("FORMAT ID does not match VCF spec");
+      }
+      if (!seenKeys.add(f)) {
+        throw new VcfFormatException("Duplicate FORMAT key \"" + f + "\"");
       }
     }
     if (format.indexOf("GT") > 0) {

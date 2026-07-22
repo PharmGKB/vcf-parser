@@ -1,5 +1,6 @@
 package org.pharmgkb.parser.vcf;
 
+import java.lang.invoke.MethodHandles;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -13,6 +14,7 @@ import org.pharmgkb.parser.vcf.model.FormatType;
 import org.pharmgkb.parser.vcf.model.InfoType;
 import org.pharmgkb.parser.vcf.model.ReservedProperty;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -20,6 +22,8 @@ import org.slf4j.Logger;
  * @author Douglas Myers-Turnbull
  */
 public class VcfUtils {
+
+  private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private static final String sf_simpleAltPattern =
       "(?:"                   + // wrap the whole expression
@@ -243,8 +247,16 @@ public class VcfUtils {
       }
     }
     List<Object> list = new ArrayList<>();
-    for (String part : value.split(",")) {
-      list.add(convertElement(clas, part));
+    // limit -1 preserves an empty entry (e.g. a trailing ','), handled below rather than silently dropped; VCF does
+    // not allow zero-length fields. See EMPTY_FIELD_HANDLING.md.
+    for (String part : value.split(",", -1)) {
+      if (part.isEmpty()) {
+        sf_logger.warn("List value \"{}\" contains an empty entry (VCF does not allow zero-length fields); " +
+            "treating it as the missing value '.'", value);
+        list.add(null);
+      } else {
+        list.add(convertElement(clas, part));
+      }
     }
     try {
       return (T) list;

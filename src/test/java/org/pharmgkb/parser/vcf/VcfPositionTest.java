@@ -254,6 +254,22 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testDuplicateFormatKeyRejected() {
+    // VCFv4.3+ states outright that duplicate FORMAT keys are not allowed
+    assertThrows(VcfFormatException.class, () -> new VcfPosition("chr", 1, null, "C", null, null, null, null,
+        new ArrayList<>(Arrays.asList("GT", "DP", "DP"))));
+  }
+
+  @Test
+  public void testMultipleEmptyFormatKeysNotTreatedAsDuplicates() {
+    // an empty FORMAT key is already handled (kept as-is, warned about) separately; two of them are not a "duplicate"
+    // in the sense the spec means
+    VcfPosition position = new VcfPosition("chr", 1, null, "C", null, null, null, null,
+        new ArrayList<>(Arrays.asList("GT", "", "")));
+    assertEquals(Arrays.asList("GT", "", ""), position.getFormat());
+  }
+
+  @Test
   public void testBadChromosome() {
     assertThrows(VcfFormatException.class, () -> {
       new VcfPosition("chr 1", 1, null, "C", null, null, null, null, null); // whitespace is not allowed

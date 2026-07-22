@@ -63,17 +63,39 @@ more useful reading of what's normally just a stray delimiter.
 | INFO value | `AD=1,2,` | Silently substitutes `.` (`AD=1,2,.`) | Warn + substitute `.` | `AD=1,2,.` |
 | INFO value | `AD=` | Silently substitutes `.` (`AD=.`) | Warn + substitute `.` | `AD=.` |
 | INFO flag (no `=`) | `DB;DP=10` | Fine, as expected | Fine, unaffected | `DB;DP=10` (unchanged) |
+| GT allele (`:`-separated by `/` or `\|`) | `0/` | Not tested against bcftools | Warn + substitute `.` | `0/.` |
+| Reserved list-typed FORMAT value (e.g. `HQ`) | `1,2,` | Not tested against bcftools | Warn + substitute `.` (`null` in the returned list) | n/a (read-side conversion only) |
 
 The INFO flag row is included as a contrast, not an empty-field case: a flag key with no `=` sign (e.g. `DB`) is
 stored internally with an empty-string sentinel value, the same representation used for the "was this value actually
 empty" cases above. `vcf-parser` distinguishes them at parse time (before the sentinel is created), by checking
 whether an `=` sign was present at all — a flag's absent value is never touched by this normalization.
 
+The GT row follows the same position-dependent substitution as a sample value, not the ID/FILTER/ALT drop strategy:
+dropping an empty allele (e.g. turning `0/` into `0`) would silently change the call's ploidy from diploid to
+haploid, which is a materially different, incorrect result — not just a cosmetic list-length difference. Unlike the
+other rows in this table, this and the reserved-list-value row were not verified against bcftools; the "warn and
+substitute" treatment was chosen for consistency with the rest of this table rather than from observed reference
+behavior.
+
+## A related, but distinct, fix: duplicate FORMAT keys
+
+`VcfPosition.checkFormat` also rejects a FORMAT declaration with a duplicate key (e.g. `GT:DP:DP`), throwing rather
+than warning. This is not an empty-field case — VCFv4.3 and VCFv4.4 both state outright that "duplicate keys are not
+allowed" for FORMAT, and without this check a duplicate key caused silent data loss (`VcfSample.getProperty` returns
+only the first occurrence's value, discarding the rest) rather than a merely-malformed-looking value. An empty
+FORMAT key (see above) is excluded from this duplicate check, since it's already handled, and warned about,
+separately — two empty keys are not "duplicates" in the sense the spec means.
+
 ## Where this is implemented
 
 - `VcfUtils.dropEmptyEntries` / `VcfUtils.fillEmptyEntriesWithDot` — the two shared normalization strategies.
 - `VcfPosition.checkIds` / `checkFilters` / `checkAltBases` — drop empty entries (ID, FILTER, ALT).
-- `VcfPosition.checkFormat` — warns and keeps an empty FORMAT key as-is.
+- `VcfPosition.checkFormat` — warns and keeps an empty FORMAT key as-is; separately, throws on a duplicate
+  (non-empty) FORMAT key.
 - `VcfPosition.info()` — warns and drops an empty top-level entry or empty key; warns and substitutes `.` for an
   empty value.
 - `VcfParser`'s per-sample value parsing — warns and substitutes `.` for an empty sample value.
+- `VcfUtils.convertProperty` — warns and substitutes `.` (`null`) for an empty entry in a reserved list-typed
+  property's comma-separated value.
+- `MemoryMappedVcfDataStore.doGetGenotype` — warns and substitutes `.` for an empty GT allele.

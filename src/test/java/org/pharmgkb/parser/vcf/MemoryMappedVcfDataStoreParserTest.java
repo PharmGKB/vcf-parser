@@ -101,6 +101,28 @@ public class MemoryMappedVcfDataStoreParserTest {
   }
 
   @Test
+  public void testGenotypeTrailingSeparatorTreatedAsMissingAllele() throws IOException {
+    // a trailing '/' (e.g. "0/") is a zero-length allele where '.' should have been used; this must not silently
+    // change the call's ploidy (previously: genotype.split("[|/]") dropped the trailing empty, turning a malformed
+    // diploid "0/" into a haploid "0")
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n" +
+        "chr1\t1\trsx\tA\tT\t.\tPASS\t.\tGT\t0/\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf))) {
+      MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+      new VcfParser.Builder()
+          .fromReader(reader)
+          .parseWith(lineParser)
+          .build().parse();
+      MemoryMappedVcfDataStore.Genotype genotype = lineParser.getDataStore().getGenotypeForId("rsx", "sample1");
+      assertNotNull(genotype);
+      assertEquals(2, genotype.getAlleles().size());
+      assertEquals("A", genotype.getAlleles().get(0));
+      assertEquals(".", genotype.getAlleles().get(1));
+    }
+  }
+
+  @Test
   public void testGenotypeAllelesAreImmutable() {
     List<String> alleles = new ArrayList<>(Arrays.asList("A", "T"));
     MemoryMappedVcfDataStore.Genotype genotype = new MemoryMappedVcfDataStore.Genotype(alleles, true);
