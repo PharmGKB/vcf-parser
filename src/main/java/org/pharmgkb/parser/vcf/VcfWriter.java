@@ -90,7 +90,9 @@ public class VcfWriter implements Closeable {
     if (position.getRef().isEmpty()) {
       sf_logger.warn("No REF bases, but the column is required (on line {})", m_lineNumber);
     }
-    addListOrElse(Arrays.asList(position.getRef()), ",", ".", sb);
+    // must use addStringOrElse, not addListOrElse(Arrays.asList(...), ...): a single-element list wrapping an empty
+    // string is never "empty" as a list, so addListOrElse would never fall back to the missing value here
+    addStringOrElse(position.getRef(), ".", sb);
     addListOrElse(position.getAltBases(), ",", ".", sb);
     addStringOrElse(position.getQuality(), ".", sb);
     if (position.getFilterStatus() == VcfPosition.FilterStatus.NONE) {

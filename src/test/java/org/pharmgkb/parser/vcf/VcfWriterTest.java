@@ -26,6 +26,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class VcfWriterTest {
 
   @Test
+  public void testWriteLineWithEmptyRef() throws Exception {
+    // REF cannot be empty through the constructor, but setRef() does not validate; the writer must still emit "."
+    // rather than a blank field (addListOrElse(Arrays.asList(emptyString), ...) never sees an "empty list", since a
+    // single-element list wrapping an empty string is not itself empty)
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+    position.setRef("");
+    writer.writeLine(metadata, position, Collections.emptyList());
+    String[] fields = sw.toString().split("\t");
+    assertEquals(".", fields[3]); // REF column
+  }
+
+  @Test
   public void testNoSamples() throws Exception {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
