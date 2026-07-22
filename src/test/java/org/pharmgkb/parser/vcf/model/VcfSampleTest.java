@@ -138,14 +138,33 @@ class VcfSampleTest {
 
   @Test
   void testGenotypeLikelihoodsOfHeterogenousPloidyIsSingleValued() {
-    // GLE was previously declared isList=true, which would split its value on internal commas; it's one opaque
-    // String, not a list of independent values. (The spec's own example value, e.g. "0:-75.22,1:-223.42,...", uses
-    // colons as part of its own encoding, which VcfSample's structural-delimiter check now rejects at construction
-    // time -- a pre-existing tension between that check and this one, rarely-used reserved key; not addressed here.)
-    String gle = "some,comma,containing,value";
+    // GLE was previously declared isList=true, which would split the spec's own example value on its internal
+    // commas; it's one opaque String, not a list of independent values
+    String gle = "0:-75.22,1:-223.42,0/0:-323.03,1/0:-99.29,1/1:-802.53";
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GLE", gle);
     VcfSample sample = new VcfSample(map);
     assertEquals(gle, sample.getProperty(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy));
+  }
+
+  @Test
+  void testGleValueIsExemptFromColonCheck() {
+    // GLE's own spec example (e.g. "0:-75.22,1:-223.42,...") uses colons internally as part of its own encoding; it
+    // is the one key exempted from the colon check on its value. The key itself is still checked, and every other
+    // key's value is unaffected.
+    String gle = "0:-75.22,1:-223.42,0/0:-323.03";
+    VcfSample viaMap = new VcfSample(new LinkedHashMap<>());
+    viaMap.putProperty("GLE", gle);
+    assertEquals(gle, viaMap.getProperty("GLE"));
+    VcfSample viaConstructor = new VcfSample(Collections.singletonList("GLE"), Collections.singletonList(gle));
+    assertEquals(gle, viaConstructor.getProperty("GLE"));
+
+    // the exemption is specific to the key "GLE"; a colon in any other key's value is still rejected
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    assertThrows(VcfFormatException.class, () -> sample.putProperty("DP", gle));
+    // a colon in the key "GLE" itself (not its value) is still rejected
+    assertThrows(VcfFormatException.class, () -> sample.putProperty("GLE:bad", "value"));
+    // a tab in GLE's value is still rejected (tab always means a spurious sample column, regardless of key)
+    assertThrows(VcfFormatException.class, () -> sample.putProperty("GLE", "a\tb"));
   }
 }

@@ -60,13 +60,25 @@ public class VcfSample {
    * these (they were already split on to arrive at this key/value), but one set directly via {@link #putProperty} or
    * {@link #propertyEntrySet()} could; reject them so the writer's output remains re-parseable (a colon would add a
    * spurious FORMAT subfield, and a tab would add a spurious sample column).
+   * <p>
+   * {@link ReservedFormatProperty#GenotypeLikelihoodsOfHeterogenousPloidy GLE} (VCFv4.1/4.2's
+   * genotype-likelihoods-of-heterogeneous-ploidy key; removed from the spec in VCFv4.3+ and confirmed absent from
+   * both the VCFv4.3 and VCFv4.4 specs) is exempted from the colon check on its <em>value</em> only: the spec's own
+   * example for this key (e.g. {@code 0:-75.22,1:-223.42,0/0:-323.03,1/0:-99.29,1/1:-802.53}) is one opaque String
+   * that uses colons internally as part of its own genotype:likelihood encoding, not a delimiter between independent
+   * FORMAT sub-fields. There is no VCF version where a key literally named {@code GLE} should still be
+   * colon-rejected: either it means this VCFv4.1/4.2 encoding (which requires colons), or -- since {@code GLE} isn't
+   * reserved past VCFv4.2 -- it's just a made-up custom key, free to contain whatever its author wants, same as any
+   * other non-reserved key today. This exemption does not apply to the key itself (a colon in the key name is always
+   * rejected) or to any other key's value.
    */
   private static void checkNoStructuralDelimiter(String key, @Nullable String value) {
     VcfUtils.checkNoLineTerminator(key, value);
     if (key.contains(":") || key.contains("\t")) {
       throw new VcfFormatException("Sample property key \"" + key + "\" contains ':' or a tab");
     }
-    if (value != null && (value.contains(":") || value.contains("\t"))) {
+    boolean isGle = key.equals(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy.getId());
+    if (value != null && (value.contains("\t") || (!isGle && value.contains(":")))) {
       throw new VcfFormatException("Sample property value \"" + value + "\" for key \"" + key +
           "\" contains ':' or a tab");
     }

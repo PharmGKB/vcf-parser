@@ -45,7 +45,11 @@ invalid:
 - A key or value set through `BaseMetadata`'s, `VcfSample`'s, or `VcfMetadata`'s mutators (e.g. a `Description`, a
   sample's `GT` value, or an `##assembly` line) containing a line terminator.
 - A `VcfSample` key or value set through its constructors or `putProperty` containing a colon or tab, which would
-  otherwise add a spurious FORMAT sub-field or sample column when written back out.
+  otherwise add a spurious FORMAT sub-field or sample column when written back out. The one exception is a value for
+  the key `GLE` (VCFv4.1/4.2's genotype-likelihoods-of-heterogeneous-ploidy key, removed from the spec in VCFv4.3+):
+  its own spec example (e.g. `0:-75.22,1:-223.42,...`) is one opaque String that uses colons internally as part of
+  its own encoding, not a delimiter between independent sub-fields; a colon in the key `GLE` itself, or a tab in its
+  value, is still rejected.
 - `VcfWriter.writeLine` is given a number of samples that disagrees with the header's declared sample count, any
   FORMAT/sample data at all when the header declares no samples, an empty `FORMAT` when the header declares one or
   more samples, or an empty `REF` (which has no missing-value sentinel in the spec, unlike `ALT`/`ID`/`FILTER`): in
