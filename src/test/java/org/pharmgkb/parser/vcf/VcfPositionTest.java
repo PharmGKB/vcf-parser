@@ -114,9 +114,20 @@ public class VcfPositionTest {
   public void testGetInfoHomologySequence() {
     // HomologySequence must resolve the HOMSEQ key (it was previously misdefined as HOMLEN)
     assertEquals("HOMSEQ", ReservedInfoProperty.HomologySequence.getId());
+    // Number=. is genuinely multi-valued (per VCFv4.3's clarifying example for this family of keys), so this
+    // returns a List rather than a bare String
     VcfPosition p = newPosition();
     p.setRawInfo("HOMSEQ=ACGT");
-    assertEquals("ACGT", p.getInfo(ReservedInfoProperty.HomologySequence));
+    assertEquals(Collections.singletonList("ACGT"), p.getInfo(ReservedInfoProperty.HomologySequence));
+  }
+
+  @Test
+  public void testGetInfoStructuralVariantLengthIsMultiValued() {
+    // SVLEN was previously declared isList=false, but VCFv4.3 confirms with an example (SVLEN=-100,-110 for a
+    // deletion with two ALT alleles) that Number=. here means genuinely multi-valued, one per ALT allele
+    VcfPosition p = newPosition();
+    p.setRawInfo("SVLEN=-100,-110");
+    assertEquals(Arrays.asList(-100L, -110L), p.getInfo(ReservedInfoProperty.StructuralVariantLength));
   }
 
   private static VcfPosition newPosition() {

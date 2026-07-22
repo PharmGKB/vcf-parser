@@ -111,4 +111,18 @@ class VcfSampleTest {
     assertEquals(Arrays.asList(1L, null, 2L),
         interiorSample.getProperty(ReservedFormatProperty.HaplotypeQualities));
   }
+
+  @Test
+  void testStructuralVariantFormatPropertiesAreIntegerTyped() {
+    // NQ, HAP, and AHAP were previously declared with the wrong Type (Float/String); VCFv4.2's own ##FORMAT
+    // declarations for these keys all state Type=Integer
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("NQ", "30");
+    map.put("HAP", "1");
+    map.put("AHAP", "2");
+    VcfSample sample = new VcfSample(map);
+    assertEquals(Long.valueOf(30L), sample.getProperty(ReservedFormatProperty.PhredScoreForNovelty));
+    assertEquals(Long.valueOf(1L), sample.getProperty(ReservedFormatProperty.HaplotypeId));
+    assertEquals(Long.valueOf(2L), sample.getProperty(ReservedFormatProperty.AncestralHaplotypeId));
+  }
 }
