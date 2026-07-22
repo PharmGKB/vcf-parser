@@ -4,7 +4,7 @@
 [![codecov.io](https://codecov.io/github/PharmGKB/vcf-parser/coverage.svg?branch=main)](https://codecov.io/github/PharmGKB/vcf-parser?branch=main)
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/org.pharmgkb/vcf-parser/badge.svg)](https://maven-badges.herokuapp.com/maven-central/org.pharmgkb/vcf-parser)
 
-This is a streaming parser for [VCF](http://en.wikipedia.org/wiki/Variant_Call_Format) 4.1/4.2. It validates record
+This is a streaming parser for [VCF](http://en.wikipedia.org/wiki/Variant_Call_Format). It validates record
 structure strictly but is deliberately lenient about the quality of metadata declarations — see
 [Validation: strict vs. lenient](#validation-strict-vs-lenient) below.
 
@@ -13,6 +13,12 @@ The main parser class ([`VcfParser`](src/main/java/org/pharmgkb/parser/vcf/VcfPa
 Check out [`VcfParserTest.java`](src/test/java/org/pharmgkb/parser/vcf/VcfParserTest.java) for a quick and dirty view of it in action.
 
 [`MemoryMappedVcfLineParser`](src/main/java/org/pharmgkb/parser/vcf/MemoryMappedVcfLineParser.java) is an implementation of `VcfLineParser` that reads everything into memory.
+
+**VCF version support:** `##fileformat` accepts any `VCFv<major>.<minor>` at or above `4.0`; the parser does not
+hard-code a version ceiling. It was written against, and its reserved INFO/FORMAT/ALT/structural-variant definitions
+reflect, VCF 4.1/4.2. Later versions generally parse correctly too — an unrecognized reserved key or `Number` value is
+stored as a plain string rather than rejected — but version-specific features introduced after 4.2 (e.g.
+percent-encoding, local alleles) are not specially interpreted.
 
 
 ## Validation: strict vs. lenient
@@ -23,8 +29,8 @@ The parser draws a deliberate line between the **structure of a VCF record**, wh
 **Strict — throws `VcfFormatException`.** The parser rejects a file whose structure or mandatory record fields are
 invalid:
 
-- A missing, duplicate, or non-first `##fileformat`; a version below the `VCFv4.0` floor; or any line other than a `##`
-  metadata line before the `#CHROM` header.
+- A missing, duplicate, or non-first `##fileformat`; a version below the `VCFv4.0` floor; any line other than a `##`
+  metadata line before the `#CHROM` header; or a `#`-prefixed line after it (VCF has no comment syntax).
 - A missing `#CHROM` header, wrong fixed column names, a missing `FORMAT` column when samples are present, or duplicate
   sample names.
 - A data line with the wrong number of tab-separated columns.
@@ -33,11 +39,14 @@ invalid:
   it (`CHROM`, `ID`, `FILTER`, `INFO`); a duplicate identifier within a single `ID` field; a `FILTER` of `0` or `PASS`
   combined with other filters; or a `FORMAT` in which `GT` is present but not the first sub-field.
 - A sample with more sub-fields than its `FORMAT` declares (trailing sub-fields may be dropped, but not added).
-- An invalid genotype passed to `VcfGenotype`, or a failed conversion when a typed value is requested.
+- An invalid genotype passed to `VcfGenotype`, a malformed or out-of-range `GT` allele index looked up through
+  `MemoryMappedVcfDataStore`, or a failed conversion when a typed value is requested.
+- A metadata property value set through `BaseMetadata`'s mutators (e.g. a `Description`) containing a line terminator.
 
 These checks run when a `VcfPosition` is constructed (including by the parser). Its setters and the mutable lists
 returned by its accessors (e.g. `getAltBases()`, `getFilters()`) do *not* re-run them, to support transformation
-pipelines that mutate a position in place; call `VcfPosition.validate()` after such mutations to re-check validity.
+pipelines that mutate a position in place; call `VcfPosition.validate()` after such mutations to re-check validity —
+this also re-normalizes a lone `PASS` or `.` `FILTER` value left by such a mutation, matching construction.
 
 **Lenient — logs a warning and keeps parsing.** Malformed *metadata declarations* (`##INFO`, `##FORMAT`, `##contig`,
 `##FILTER`, `##ALT`, ...) warn rather than throw, and the declaration is still stored:
