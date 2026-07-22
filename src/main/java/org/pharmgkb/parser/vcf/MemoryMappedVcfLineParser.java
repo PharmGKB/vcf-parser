@@ -17,8 +17,8 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
  * <em>This implementation is memory-intensive and should only be used for short VCF files where repeated arbitrary
  * (random) access to VCF records is required.</em>
  * <p>
- * By default, an {@link java.lang.IllegalArgumentException} is thrown each time a duplicate ID or locus is found.
- * To change this behavior, see {@link Builder#setDuplicateLocusHandler} and {@link Builder#setDuplicateLocusHandler}.
+ * By default, a {@link VcfFormatException} is thrown each time a duplicate ID or locus is found.
+ * To change this behavior, see {@link Builder#setDuplicateIdHandler} and {@link Builder#setDuplicateLocusHandler}.
  *
  * @author Douglas Myers-Turnbull
  */
@@ -110,7 +110,7 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
   public enum DuplicateHandler {
 
     /**
-     * Return an {@link java.lang.IllegalArgumentException} when a duplicate is encountered.
+     * Throw a {@link VcfFormatException} when a duplicate is encountered.
      */
     FAIL,
 
