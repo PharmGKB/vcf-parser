@@ -15,9 +15,11 @@ public enum ReservedFormatProperty implements ReservedProperty {
   GenotypeLikelihoods("GL", "Genotype likelihoods comprised of comma separated floating point log10-scaled likelihoods"
       + " for all possible genotypes given the set of alleles defined in the REF and ALT fields.",
       BigDecimal.class, true),
+  // isList=false: the spec's own example (GLE=0:-75.22,1:-223.42,0/0:-323.03,...) is one opaque String that uses
+  // commas internally as part of its own genotype:likelihood encoding, not a delimited list of independent values
   GenotypeLikelihoodsOfHeterogenousPloidy("GLE",
       "genotype likelihoods of heterogeneous ploidy, used in presence of uncertain copy number.",
-      String.class, true),
+      String.class, false),
   PhredScaledGenotypeLikelihoods("PL", "the phred-scaled genotype likelihoods rounded to the closest integer " +
       "(and otherwise defined precisely as the GL field)", Long.class, true),
   GenotypePosteriorProbabilitiesPhredScaled("GP", "The phred-scaled genotype posterior probabilities (and otherwise defined " +
@@ -30,7 +32,9 @@ public enum ReservedFormatProperty implements ReservedProperty {
       "heterozygote (against all other members in the phase set).", Long.class, false),
   ExpectedAlleleCounts("EC", "List of expected alternate allele counts for each alternate allele in the same order " +
       "as listed in the ALT field (typically used in association analyses)", Long.class, true),
-  MappingQuality("MQ", "RMS mapping quality, similar to the version in the INFO field.", Long.class, true),
+  // isList=false: unlike GL/PL/GP/HQ/EC (explicitly described as comma-separated in the spec), MQ has no such
+  // qualifier -- a single value
+  MappingQuality("MQ", "RMS mapping quality, similar to the version in the INFO field.", Long.class, false),
 
   // structural variants
 

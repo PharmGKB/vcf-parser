@@ -125,4 +125,27 @@ class VcfSampleTest {
     assertEquals(Long.valueOf(1L), sample.getProperty(ReservedFormatProperty.HaplotypeId));
     assertEquals(Long.valueOf(2L), sample.getProperty(ReservedFormatProperty.AncestralHaplotypeId));
   }
+
+  @Test
+  void testMappingQualityIsSingleValued() {
+    // MQ was previously declared isList=true; the spec describes it as a single Integer, unlike GL/PL/GP/HQ/EC
+    // which are explicitly comma-separated
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("MQ", "45");
+    VcfSample sample = new VcfSample(map);
+    assertEquals(Long.valueOf(45L), sample.getProperty(ReservedFormatProperty.MappingQuality));
+  }
+
+  @Test
+  void testGenotypeLikelihoodsOfHeterogenousPloidyIsSingleValued() {
+    // GLE was previously declared isList=true, which would split its value on internal commas; it's one opaque
+    // String, not a list of independent values. (The spec's own example value, e.g. "0:-75.22,1:-223.42,...", uses
+    // colons as part of its own encoding, which VcfSample's structural-delimiter check now rejects at construction
+    // time -- a pre-existing tension between that check and this one, rarely-used reserved key; not addressed here.)
+    String gle = "some,comma,containing,value";
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GLE", gle);
+    VcfSample sample = new VcfSample(map);
+    assertEquals(gle, sample.getProperty(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy));
+  }
 }
