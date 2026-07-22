@@ -226,7 +226,7 @@ public class VcfParser implements Closeable {
 
       // ALT
       List<String> alt = null;
-      if (!data.get(4).isEmpty() && !data.get(4).equals(".")) {
+      if (!data.get(4).equals(".")) {
         alt = toList(COMMA, data.get(4));
       }
 
@@ -238,7 +238,7 @@ public class VcfParser implements Closeable {
 
       // FORMAT
       List<String> format = null;
-      if (data.size() >= 9 && data.get(8) != null) {
+      if (data.size() >= 9) {
         format = toList(COLON, data.get(8));
       }
 
