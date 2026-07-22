@@ -244,6 +244,25 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testWriteLineRejectsSampleDataWithoutFormat() throws Exception {
+    // header declares 1 sample, and one is provided, but position.getFormat() was never populated: without a
+    // FORMAT, addFormatConditionally/addSampleConditionally previously wrote nothing at all for these columns,
+    // silently producing a line with fewer columns than the header declares and discarding the sample's properties
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+    // position.getFormat() is left empty
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    sample.putProperty(ReservedFormatProperty.Genotype, "0/1");
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
+  }
+
+  @Test
   public void testWriteHeaderRejectsLoneCarriageReturnInjectedThroughRawView() throws Exception {
     // getPropertiesRaw() bypasses checkNoLineTerminator (see its javadoc); printLine previously only checked for
     // "\n", so a lone "\r" injected this way would silently corrupt the output instead of failing loudly

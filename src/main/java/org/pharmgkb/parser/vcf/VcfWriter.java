@@ -91,6 +91,12 @@ public class VcfWriter implements Closeable {
     } else if (samples.size() != numSamples) {
       throw new VcfFormatException("Position " + position.getChromosome() + ":" + position.getPosition() +
           " has " + samples.size() + " sample(s), but the header declares " + numSamples);
+    } else if (position.getFormat().isEmpty()) {
+      // without a FORMAT, addFormatConditionally/addSampleConditionally write nothing at all for these columns
+      // (not even a missing-value placeholder), silently producing a line with fewer columns than the header
+      // declares and discarding any sample data outright
+      throw new VcfFormatException("Position " + position.getChromosome() + ":" + position.getPosition() +
+          " has no FORMAT, but the header declares " + numSamples + " sample(s)");
     }
 
     StringBuilder sb = new StringBuilder();
