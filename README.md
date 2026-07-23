@@ -87,6 +87,11 @@ stored:
 - INFO, FILTER, FORMAT, and sample content that is semantically malformed but can be preserved or normalized safely.
 - A non-numeric `QUAL`: the column itself is still well-formed, so this is treated as the missing value rather than
   a structural failure.
+- A reserved `FORMAT/FT` value that doesn't follow the FILTER-like grammar (`PASS`, `.`, or a semicolon-separated
+  list of codes with no whitespace, none of which may be combined with `PASS` or `.`), or a reserved `FORMAT/PS`
+  value that isn't a non-negative 32-bit integer: both constraints go beyond what `FT`'s/`PS`'s declared `Type` can
+  express, so they're checked separately, both when a typed value is requested and by
+  `VcfWriter.Builder.validateBeforeWrite()`.
 
 An empty ("zero-length") entry in a delimited record field — e.g. `ID=rs1;;rs2`, `ALT=T,`, `FILTER=q10;`,
 `FORMAT=GT:DP:`, a sample value like `0/1:`, or `INFO=AD=1,,2` — is also lenient rather than strict when it can be

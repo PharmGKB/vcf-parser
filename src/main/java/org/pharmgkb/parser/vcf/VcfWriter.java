@@ -359,6 +359,11 @@ public class VcfWriter implements Closeable {
     if (value.equals(".")) {
       return;
     }
+    if (!value.isEmpty()) {
+      // an empty value is already reported generically below (for any FORMAT key, not just FT/PS); avoid warning
+      // about it twice via checkReservedFormatConstraints's own "empty filter code" check
+      VcfUtils.checkReservedFormatConstraints(key, value);
+    }
     String[] values = key.equals("GLE") ? new String[] { value } : value.split(",", -1);
     for (String element : values) {
       if (element.isEmpty()) {

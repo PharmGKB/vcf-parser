@@ -4,6 +4,7 @@ import java.util.Map;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.model.InfoType;
+import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -162,6 +163,38 @@ public class VcfUtilsTest {
     // convertProperty() itself, but it then threw ClassCastException at the caller's assignment site below
     Character value = VcfUtils.convertProperty(InfoType.Character, "A");
     assertEquals(Character.valueOf('A'), value);
+  }
+
+  @Test
+  public void testCheckReservedFormatConstraintsFtWarnsButDoesNotThrow() {
+    // FT's grammar (PASS/./semicolon-separated codes, no whitespace, PASS/'.' not combined with other codes) isn't
+    // expressible through its declared Type=String, so it's checked separately; this is non-structural sample
+    // content, so an invalid value warns rather than throws
+    VcfUtils.checkReservedFormatConstraints("FT", "PASS"); // valid: does not throw
+    VcfUtils.checkReservedFormatConstraints("FT", "q10;q20"); // valid: does not throw
+    VcfUtils.checkReservedFormatConstraints("FT", "q10 q20"); // whitespace in a code: warns, does not throw
+    VcfUtils.checkReservedFormatConstraints("FT", "PASS;q10"); // PASS combined with another code: warns, does not throw
+    VcfUtils.checkReservedFormatConstraints("FT", null); // no value set: nothing to check
+    VcfUtils.checkReservedFormatConstraints("FT", "."); // missing value: nothing to check
+  }
+
+  @Test
+  public void testCheckReservedFormatConstraintsPsWarnsButDoesNotThrow() {
+    // PS must be a non-negative 32-bit integer, but that constraint isn't expressible through its declared
+    // Type=Integer (which maps to a 64-bit Long), so it's checked separately; this is non-structural sample
+    // content, so an out-of-range value warns rather than throws
+    VcfUtils.checkReservedFormatConstraints("PS", "0"); // valid: does not throw
+    VcfUtils.checkReservedFormatConstraints("PS", String.valueOf(Integer.MAX_VALUE)); // valid: does not throw
+    VcfUtils.checkReservedFormatConstraints("PS", "-5"); // negative: warns, does not throw
+    VcfUtils.checkReservedFormatConstraints("PS", String.valueOf(Integer.MAX_VALUE + 1L)); // out of 32-bit range: warns
+  }
+
+  @Test
+  public void testConvertPropertyPhaseSetPreservesOutOfRangeValue() {
+    // the typed accessor still returns the parsed Long even when it violates PS's non-negative-32-bit constraint,
+    // consistent with the "warn and preserve" policy for non-structural sample content
+    Long value = VcfUtils.convertProperty(ReservedFormatProperty.PhaseSet, "-5");
+    assertEquals(-5L, value);
   }
 
 }

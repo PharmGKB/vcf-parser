@@ -12,6 +12,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.model.FormatType;
 import org.pharmgkb.parser.vcf.model.InfoType;
+import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
 import org.pharmgkb.parser.vcf.model.ReservedProperty;
 import org.pharmgkb.parser.vcf.model.VcfFloat;
 import org.slf4j.Logger;
@@ -74,6 +75,8 @@ public class VcfUtils {
 
   // VCF 4.x only; also rejects malformed versions like VCFv4..2
   public static final Pattern FILE_FORMAT_PATTERN = Pattern.compile("VCFv4\\.\\d+");
+
+  private static final Pattern sf_whitespacePattern = Pattern.compile("\\s");
 
   public static Map<String, String> extractPropertiesFromLine(String value) {
     // split on top-level commas (those not inside a double-quoted value); splitTopLevel preserves escaped characters
@@ -238,7 +241,60 @@ public class VcfUtils {
    * </ul>
    */
   public static @Nullable <T> T convertProperty(ReservedProperty key, @Nullable String value) {
-   return convertProperty(key.getType(), value, key.isList());
+    checkReservedFormatConstraints(key.getId(), value);
+    return convertProperty(key.getType(), value, key.isList());
+  }
+
+  /**
+   * Warns if {@code value} violates a constraint that VCFv4.2 places on a reserved FORMAT key beyond its declared
+   * {@code Type} -- constraints that generic {@code Type}-based conversion can't express. Currently:
+   * <ul>
+   *   <li>{@link ReservedFormatProperty#Filter FT} must be {@code PASS}, {@code .}, or a semicolon-separated list of
+   *   codes, each containing no whitespace, and {@code PASS}/{@code .} may not be combined with other codes -- the
+   *   same grammar as the FILTER column.</li>
+   *   <li>{@link ReservedFormatProperty#PhaseSet PS} must be a non-negative 32-bit integer.</li>
+   * </ul>
+   */
+  static void checkReservedFormatConstraints(String key, @Nullable String value) {
+    if (value == null || value.equals(".")) {
+      return;
+    }
+    if (key.equals(ReservedFormatProperty.Filter.getId())) {
+      checkFilterLikeValue(key, value);
+    } else if (key.equals(ReservedFormatProperty.PhaseSet.getId())) {
+      checkNonNegative32BitInteger(key, value);
+    }
+  }
+
+  private static void checkFilterLikeValue(String key, String value) {
+    String[] codes = value.split(";", -1);
+    boolean hasPassOrMissing = false;
+    for (String code : codes) {
+      if (code.isEmpty()) {
+        sf_logger.warn("FORMAT {} value \"{}\" contains an empty filter code", key, value);
+      } else if (sf_whitespacePattern.matcher(code).find()) {
+        sf_logger.warn("FORMAT {} value \"{}\" contains whitespace in filter code \"{}\"", key, value, code);
+      }
+      if (code.equals("PASS") || code.equals(".")) {
+        hasPassOrMissing = true;
+      }
+    }
+    if (codes.length > 1 && hasPassOrMissing) {
+      sf_logger.warn("FORMAT {} value \"{}\" combines PASS or '.' with other filter codes", key, value);
+    }
+  }
+
+  private static void checkNonNegative32BitInteger(String key, String value) {
+    long parsed;
+    try {
+      parsed = Long.parseLong(value);
+    } catch (NumberFormatException e) {
+      // not a number at all; the generic Long conversion reports this on its own
+      return;
+    }
+    if (parsed < 0 || parsed > Integer.MAX_VALUE) {
+      sf_logger.warn("FORMAT {} value \"{}\" is not a non-negative 32-bit integer", key, value);
+    }
   }
 
   /**
