@@ -76,17 +76,17 @@ public class VcfUtils {
   // one side (e.g. "]1:100]AGT", "[1:100[AGT", "AGT]1:100]", "AGT[1:100["), never zero.
   private static final String sf_breakendReplacement = "(?:" + sf_simpleAltPattern + "|\\.)";
 
+  // No outer optional dot wraps these breakpoint types: t (sf_breakendReplacement) already accepts a literal "."
+  // itself for the telomere case, so an outer wrapper would let a stray extra dot sit beside t with no basis in
+  // any spec example (e.g. "..[1:1[" or "A]1:1]." would wrongly match). Confirmed live that removing it does not
+  // affect any of this class's existing breakend test cases, all of which are covered by t accepting "." directly.
   private static final Pattern sf_breakpointAltPattern = Pattern.compile(
-      "(?:"                                                         + // wrap the whole expression
-        "\\.?"                                                      + // optional opening dot
-        "(?:"                                                       + // start breakpoint types
-          "(?:" + sf_breakendReplacement + "\\[" + sf_mateLocation + "\\[)"  + // breakpoint type 1: t[p[
-          "|(?:" + sf_breakendReplacement + "]" + sf_mateLocation + "])" + // breakpoint type 2: t]p]
-          "|(?:\\]" + sf_mateLocation + "]" + sf_breakendReplacement + ")" + // breakpoint type 3: ]p]t
-          "|(?:\\[" + sf_mateLocation + "\\[" + sf_breakendReplacement + ")" + // breakpoint type 4: [p[t
-        ")"                                                         + // end breakpoint types
-        "\\.?"                                                      + // optional closing dot
-      ")"                                                             // ends the nc group of the first line
+      "(?:"                                                         + // start breakpoint types
+        "(?:" + sf_breakendReplacement + "\\[" + sf_mateLocation + "\\[)"  + // breakpoint type 1: t[p[
+        "|(?:" + sf_breakendReplacement + "]" + sf_mateLocation + "])" + // breakpoint type 2: t]p]
+        "|(?:\\]" + sf_mateLocation + "]" + sf_breakendReplacement + ")" + // breakpoint type 3: ]p]t
+        "|(?:\\[" + sf_mateLocation + "\\[" + sf_breakendReplacement + ")" + // breakpoint type 4: [p[t
+      ")"                                                             // end breakpoint types
   );
 
   public static final Pattern ALT_BASE_PATTERN = Pattern.compile(

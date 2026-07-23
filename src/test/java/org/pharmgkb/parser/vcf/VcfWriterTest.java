@@ -391,6 +391,10 @@ public class VcfWriterTest {
     // ploidy=null means it could not be determined (e.g. GT is absent for this sample); previously getPloidy()
     // defaulted to 2 in that case, which could produce a false Number=G cardinality warning for a haploid, or
     // higher-ploidy, sample. There's nothing valid to compare against, so this must skip rather than guess.
+    // validateInfoValue also now passes null here for the same reason: an INFO value isn't tied to any one
+    // sample's ploidy at all (previously hardcoded to 2, which would have falsely flagged a correctly-formed
+    // haploid record's Number=G INFO field -- e.g. combinationsWithRepetition(2 alleles, 1 ploidy) = 2 actual
+    // values, but the hardcoded ploidy=2 assumption expects combinationsWithRepetition(2, 2) = 3).
     assertNull(VcfWriter.getExpectedCardinality("G", 2, null));
     // Number=A/R/an explicit integer don't depend on ploidy at all, so they must still validate normally even when
     // ploidy is unknown

@@ -104,6 +104,16 @@ public class VcfUtilsTest {
   }
 
   @Test
+  public void testAltBasePatternRejectsStrayDotBesideBreakendReplacement() {
+    // t (sf_breakendReplacement) itself already accepts a literal "." for the telomere case; a breakpoint pattern
+    // used to also wrap the whole expression in its own optional leading/trailing dot, a leftover from before t
+    // supported "." directly. Combined with t's new "." alternative, that let a stray extra dot slip in beside t
+    // with no basis in any spec example. Fixed by removing the now-redundant outer wrapper.
+    assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher("..[1:1[").matches());
+    assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher("A]1:1].").matches());
+  }
+
+  @Test
   public void testAltBasePatternAcceptsUnconfirmedBaseSymbolicConcatenations() {
     // Unlike "C<ctg1>" above, these two forms (bases both before AND after a symbolic ID; multiple concatenated
     // symbolic IDs) have no confirming example anywhere: VCFv4.2 through 4.5 are silent, hts-specs' own

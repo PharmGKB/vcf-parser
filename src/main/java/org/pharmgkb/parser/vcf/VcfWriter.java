@@ -420,7 +420,11 @@ public class VcfWriter implements Closeable {
       sf_logger.warn("INFO {} contains an empty value", key);
     }
     String number = info.getNumber();
-    warnIfWrongCardinality("INFO " + key, number, values.size(), numAltAlleles, 2);
+    // unlike a FORMAT value, an INFO value isn't tied to any one sample, so there's no single ploidy to compute
+    // Number=G's expected cardinality from; pass null so getExpectedCardinality skips that check instead of
+    // guessing a ploidy (previously hardcoded to 2, which could produce the same false-positive warning that
+    // getPloidy's ploidy==null handling was introduced to prevent for FORMAT values)
+    warnIfWrongCardinality("INFO " + key, number, values.size(), numAltAlleles, null);
     if (type == null) {
       return;
     }
