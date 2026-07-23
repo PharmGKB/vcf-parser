@@ -19,6 +19,7 @@ import org.pharmgkb.common.util.PathUtils;
 import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
 import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
+import org.pharmgkb.parser.vcf.model.VcfFloat;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
@@ -150,10 +151,10 @@ public class VcfParserTest {
                    assertEquals(true, position.getInfo(ReservedInfoProperty.Hapmap2)); // flag is set
                    assertNull(position.getInfo(ReservedInfoProperty.ThousandGenomes)); // property doesn't exist
 
-                   List<BigDecimal> b = position.getInfo(ReservedInfoProperty.AlleleFrequency);
+                   List<VcfFloat> b = position.getInfo(ReservedInfoProperty.AlleleFrequency);
                    assertNotNull(b);
                    assertEquals(1, b.size());
-                   assertEquals(new BigDecimal("0.124"), b.get(0));
+                   assertEquals(VcfFloat.of(new BigDecimal("0.124")), b.get(0));
 
                    List<Long> c = position.getInfo(ReservedInfoProperty.AlleleCount);
                    assertNotNull(c);
@@ -164,11 +165,11 @@ public class VcfParserTest {
 
                  case 2:
                    VcfSample sample = sampleData.get(0);
-                   List<BigDecimal> d = sample.getProperty(ReservedFormatProperty.GenotypePosteriorProbabilitiesPhredScaled);
+                   List<VcfFloat> d = sample.getProperty(ReservedFormatProperty.GenotypePosteriorProbabilitiesPhredScaled);
                    assertNotNull(d);
                    assertEquals(2, d.size());
-                   assertEquals(new BigDecimal("0.05"), d.get(0));
-                   assertEquals(new BigDecimal("0.06"), d.get(1));
+                   assertEquals(VcfFloat.of(new BigDecimal("0.05")), d.get(0));
+                   assertEquals(VcfFloat.of(new BigDecimal("0.06")), d.get(1));
                    break;
                }
              })

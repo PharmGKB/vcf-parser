@@ -85,6 +85,11 @@ field-by-field table of what each case normalizes to and why.
 Typed metadata accessors (e.g. `InfoMetadata.getType()` and `getNumber()`) are annotated `@Nullable` and return `null`
 when the corresponding metadata was malformed.
 
+Reserved `Float`-typed `INFO`/`FORMAT` properties (e.g. `AF`, `MQ`, `GL`) are converted to
+[`VcfFloat`](src/main/java/org/pharmgkb/parser/vcf/model/VcfFloat.java), not a plain `BigDecimal`: VCFv4.2 doesn't
+define `Float`'s literal grammar, and VCFv4.5 clarifies it accepts `NAN`/`INF`/`INFINITY` (case-insensitive,
+optionally signed) in addition to a normal decimal number — values a plain `BigDecimal` cannot represent at all.
+
 
 ## Get It
 

@@ -13,6 +13,7 @@ import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.model.FormatType;
 import org.pharmgkb.parser.vcf.model.InfoType;
 import org.pharmgkb.parser.vcf.model.ReservedProperty;
+import org.pharmgkb.parser.vcf.model.VcfFloat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -281,7 +282,7 @@ public class VcfUtils {
         clas = Long.class;
         break;
       case Float:
-        clas = BigDecimal.class;
+        clas = VcfFloat.class;
         break;
       case Character:
         clas = Character.class;
@@ -302,7 +303,7 @@ public class VcfUtils {
         clas = Long.class;
         break;
       case Float:
-        clas = BigDecimal.class;
+        clas = VcfFloat.class;
         break;
       case Character:
         clas = Character.class;
@@ -350,6 +351,10 @@ public class VcfUtils {
       } catch (NumberFormatException e) {
         throw new VcfFormatException("Expected float; got " + value);
       }
+    } else if (clas == VcfFloat.class) {
+      // unlike plain BigDecimal, this also accepts NAN/INF/INFINITY (case-insensitive, optionally signed), which
+      // VCFv4.2 leaves undefined but VCFv4.5 clarifies are valid Float literals
+      return VcfFloat.parse(value);
     } else if (clas == Long.class) {
       try {
         return Long.parseLong(value);

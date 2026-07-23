@@ -1,7 +1,5 @@
 package org.pharmgkb.parser.vcf.model;
 
-import java.math.BigDecimal;
-
 
 /**
  * An INFO field specified as reserved in the VCF specification.
@@ -15,16 +13,16 @@ public enum ReservedInfoProperty implements ReservedProperty {
   AlleleCount("AC", "Allele count in genotypes, for each ALT allele, in the same order as listed",
       Long.class, true),
   AlleleFrequency("AF", "Allele frequency for each ALT allele in the same order as listed: use this when estimated " +
-      "from primary data, not called genotypes", BigDecimal.class, true),
+      "from primary data, not called genotypes", VcfFloat.class, true),
   AlleleNumber("AN", "Total number of alleles in called genotypes", Long.class, false),
-  BaseQuality("BQ", "RMS base quality at this position", BigDecimal.class, false),
+  BaseQuality("BQ", "RMS base quality at this position", VcfFloat.class, false),
   Cigar("CIGAR", "Cigar string describing how to align an alternate allele to the reference allele", String.class,
       false),
   Dbsnp("DB", "dbSNP membership", Boolean.class, false),
   Depth("DP", "Combined depth across samples", Long.class, false),
   Hapmap2("H2", "Membership in HapMap2", Boolean.class, false),
   Hapmap3("H3", "Membership in HapMap3", Boolean.class, false),
-  MappingQuality("MQ", "RMS mapping quality, e.g. MQ=52", BigDecimal.class, false),
+  MappingQuality("MQ", "RMS mapping quality, e.g. MQ=52", VcfFloat.class, false),
   MappingQualityZeroCount("MQ0", "Number of MAPQ == 0 reads covering this record", Long.class, false),
   NumberOfSamples("NS", "Number of samples with data", Long.class, false),
   StrandBias("SB", "Strand bias at this position", Long.class, true),

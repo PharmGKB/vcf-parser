@@ -527,7 +527,7 @@ public class VcfPosition {
    * <p>
    * For example:
    * <pre>{@code
-   *   BigDecimal bq = vcfPosition.getInfo(ReservedInfoProperty.BaseQuality);
+   *   VcfFloat bq = vcfPosition.getInfo(ReservedInfoProperty.BaseQuality);
    * }
    * </pre>
    *

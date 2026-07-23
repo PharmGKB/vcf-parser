@@ -8,6 +8,7 @@ import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
+import org.pharmgkb.parser.vcf.model.VcfFloat;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -123,7 +124,24 @@ public class VcfPositionTest {
     // MQ is a float reserved property; getInfo must convert it (it was previously typed Float.class, which threw)
     VcfPosition p = newPosition();
     p.setRawInfo("MQ=52.4");
-    assertEquals(new BigDecimal("52.4"), p.getInfo(ReservedInfoProperty.MappingQuality));
+    assertEquals(VcfFloat.of(new BigDecimal("52.4")), p.getInfo(ReservedInfoProperty.MappingQuality));
+  }
+
+  @Test
+  public void testGetInfoFloatAcceptsSpecialValues() {
+    // VCFv4.2 doesn't define Float's grammar at all; VCFv4.5 clarifies it accepts NAN/INF/INFINITY (case-insensitive,
+    // optionally signed) in addition to a normal decimal number -- a plain BigDecimal can't represent these at all
+    VcfPosition nan = newPosition();
+    nan.setRawInfo("MQ=NaN");
+    assertEquals(VcfFloat.ofSpecial(VcfFloat.Special.NAN), nan.getInfo(ReservedInfoProperty.MappingQuality));
+
+    VcfPosition posInf = newPosition();
+    posInf.setRawInfo("MQ=INFINITY");
+    assertEquals(VcfFloat.ofSpecial(VcfFloat.Special.POSITIVE_INFINITY), posInf.getInfo(ReservedInfoProperty.MappingQuality));
+
+    VcfPosition negInf = newPosition();
+    negInf.setRawInfo("MQ=-inf");
+    assertEquals(VcfFloat.ofSpecial(VcfFloat.Special.NEGATIVE_INFINITY), negInf.getInfo(ReservedInfoProperty.MappingQuality));
   }
 
   @Test
