@@ -113,10 +113,11 @@ public class VcfPositionTest {
     assertThrows(VcfFormatException.class, combined::getInfo);
 
     // a stray trailing ';' after a lone "." is not "combined with other content" (the only other split part is an
-    // empty-string artifact, already warned about and dropped elsewhere) -- must not throw
+    // empty-string artifact, already warned about and dropped elsewhere) -- must not throw, and the leftover "."
+    // is still the "no INFO at all" sentinel, not a literal property named "."
     VcfPosition trailingSemicolon = newPosition();
     trailingSemicolon.setRawInfo(".;");
-    assertEquals(Collections.singletonList("."), new ArrayList<>(trailingSemicolon.getInfo().keySet()));
+    assertTrue(trailingSemicolon.getInfo().isEmpty());
   }
 
   @Test

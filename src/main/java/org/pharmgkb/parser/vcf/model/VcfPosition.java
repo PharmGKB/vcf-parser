@@ -471,6 +471,12 @@ public class VcfPosition {
           throw new VcfFormatException("INFO contains '.' (missing value) along with other properties");
         }
         for (String prop : props) {
+          if (prop.equals(".")) {
+            // reaching here without having thrown above means "." is the only entry left once delimiter-artifact
+            // empties are dropped (e.g. raw was ".;"); that's the same "no INFO at all" sentinel as a bare ".", not
+            // a real property named "."
+            continue;
+          }
           int idx = prop.indexOf('=');
           if (idx == -1) {
             info.put(prop, "");
