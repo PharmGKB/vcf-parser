@@ -2,7 +2,9 @@ package org.pharmgkb.parser.vcf;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.io.StringReader;
+import java.io.StringWriter;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,6 +20,7 @@ import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
 import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
+import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -347,6 +350,51 @@ public class VcfParserTest {
     assertEquals("0/1", trailing.getProperty("GT"));
     assertEquals(".", trailing.getProperty("DP"));
     assertEquals(".", trailing.getProperty("GQ"));
+  }
+
+  @Test
+  void testGleSampleValueRoundTrips() throws IOException {
+    String gle = "0:-75.22,1:-223.42,0/0:-323.03,1/0:-99.29,1/1:-802.53";
+    String input = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n" +
+        "chr1\t100\t.\tA\tT\t.\tPASS\t.\tGT:GLE:DP\t0/1:" + gle + ":50\n";
+    List<VcfPosition> positions = new ArrayList<>();
+    List<VcfSample> samples = new ArrayList<>();
+    VcfMetadata[] metadata = new VcfMetadata[1];
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(input)))
+        .parseWith(new VcfLineParser() {
+          @Override
+          public void parseMetadata(VcfMetadata value) {
+            metadata[0] = value;
+          }
+
+          @Override
+          public void parseLine(VcfMetadata ignored, VcfPosition position, List<VcfSample> values) {
+            positions.add(position);
+            samples.addAll(values);
+          }
+        })
+        .build()) {
+      parser.parse();
+    }
+    assertEquals(gle, samples.get(0).getProperty("GLE"));
+    assertEquals("50", samples.get(0).getProperty("DP"));
+
+    StringWriter output = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(output)).build();
+    writer.writeHeader(metadata[0]);
+    writer.writeLine(metadata[0], positions.get(0), samples);
+
+    List<VcfSample> reparsed = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(output.toString())))
+        .parseWith((ignored, position, values) -> reparsed.addAll(values))
+        .build()) {
+      parser.parse();
+    }
+    assertEquals(gle, reparsed.get(0).getProperty("GLE"));
+    assertEquals("50", reparsed.get(0).getProperty("DP"));
   }
 
   @Test

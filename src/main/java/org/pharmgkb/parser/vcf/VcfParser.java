@@ -11,6 +11,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import com.google.common.base.Preconditions;
 import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
@@ -38,6 +40,13 @@ public class VcfParser implements Closeable {
   private static final char COMMA = ',';
   private static final char COLON = ':';
   private static final char SEMICOLON = ';';
+  private static final String GLE = "GLE";
+  // GLE is a VCF 4.1/4.2 FORMAT String whose own comma-separated genotype:likelihood pairs contain colons. The
+  // first group consumes those pairs; the optional second group is the ordinary colon-separated remainder of the
+  // sample field for FORMAT keys following GLE. Restrict each pair's genotype to allele indexes so a malformed,
+  // arbitrary GLE string (which the parser deliberately preserves) is not mistaken for this special encoding.
+  private static final Pattern GLE_VALUE_PATTERN = Pattern.compile(
+      "((?:(?:\\d+|\\.)(?:[|/](?:\\d+|\\.))*:[^,:]+)(?:,(?:\\d+|\\.)(?:[|/](?:\\d+|\\.))*:[^,:]+)*)(?::(.*))?");
   // the mandatory fixed fields, in order; in the column-header line CHROM is written as "#CHROM"
   private static final List<String> FIXED_FIELD_NAMES =
       List.of("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO");
@@ -249,7 +258,7 @@ public class VcfParser implements Closeable {
       pos.setRawInfo(data.get(7));
       List<VcfSample> samples = new ArrayList<>();
       for (int x = 9; x < data.size(); x++) {
-        List<String> values = toList(COLON, data.get(x));
+        List<String> values = toSampleValues(format, data.get(x));
         VcfUtils.fillEmptyEntriesWithDot(sf_logger, "sample value", values);
         // per the VCF spec, trailing FORMAT sub-fields may be dropped from a sample; pad any missing ones with the
         // missing value so the sample's value count matches the FORMAT key count
@@ -397,6 +406,46 @@ public class VcfParser implements Closeable {
     }
     list.add(string.substring(start));
     return list;
+  }
+
+  /**
+   * Splits a sample field according to its FORMAT keys. GLE is the sole VCF 4.1/4.2 exception to ordinary
+   * colon-delimited sample values: its value is a String containing comma-separated {@code genotype:likelihood}
+   * pairs. See the GLE example in the VCF 4.2 specification.
+   */
+  private static List<String> toSampleValues(@Nullable List<String> format, String sample) {
+    if (format == null) {
+      return toList(COLON, sample);
+    }
+    int gleIndex = format.indexOf(GLE);
+    if (gleIndex < 0) {
+      return toList(COLON, sample);
+    }
+
+    List<String> values = new ArrayList<>();
+    int start = 0;
+    for (int i = 0; i < gleIndex; i++) {
+      int separator = sample.indexOf(COLON, start);
+      if (separator < 0) {
+        // GLE and every following field were dropped; ordinary splitting lets the caller pad the trailing fields.
+        return toList(COLON, sample);
+      }
+      values.add(sample.substring(start, separator));
+      start = separator + 1;
+    }
+
+    String gleAndRemainder = sample.substring(start);
+    Matcher matcher = GLE_VALUE_PATTERN.matcher(gleAndRemainder);
+    if (!matcher.matches()) {
+      // A missing GLE value (".") has no internal colon; ordinary splitting handles it and malformed values retain
+      // the existing sample-arity validation behavior.
+      return toList(COLON, sample);
+    }
+    values.add(matcher.group(1));
+    if (matcher.group(2) != null) {
+      values.addAll(toList(COLON, matcher.group(2)));
+    }
+    return values;
   }
 
   public int getLineNumber() {
