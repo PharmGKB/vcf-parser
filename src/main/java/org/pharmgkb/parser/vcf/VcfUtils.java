@@ -27,12 +27,15 @@ public class VcfUtils {
 
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
+  // VCF 4.2: an ALT allele is "base Strings made up of the bases A,C,G,T,N,*" OR "an angle-bracketed ID String"
+  // OR a breakend replacement string -- three mutually exclusive forms, not concatenable pieces. The one place a
+  // base string and a symbolic ID appear adjacent to each other (e.g. "C[<ctg1>:7[", from the spec's own "Large
+  // Insertions" example) is breakend notation, where a bracket always separates them; this pattern is also reused
+  // as that breakend "t" replacement string, so it must not itself accept "C<ctg1>" (no bracket) as one instance.
   private static final String sf_simpleAltPattern =
       "(?:"                   + // wrap the whole expression
-        "(?:"                 + // allow nucleotides, symbolic IDs, or both
-          "(?:[AaCcGgTtNn]+)" + // nucleotides
-          "|(?:<[^\\s,<>]+>)" + // symbolic IDs (no whitespace, commas, or angle brackets inside)
-          ")+"                + // allow things like C<ctg1> (apparently)
+        "(?:[AaCcGgTtNn]+)" + // nucleotides
+        "|(?:<[^\\s,<>]+>)" + // symbolic IDs (no whitespace, commas, or angle brackets inside)
         "|\\*"                + // indicates that the position doesn't exist due to an upstream deletion
       ")";
 
