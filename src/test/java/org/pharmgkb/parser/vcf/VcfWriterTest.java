@@ -224,6 +224,25 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteDoesNotFalselyWarnOnWholeFieldMissingInfoValue() throws Exception {
+    // Number=A with 2 ALT alleles expects 2 values; an INFO value of the whole-field missing sentinel "." is not a
+    // real value with an inspectable count (previously falsely compared as 1 value against the expected 2). This
+    // must not throw, and the value must round-trip unchanged.
+    InfoMetadata info = new InfoMetadata("AF", "d", InfoType.Float, "A", null, null);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+    position.getAltBases().add("C");
+    position.getInfo().put("AF", ".");
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+
+    writer.writeHeader(metadata);
+    writer.writeLine(metadata, position, Collections.emptyList());
+    assertTrue(sw.toString().contains("AF=."));
+  }
+
+  @Test
   public void testValidateBeforeWriteWarnsButPreservesInvalidFtValue() throws Exception {
     // FT's grammar mirrors the FILTER column (PASS/./semicolon-separated codes, no code combined with PASS or '.'),
     // but that constraint isn't expressible through FT's declared Type=String, so it's checked separately; being
@@ -365,6 +384,19 @@ public class VcfWriterTest {
     // validation), consistent with how the numeric-Number branch already skips validation when Number is too large
     // to parse, rather than returning Long.MAX_VALUE as a bogus expected count
     assertNull(VcfWriter.getExpectedCardinality("G", 1000, 1000));
+  }
+
+  @Test
+  public void testGCardinalityWithUnknownPloidySkipsValidation() {
+    // ploidy=null means it could not be determined (e.g. GT is absent for this sample); previously getPloidy()
+    // defaulted to 2 in that case, which could produce a false Number=G cardinality warning for a haploid, or
+    // higher-ploidy, sample. There's nothing valid to compare against, so this must skip rather than guess.
+    assertNull(VcfWriter.getExpectedCardinality("G", 2, null));
+    // Number=A/R/an explicit integer don't depend on ploidy at all, so they must still validate normally even when
+    // ploidy is unknown
+    assertEquals(2L, VcfWriter.getExpectedCardinality("A", 2, null));
+    assertEquals(3L, VcfWriter.getExpectedCardinality("R", 2, null));
+    assertEquals(5L, VcfWriter.getExpectedCardinality("5", 2, null));
   }
 
   @Test

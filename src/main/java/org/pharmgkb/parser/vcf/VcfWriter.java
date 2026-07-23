@@ -386,7 +386,7 @@ public class VcfWriter implements Closeable {
               ", but it is not declared in FORMAT");
         }
       }
-      int ploidy = getPloidy(position, sample, sampleIndex);
+      Integer ploidy = getPloidy(position, sample, sampleIndex);
       for (String key : formatKeys) {
         String value = sample.getProperty(key);
         FormatMetadata format = metadata.getFormats().get(key);
@@ -409,6 +409,13 @@ public class VcfWriter implements Closeable {
       }
       return;
     }
+    if (values.size() == 1 && values.get(0).equals(".")) {
+      // the whole field is the missing-value sentinel, not a real value with an inspectable count -- comparing 1
+      // against Number's expected cardinality here would be a false positive (e.g. Number=A with 2 ALT alleles but
+      // INFO "AF=." would otherwise warn "has 1 value(s), but Number=A requires 2", even though the field is
+      // simply unset). validateFormatValue already has the equivalent early return for FORMAT values.
+      return;
+    }
     if (values.stream().anyMatch(String::isEmpty)) {
       sf_logger.warn("INFO {} contains an empty value", key);
     }
@@ -427,7 +434,7 @@ public class VcfWriter implements Closeable {
   }
 
   private void validateFormatValue(FormatMetadata format, String value, String key, int sampleIndex,
-      int numAltAlleles, int ploidy) {
+      int numAltAlleles, @Nullable Integer ploidy) {
     if (value.equals(".")) {
       return;
     }
@@ -461,14 +468,14 @@ public class VcfWriter implements Closeable {
   }
 
   private void warnIfWrongCardinality(String field, @Nullable String number, int actual, int numAltAlleles,
-      int ploidy) {
+      @Nullable Integer ploidy) {
     Long expected = getExpectedCardinality(number, numAltAlleles, ploidy);
     if (expected != null && expected != actual) {
       sf_logger.warn("{} has {} value(s), but Number={} requires {}", field, actual, number, expected);
     }
   }
 
-  static @Nullable Long getExpectedCardinality(@Nullable String number, int numAltAlleles, int ploidy) {
+  static @Nullable Long getExpectedCardinality(@Nullable String number, int numAltAlleles, @Nullable Integer ploidy) {
     if (number == null || number.equals(".")) {
       return null;
     }
@@ -479,6 +486,11 @@ public class VcfWriter implements Closeable {
       return (long) numAltAlleles + 1;
     }
     if (number.equals("G")) {
+      if (ploidy == null) {
+        // ploidy could not be determined (e.g. GT is absent for this sample), so there's nothing valid to compare
+        // Number=G's expected cardinality against; skip rather than guessing
+        return null;
+      }
       Long combinations = combinationsWithRepetition(numAltAlleles + 1, ploidy);
       if (combinations == null) {
         sf_logger.warn("Number=G cardinality for {} allele(s) and ploidy {} is too large to validate", numAltAlleles + 1,
@@ -511,10 +523,15 @@ public class VcfWriter implements Closeable {
     return result;
   }
 
-  private int getPloidy(VcfPosition position, VcfSample sample, int sampleIndex) {
+  /**
+   * @return the ploidy inferred from this sample's GT value, or {@code null} if GT is absent and ploidy can
+   * therefore not be determined (previously defaulted to 2, which could produce a false Number=G cardinality
+   * warning for a haploid, or higher-ploidy, sample whose GT simply isn't present in this record)
+   */
+  private @Nullable Integer getPloidy(VcfPosition position, VcfSample sample, int sampleIndex) {
     String gt = sample.getProperty("GT");
     if (gt == null) {
-      return 2;
+      return null;
     }
     String[] alleles = gt.split("[/|]", -1);
     boolean valid = alleles.length > 0;
