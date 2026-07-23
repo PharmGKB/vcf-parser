@@ -139,6 +139,20 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteRejectsMetadataIdDivergedFromMapKey() throws Exception {
+    // getInfo() (and its FORMAT/FILTER/ALT/contig/SAMPLE siblings) return the backing map directly; mutating an
+    // entry's own raw ID property, while it stays stored under its original map key, would otherwise make the
+    // emitted header declare a different ID than what data lines reference by that map key
+    InfoMetadata info = new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
+    metadata.getInfo().get("NS").getPropertiesRaw().put("ID", "DIFFERENT");
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+  }
+
+  @Test
   public void testValidateBeforeWriteHandlesOversizedNumberAsDiagnostic() throws Exception {
     InfoMetadata info = new InfoMetadata("NS", "d", InfoType.Integer, "999999999999999999999", null, null);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();

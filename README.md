@@ -65,8 +65,11 @@ maintains record and sample-column structure without full revalidation. If data 
 validity and diagnostic check is required, build the writer with `VcfWriter.Builder.validateBeforeWrite()`. In that
 mode, structurally invalid output is rejected and detected semantic non-compliance is reported with a warning. This
 mode also enforces file-level consistency: `writeHeader()` may not be called more than once, `writeLine()` may not be
-called before `writeHeader()`, and every `writeLine()` call must be given the same `VcfMetadata` object `writeHeader()`
-was given (so a header and its records can't end up describing different metadata).
+called before `writeHeader()`, every `writeLine()` call must be given the same `VcfMetadata` object `writeHeader()`
+was given, and every `INFO`/`FORMAT`/`FILTER`/`ALT`/`contig`/`SAMPLE` metadata entry's own `ID` property must still
+match the key it's stored under in `VcfMetadata`'s maps (mutating an entry's raw `ID` through `getPropertiesRaw()`
+without it being reflected in the map key would otherwise make the header declare a different ID than what records
+reference by that entry's map key).
 
 **Lenient — warns when encountered or accessed and preserves usable data.** Non-structural content may be accepted
 initially and validated only when the relevant getter or typed conversion is used. Malformed metadata declarations

@@ -200,13 +200,16 @@ public class VcfWriter implements Closeable {
     if (!VcfUtils.FILE_FORMAT_PATTERN.matcher(metadata.getFileFormat()).matches()) {
       throw new VcfFormatException("VCF file format must be VCF 4.x: " + metadata.getFileFormat());
     }
-    validateMetadataEntries("INFO", metadata.getInfo().values());
-    validateMetadataEntries("FORMAT", metadata.getFormats().values());
-    validateMetadataEntries("FILTER", metadata.getFilters().values());
-    validateMetadataEntries("ALT", metadata.getAlts().values());
-    validateMetadataEntries("contig", metadata.getContigs().values());
-    validateMetadataEntries("SAMPLE", metadata.getSamples().values());
-    validateMetadataEntries("PEDIGREE", metadata.getPedigrees());
+    validateKeyedMetadataEntries("INFO", metadata.getInfo());
+    validateKeyedMetadataEntries("FORMAT", metadata.getFormats());
+    validateKeyedMetadataEntries("FILTER", metadata.getFilters());
+    validateKeyedMetadataEntries("ALT", metadata.getAlts());
+    validateKeyedMetadataEntries("contig", metadata.getContigs());
+    validateKeyedMetadataEntries("SAMPLE", metadata.getSamples());
+    for (BaseMetadata pedigree : metadata.getPedigrees()) {
+      pedigree.validate();
+      validateMetadataProperties("PEDIGREE", pedigree.getPropertiesRaw());
+    }
     Set<String> sampleNames = new HashSet<>();
     for (int i = 0; i < metadata.getNumSamples(); i++) {
       String sampleName = metadata.getSampleName(i);
@@ -222,30 +225,48 @@ public class VcfWriter implements Closeable {
     }
   }
 
-  private void validateMetadataEntries(String kind, Collection<? extends BaseMetadata> entries) {
-    Set<String> ids = new HashSet<>();
-    for (BaseMetadata entry : entries) {
+  /**
+   * Validates every entry of a metadata map (INFO/FORMAT/FILTER/ALT/contig/SAMPLE), including that each entry's own
+   * {@code ID} property still matches the map key it's stored under. That invariant normally holds automatically
+   * (these maps are keyed by {@code getId()} when built), but {@link VcfMetadata#getInfo()} and its siblings return
+   * the backing map directly, so a caller can mutate an entry's raw {@code ID} property (via
+   * {@link BaseMetadata#getPropertiesRaw()}) without it being reflected in the map key. Left undetected, the header
+   * would then declare a different ID than what data lines actually reference by that entry's map key, and a
+   * duplicate-ID check across entries would also be unable to catch a real collision this way (see below).
+   */
+  private void validateKeyedMetadataEntries(String kind, Map<String, ? extends BaseMetadata> entriesByKey) {
+    for (Map.Entry<String, ? extends BaseMetadata> mapEntry : entriesByKey.entrySet()) {
+      String mapKey = mapEntry.getKey();
+      BaseMetadata entry = mapEntry.getValue();
       entry.validate();
       Map<String, String> properties = entry.getPropertiesRaw();
-      for (Map.Entry<String, String> property : properties.entrySet()) {
-        String propertyName = property.getKey();
-        if (propertyName == null || propertyName.isEmpty() || propertyName.contains(",") ||
-            propertyName.contains("=")) {
-          throw new VcfFormatException(kind + " metadata contains an invalid property name: " + property.getKey());
-        }
-        String value = property.getValue();
-        if (value == null) {
-          throw new VcfFormatException(kind + " metadata property " + propertyName + " has a null value");
-        }
-        VcfUtils.checkNoLineTerminator(propertyName, value);
-        if (!isQuoted(value) && (value.contains(",") || value.contains("="))) {
-          throw new VcfFormatException(kind + " metadata property " + propertyName +
-              " contains an unquoted structural delimiter");
-        }
-      }
+      validateMetadataProperties(kind, properties);
       String id = properties.get("ID");
-      if (id != null && !ids.add(id)) {
-        throw new VcfFormatException("Duplicate ID " + id + " for " + kind + " metadata");
+      // duplicate IDs across different entries can't occur once every entry's ID is confirmed to match its own
+      // (necessarily unique) map key, so no separate "duplicate ID" check is needed here
+      if (id != null && !mapKey.equals(id)) {
+        throw new VcfFormatException(kind + " metadata is stored under key \"" + mapKey + "\" but its own ID " +
+            "property is \"" + id + "\"; the header would declare a different ID than records referencing this " +
+            "entry by its map key");
+      }
+    }
+  }
+
+  private void validateMetadataProperties(String kind, Map<String, String> properties) {
+    for (Map.Entry<String, String> property : properties.entrySet()) {
+      String propertyName = property.getKey();
+      if (propertyName == null || propertyName.isEmpty() || propertyName.contains(",") ||
+          propertyName.contains("=")) {
+        throw new VcfFormatException(kind + " metadata contains an invalid property name: " + property.getKey());
+      }
+      String value = property.getValue();
+      if (value == null) {
+        throw new VcfFormatException(kind + " metadata property " + propertyName + " has a null value");
+      }
+      VcfUtils.checkNoLineTerminator(propertyName, value);
+      if (!isQuoted(value) && (value.contains(",") || value.contains("="))) {
+        throw new VcfFormatException(kind + " metadata property " + propertyName +
+            " contains an unquoted structural delimiter");
       }
     }
   }
