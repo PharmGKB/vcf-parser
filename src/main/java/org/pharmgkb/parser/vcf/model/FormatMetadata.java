@@ -64,7 +64,7 @@ public class FormatMetadata extends IdDescriptionMetadata {
   }
 
   /**
-   * Value is either an integer or ".".
+   * Value is either an integer or "A", "G", "R", or ".".
    * @return Null only when incorrectly constructed without one
    */
   @Nullable
