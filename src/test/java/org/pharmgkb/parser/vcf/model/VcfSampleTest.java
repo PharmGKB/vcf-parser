@@ -95,6 +95,15 @@ class VcfSampleTest {
   }
 
   @Test
+  void testValidateRejectsMutationThroughEntryView() {
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("DP", "1");
+    VcfSample sample = new VcfSample(map);
+    sample.propertyEntrySet().iterator().next().setValue("1:2");
+    assertThrows(VcfFormatException.class, sample::validate);
+  }
+
+  @Test
   void testGetPropertyReservedListTypeWithEmptyEntries() {
     // HQ is a list-typed reserved FORMAT property (Long); getProperty(ReservedFormatProperty) previously routed
     // through VcfUtils.convertProperty's plain value.split(","), which silently dropped a trailing empty entry and

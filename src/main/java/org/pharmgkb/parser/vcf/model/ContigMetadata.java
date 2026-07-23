@@ -109,4 +109,10 @@ public class ContigMetadata extends IdMetadata {
     ensureNoExtras(ID, LENGTH, ASSEMBLY, MD5, SPECIES, TAXONOMY, URL);
   }
 
+  @Override
+  public void validate() {
+    super.validate();
+    init();
+  }
+
 }

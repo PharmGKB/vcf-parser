@@ -73,6 +73,9 @@ public class VcfSample {
    * rejected) or to any other key's value.
    */
   private static void checkNoStructuralDelimiter(String key, @Nullable String value) {
+    if (key == null) {
+      throw new VcfFormatException("Sample property key is null");
+    }
     VcfUtils.checkNoLineTerminator(key, value);
     if (key.contains(":") || key.contains("\t")) {
       throw new VcfFormatException("Sample property key \"" + key + "\" contains ':' or a tab");
@@ -81,6 +84,18 @@ public class VcfSample {
     if (value != null && (value.contains("\t") || (!isGle && value.contains(":")))) {
       throw new VcfFormatException("Sample property value \"" + value + "\" for key \"" + key +
           "\" contains ':' or a tab");
+    }
+  }
+
+  /**
+   * Re-validates the current properties after possible mutation through {@link #propertyEntrySet()}.
+   */
+  public void validate() {
+    for (Map.Entry<String, String> entry : properties().entrySet()) {
+      checkNoStructuralDelimiter(entry.getKey(), entry.getValue());
+      if (entry.getValue() != null && entry.getValue().isEmpty()) {
+        throw new VcfFormatException("Sample property " + entry.getKey() + " has an empty value");
+      }
     }
   }
 

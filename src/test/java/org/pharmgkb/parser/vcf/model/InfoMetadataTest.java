@@ -85,4 +85,12 @@ public class InfoMetadataTest {
     assertThrows(VcfFormatException.class, () ->
         new InfoMetadata("ID", "bad\rdescription", InfoType.String, "1", null, null));
   }
+
+  @Test
+  public void testValidateRefreshesTypeAfterRawMutation() {
+    InfoMetadata md = new InfoMetadata("X", "d", InfoType.Integer, "1", null, null);
+    md.getPropertiesRaw().put("Type", "String");
+    md.validate();
+    assertEquals(InfoType.String, md.getType());
+  }
 }

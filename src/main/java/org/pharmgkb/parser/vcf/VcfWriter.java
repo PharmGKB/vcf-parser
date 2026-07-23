@@ -11,14 +11,18 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.apache.commons.io.IOUtils;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.model.BaseMetadata;
 import org.pharmgkb.parser.vcf.model.FormatMetadata;
+import org.pharmgkb.parser.vcf.model.FormatType;
 import org.pharmgkb.parser.vcf.model.InfoMetadata;
+import org.pharmgkb.parser.vcf.model.InfoType;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
@@ -50,6 +54,10 @@ public class VcfWriter implements Closeable {
   }
 
   public void writeHeader(VcfMetadata metadata) {
+
+    if (m_validateBeforeWrite) {
+      validateMetadata(metadata);
+    }
 
     // file format
     printLine("##fileformat=" + metadata.getFileFormat());
@@ -84,18 +92,18 @@ public class VcfWriter implements Closeable {
   /**
    * Writes a single data line.
    * <p>
-   * By default, this does <em>not</em> call {@link VcfPosition#validate()} on {@code position} first (to avoid
-   * paying that cost on every write). If this writer was not built with {@link Builder#validateBeforeWrite()}, a
-   * {@code position} that was mutated (e.g. by a {@link VcfTransformation}) into an invalid state (bad {@code REF},
-   * {@code ALT}, {@code FORMAT}, or {@code INFO} content) can be written without any error. It is the caller's
-   * responsibility, in that case, to either call {@link VcfPosition#validate()} before this method or otherwise
-   * guarantee {@code position} is still valid.
+   * By default, this does not fully revalidate metadata, the position, or samples, to keep the direct
+   * parse-and-write path fast. If this writer was built with {@link Builder#validateBeforeWrite()}, it rejects
+   * structurally invalid output and warns about detected semantic non-compliance before writing.
    */
   public void writeLine(VcfMetadata metadata, VcfPosition position,
       List<VcfSample> samples) {
 
     if (m_validateBeforeWrite) {
       position.validate();
+      validateMetadata(metadata);
+      validateInfo(metadata, position);
+      validateSamples(metadata, position, samples);
     }
 
     int numSamples = metadata.getNumSamples();
@@ -173,6 +181,238 @@ public class VcfWriter implements Closeable {
     sb.append("\t");
   }
 
+  private void validateMetadata(VcfMetadata metadata) {
+    if (!VcfUtils.FILE_FORMAT_PATTERN.matcher(metadata.getFileFormat()).matches()) {
+      throw new VcfFormatException("VCF file format must be VCF 4.x: " + metadata.getFileFormat());
+    }
+    validateMetadataEntries("INFO", metadata.getInfo().values());
+    validateMetadataEntries("FORMAT", metadata.getFormats().values());
+    validateMetadataEntries("FILTER", metadata.getFilters().values());
+    validateMetadataEntries("ALT", metadata.getAlts().values());
+    validateMetadataEntries("contig", metadata.getContigs().values());
+    validateMetadataEntries("SAMPLE", metadata.getSamples().values());
+    validateMetadataEntries("PEDIGREE", metadata.getPedigrees());
+    Set<String> sampleNames = new HashSet<>();
+    for (int i = 0; i < metadata.getNumSamples(); i++) {
+      String sampleName = metadata.getSampleName(i);
+      VcfUtils.checkNoLineTerminator("sample name", sampleName);
+      if (sampleName.isEmpty() || sampleName.contains("\t") || !sampleNames.add(sampleName)) {
+        throw new VcfFormatException("Invalid or duplicate sample name in header: " + sampleName);
+      }
+    }
+    for (String key : metadata.getRawPropertyKeys()) {
+      for (String value : metadata.getRawValuesOfProperty(key)) {
+        VcfUtils.checkNoLineTerminator(key, value);
+      }
+    }
+  }
+
+  private void validateMetadataEntries(String kind, Collection<? extends BaseMetadata> entries) {
+    Set<String> ids = new HashSet<>();
+    for (BaseMetadata entry : entries) {
+      entry.validate();
+      Map<String, String> properties = entry.getPropertiesRaw();
+      for (Map.Entry<String, String> property : properties.entrySet()) {
+        String propertyName = property.getKey();
+        if (propertyName == null || propertyName.isEmpty() || propertyName.contains(",") ||
+            propertyName.contains("=")) {
+          throw new VcfFormatException(kind + " metadata contains an invalid property name: " + property.getKey());
+        }
+        String value = property.getValue();
+        if (value == null) {
+          throw new VcfFormatException(kind + " metadata property " + propertyName + " has a null value");
+        }
+        VcfUtils.checkNoLineTerminator(propertyName, value);
+        if (!isQuoted(value) && (value.contains(",") || value.contains("="))) {
+          throw new VcfFormatException(kind + " metadata property " + propertyName +
+              " contains an unquoted structural delimiter");
+        }
+      }
+      String id = properties.get("ID");
+      if (id != null && !ids.add(id)) {
+        throw new VcfFormatException("Duplicate ID " + id + " for " + kind + " metadata");
+      }
+    }
+  }
+
+  private static boolean isQuoted(String value) {
+    if (value.length() < 2 || value.charAt(0) != '"' || value.charAt(value.length() - 1) != '"') {
+      return false;
+    }
+    boolean escaped = false;
+    for (int i = 1; i < value.length() - 1; i++) {
+      char c = value.charAt(i);
+      if (c == '"' && !escaped) {
+        return false;
+      }
+      if (c == '\\') {
+        escaped = !escaped;
+      } else {
+        escaped = false;
+      }
+    }
+    return !escaped;
+  }
+
+  private void validateInfo(VcfMetadata metadata, VcfPosition position) {
+    for (String key : position.getInfoKeys()) {
+      List<String> values = position.getInfo(key);
+      InfoMetadata info = metadata.getInfo().get(key);
+      if (info == null) {
+        sf_logger.warn("Position {}:{} contains INFO {}, but there is no INFO metadata with that name",
+            position.getChromosome(), position.getPosition(), key);
+      } else {
+        validateInfoValue(info, values, key, position.getAltBases().size());
+      }
+    }
+  }
+
+  private void validateSamples(VcfMetadata metadata, VcfPosition position, List<VcfSample> samples) {
+    List<String> formatKeys = position.getFormat();
+    for (int sampleIndex = 0; sampleIndex < samples.size(); sampleIndex++) {
+      VcfSample sample = samples.get(sampleIndex);
+      sample.validate();
+      for (String key : sample.getPropertyKeys()) {
+        if (!formatKeys.contains(key)) {
+          throw new VcfFormatException("Sample #" + sampleIndex + " contains property " + key +
+              ", but it is not declared in FORMAT");
+        }
+      }
+      int ploidy = getPloidy(position, sample, sampleIndex);
+      for (String key : formatKeys) {
+        String value = sample.getProperty(key);
+        FormatMetadata format = metadata.getFormats().get(key);
+        if (value == null) {
+          sf_logger.warn("Sample #{} is missing property {}", sampleIndex, key);
+        } else if (format == null) {
+          sf_logger.warn("Sample #{} contains FORMAT {}, but there is no FORMAT metadata with that name", sampleIndex, key);
+        } else {
+          validateFormatValue(format, value, key, sampleIndex, position.getAltBases().size(), ploidy);
+        }
+      }
+    }
+  }
+
+  private void validateInfoValue(InfoMetadata info, List<String> values, String key, int numAltAlleles) {
+    InfoType type = info.getType();
+    if (type == InfoType.Flag) {
+      if (values.size() != 1 || !values.get(0).isEmpty()) {
+        sf_logger.warn("INFO {} has Type=Flag but has a value", key);
+      }
+      return;
+    }
+    if (values.stream().anyMatch(String::isEmpty)) {
+      sf_logger.warn("INFO {} contains an empty value", key);
+    }
+    String number = info.getNumber();
+    warnIfWrongCardinality("INFO " + key, number, values.size(), numAltAlleles, 2);
+    if (type == null) {
+      return;
+    }
+    for (String value : values) {
+      try {
+        VcfUtils.convertProperty(type, value);
+      } catch (VcfFormatException e) {
+        sf_logger.warn("INFO {} value {} is not of type {}", key, value, type);
+      }
+    }
+  }
+
+  private void validateFormatValue(FormatMetadata format, String value, String key, int sampleIndex,
+      int numAltAlleles, int ploidy) {
+    if (value.equals(".")) {
+      return;
+    }
+    String[] values = key.equals("GLE") ? new String[] { value } : value.split(",", -1);
+    for (String element : values) {
+      if (element.isEmpty()) {
+        sf_logger.warn("FORMAT {} for sample #{} contains an empty value", key, sampleIndex);
+      }
+    }
+    String number = format.getNumber();
+    warnIfWrongCardinality("FORMAT " + key + " for sample #" + sampleIndex, number, values.length, numAltAlleles,
+        ploidy);
+    FormatType type = format.getType();
+    if (type == null) {
+      return;
+    }
+    for (String element : values) {
+      try {
+        VcfUtils.convertProperty(type, element);
+      } catch (VcfFormatException e) {
+        sf_logger.warn("FORMAT {} for sample #{} value {} is not of type {}", key, sampleIndex, element, type);
+      }
+    }
+  }
+
+  private void warnIfWrongCardinality(String field, @Nullable String number, int actual, int numAltAlleles,
+      int ploidy) {
+    Long expected = getExpectedCardinality(number, numAltAlleles, ploidy);
+    if (expected != null && expected != actual) {
+      sf_logger.warn("{} has {} value(s), but Number={} requires {}", field, actual, number, expected);
+    }
+  }
+
+  static @Nullable Long getExpectedCardinality(@Nullable String number, int numAltAlleles, int ploidy) {
+    if (number == null || number.equals(".")) {
+      return null;
+    }
+    if (number.equals("A")) {
+      return (long) numAltAlleles;
+    }
+    if (number.equals("R")) {
+      return (long) numAltAlleles + 1;
+    }
+    if (number.equals("G")) {
+      return combinationsWithRepetition(numAltAlleles + 1, ploidy);
+    }
+    try {
+      return Long.parseLong(number);
+    } catch (NumberFormatException e) {
+      sf_logger.warn("Number={} is too large to validate cardinality", number);
+      return null;
+    }
+  }
+
+  private static long combinationsWithRepetition(int numAlleles, int ploidy) {
+    int k = Math.min(ploidy, numAlleles - 1);
+    long result = 1;
+    for (int i = 1; i <= k; i++) {
+      try {
+        result = Math.multiplyExact(result, numAlleles + ploidy - 1L - k + i) / i;
+      } catch (ArithmeticException e) {
+        return Long.MAX_VALUE;
+      }
+    }
+    return result;
+  }
+
+  private int getPloidy(VcfPosition position, VcfSample sample, int sampleIndex) {
+    String gt = sample.getProperty("GT");
+    if (gt == null) {
+      return 2;
+    }
+    String[] alleles = gt.split("[/|]", -1);
+    boolean valid = alleles.length > 0;
+    for (String allele : alleles) {
+      if (allele.equals(".")) {
+        continue;
+      }
+      try {
+        int index = Integer.parseInt(allele);
+        if (index < 0 || index > position.getAltBases().size()) {
+          valid = false;
+        }
+      } catch (NumberFormatException e) {
+        valid = false;
+      }
+    }
+    if (!valid) {
+      sf_logger.warn("Sample #{} has invalid GT {}", sampleIndex, gt);
+    }
+    return Math.max(1, alleles.length);
+  }
+
   private void addSampleConditionally(VcfMetadata metadata, int sampleIndex,
       VcfPosition position, VcfSample sample, StringBuilder sb) {
 
@@ -184,7 +424,7 @@ public class VcfWriter implements Closeable {
     for (int i = 0; i < formatKeys.size(); i++) {
       String key = formatKeys.get(i);
 
-      if (!metadata.getFormats().containsKey(key)) {
+      if (!m_validateBeforeWrite && !metadata.getFormats().containsKey(key)) {
         sf_logger.warn("Sample #{} for {}:{} contains FORMAT {}, but there is no FORMAT metadata with that name " +
                 "(on line {})",
             sampleIndex, position.getChromosome(), position.getPosition(), key, m_lineNumber);
@@ -192,13 +432,15 @@ public class VcfWriter implements Closeable {
 
       String value = sample.getProperty(key);
       if (value == null) {
-        sf_logger.warn("Sample #{} is missing property {}" +
-            " (on line {})", sampleIndex, key, m_lineNumber);
+        if (!m_validateBeforeWrite) {
+          sf_logger.warn("Sample #{} is missing property {}" +
+              " (on line {})", sampleIndex, key, m_lineNumber);
+        }
         value = ".";
       }
 
       FormatMetadata format = metadata.getFormats().get(key);
-      if (format != null) {
+      if (!m_validateBeforeWrite && format != null) {
         Integer number = null;
         try {
           number = Integer.parseInt(format.getNumber());
@@ -220,10 +462,12 @@ public class VcfWriter implements Closeable {
     }
 
     // now make sure the sample doesn't contain extra keys
-    sample.getPropertyKeys().stream().filter(key -> !position.getFormat().contains(key)).forEach(key -> {
-      sf_logger.warn("Sample #{} contains extra property {} " +
-          "(on line {})", sampleIndex, key, m_lineNumber);
-    });
+    if (!m_validateBeforeWrite) {
+      sample.getPropertyKeys().stream().filter(key -> !position.getFormat().contains(key)).forEach(key -> {
+        sf_logger.warn("Sample #{} contains extra property {} " +
+            "(on line {})", sampleIndex, key, m_lineNumber);
+      });
+    }
     sb.append("\t");
   }
 
@@ -240,10 +484,10 @@ public class VcfWriter implements Closeable {
       List<String> values = position.getInfo(key);
       assert values != null;
 
-      if (!metadata.getInfo().containsKey(key)) {
+      if (!m_validateBeforeWrite && !metadata.getInfo().containsKey(key)) {
         sf_logger.warn("Position {}:{} contains INFO {}, but there is no INFO metadata with that name (on line {})",
             position.getChromosome(), position.getPosition(), key, m_lineNumber);
-      } else {
+      } else if (!m_validateBeforeWrite) {
         InfoMetadata info = metadata.getInfo().get(key);
         for (String value : values) {
           Integer number = null;
@@ -354,10 +598,9 @@ public class VcfWriter implements Closeable {
     }
 
     /**
-     * Makes the built {@link VcfWriter} call {@link VcfPosition#validate()} before writing every line, rejecting a
-     * position that was mutated into an invalid state instead of silently writing it. This is off by default: it
-     * adds the cost of re-validating every position to every write, so if it is not set, the caller is responsible
-     * for either validating positions themselves before writing or otherwise guaranteeing they are still valid.
+     * Enables full-output diagnostics. Before writing, the writer validates metadata, positions, INFO, FORMAT, and
+     * sample values. It rejects content that would produce structurally invalid VCF and warns about detected semantic
+     * non-compliance. This is off by default to keep the direct parse-and-write path fast.
      */
     public Builder validateBeforeWrite() {
       m_validateBeforeWrite = true;

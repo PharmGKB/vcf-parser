@@ -26,7 +26,7 @@ public class FormatMetadata extends IdDescriptionMetadata {
   public static final String NUMBER = "Number";
   public static final String TYPE = "Type";
 
-  private FormatType m_type;
+  private @Nullable FormatType m_type;
 
   public FormatMetadata(String id, String description, String number, FormatType type) {
     super(id, description, false);
@@ -41,6 +41,7 @@ public class FormatMetadata extends IdDescriptionMetadata {
   }
 
   public void init() {
+    m_type = null;
     String number = getPropertyRaw(NUMBER);
     checkNumberProperty(sf_logger, number);
     String type = getPropertyRaw(TYPE);
@@ -53,6 +54,12 @@ public class FormatMetadata extends IdDescriptionMetadata {
       }
     }
     ensureNoExtras(ID, DESCRIPTION, NUMBER, TYPE);
+  }
+
+  @Override
+  public void validate() {
+    super.validate();
+    init();
   }
 
   /**

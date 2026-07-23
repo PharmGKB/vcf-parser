@@ -57,6 +57,7 @@ public class InfoMetadata extends IdDescriptionMetadata {
   }
 
   private void init() {
+    m_type = null;
     String number = getPropertyRaw(NUMBER);
     checkNumberProperty(sf_logger, number);
     String type = getPropertyRaw(TYPE);
@@ -71,7 +72,19 @@ public class InfoMetadata extends IdDescriptionMetadata {
     if (m_type == InfoType.Flag && !"0".equals(number)) {
       sf_logger.warn("INFO {} has Type=Flag but Number is '{}' (should be 0)", getId(), number);
     }
+    for (String optional : new String[] { SOURCE, VERSION }) {
+      String value = getPropertyRaw(optional);
+      if (value != null && (!value.startsWith("\"") || !value.endsWith("\""))) {
+        sf_logger.warn("Metadata property \"{}\" should be quoted but was: {}", optional, value);
+      }
+    }
     ensureNoExtras(ID, DESCRIPTION, NUMBER, TYPE, SOURCE, VERSION);
+  }
+
+  @Override
+  public void validate() {
+    super.validate();
+    init();
   }
 
   /**

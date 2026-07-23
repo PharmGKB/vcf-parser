@@ -70,6 +70,92 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteRejectsMutatedSampleValue() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+    position.getFormat().add("DP");
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    sample.putProperty("DP", "1");
+    sample.propertyEntrySet().iterator().next().setValue("1:2");
+
+    assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
+  }
+
+  @Test
+  public void testValidateBeforeWriteRejectsEmptySampleValue() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+    position.getFormat().add("DP");
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    sample.putProperty("DP", "");
+
+    assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
+  }
+
+  @Test
+  public void testValidateBeforeWriteRejectsSamplePropertyMissingFromFormat() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+    position.getFormat().add("GT");
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    sample.putProperty("GT", "0/1");
+    sample.putProperty("DP", "10");
+
+    assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
+  }
+
+  @Test
+  public void testValidateBeforeWriteRejectsMetadataDelimiterInjectedThroughRawView() throws Exception {
+    InfoMetadata info = new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null);
+    info.getPropertiesRaw().put("Description", "unquoted,comma");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+  }
+
+  @Test
+  public void testValidateBeforeWriteHandlesOversizedNumberAsDiagnostic() throws Exception {
+    InfoMetadata info = new InfoMetadata("NS", "d", InfoType.Integer, "999999999999999999999", null, null);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+    position.getInfo().put("NS", "1");
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+
+    writer.writeLine(metadata, position, Collections.emptyList());
+    assertTrue(sw.toString().contains("NS=1"));
+  }
+
+  @Test
+  public void testSpecialNumberCardinality() {
+    assertEquals(2L, VcfWriter.getExpectedCardinality("A", 2, 2));
+    assertEquals(3L, VcfWriter.getExpectedCardinality("R", 2, 2));
+    assertEquals(6L, VcfWriter.getExpectedCardinality("G", 2, 2));
+    assertEquals(10L, VcfWriter.getExpectedCardinality("G", 2, 3));
+  }
+
+  @Test
   public void testNoSamples() throws Exception {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();

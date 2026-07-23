@@ -23,6 +23,8 @@ public class IdDescriptionMetadata extends IdMetadata {
 
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
+  private final boolean m_isBaseType;
+
   public static final String ID = "ID";
   public static final String DESCRIPTION = "Description";
 
@@ -32,13 +34,21 @@ public class IdDescriptionMetadata extends IdMetadata {
 
   public IdDescriptionMetadata(Map<String, String> properties, boolean isBaseType) {
     super(properties, false);
+    m_isBaseType = isBaseType;
     init(isBaseType);
   }
 
   protected IdDescriptionMetadata(String id, String description, boolean isBaseType) {
-    super(id);
+    super(id, false);
+    m_isBaseType = isBaseType;
     putAndQuoteProperty(DESCRIPTION, description);
     init(isBaseType);
+  }
+
+  @Override
+  public void validate() {
+    super.validate();
+    init(m_isBaseType);
   }
 
   private void init(boolean isBaseType) {

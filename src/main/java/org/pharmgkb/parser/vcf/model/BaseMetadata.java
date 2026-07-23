@@ -7,6 +7,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
+import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,10 +25,24 @@ public class BaseMetadata {
   private final Map<String, String> m_properties;
 
   public BaseMetadata(Map<String, String> properties) {
-    for (Map.Entry<String, String> entry : properties.entrySet()) {
+    m_properties = properties;
+    validateProperties();
+  }
+
+  /**
+   * Re-validates the current properties after possible mutation through {@link #getPropertiesRaw()}.
+   */
+  public void validate() {
+    validateProperties();
+  }
+
+  private void validateProperties() {
+    for (Map.Entry<String, String> entry : m_properties.entrySet()) {
+      if (entry.getKey() == null) {
+        throw new VcfFormatException("Metadata contains a null property name");
+      }
       VcfUtils.checkNoLineTerminator(entry.getKey(), entry.getValue());
     }
-    m_properties = properties;
   }
 
   @Nullable

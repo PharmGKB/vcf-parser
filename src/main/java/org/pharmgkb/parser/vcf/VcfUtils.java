@@ -65,8 +65,8 @@ public class VcfUtils {
   public static final Pattern RSID_PATTERN = Pattern.compile("rs\\d+");
   public static final Pattern NUMBER_PATTERN = Pattern.compile("(?:\\d+|[ARG.])");
 
-  // VCFv<major>.<minor> with major >= 4 (VCF 4.0 is the supported floor); also rejects malformed versions like VCFv4..2
-  public static final Pattern FILE_FORMAT_PATTERN = Pattern.compile("VCFv(?:[4-9]|[1-9]\\d+)\\.\\d+");
+  // VCF 4.x only; also rejects malformed versions like VCFv4..2
+  public static final Pattern FILE_FORMAT_PATTERN = Pattern.compile("VCFv4\\.\\d+");
 
   public static Map<String, String> extractPropertiesFromLine(String value) {
     // split on top-level commas (those not inside a double-quoted value); splitTopLevel preserves escaped characters

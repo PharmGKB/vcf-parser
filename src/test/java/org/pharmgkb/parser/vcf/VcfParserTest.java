@@ -194,9 +194,13 @@ public class VcfParserTest {
 
   @Test
   void testUnsupportedFileFormatVersionThrows() throws IOException {
-    // below the 4.0 floor
+    // only VCF 4.x input is supported
+    assertDoesNotThrow(
+        () -> parseMetadataOf("##fileformat=VCFv4.99\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"));
     assertThrows(VcfFormatException.class,
         () -> parseMetadataOf("##fileformat=VCFv3.3\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"));
+    assertThrows(VcfFormatException.class,
+        () -> parseMetadataOf("##fileformat=VCFv5.0\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"));
     // malformed version
     assertThrows(VcfFormatException.class,
         () -> parseMetadataOf("##fileformat=VCFv4..2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"));
