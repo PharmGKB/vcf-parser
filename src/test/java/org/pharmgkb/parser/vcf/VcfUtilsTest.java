@@ -86,6 +86,15 @@ public class VcfUtilsTest {
   }
 
   @Test
+  public void testExtractPropertiesDuplicateAttributeWarnsAndKeepsLast() {
+    // a declaration with a repeated attribute (e.g. ##INFO=<ID=X,Number=1,Number=2,...>) silently kept only the
+    // last value with no diagnostic at all; must at least warn (VCF metadata-declaration policy is lenient, not a
+    // structural violation, so this doesn't throw)
+    Map<String, String> props = VcfUtils.extractPropertiesFromLine("ID=X,Number=1,Number=2");
+    assertEquals("2", props.get("Number"));
+  }
+
+  @Test
   public void testExtractPropertiesNoPlaceholderCollision() {
     // a value literally containing the old "~~~~" placeholder must be preserved, and an escaped quote must not be
     // treated as a real quote (so the comma inside the quoted value is not a top-level delimiter)

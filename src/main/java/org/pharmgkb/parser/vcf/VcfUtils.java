@@ -88,6 +88,9 @@ public class VcfUtils {
       } catch (RuntimeException e) {
         throw new VcfFormatException("Error parsing property \"" + prop + "\"", e);
       }
+      if (map.containsKey(pair.getKey())) {
+        sf_logger.warn("Metadata declaration contains duplicate attribute \"{}\"; keeping the last value", pair.getKey());
+      }
       map.put(pair.getKey(), pair.getValue());
     }
     return map;
