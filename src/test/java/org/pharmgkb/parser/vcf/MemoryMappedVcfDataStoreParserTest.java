@@ -124,33 +124,16 @@ public class MemoryMappedVcfDataStoreParserTest {
   }
 
   @Test
-  public void testDuplicateLocusDefaultsToFail() throws IOException {
-    // VCF permits multiple records at the same locus (e.g. multi-allelic sites split across lines), but this
-    // parser's default is still to reject them unless KEEP_ALL is requested
+  public void testDuplicateLocusRetainsAllRecords() throws IOException {
+    // VCF permits multiple records at the same locus (e.g. multi-allelic sites split across lines); every record
+    // seen at a locus is kept, with no handler/configuration needed -- it's up to the consumer to decide what, if
+    // anything, to do about duplicates
     String vcf = "##fileformat=VCFv4.2\n" +
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n" +
         "chr1\t1\trsx\tA\tT\t.\tPASS\t.\tGT\t0/1\n" +
         "chr1\t1\trsy\tA\tC\t.\tPASS\t.\tGT\t1/1\n";
     try (BufferedReader reader = new BufferedReader(new StringReader(vcf))) {
       MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
-      VcfParser parser = new VcfParser.Builder()
-          .fromReader(reader)
-          .parseWith(lineParser)
-          .build();
-      assertThrows(VcfFormatException.class, parser::parse);
-    }
-  }
-
-  @Test
-  public void testDuplicateLocusKeepAllRetainsAllRecords() throws IOException {
-    String vcf = "##fileformat=VCFv4.2\n" +
-        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n" +
-        "chr1\t1\trsx\tA\tT\t.\tPASS\t.\tGT\t0/1\n" +
-        "chr1\t1\trsy\tA\tC\t.\tPASS\t.\tGT\t1/1\n";
-    try (BufferedReader reader = new BufferedReader(new StringReader(vcf))) {
-      MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder()
-          .setDuplicateLocusHandler(MemoryMappedVcfLineParser.LocusDuplicateHandler.KEEP_ALL)
-          .build();
       new VcfParser.Builder()
           .fromReader(reader)
           .parseWith(lineParser)
