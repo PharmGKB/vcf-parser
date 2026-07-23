@@ -99,3 +99,6 @@ separately — two empty keys are not "duplicates" in the sense the spec means.
 - `VcfUtils.convertProperty` — warns and substitutes `.` (`null`) for an empty entry in a reserved list-typed
   property's comma-separated value.
 - `MemoryMappedVcfDataStore.doGetGenotype` — warns and substitutes `.` for an empty GT allele.
+- `VcfSample.validate()` — warns and substitutes `.` for a sample property whose value was mutated to empty through
+  `propertyEntrySet()`, consistent with `VcfWriter`'s own warn-only treatment of an empty INFO value or an empty
+  comma-separated FORMAT element in `validateBeforeWrite()` mode.

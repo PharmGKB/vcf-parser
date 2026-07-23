@@ -364,7 +364,12 @@ public class VcfWriter implements Closeable {
       return (long) numAltAlleles + 1;
     }
     if (number.equals("G")) {
-      return combinationsWithRepetition(numAltAlleles + 1, ploidy);
+      Long combinations = combinationsWithRepetition(numAltAlleles + 1, ploidy);
+      if (combinations == null) {
+        sf_logger.warn("Number=G cardinality for {} allele(s) and ploidy {} is too large to validate", numAltAlleles + 1,
+            ploidy);
+      }
+      return combinations;
     }
     try {
       return Long.parseLong(number);
@@ -374,14 +379,18 @@ public class VcfWriter implements Closeable {
     }
   }
 
-  private static long combinationsWithRepetition(int numAlleles, int ploidy) {
+  /**
+   * @return {@code null} if the result overflows a {@code long}, consistent with {@link #getExpectedCardinality}'s
+   * other branches skipping validation (rather than reporting a sentinel value) when a cardinality can't be computed
+   */
+  private static @Nullable Long combinationsWithRepetition(int numAlleles, int ploidy) {
     int k = Math.min(ploidy, numAlleles - 1);
     long result = 1;
     for (int i = 1; i <= k; i++) {
       try {
         result = Math.multiplyExact(result, numAlleles + ploidy - 1L - k + i) / i;
       } catch (ArithmeticException e) {
-        return Long.MAX_VALUE;
+        return null;
       }
     }
     return result;

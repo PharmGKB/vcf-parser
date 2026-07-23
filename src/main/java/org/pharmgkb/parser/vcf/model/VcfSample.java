@@ -1,5 +1,6 @@
 package org.pharmgkb.parser.vcf.model;
 
+import java.lang.invoke.MethodHandles;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -8,6 +9,8 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -20,6 +23,8 @@ import org.pharmgkb.parser.vcf.VcfUtils;
  * @author Mark Woon
  */
 public class VcfSample {
+
+  private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   // Lean representation used on the parse path; both null once m_properties has been materialized.
   private @Nullable List<String> m_keys;
@@ -88,13 +93,19 @@ public class VcfSample {
   }
 
   /**
-   * Re-validates the current properties after possible mutation through {@link #propertyEntrySet()}.
+   * Re-validates the current properties after possible mutation through {@link #propertyEntrySet()}, throwing
+   * {@link VcfFormatException} for a structural delimiter. An empty value is not a structural problem -- it does not
+   * corrupt column/sub-field alignment, the same as an empty INFO value or an empty comma-separated FORMAT element
+   * elsewhere in this library -- so it is warned about and normalized to {@code "."} (the VCF missing-value
+   * sentinel) in place, rather than rejected. See {@code EMPTY_FIELD_HANDLING.md}.
    */
   public void validate() {
     for (Map.Entry<String, String> entry : properties().entrySet()) {
       checkNoStructuralDelimiter(entry.getKey(), entry.getValue());
       if (entry.getValue() != null && entry.getValue().isEmpty()) {
-        throw new VcfFormatException("Sample property " + entry.getKey() + " has an empty value");
+        sf_logger.warn("Sample property {} has an empty value (VCF does not allow zero-length fields); treating " +
+            "it as the missing value '.'", entry.getKey());
+        entry.setValue(".");
       }
     }
   }

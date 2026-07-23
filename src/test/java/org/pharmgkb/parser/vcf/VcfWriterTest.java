@@ -20,6 +20,7 @@ import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -88,7 +89,10 @@ public class VcfWriterTest {
   }
 
   @Test
-  public void testValidateBeforeWriteRejectsEmptySampleValue() throws Exception {
+  public void testValidateBeforeWriteNormalizesEmptySampleValue() throws Exception {
+    // an empty value is not a structural problem (it doesn't corrupt column/sub-field alignment), so it's warned
+    // about and normalized to "." rather than rejected, consistent with validateInfoValue/validateFormatValue's
+    // warn-only treatment of the same "empty value" case elsewhere in this writer
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
@@ -100,8 +104,8 @@ public class VcfWriterTest {
     VcfSample sample = new VcfSample(new LinkedHashMap<>());
     sample.putProperty("DP", "");
 
-    assertThrows(VcfFormatException.class,
-        () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
+    writer.writeLine(metadata, position, Collections.singletonList(sample));
+    assertTrue(sw.toString().contains("\tDP\t."));
   }
 
   @Test
@@ -153,6 +157,14 @@ public class VcfWriterTest {
     assertEquals(3L, VcfWriter.getExpectedCardinality("R", 2, 2));
     assertEquals(6L, VcfWriter.getExpectedCardinality("G", 2, 2));
     assertEquals(10L, VcfWriter.getExpectedCardinality("G", 2, 3));
+  }
+
+  @Test
+  public void testGCardinalityOverflowSkipsValidationInsteadOfSentinelValue() {
+    // an astronomically large ploidy/allele-count combination overflows long; this must return null (skip
+    // validation), consistent with how the numeric-Number branch already skips validation when Number is too large
+    // to parse, rather than returning Long.MAX_VALUE as a bogus expected count
+    assertNull(VcfWriter.getExpectedCardinality("G", 1000, 1000));
   }
 
   @Test
