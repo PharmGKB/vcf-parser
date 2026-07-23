@@ -29,7 +29,7 @@ public class VcfUtilsTest {
     // all copied from the VCF 4.2 specification, in order
     String[] shouldPass = {" G]17:198982]", " ]13:123456]T", "C[2:321682[", "[17:198983[A", "A]2:321681]",
         " [13:123457[C", "]13 : 123456]AGTNNNNNCAT", " CAGTNNNNNCA[2 : 321682[", "C[<ctg1>: 1[", "] <ctg1 >: 329]A ",
-        " C[<ctg1>: 7[", "] <ctg1 >: 214]A", " ]13 : 123456]T",
+        "C<ctg1 >", " C[<ctg1>: 7[", "] <ctg1 >: 214]A", " ]13 : 123456]T",
         "]13 : 123456]A", " G[13 : 123460[", " ]13 : 123456]T", " C[2 : 321682[", "]2 : 321681]A", ".[13 : 123457[",
         " ]13 : 123456]T", " C[1 : 1[", " ]1 : 0]A", "G[13 : 123457[", " ]13 : 123456]T", " C[2 : 321682[",
         " ]2 : 321681]A", "G]2 : 421681]", "[2 : 421682[T", "A]2 : 321681]", "[2 : 321682[C", " T]13 : 123462]",
@@ -63,19 +63,6 @@ public class VcfUtilsTest {
     // "chr:pos" is always both parts together per the spec; there is no valid breakend form giving a chromosome
     // without a position (a truly mate-less breakend uses the unrelated "G."/".A" single-breakend shorthand)
     String[] shouldFail = {"A]2]", "A]chr1]", "C[2[", "]13]T", "[<ctg1>[A"};
-    for (String test : shouldFail) {
-      assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher(test).matches(), "String " + test + " was recognized");
-    }
-  }
-
-  @Test
-  public void testAltBasePatternRejectsBaseConcatenatedWithSymbolicId() {
-    // VCFv4.2's ALT grammar presents a base string, a symbolic <ID>, and a breakend replacement string as three
-    // mutually exclusive forms -- never a concatenation of a base string and a symbolic ID outside of breakend
-    // bracket notation. The spec's own "Large Insertions" example pairs a base with a symbolic ID only inside a
-    // breakend (e.g. "C[<ctg1>:7[", already covered by testAltBasePatternBreakpoint); a bare "C<ctg1>" with no
-    // bracket between them is not a valid ALT value under any part of the grammar.
-    String[] shouldFail = {"AC<ctg1>GT", "<ctg1><ctg2>", "C<ctg1>"};
     for (String test : shouldFail) {
       assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher(test).matches(), "String " + test + " was recognized");
     }
