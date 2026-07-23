@@ -327,7 +327,7 @@ public class VcfUtils {
       return value;
     } else if (clas == Character.class) {
       if (value.length() == 1) {
-        return value;
+        return value.charAt(0);
       } else {
         throw new VcfFormatException("Invalid character value '" + value + "'");
       }

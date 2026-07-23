@@ -3,6 +3,7 @@ package org.pharmgkb.parser.vcf;
 import java.util.Map;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.Test;
+import org.pharmgkb.parser.vcf.model.InfoType;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -153,6 +154,14 @@ public class VcfUtilsTest {
     assertThrows(VcfFormatException.class, () -> VcfUtils.checkNoLineTerminator("bad\nkey", "value"));
     assertThrows(VcfFormatException.class, () -> VcfUtils.checkNoLineTerminator("key", "bad\nvalue"));
     assertThrows(VcfFormatException.class, () -> VcfUtils.checkNoLineTerminator("key", "bad\rvalue"));
+  }
+
+  @Test
+  public void testConvertPropertyCharacterReturnsCharacterNotString() {
+    // convertElement's Character.class branch previously returned the raw String; type erasure let that past
+    // convertProperty() itself, but it then threw ClassCastException at the caller's assignment site below
+    Character value = VcfUtils.convertProperty(InfoType.Character, "A");
+    assertEquals(Character.valueOf('A'), value);
   }
 
 }
