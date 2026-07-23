@@ -43,4 +43,13 @@ public class FormatMetadataTest {
       }
     }
   }
+
+  @Test
+  public void testExtraPropertyRetained() {
+    // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included
+    // after the default fields" -- an unrecognized property is compliant, not just tolerated, and must be preserved
+    FormatMetadata md = new FormatMetadata(VcfUtils.extractProperties(
+        "ID=X", "Number=1", "Type=String", "Description=\"d\"", "Custom=extra"));
+    assertEquals("extra", md.getPropertyRaw("Custom"));
+  }
 }

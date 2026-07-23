@@ -39,7 +39,10 @@ public class InfoMetadata extends IdDescriptionMetadata {
 
   public InfoMetadata(String id, String description, InfoType type, String number,
       @Nullable String source, @Nullable String version) {
-    super(id, description);
+    // isBaseType=false: InfoMetadata has more fields than just ID/Description (unlike super(id, description)'s
+    // default of true, which would make IdDescriptionMetadata.validate() later warn that Number/Type/Source/Version
+    // -- InfoMetadata's own core fields -- are "unexpected" once they've been added below)
+    super(id, description, false);
     putPropertyRaw(NUMBER, number);
     putPropertyRaw(TYPE, type.name());
     if (source != null) {
@@ -78,7 +81,8 @@ public class InfoMetadata extends IdDescriptionMetadata {
         sf_logger.warn("Metadata property \"{}\" should be quoted but was: {}", optional, value);
       }
     }
-    ensureNoExtras(ID, DESCRIPTION, NUMBER, TYPE, SOURCE, VERSION);
+    // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included
+    // after the default fields" -- so an unrecognized property here is not itself non-compliant and must not warn
   }
 
   @Override

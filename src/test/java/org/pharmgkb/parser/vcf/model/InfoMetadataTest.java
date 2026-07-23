@@ -93,4 +93,26 @@ public class InfoMetadataTest {
     md.validate();
     assertEquals(InfoType.String, md.getType());
   }
+
+  @Test
+  public void testExtraPropertyRetained() {
+    // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included
+    // after the default fields" -- an unrecognized property is compliant, not just tolerated, and must be preserved
+    InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(
+        "ID=X", "Number=1", "Type=String", "Description=\"d\"", "Custom=extra"));
+    assertEquals("extra", md.getPropertyRaw("Custom"));
+  }
+
+  @Test
+  public void testValidateWithExtraPropertyDoesNotAffectCoreFields() {
+    // the typed constructor previously passed isBaseType=true up the chain (see testValidateRefreshesTypeAfterRawMutation
+    // for the general validate() re-derivation this exercises); combined with an extra property, validate() must
+    // still correctly re-derive Type/Number and not treat Number/Type/Source/Version as unexpected
+    InfoMetadata md = new InfoMetadata("X", "d", InfoType.Integer, "1", "src", "1.0");
+    md.getPropertiesRaw().put("Custom", "extra");
+    md.validate();
+    assertEquals(InfoType.Integer, md.getType());
+    assertEquals("1", md.getNumber());
+    assertEquals("extra", md.getPropertyRaw("Custom"));
+  }
 }

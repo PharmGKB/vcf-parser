@@ -53,7 +53,8 @@ public class FormatMetadata extends IdDescriptionMetadata {
         sf_logger.warn("{} '{}' is not a valid FORMAT type", TYPE, type);
       }
     }
-    ensureNoExtras(ID, DESCRIPTION, NUMBER, TYPE);
+    // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included
+    // after the default fields" -- so an unrecognized property here is not itself non-compliant and must not warn
   }
 
   @Override

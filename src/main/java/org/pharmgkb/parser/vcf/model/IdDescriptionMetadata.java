@@ -57,9 +57,10 @@ public class IdDescriptionMetadata extends IdMetadata {
     if (description != null && (!description.startsWith("\"") || !description.endsWith("\""))) {
       sf_logger.warn("Metadata property \"{}\" should be quoted but was: {}", DESCRIPTION, description);
     }
-    if (isBaseType) {
-      ensureNoExtras(ID, DESCRIPTION);
-    }
+    // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included
+    // after the default fields" -- so an unrecognized property here is not itself non-compliant and must not warn.
+    // This class is also used for ##SAMPLE (not named in that sentence, but its own extra fields, e.g. Genomes and
+    // Mixture, aren't modeled by this class either way, so the same leniency applies rather than warning about them.)
   }
 
   /**
