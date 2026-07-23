@@ -32,8 +32,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Writes to VCF format from a {@link VcfSample}, {@link VcfPosition VcfPositions}, and {@link VcfMetadata}.
- * For now, this class performs little validation of its own, relying on {@link VcfParser} instead. For that reason, it
- * is currently package-accessible only.
+ * The default write path stays fast by performing little validation of its own; build with
+ * {@link Builder#validateBeforeWrite()} for full structural validation and semantic-compliance diagnostics.
  *
  * @author Douglas Myers-Turnbull
  * @see TransformingVcfLineParser TransformingVcfLineParser - a read-transform-write streamer that is publicly accessible
