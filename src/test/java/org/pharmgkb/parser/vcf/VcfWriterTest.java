@@ -298,6 +298,27 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteRejectsMetadataMutatedAfterHeaderWritten() throws Exception {
+    // "metadata != m_headerMetadata" alone only catches a swapped-in different object; it can't catch the SAME
+    // object being mutated in place after writeHeader() already flushed the header text (e.g. addInfo() adding a
+    // declaration the emitted header never had), which would silently make a data line reference a key the header
+    // doesn't declare
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+
+    metadata.addInfo(new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null));
+
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+    position.getInfo().put("NS", "1");
+
+    assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.emptyList()));
+  }
+
+  @Test
   public void testSpecialNumberCardinality() {
     assertEquals(2L, VcfWriter.getExpectedCardinality("A", 2, 2));
     assertEquals(3L, VcfWriter.getExpectedCardinality("R", 2, 2));

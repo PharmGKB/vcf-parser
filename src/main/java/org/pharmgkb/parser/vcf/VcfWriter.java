@@ -48,6 +48,10 @@ public class VcfWriter implements Closeable {
   private int m_lineNumber;
   private boolean m_headerWritten;
   private @Nullable VcfMetadata m_headerMetadata;
+  // snapshot of the exact header text emitted by writeHeader(), in validateBeforeWrite mode only; lets writeLine()
+  // detect the same metadata object being mutated in place after the header was already flushed (e.g. via
+  // addInfo()/removeInfo()), which "metadata != m_headerMetadata" alone can't catch
+  private @Nullable String m_headerText;
 
   private VcfWriter(@Nullable Path file, PrintWriter writer, boolean validateBeforeWrite) {
     m_file = file;
@@ -64,20 +68,43 @@ public class VcfWriter implements Closeable {
       validateMetadata(metadata);
     }
 
+    List<String> lines = buildHeaderLines(metadata);
+    for (String line : lines) {
+      printLine(line);
+    }
+
+    m_writer.flush();
+    m_headerWritten = true;
+    m_headerMetadata = metadata;
+    if (m_validateBeforeWrite) {
+      m_headerText = String.join("\n", lines);
+    }
+    sf_logger.info("Wrote {} lines of header{}", m_lineNumber, (m_file == null ? "" : " to " + m_file));
+  }
+
+  /**
+   * Builds every header line (metadata declarations, then the {@code #CHROM} column line) that {@link #writeHeader}
+   * would emit for {@code metadata}, without writing anything. Used both by {@link #writeHeader} itself and, in
+   * validateBeforeWrite mode, by {@link #writeLine} to detect the header metadata object having been mutated in
+   * place since the header was written (see {@link #m_headerText}).
+   */
+  private List<String> buildHeaderLines(VcfMetadata metadata) {
+    List<String> lines = new ArrayList<>();
+
     // file format
-    printLine("##fileformat=" + metadata.getFileFormat());
+    lines.add("##fileformat=" + metadata.getFileFormat());
 
     // metadata, in order from spec
-    printLines("INFO", metadata.getInfo().values());
-    printLines("FILTER", metadata.getFilters().values());
-    printLines("FORMAT", metadata.getFormats().values());
-    printLines("ALT", metadata.getAlts().values());
-    printLines("contig", metadata.getContigs().values());
-    printLines("SAMPLE", metadata.getSamples().values());
-    printLines("PEDIGREE", metadata.getPedigrees());
+    addMetadataLines(lines, "INFO", metadata.getInfo().values());
+    addMetadataLines(lines, "FILTER", metadata.getFilters().values());
+    addMetadataLines(lines, "FORMAT", metadata.getFormats().values());
+    addMetadataLines(lines, "ALT", metadata.getAlts().values());
+    addMetadataLines(lines, "contig", metadata.getContigs().values());
+    addMetadataLines(lines, "SAMPLE", metadata.getSamples().values());
+    addMetadataLines(lines, "PEDIGREE", metadata.getPedigrees());
 
     for (String key : metadata.getRawPropertyKeys()) {
-      printPropertyLines(key, metadata.getRawValuesOfProperty(key));
+      addPropertyLines(lines, key, metadata.getRawValuesOfProperty(key));
     }
 
     // header line
@@ -88,12 +115,9 @@ public class VcfWriter implements Closeable {
     for (int i = 0; i < metadata.getNumSamples(); i++) {
       sb.append("\t").append(metadata.getSampleName(i));
     }
-    printLine(sb);
+    lines.add(sb.toString());
 
-    m_writer.flush();
-    m_headerWritten = true;
-    m_headerMetadata = metadata;
-    sf_logger.info("Wrote {} lines of header{}", m_lineNumber, (m_file == null ? "" : " to " + m_file));
+    return lines;
   }
 
   /**
@@ -114,6 +138,16 @@ public class VcfWriter implements Closeable {
       if (metadata != m_headerMetadata) {
         throw new VcfFormatException("writeLine() was given different metadata than writeHeader() used; the " +
             "emitted header and this record would be inconsistent");
+      }
+      // metadata == m_headerMetadata only proves it's the same object, not that it's unchanged: a caller can
+      // mutate it in place (e.g. addInfo()/removeInfo()) after writeHeader() already flushed the header text, so
+      // the header actually on disk/in the stream can still disagree with what this same object would now
+      // produce. Compare the header text metadata would produce right now against the snapshot taken when it was
+      // actually written.
+      if (!String.join("\n", buildHeaderLines(metadata)).equals(m_headerText)) {
+        throw new VcfFormatException("The metadata object given to writeLine() has changed since writeHeader() " +
+            "was called (e.g. via addInfo()/removeInfo()); the already-emitted header no longer matches what this " +
+            "metadata would produce");
       }
       position.validate();
       validateMetadata(metadata);
@@ -610,15 +644,15 @@ public class VcfWriter implements Closeable {
     sb.append("\t");
   }
 
-  private void printPropertyLines(String name, Collection<String> list) {
+  private void addPropertyLines(List<String> lines, String name, Collection<String> list) {
     for (String string : list) {
-      printLine("##" + name + "=" + string);
+      lines.add("##" + name + "=" + string);
     }
   }
 
-  private void printLines(String name, Collection<? extends BaseMetadata> list) {
+  private void addMetadataLines(List<String> lines, String name, Collection<? extends BaseMetadata> list) {
     for (BaseMetadata metadata : list) {
-      printLine(getAllProperties(name, metadata));
+      lines.add(getAllProperties(name, metadata));
     }
   }
 
