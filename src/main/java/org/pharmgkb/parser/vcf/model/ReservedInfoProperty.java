@@ -16,8 +16,11 @@ public enum ReservedInfoProperty implements ReservedProperty {
       "from primary data, not called genotypes", VcfFloat.class, true),
   AlleleNumber("AN", "Total number of alleles in called genotypes", Long.class, false),
   BaseQuality("BQ", "RMS base quality at this position", VcfFloat.class, false),
+  // isList=true (Number=A, one value per ALT allele): VCFv4.2 only describes CIGAR in prose, with no formal
+  // Number declared, but VCFv4.3, 4.4, and 4.5 all unanimously and explicitly declare it Number=A in their
+  // reserved INFO tables -- a clarification of something 4.2 left undefined, not a conflict with it.
   Cigar("CIGAR", "Cigar string describing how to align an alternate allele to the reference allele", String.class,
-      false),
+      true),
   Dbsnp("DB", "dbSNP membership", Boolean.class, false),
   Depth("DP", "Combined depth across samples", Long.class, false),
   Hapmap2("H2", "Membership in HapMap2", Boolean.class, false),

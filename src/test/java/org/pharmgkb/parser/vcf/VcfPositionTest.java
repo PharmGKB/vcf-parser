@@ -156,6 +156,17 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testGetInfoCigarIsListValued() {
+    // VCFv4.2 only describes CIGAR in prose with no formal Number, but VCFv4.3/4.4/4.5 all declare it Number=A
+    // (one value per ALT allele); a multi-allelic record's CIGAR must therefore convert to a List, not a scalar
+    VcfPosition p = newPosition();
+    p.getAltBases().add("T");
+    p.getAltBases().add("C");
+    p.setRawInfo("CIGAR=1M,2M");
+    assertEquals(Arrays.asList("1M", "2M"), p.getInfo(ReservedInfoProperty.Cigar));
+  }
+
+  @Test
   public void testGetInfoFloatAcceptsSpecialValues() {
     // VCFv4.2 doesn't define Float's grammar at all; VCFv4.5 clarifies it accepts NAN/INF/INFINITY (case-insensitive,
     // optionally signed) in addition to a normal decimal number -- a plain BigDecimal can't represent these at all
