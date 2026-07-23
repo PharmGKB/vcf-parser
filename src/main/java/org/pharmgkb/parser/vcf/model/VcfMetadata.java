@@ -224,12 +224,12 @@ public class VcfMetadata {
    * Call {@link ListMultimap#asMap} to get a Map&lt;String, Collection&lt;String&gt;&gt;.
    * @return <em>Contains every property except those contained in:</em>
    * <ul>
+   *   <li>{@link #getAlts}</li>
    *   <li>{@link #getInfo}</li>
    *   <li>{@link #getFilters}</li>
    *   <li>{@link #getFormats}</li>
    *   <li>{@link #getContigs}</li>
    *   <li>{@link #getPedigrees}</li>
-   *   <li>{@link #getInfo}</li>
    *   <li>{@link #getSamples}</li>
    * </ul>
    * However, contains any in {@link #getAssemblies} and {@link #getPedigreeDatabases}.
@@ -256,12 +256,12 @@ public class VcfMetadata {
    * and {@code pedigreeDB} are still included.</strong>
    * @return <em>Contains every property except those contained in:</em>
    * <ul>
+   *   <li>{@link #getAlts}</li>
    *   <li>{@link #getInfo}</li>
    *   <li>{@link #getFilters}</li>
    *   <li>{@link #getFormats}</li>
    *   <li>{@link #getContigs}</li>
    *   <li>{@link #getPedigrees}</li>
-   *   <li>{@link #getInfo}</li>
    *   <li>{@link #getSamples}</li>
    * </ul>
    * However, contains any in {@link #getAssemblies} and {@link #getPedigreeDatabases}.

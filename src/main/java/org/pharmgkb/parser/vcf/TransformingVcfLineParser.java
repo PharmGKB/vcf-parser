@@ -32,7 +32,7 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
  *   builder.addTransformation(transformation1, file1);
  *   builder.addTransformation(transformation2, file2);
  *   try (TransformingVcfLineParser lineParser = builder.build()) {
- *       try (VcfParser parser = new VcfParser.Builder().fromFile(input.toPath()).parseWith(transformer).build()) {
+ *       try (VcfParser parser = new VcfParser.Builder().fromFile(input.toPath()).parseWith(lineParser).build()) {
  *           parser.parse(); // prints transformed VCFs to file1 and file2
  *       }
  *   }

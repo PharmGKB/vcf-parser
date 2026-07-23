@@ -42,9 +42,10 @@ public class VcfAllele {
   }
 
   /**
-   * <strong>Before calling, verify that this VcfAllele is not a breakpoint or a symbolic name.</strong>
+   * <strong>Before calling, verify that this VcfAllele is not a breakpoint, a symbolic name, or a deletion upstream
+   * ({@code *}).</strong>
    * @return The number of bases in this Allele
-   * @throws VcfFormatException If this Allele is a breakpoint or symbolic name
+   * @throws VcfFormatException If this Allele is a breakpoint, a symbolic name, or a deletion upstream ({@code *})
    */
   public int length() {
     if (isSymbolic() || isBreakpoint() || isDeleted()) {

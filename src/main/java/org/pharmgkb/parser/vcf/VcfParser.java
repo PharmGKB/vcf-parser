@@ -354,8 +354,8 @@ public class VcfParser implements Closeable {
   }
 
   /**
-   * Removes double quotation marks around a string.
-   * @throws IllegalArgumentException If angle brackets are not present
+   * Removes angle brackets around a string.
+   * @throws VcfFormatException If angle brackets are not present
    */
   private static String removeAngleBrackets(String string) throws VcfFormatException {
     if (string.startsWith("<") && string.endsWith(">")) {
