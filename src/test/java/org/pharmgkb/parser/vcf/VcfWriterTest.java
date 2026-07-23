@@ -141,6 +141,39 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteRejectsEqualsSignInRawPropertyKey() throws Exception {
+    // a raw property ("##key=value") is reread by VcfParser splitting on the FIRST "=" only; a key containing "="
+    // shifts that split point. Verified live: writing key "foo=bar" reparses as key "foo", value "bar=value"
+    // instead of the original key "foo=bar", value "value" -- genuine data corruption, not just unusual content.
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    metadata.getRawProperties().put("foo=bar", "value");
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+  }
+
+  @Test
+  public void testValidateBeforeWriteRejectsUnescapedQuoteInMetadataValue() throws Exception {
+    // a value that isn't validly quoted (isQuoted() is false) but also contains no ',' or '=' previously slipped
+    // through unrejected. Verified live: a value of "abc"def" (embedded unescaped '"', no comma/equals) followed
+    // by another property in the same declaration doesn't just misparse -- it fails to parse entirely
+    // (VcfFormatException) once re-read, because the stray '"' flips the reader's "inside a quoted value" state
+    // for everything that follows.
+    Map<String, String> props = new LinkedHashMap<>();
+    props.put("ID", "X");
+    props.put("Description", "\"d\"");
+    props.put("AAAA", "\"abc\"def\"");
+    props.put("BBBB", "\"has,a,comma\"");
+    InfoMetadata info = new InfoMetadata(props);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+  }
+
+  @Test
   public void testValidateBeforeWriteRejectsMetadataIdDivergedFromMapKey() throws Exception {
     // getInfo() (and its FORMAT/FILTER/ALT/contig/SAMPLE siblings) return the backing map directly; mutating an
     // entry's own raw ID property, while it stays stored under its original map key, would otherwise make the

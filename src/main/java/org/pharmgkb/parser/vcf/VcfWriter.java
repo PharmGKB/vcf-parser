@@ -260,6 +260,14 @@ public class VcfWriter implements Closeable {
       }
     }
     for (String key : metadata.getRawPropertyKeys()) {
+      // a raw property is written as "##" + key + "=" + value, and reread by splitting on the FIRST "=" only
+      // (VcfParser.parseMetadata); a key containing '=' shifts that split point, so the key/value recovered on
+      // reparse would not match what was written. Verified live: writing key "foo=bar" reparses as key "foo",
+      // value "bar=value" instead of key "foo=bar", value "value".
+      if (key.contains("=")) {
+        throw new VcfFormatException("Metadata property name \"" + key + "\" contains '=', which would shift " +
+            "where the key/value split falls when re-read");
+      }
       for (String value : metadata.getRawValuesOfProperty(key)) {
         VcfUtils.checkNoLineTerminator(key, value);
       }
@@ -305,7 +313,7 @@ public class VcfWriter implements Closeable {
         throw new VcfFormatException(kind + " metadata property " + propertyName + " has a null value");
       }
       VcfUtils.checkNoLineTerminator(propertyName, value);
-      if (!isQuoted(value) && (value.contains(",") || value.contains("="))) {
+      if (!isQuoted(value) && (value.contains(",") || value.contains("=") || containsUnescapedQuote(value))) {
         throw new VcfFormatException(kind + " metadata property " + propertyName +
             " contains an unquoted structural delimiter");
       }
@@ -329,6 +337,29 @@ public class VcfWriter implements Closeable {
       }
     }
     return !escaped;
+  }
+
+  /**
+   * @return whether {@code value} contains a {@code "} not preceded by an escaping {@code \} (the same escape
+   * convention {@link VcfUtils}'s top-level splitter uses). {@link #isQuoted} already rejects a value that starts
+   * and ends with {@code "} but isn't validly escaped in between, but a value can also contain a stray, unescaped
+   * {@code "} without looking quoted at all (no leading/trailing {@code "}) and without containing {@code ,} or
+   * {@code =} either, so this must be checked independently of both. Left unrejected, such a value would flip the
+   * writer's top-level "inside a quoted value" tracking state when re-read, potentially misaligning every property
+   * that follows it in the same declaration. Verified live: a value of {@code "abc"def"} followed by another
+   * property in the same declaration fails to re-parse at all ({@code VcfFormatException}), not just producing a
+   * different value than intended.
+   */
+  private static boolean containsUnescapedQuote(String value) {
+    for (int i = 0; i < value.length(); i++) {
+      char c = value.charAt(i);
+      if (c == '\\' && i + 1 < value.length() && (value.charAt(i + 1) == '\\' || value.charAt(i + 1) == '"')) {
+        i++; // skip the escaped character
+      } else if (c == '"') {
+        return true;
+      }
+    }
+    return false;
   }
 
   private void validateInfo(VcfMetadata metadata, VcfPosition position) {
