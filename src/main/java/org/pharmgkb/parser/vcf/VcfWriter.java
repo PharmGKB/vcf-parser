@@ -206,9 +206,17 @@ public class VcfWriter implements Closeable {
     validateKeyedMetadataEntries("ALT", metadata.getAlts());
     validateKeyedMetadataEntries("contig", metadata.getContigs());
     validateKeyedMetadataEntries("SAMPLE", metadata.getSamples());
+    // unlike the six kinds above, PEDIGREE entries aren't stored in a map keyed by ID, so there's no map key to
+    // compare against; duplicate IDs across entries must still be checked directly here
+    Set<String> pedigreeIds = new HashSet<>();
     for (BaseMetadata pedigree : metadata.getPedigrees()) {
       pedigree.validate();
-      validateMetadataProperties("PEDIGREE", pedigree.getPropertiesRaw());
+      Map<String, String> properties = pedigree.getPropertiesRaw();
+      validateMetadataProperties("PEDIGREE", properties);
+      String id = properties.get("ID");
+      if (id != null && !pedigreeIds.add(id)) {
+        throw new VcfFormatException("Duplicate ID " + id + " for PEDIGREE metadata");
+      }
     }
     Set<String> sampleNames = new HashSet<>();
     for (int i = 0; i < metadata.getNumSamples(); i++) {

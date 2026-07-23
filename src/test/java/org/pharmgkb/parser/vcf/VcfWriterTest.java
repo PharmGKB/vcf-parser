@@ -9,7 +9,9 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.pharmgkb.parser.vcf.model.BaseMetadata;
 import org.pharmgkb.parser.vcf.model.FormatMetadata;
 import org.pharmgkb.parser.vcf.model.FormatType;
 import org.pharmgkb.parser.vcf.model.InfoMetadata;
@@ -146,6 +148,27 @@ public class VcfWriterTest {
     InfoMetadata info = new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
     metadata.getInfo().get("NS").getPropertiesRaw().put("ID", "DIFFERENT");
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+  }
+
+  @Test
+  public void testValidateBeforeWriteRejectsDuplicatePedigreeId() throws Exception {
+    // PEDIGREE entries are stored in a List, not a Map keyed by ID like INFO/FORMAT/FILTER/ALT/contig/SAMPLE, so
+    // validateKeyedMetadataEntries's "ID matches map key" check can't cover them -- duplicate IDs across PEDIGREE
+    // entries need their own check
+    Map<String, String> childProps = new LinkedHashMap<>();
+    childProps.put("ID", "Child");
+    childProps.put("Father", "Dad");
+    Map<String, String> duplicateProps = new LinkedHashMap<>();
+    duplicateProps.put("ID", "Child");
+    duplicateProps.put("Mother", "Mom");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addPedigree(new BaseMetadata(childProps))
+        .addPedigree(new BaseMetadata(duplicateProps))
+        .build();
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
 
