@@ -240,6 +240,17 @@ public class VcfPosition {
       if (value.contains(";") || value.contains(",")) {
         throw new VcfFormatException("INFO value \"" + value + "\" for key \"" + key + "\" contains ';' or ','");
       }
+      // VCFv4.2's INFO grammar note ("String, no whitespace, semicolons, or equals-signs permitted") applies this
+      // constraint to the individual key and value making up each entry, the same convention already used above
+      // for whitespace/';'/',' -- so a '=' here is technically non-compliant. But bcftools 1.23.1 accepts it
+      // silently with no warning at all (verified live: "DP=1=2" round-trips as-is, splitting only on the first
+      // '=', exactly like this parser already does), so this is warned about rather than rejected, consistent
+      // with this project's policy of not being stricter than bcftools on input it demonstrably tolerates (see
+      // EMPTY_FIELD_HANDLING.md).
+      if (value.contains("=")) {
+        sf_logger.warn("INFO value \"{}\" for key \"{}\" contains '='; VCFv4.2's grammar doesn't permit this, but " +
+            "bcftools 1.23.1 accepts it silently, so it is preserved as-is", value, key);
+      }
     }
   }
 
@@ -484,6 +495,15 @@ public class VcfPosition {
         if (props.contains(".") && props.size() > 1) {
           throw new VcfFormatException("INFO contains '.' (missing value) along with other properties");
         }
+        // VCFv4.2 is silent on whether a top-level INFO key may appear more than once, but VCFv4.3 explicitly
+        // states "Duplicate keys are not allowed" for INFO (mirroring the same rule for FORMAT keys). bcftools
+        // 1.23.1 does not reject this, though: verified live, "DP=1;DP=2" is accepted with no warning, and
+        // `bcftools query -f '%INFO/DP'` returns "1", not "1,2" -- bcftools keeps only the first occurrence rather
+        // than merging duplicates into a list. This parser matches that bcftools behavior (warn and keep the
+        // first occurrence) instead of throwing, consistent with this project's policy of not being stricter than
+        // bcftools on input it demonstrably tolerates (see EMPTY_FIELD_HANDLING.md), and instead of silently
+        // merging duplicates into what would look like a legitimate multi-value list.
+        Set<String> seenKeys = new HashSet<>();
         for (String prop : props) {
           if (prop.equals(".")) {
             // reaching here without having thrown above means "." is the only entry left once delimiter-artifact
@@ -492,15 +512,20 @@ public class VcfPosition {
             continue;
           }
           int idx = prop.indexOf('=');
+          String key = idx == -1 ? prop : prop.substring(0, idx);
+          if (idx != -1 && key.isEmpty()) {
+            sf_logger.warn("INFO entry \"{}\" has an empty key (VCF does not allow zero-length fields); " +
+                "dropping it", prop);
+            continue;
+          }
+          if (!seenKeys.add(key)) {
+            sf_logger.warn("INFO contains duplicate key \"{}\"; keeping only the first occurrence, matching " +
+                "bcftools 1.23.1 behavior", key);
+            continue;
+          }
           if (idx == -1) {
-            info.put(prop, "");
+            info.put(key, "");
           } else {
-            String key = prop.substring(0, idx);
-            if (key.isEmpty()) {
-              sf_logger.warn("INFO entry \"{}\" has an empty key (VCF does not allow zero-length fields); " +
-                  "dropping it", prop);
-              continue;
-            }
             for (String value : prop.substring(idx + 1).split(",", -1)) {
               if (value.isEmpty()) {
                 sf_logger.warn("INFO value for key \"{}\" contains an empty entry (VCF does not allow zero-length " +

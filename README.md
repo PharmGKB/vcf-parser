@@ -91,6 +91,11 @@ stored:
   value that isn't a non-negative 32-bit integer: both constraints go beyond what `FT`'s/`PS`'s declared `Type` can
   express, so they're checked separately, both when a typed value is requested and by
   `VcfWriter.Builder.validateBeforeWrite()`.
+- An INFO value containing `=` (e.g. `DP=1=2`), or a duplicate top-level INFO key (e.g. `DP=1;DP=2`): VCFv4.2's INFO
+  grammar note technically disallows the former, and VCFv4.3 explicitly disallows the latter, but bcftools 1.23.1
+  accepts both silently — splitting an `=`-containing value on the first `=` only (same as this parser), and
+  keeping only the first occurrence of a duplicate key rather than merging the two into a list. This parser matches
+  that bcftools tolerance rather than being stricter than it, consistent with the empty-field policy below.
 
 An empty ("zero-length") entry in a delimited record field — e.g. `ID=rs1;;rs2`, `ALT=T,`, `FILTER=q10;`,
 `FORMAT=GT:DP:`, a sample value like `0/1:`, or `INFO=AD=1,,2` — is also lenient rather than strict when it can be

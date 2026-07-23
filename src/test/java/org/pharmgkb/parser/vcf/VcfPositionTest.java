@@ -121,6 +121,33 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testLazyInfoValueContainingEqualsSignWarnsAndPreserves() {
+    // VCFv4.2's INFO grammar note ("no whitespace, semicolons, or equals-signs permitted") technically disallows
+    // this, but bcftools 1.23.1 accepts it silently (verified live: "DP=1=2" round-trips as-is, splitting only on
+    // the first '='); this parser matches that tolerance instead of rejecting it
+    VcfPosition position = newPosition();
+    position.setRawInfo("DP=1=2");
+    assertEquals(Collections.singletonList("1=2"), position.getInfo("DP"));
+  }
+
+  @Test
+  public void testLazyInfoDuplicateKeyKeepsOnlyFirstOccurrence() {
+    // VCFv4.2 is silent on duplicate top-level INFO keys, but VCFv4.3 explicitly disallows them ("Duplicate keys
+    // are not allowed"). bcftools 1.23.1 doesn't reject this, though -- verified live: "DP=1;DP=2" is accepted
+    // with no warning, and bcftools keeps only the first occurrence ("1"), not "1,2". This parser warns (rather
+    // than throwing) and matches that same "keep first, drop rest" behavior, instead of silently merging
+    // duplicates into what would look like a legitimate multi-value list.
+    VcfPosition position = newPosition();
+    position.setRawInfo("DP=1;DP=2");
+    assertEquals(Collections.singletonList("1"), position.getInfo("DP"));
+
+    // a duplicate flag-form key (no "=") behaves the same way
+    VcfPosition flagPosition = newPosition();
+    flagPosition.setRawInfo("DB;DB");
+    assertEquals(Collections.singletonList(""), flagPosition.getInfo("DB"));
+  }
+
+  @Test
   public void testGetInfoMappingQuality() {
     // MQ is a float reserved property; getInfo must convert it (it was previously typed Float.class, which threw)
     VcfPosition p = newPosition();
