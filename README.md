@@ -4,8 +4,8 @@
 [![codecov.io](https://codecov.io/github/PharmGKB/vcf-parser/coverage.svg?branch=main)](https://codecov.io/github/PharmGKB/vcf-parser?branch=main)
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/org.pharmgkb/vcf-parser/badge.svg)](https://maven-badges.herokuapp.com/maven-central/org.pharmgkb/vcf-parser)
 
-This is a streaming parser for [VCF](http://en.wikipedia.org/wiki/Variant_Call_Format). It validates record
-structure strictly but is deliberately lenient about the quality of metadata declarations — see
+This is a streaming parser and writer for [VCF](http://en.wikipedia.org/wiki/Variant_Call_Format). It validates record
+structure strictly but defers validation of non-structural content for performance — see
 [Validation: strict vs. lenient](#validation-strict-vs-lenient) below.
 
 The main parser class ([`VcfParser`](src/main/java/org/pharmgkb/parser/vcf/VcfParser.java)) is responsible for reading all metadata and initial position data.  Then actual handling of each position line is delegated to an implementation of `VcfLineParser`.
@@ -14,22 +14,22 @@ Check out [`VcfParserTest.java`](src/test/java/org/pharmgkb/parser/vcf/VcfParser
 
 [`MemoryMappedVcfLineParser`](src/main/java/org/pharmgkb/parser/vcf/MemoryMappedVcfLineParser.java) is an implementation of `VcfLineParser` that reads everything into memory.
 
-**VCF version support:** `##fileformat` accepts any `VCFv<major>.<minor>` at or above `4.0`; the parser does not
-hard-code a version ceiling. It was written against, and its reserved INFO/FORMAT/ALT/structural-variant definitions
-reflect, VCF 4.1/4.2. Later versions generally parse correctly too — an unrecognized reserved key or `Number` value is
-stored as a plain string rather than rejected — but version-specific features introduced after 4.2 (e.g.
-percent-encoding, local alleles) are not specially interpreted.
+**VCF version support:** The target specification is VCF 4.2. The parser accepts representable VCF 4.x input from
+before and after that version. Where VCF versions differ or input is ambiguous, it uses VCF 4.2 semantics. Later 4.x
+features that cannot be represented safely may be warned about, normalized, or rejected; they are not necessarily
+specially interpreted.
 
 
 ## Validation: strict vs. lenient
 
-The parser draws a deliberate line between the **structure of a VCF record**, which it validates strictly, and the
-**quality of metadata declarations**, which it validates leniently.
+The parser draws a deliberate line between the **structure of a VCF record**, which it validates strictly, and
+**non-structural content** (including INFO, FILTER, FORMAT, sample values, and metadata declarations), which it may
+validate lazily.
 
 **Strict — throws `VcfFormatException`.** The parser rejects a file whose structure or mandatory record fields are
 invalid:
 
-- A missing, duplicate, or non-first `##fileformat`; a version below the `VCFv4.0` floor; any line other than a `##`
+- A missing, duplicate, or non-first `##fileformat`; a file format outside VCF 4.x; any line other than a `##`
   metadata line before the `#CHROM` header; or a `#`-prefixed line after it (VCF has no comment syntax).
 - A missing `#CHROM` header, wrong fixed column names, a missing `FORMAT` column when samples are present, or duplicate
   sample names.
@@ -59,26 +59,26 @@ These checks run when a `VcfPosition` is constructed (including by the parser). 
 returned by its accessors (e.g. `getAltBases()`, `getFilters()`) do *not* re-run them, to support transformation
 pipelines that mutate a position in place; call `VcfPosition.validate()` after such mutations to re-check validity —
 this also re-normalizes a lone `PASS` or `.` `FILTER` value left by such a mutation, matching construction.
-`VcfWriter` itself does not call `validate()` before writing by default (to avoid that cost on every line); build one
-with `VcfWriter.Builder.validateBeforeWrite()` to have it do so, rejecting a position mutated into an invalid state
-instead of silently writing it. Without that flag, a mutated-invalid position (e.g. bad `ALT`/`INFO` content left by
-a `VcfTransformation`) is written without error — it is the caller's responsibility to validate first or otherwise
-guarantee validity.
 
-**Lenient — logs a warning and keeps parsing.** Malformed *metadata declarations* (`##INFO`, `##FORMAT`, `##contig`,
-`##FILTER`, `##ALT`, ...) warn rather than throw, and the declaration is still stored:
+The default writer path is optimized for data written directly after parsing. It preserves parser-normalized values and
+maintains record and sample-column structure without full revalidation. If data has been mutated and a full structural
+validity and diagnostic check is required, build the writer with `VcfWriter.Builder.validateBeforeWrite()`. In that
+mode, structurally invalid output is rejected and detected semantic non-compliance is reported with a warning.
+
+**Lenient — warns when encountered or accessed and preserves usable data.** Non-structural content may be accepted
+initially and validated only when the relevant getter or typed conversion is used. Malformed metadata declarations
+(`##INFO`, `##FORMAT`, `##contig`, `##FILTER`, `##ALT`, ...) warn rather than throw, and the declaration is still
+stored:
 
 - A missing or invalid `Number`, `Type`, or `Description`; an unquoted `Description`; or `Type=Flag` with a `Number`
   other than `0`. An unparseable `Type` leaves the metadata's type `null`.
 - A header/metadata sample-count mismatch, or a sample named in the header but absent from the metadata.
-- The writer's consistency checks (a value that does not match its declared type, a record referring to undeclared
-  `FILTER`/`INFO`/`FORMAT` metadata, a missing or extra sample sub-field, and similar).
+- INFO, FILTER, FORMAT, and sample content that is semantically malformed but can be preserved or normalized safely.
 
 An empty ("zero-length") entry in a delimited record field — e.g. `ID=rs1;;rs2`, `ALT=T,`, `FILTER=q10;`,
-`FORMAT=GT:DP:`, a sample value like `0/1:`, or `INFO=AD=1,,2` — is also lenient rather than strict, for the same
-reason: bcftools, the reference implementation most of the ecosystem treats as canonical, tolerates all of these in
-practice. See [`EMPTY_FIELD_HANDLING.md`](EMPTY_FIELD_HANDLING.md) for the full field-by-field table of what each
-case normalizes to and why.
+`FORMAT=GT:DP:`, a sample value like `0/1:`, or `INFO=AD=1,,2` — is also lenient rather than strict when it can be
+recovered without changing field alignment. See [`EMPTY_FIELD_HANDLING.md`](EMPTY_FIELD_HANDLING.md) for the full
+field-by-field table of what each case normalizes to and why.
 
 Typed metadata accessors (e.g. `InfoMetadata.getType()` and `getNumber()`) are annotated `@Nullable` and return `null`
 when the corresponding metadata was malformed.
