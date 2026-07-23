@@ -72,7 +72,7 @@ public class VcfAllele {
   /**
    * @return Whether this Allele contains 'N' or 'n' as a base (does not include symbolic names)
    */
-  public boolean isAmbigious() {
+  public boolean isAmbiguous() {
     return containsBase('N', 'n');
   }
 

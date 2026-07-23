@@ -44,12 +44,12 @@ public class VcfAlleleTest {
   }
 
   @Test
-  public void testIsAmbigious() throws Exception {
-    assertFalse(new VcfAllele("AT").isAmbigious());
-    assertFalse(new VcfAllele("aG]<Nn>:1]").isAmbigious());
-    assertTrue(new VcfAllele("N]<TT>:1]").isAmbigious());
-    assertTrue(new VcfAllele("n]<TT>:1]").isAmbigious());
-    assertFalse(new VcfAllele("C[<Nnn>:1[").isAmbigious());
+  public void testIsAmbiguous() throws Exception {
+    assertFalse(new VcfAllele("AT").isAmbiguous());
+    assertFalse(new VcfAllele("aG]<Nn>:1]").isAmbiguous());
+    assertTrue(new VcfAllele("N]<TT>:1]").isAmbiguous());
+    assertTrue(new VcfAllele("n]<TT>:1]").isAmbiguous());
+    assertFalse(new VcfAllele("C[<Nnn>:1[").isAmbiguous());
   }
 
   @Test
