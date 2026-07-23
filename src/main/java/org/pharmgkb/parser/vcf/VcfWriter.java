@@ -369,7 +369,9 @@ public class VcfWriter implements Closeable {
     }
     if (!value.isEmpty()) {
       // an empty value is already reported generically below (for any FORMAT key, not just FT/PS); avoid warning
-      // about it twice via checkReservedFormatConstraints's own "empty filter code" check
+      // about it twice via checkReservedFormatConstraints's own "empty filter code" check. The returned normalized
+      // value is discarded: this writer preserves raw content rather than rewriting it, consistent with how a
+      // reserved list-typed FORMAT value's empty entry is also only normalized on read, not on write.
       VcfUtils.checkReservedFormatConstraints(key, value);
     }
     String[] values = key.equals("GLE") ? new String[] { value } : value.split(",", -1);

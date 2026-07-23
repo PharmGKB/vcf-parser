@@ -241,8 +241,8 @@ public class VcfUtils {
    * </ul>
    */
   public static @Nullable <T> T convertProperty(ReservedProperty key, @Nullable String value) {
-    checkReservedFormatConstraints(key.getId(), value);
-    return convertProperty(key.getType(), value, key.isList());
+    String normalized = checkReservedFormatConstraints(key.getId(), value);
+    return convertProperty(key.getType(), normalized, key.isList());
   }
 
   /**
@@ -254,34 +254,47 @@ public class VcfUtils {
    *   same grammar as the FILTER column.</li>
    *   <li>{@link ReservedFormatProperty#PhaseSet PS} must be a non-negative 32-bit integer.</li>
    * </ul>
+   *
+   * @return the value to use for subsequent type conversion: unchanged, except for FT, whose empty
+   * semicolon-separated codes are dropped -- the same "warn and drop" convention already used for an empty entry in
+   * FILTER (FT's grammar is explicitly modeled on FILTER's) and every other position-independent list in this
+   * library. A caller that only wants the validation side effect (e.g. a writer in diagnostics mode, which preserves
+   * raw content rather than rewriting it) may discard the return value.
    */
-  static void checkReservedFormatConstraints(String key, @Nullable String value) {
+  static @Nullable String checkReservedFormatConstraints(String key, @Nullable String value) {
     if (value == null || value.equals(".")) {
-      return;
+      return value;
     }
     if (key.equals(ReservedFormatProperty.Filter.getId())) {
-      checkFilterLikeValue(key, value);
+      return checkFilterLikeValue(key, value);
     } else if (key.equals(ReservedFormatProperty.PhaseSet.getId())) {
       checkNonNegative32BitInteger(key, value);
     }
+    return value;
   }
 
-  private static void checkFilterLikeValue(String key, String value) {
+  private static String checkFilterLikeValue(String key, String value) {
     String[] codes = value.split(";", -1);
+    List<String> kept = new ArrayList<>(codes.length);
     boolean hasPassOrMissing = false;
     for (String code : codes) {
       if (code.isEmpty()) {
-        sf_logger.warn("FORMAT {} value \"{}\" contains an empty filter code", key, value);
-      } else if (sf_whitespacePattern.matcher(code).find()) {
+        sf_logger.warn("FORMAT {} value \"{}\" contains an empty filter code (VCF does not allow zero-length " +
+            "fields); dropping it", key, value);
+        continue;
+      }
+      if (sf_whitespacePattern.matcher(code).find()) {
         sf_logger.warn("FORMAT {} value \"{}\" contains whitespace in filter code \"{}\"", key, value, code);
       }
       if (code.equals("PASS") || code.equals(".")) {
         hasPassOrMissing = true;
       }
+      kept.add(code);
     }
-    if (codes.length > 1 && hasPassOrMissing) {
+    if (kept.size() > 1 && hasPassOrMissing) {
       sf_logger.warn("FORMAT {} value \"{}\" combines PASS or '.' with other filter codes", key, value);
     }
+    return String.join(";", kept);
   }
 
   private static void checkNonNegative32BitInteger(String key, String value) {

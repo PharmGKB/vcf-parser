@@ -170,12 +170,26 @@ public class VcfUtilsTest {
     // FT's grammar (PASS/./semicolon-separated codes, no whitespace, PASS/'.' not combined with other codes) isn't
     // expressible through its declared Type=String, so it's checked separately; this is non-structural sample
     // content, so an invalid value warns rather than throws
-    VcfUtils.checkReservedFormatConstraints("FT", "PASS"); // valid: does not throw
-    VcfUtils.checkReservedFormatConstraints("FT", "q10;q20"); // valid: does not throw
-    VcfUtils.checkReservedFormatConstraints("FT", "q10 q20"); // whitespace in a code: warns, does not throw
-    VcfUtils.checkReservedFormatConstraints("FT", "PASS;q10"); // PASS combined with another code: warns, does not throw
-    VcfUtils.checkReservedFormatConstraints("FT", null); // no value set: nothing to check
-    VcfUtils.checkReservedFormatConstraints("FT", "."); // missing value: nothing to check
+    assertEquals("PASS", VcfUtils.checkReservedFormatConstraints("FT", "PASS")); // valid: does not throw
+    assertEquals("q10;q20", VcfUtils.checkReservedFormatConstraints("FT", "q10;q20")); // valid: does not throw
+    assertEquals("q10 q20", VcfUtils.checkReservedFormatConstraints("FT", "q10 q20")); // whitespace in a code: warns
+    assertEquals("PASS;q10", VcfUtils.checkReservedFormatConstraints("FT", "PASS;q10")); // PASS + code: warns
+    assertNull(VcfUtils.checkReservedFormatConstraints("FT", null)); // no value set: nothing to check
+    assertEquals(".", VcfUtils.checkReservedFormatConstraints("FT", ".")); // missing value: nothing to check
+  }
+
+  @Test
+  public void testCheckReservedFormatConstraintsFtDropsEmptyCodes() {
+    // an empty semicolon-separated code is warned about and dropped, the same "warn and drop" convention already
+    // used for an empty entry in FILTER (FT's grammar is explicitly modeled on FILTER's) and every other
+    // position-independent list in this library -- unlike PASS/'.' combined with a genuine other code (see above),
+    // which is a real grammar violation and must not be silently rewritten away
+    assertEquals("q10;q20", VcfUtils.checkReservedFormatConstraints("FT", "q10;;q20"));
+    assertEquals("q10", VcfUtils.checkReservedFormatConstraints("FT", "q10;"));
+    assertEquals("q10", VcfUtils.checkReservedFormatConstraints("FT", ";q10"));
+    // dropping the empty artifacts must not leave a false "combined with PASS" warning when PASS is the only
+    // remaining real content (e.g. a trailing ';' after PASS)
+    assertEquals("PASS", VcfUtils.checkReservedFormatConstraints("FT", "PASS;"));
   }
 
   @Test
@@ -195,6 +209,14 @@ public class VcfUtilsTest {
     // consistent with the "warn and preserve" policy for non-structural sample content
     Long value = VcfUtils.convertProperty(ReservedFormatProperty.PhaseSet, "-5");
     assertEquals(-5L, value);
+  }
+
+  @Test
+  public void testConvertPropertyFilterDropsEmptyCodes() {
+    // unlike PS, the typed FT accessor returns a normalized value: an empty semicolon-separated code is dropped,
+    // matching the "warn and drop" convention used for FILTER's own empty entries
+    String value = VcfUtils.convertProperty(ReservedFormatProperty.Filter, "q10;;q20");
+    assertEquals("q10;q20", value);
   }
 
 }

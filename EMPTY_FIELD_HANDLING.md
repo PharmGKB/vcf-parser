@@ -65,6 +65,7 @@ more useful reading of what's normally just a stray delimiter.
 | INFO flag (no `=`) | `DB;DP=10` | Fine, as expected | Fine, unaffected | `DB;DP=10` (unchanged) |
 | GT allele (`:`-separated by `/` or `\|`) | `0/` | Not tested against bcftools | Warn + substitute `.` | `0/.` |
 | Reserved list-typed FORMAT value (e.g. `HQ`) | `1,2,` | Not tested against bcftools | Warn + substitute `.` (`null` in the returned list) | n/a (read-side conversion only) |
+| Reserved `FORMAT/FT` value | `q10;;q20` | Not tested against bcftools | Warn + drop (read-side only, like the row above) | n/a (read-side conversion only) |
 
 The INFO flag row is included as a contrast, not an empty-field case: a flag key with no `=` sign (e.g. `DB`) is
 stored internally with an empty-string sentinel value, the same representation used for the "was this value actually
@@ -97,7 +98,8 @@ separately — two empty keys are not "duplicates" in the sense the spec means.
   empty value.
 - `VcfParser`'s per-sample value parsing — warns and substitutes `.` for an empty sample value.
 - `VcfUtils.convertProperty` — warns and substitutes `.` (`null`) for an empty entry in a reserved list-typed
-  property's comma-separated value.
+  property's comma-separated value; warns and drops an empty semicolon-separated code in a reserved `FORMAT/FT`
+  value (`VcfUtils.checkReservedFormatConstraints`).
 - `MemoryMappedVcfDataStore.doGetGenotype` — warns and substitutes `.` for an empty GT allele.
 - `VcfSample.validate()` — warns and substitutes `.` for a sample property whose value was mutated to empty through
   `propertyEntrySet()`, consistent with `VcfWriter`'s own warn-only treatment of an empty INFO value or an empty

@@ -214,6 +214,29 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteDoesNotRewriteFtEmptyCode() throws Exception {
+    // unlike the typed read accessor (VcfUtils.convertProperty), which drops an empty FT code, this writer
+    // preserves raw sample content rather than rewriting it -- the same "read normalizes, write preserves"
+    // split already used for a reserved list-typed FORMAT value's empty entry
+    FormatMetadata ft = new FormatMetadata(ReservedFormatProperty.Filter.getId(), "d", "1", FormatType.String);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .addFormat(ft)
+        .build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+    position.getFormat().add("FT");
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    sample.putProperty("FT", "PASS;;q10");
+
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    writer.writeHeader(metadata);
+    writer.writeLine(metadata, position, Collections.singletonList(sample));
+    assertTrue(sw.toString().contains("PASS;;q10"));
+  }
+
+  @Test
   public void testValidateBeforeWriteWarnsButPreservesOutOfRangePsValue() throws Exception {
     // PS must be a non-negative 32-bit integer, but that constraint isn't expressible through PS's declared
     // Type=Integer (which maps to a 64-bit Long), so it's checked separately; a negative value is semantically
