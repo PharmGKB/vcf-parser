@@ -27,12 +27,31 @@ public class VcfUtils {
 
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
+  // The "+" below deliberately allows repeating/concatenating the nucleotides-or-symbolic-ID alternative (e.g.
+  // "C<ctg1>"), not just one instance of either. This is confirmed necessary for VCFv4.2's own "Large Insertions"
+  // shorthand ("13 321682 INS0 T C<ctg1> ... SVTYPE=INS", a base run directly followed by a symbolic ID with no
+  // breakend bracket between them) -- see VcfUtilsTest#testAltBasePatternAcceptsLargeInsertionShorthand, which
+  // exists specifically because a prior review round mistakenly "fixed" this as over-permissive and rejected it.
+  //
+  // The "+" is broader than that one confirmed case requires, though: it also accepts forms with no known
+  // precedent either way, such as "AC<ctg1>GT" (bases before AND after a symbolic ID) or "<ctg1><ctg2>" (multiple
+  // concatenated symbolic IDs). Checked and found no evidence to justify tightening this further:
+  //   - VCFv4.2/4.3/4.4/4.5 spec text: silent: no example or grammar statement covers these forms either way.
+  //   - hts-specs' own conformance test suite (test/vcf/{4.1,4.2,4.3}/{passed,failed}/*.vcf): zero test files
+  //     reference "ctg" at all, so this exact question has no official pass/fail fixture in either direction.
+  //   - EBI vcf_validator 0.10.2 (github.com/ebivariation/vcf-validator): rejects ALL of "C<ctg1>", "AC<ctg1>GT",
+  //     and "<ctg1><ctg2>" with the identical generic error, so it can't distinguish the confirmed-valid case from
+  //     the unconfirmed ones.
+  //   - bcftools 1.23.1: accepts all of the above -- but also accepts outright invalid ALT text like "XYZ123!!!"
+  //     with no complaint, so its acceptance carries no evidentiary weight here; it does not validate ALT syntax.
+  // Given no source can confirm or deny the broader forms, and a previous attempt to narrow this regex incorrectly
+  // broke the one form that IS confirmed valid, this is intentionally left as-is rather than risked again.
   private static final String sf_simpleAltPattern =
       "(?:"                   + // wrap the whole expression
         "(?:"                 + // allow nucleotides, symbolic IDs, or both
           "(?:[AaCcGgTtNn]+)" + // nucleotides
           "|(?:<[^\\s,<>]+>)" + // symbolic IDs (no whitespace, commas, or angle brackets inside)
-          ")+"                + // allow things like C<ctg1> (apparently)
+          ")+"                + // see the note above for why this repeats
         "|\\*"                + // indicates that the position doesn't exist due to an upstream deletion
       ")";
 
@@ -48,14 +67,23 @@ public class VcfUtils {
         ":\\d+"                                  + // position (required)
       ")";
 
+  // The breakend replacement string "t" is mandatory -- never zero-length -- but VCFv4.2's own "Telomeres" section
+  // (e.g. "1 0 bnd_X N .[13:123457[") uses a literal "." as t itself, for a virtual telomeric breakend with no
+  // real reference sequence. So t is bases/symbolic-ID/"*" (sf_simpleAltPattern) OR literally ".", never absent.
+  // hts-specs' own conformance suite confirms the "absent" case is invalid: test/vcf/4.2/failed/failed_body_alt_005.vcf,
+  // CauseOfFailure="Breakend without bases at either side", ALT="[1:100[" (t truly missing on both sides, not
+  // even a "."). Every passing breakend example (test/vcf/4.1/passed/passed_body_alt.vcf) has content on exactly
+  // one side (e.g. "]1:100]AGT", "[1:100[AGT", "AGT]1:100]", "AGT[1:100["), never zero.
+  private static final String sf_breakendReplacement = "(?:" + sf_simpleAltPattern + "|\\.)";
+
   private static final Pattern sf_breakpointAltPattern = Pattern.compile(
       "(?:"                                                         + // wrap the whole expression
         "\\.?"                                                      + // optional opening dot
         "(?:"                                                       + // start breakpoint types
-          "(?:" + sf_simpleAltPattern + "?\\[" + sf_mateLocation + "\\[)"  + // breakpoint type 1: t[p[
-          "|(?:" + sf_simpleAltPattern + "?]" + sf_mateLocation + "])" + // breakpoint type 2: t]p]
-          "|(?:\\]" + sf_mateLocation + "]" + sf_simpleAltPattern + "?)" + // breakpoint type 3: ]p]t
-          "|(?:\\[" + sf_mateLocation + "\\[" + sf_simpleAltPattern + "?)" + // breakpoint type 4: [p[t
+          "(?:" + sf_breakendReplacement + "\\[" + sf_mateLocation + "\\[)"  + // breakpoint type 1: t[p[
+          "|(?:" + sf_breakendReplacement + "]" + sf_mateLocation + "])" + // breakpoint type 2: t]p]
+          "|(?:\\]" + sf_mateLocation + "]" + sf_breakendReplacement + ")" + // breakpoint type 3: ]p]t
+          "|(?:\\[" + sf_mateLocation + "\\[" + sf_breakendReplacement + ")" + // breakpoint type 4: [p[t
         ")"                                                         + // end breakpoint types
         "\\.?"                                                      + // optional closing dot
       ")"                                                             // ends the nc group of the first line

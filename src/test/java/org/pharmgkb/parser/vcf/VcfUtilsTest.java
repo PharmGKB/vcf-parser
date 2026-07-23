@@ -69,6 +69,56 @@ public class VcfUtilsTest {
   }
 
   @Test
+  public void testAltBasePatternBreakendRequiresReplacementString() {
+    // hts-specs' own conformance suite (test/vcf/4.2/failed/failed_body_alt_005.vcf) rejects a breakend whose
+    // replacement string "t" is missing on both sides: CauseOfFailure="Breakend without bases at either side",
+    // ALT="[1:100[". Every officially-passing breakend example (test/vcf/4.1/passed/passed_body_alt.vcf) has
+    // content on exactly one side (e.g. "]1:100]AGT", "[1:100[AGT", "AGT]1:100]", "AGT[1:100[").
+    assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher("[1:100[").matches());
+    assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher("]1:100]").matches());
+    assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher("[1:100[AGT").matches());
+    assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher("AGT]1:100]").matches());
+  }
+
+  @Test
+  public void testAltBasePatternBreakendReplacementStringCanBeLiteralDot() {
+    // VCFv4.2's own "Telomeres" section gives ".[13:123457[" (CHROM=1, POS=0, REF=N) as a real example: a virtual
+    // telomeric breakend where "t" (the replacement string) is literally "." -- representing no real reference
+    // sequence at the virtual position -- not "t" being absent (which testAltBasePatternBreakendRequiresReplacementString
+    // confirms is invalid).
+    assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher(".[13:123457[").matches());
+  }
+
+  @Test
+  public void testAltBasePatternAcceptsLargeInsertionShorthand() {
+    // VCFv4.2's own "Large Insertions" section gives this as a real example (13 321682 INS0 T C<ctg1> ...),
+    // calling it "the shorthand notation" for "the special case of the complete insertion of a sequence between
+    // two base pairs": a base run directly followed by a symbolic ID, with NO breakend bracket between them.
+    // Confirmed present in the raw VCFv4.2 spec text itself (not just later versions). A prior review round
+    // mistakenly "fixed" this as over-permissive and rejected it, based on incomplete spec research -- that
+    // change was reverted. Note that the EBI vcf_validator 0.10.2 (github.com/ebivariation/vcf-validator) does
+    // NOT implement this shorthand -- it rejects "C<ctg1>" with the same generic error it gives for clearly
+    // invalid ALT syntax -- but the VCFv4.2 spec text is unambiguous that this form is valid, so this parser
+    // accepts it. This test exists specifically to prevent this exact regression from recurring.
+    assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher("C<ctg1>").matches());
+  }
+
+  @Test
+  public void testAltBasePatternAcceptsUnconfirmedBaseSymbolicConcatenations() {
+    // Unlike "C<ctg1>" above, these two forms (bases both before AND after a symbolic ID; multiple concatenated
+    // symbolic IDs) have no confirming example anywhere: VCFv4.2 through 4.5 are silent, hts-specs' own
+    // conformance suite (test/vcf/{4.1,4.2,4.3}/{passed,failed}/*.vcf) has zero files referencing "ctg" at all,
+    // and EBI vcf_validator 0.10.2 rejects them (with the same generic error it also gives the confirmed-valid
+    // "C<ctg1>" case, so it can't distinguish the two). bcftools 1.23.1 accepts both, but that carries no
+    // evidentiary weight: it also accepts outright invalid ALT text ("XYZ123!!!") with no complaint, so it isn't
+    // validating ALT syntax at all. With no source able to confirm or deny these forms, and a previous attempt to
+    // narrow this regex having incorrectly broken the one confirmed-valid case, this permissiveness is left as-is
+    // rather than risked again -- this test locks in that deliberate decision, not a confirmed compliance claim.
+    assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher("AC<ctg1>GT").matches());
+    assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher("<ctg1><ctg2>").matches());
+  }
+
+  @Test
   public void testExtractPropertiesWithEscapes() {
     // an escaped backslash (\\) and an escaped double-quote (\") inside a quoted Description must not crash and must be
     // preserved (the split must not treat the escaped quote as a real quote)
