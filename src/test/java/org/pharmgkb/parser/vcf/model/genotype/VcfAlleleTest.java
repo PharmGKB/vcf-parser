@@ -28,16 +28,17 @@ public class VcfAlleleTest {
 
   @Test
   public void testIsBreakpoint() throws Exception {
+    // mate locations need a ":pos" (a breakend chromosome/contig is never valid without one)
     assertFalse(new VcfAllele("AT").isBreakpoint());
-    assertTrue(new VcfAllele("aG]<TT>]").isBreakpoint());
+    assertTrue(new VcfAllele("aG]<TT>:1]").isBreakpoint());
     assertTrue(new VcfAllele("C[<ctg1>:1[").isBreakpoint());
   }
 
   @Test
   public void testIsSymbolic() throws Exception {
     assertFalse(new VcfAllele("AT").isSymbolic());
-    assertFalse(new VcfAllele("aG]55]").isSymbolic());
-    assertTrue(new VcfAllele("aG]<TT>]").isSymbolic());
+    assertFalse(new VcfAllele("aG]55:1]").isSymbolic());
+    assertTrue(new VcfAllele("aG]<TT>:1]").isSymbolic());
     assertTrue(new VcfAllele("<anid>").isSymbolic());
     assertTrue(new VcfAllele("C[<ctg1>:1[").isSymbolic());
   }
@@ -45,16 +46,16 @@ public class VcfAlleleTest {
   @Test
   public void testIsAmbigious() throws Exception {
     assertFalse(new VcfAllele("AT").isAmbigious());
-    assertFalse(new VcfAllele("aG]<Nn>]").isAmbigious());
-    assertTrue(new VcfAllele("N]<TT>]").isAmbigious());
-    assertTrue(new VcfAllele("n]<TT>]").isAmbigious());
+    assertFalse(new VcfAllele("aG]<Nn>:1]").isAmbigious());
+    assertTrue(new VcfAllele("N]<TT>:1]").isAmbigious());
+    assertTrue(new VcfAllele("n]<TT>:1]").isAmbigious());
     assertFalse(new VcfAllele("C[<Nnn>:1[").isAmbigious());
   }
 
   @Test
   public void testWithLowercaseBases() throws Exception {
-    assertEquals("ag]20]", new VcfAllele("aG]20]").withLowercaseBases());
-    assertEquals("ag]<TT>]", new VcfAllele("aG]<TT>]").withLowercaseBases());
+    assertEquals("ag]20:1]", new VcfAllele("aG]20:1]").withLowercaseBases());
+    assertEquals("ag]<TT>:1]", new VcfAllele("aG]<TT>:1]").withLowercaseBases());
     assertEquals("<TT>", new VcfAllele("<TT>").withLowercaseBases());
   }
 

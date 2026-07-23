@@ -34,20 +34,26 @@ public class VcfUtils {
         "|\\*"                + // indicates that the position doesn't exist due to an upstream deletion
       ")";
 
-  private static final String sf_number =
-      "(?:"                 + // wrap the whole expression
-        "(?:\\d+|(?:<[^\\s,<>]+>))" + // numbers or symbolic IDs (no whitespace, commas, or angle brackets inside)
-        "(?::\\d+)?"        + // optional insertion
-      ")";                    // ends the nc group of the first line
+  // the mate breakend location "chr:pos" (VCF 4.2: "a string of the form `chr:pos'"): chr and pos are both always
+  // required together -- there is no valid breakend form that gives a chromosome without a position (a truly
+  // mate-less breakend uses the unrelated "G." / ".A" single-breakend shorthand, matched elsewhere in
+  // ALT_BASE_PATTERN, not this pattern). chr may be any non-symbolic CHROM-like value, not just digits: the spec's
+  // own examples happen to use only numeric chromosome names (plus one symbolic contig ID), which is why this was
+  // wrongly restricted to \d+ before and never caught by tests built from those same examples.
+  private static final String sf_mateLocation =
+      "(?:"                                     + // wrap the whole expression
+        "(?:[^\\s,\\[\\]:]+|(?:<[^\\s,<>]+>))"   + // chromosome: CHROM-like (no whitespace, comma, brackets, or colon), or a symbolic ID
+        ":\\d+"                                  + // position (required)
+      ")";
 
   private static final Pattern sf_breakpointAltPattern = Pattern.compile(
       "(?:"                                                         + // wrap the whole expression
         "\\.?"                                                      + // optional opening dot
         "(?:"                                                       + // start breakpoint types
-          "(?:" + sf_simpleAltPattern + "?\\[" + sf_number + "\\[)"  + // breakpoint type 1: t[p[
-          "|(?:" + sf_simpleAltPattern + "?]" + sf_number + "])" + // breakpoint type 2: t]p]
-          "|(?:\\]" + sf_number + "]" + sf_simpleAltPattern + "?)" + // breakpoint type 3: ]p]t
-          "|(?:\\[" + sf_number + "\\[" + sf_simpleAltPattern + "?)" + // breakpoint type 4: [p[t
+          "(?:" + sf_simpleAltPattern + "?\\[" + sf_mateLocation + "\\[)"  + // breakpoint type 1: t[p[
+          "|(?:" + sf_simpleAltPattern + "?]" + sf_mateLocation + "])" + // breakpoint type 2: t]p]
+          "|(?:\\]" + sf_mateLocation + "]" + sf_simpleAltPattern + "?)" + // breakpoint type 3: ]p]t
+          "|(?:\\[" + sf_mateLocation + "\\[" + sf_simpleAltPattern + "?)" + // breakpoint type 4: [p[t
         ")"                                                         + // end breakpoint types
         "\\.?"                                                      + // optional closing dot
       ")"                                                             // ends the nc group of the first line

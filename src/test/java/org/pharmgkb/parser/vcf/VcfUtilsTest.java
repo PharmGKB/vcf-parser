@@ -47,6 +47,26 @@ public class VcfUtilsTest {
   }
 
   @Test
+  public void testAltBasePatternBreakpointAcceptsNonNumericChromosome() {
+    // the mate chromosome name is not restricted to digits by the spec; the previous \d+-only pattern only ever
+    // passed because every example in the spec itself happens to use a purely numeric chromosome name
+    String[] shouldPass = {"A]chr1:100]", "A]X:100]", "G]scaffold_12:55]", "]chrX:1]T", "C[chr1:1["};
+    for (String test : shouldPass) {
+      assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher(test).matches(), "String " + test + " was not recognized");
+    }
+  }
+
+  @Test
+  public void testAltBasePatternBreakpointRequiresPosition() {
+    // "chr:pos" is always both parts together per the spec; there is no valid breakend form giving a chromosome
+    // without a position (a truly mate-less breakend uses the unrelated "G."/".A" single-breakend shorthand)
+    String[] shouldFail = {"A]2]", "A]chr1]", "C[2[", "]13]T", "[<ctg1>[A"};
+    for (String test : shouldFail) {
+      assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher(test).matches(), "String " + test + " was recognized");
+    }
+  }
+
+  @Test
   public void testExtractPropertiesWithEscapes() {
     // an escaped backslash (\\) and an escaped double-quote (\") inside a quoted Description must not crash and must be
     // preserved (the split must not treat the escaped quote as a real quote)

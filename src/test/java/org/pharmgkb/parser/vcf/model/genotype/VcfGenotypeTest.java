@@ -32,9 +32,10 @@ public class VcfGenotypeTest {
     assertEquals("<xx>|<xx>", genotype3.toString());
     assertTrue(genotype3.isPhased());
 
-    VcfGenotype genotype4 = VcfGenotype.fromString("]12]<xx>/ag]20:25]");
+    // mate locations need a ":pos" (a breakend chromosome/contig is never valid without one)
+    VcfGenotype genotype4 = VcfGenotype.fromString("]12:1]<xx>/ag]20:25]");
     assertFalse(genotype4.isPhased());
-    assertEquals("]12]<xx>/ag]20:25]", genotype4.toString());
+    assertEquals("]12:1]<xx>/ag]20:25]", genotype4.toString());
 
     VcfGenotype genotype5 = VcfGenotype.fromString("AA/AA");
     assertTrue(genotype5.isPhased());
