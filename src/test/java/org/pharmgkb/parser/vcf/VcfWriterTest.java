@@ -104,6 +104,7 @@ public class VcfWriterTest {
     VcfSample sample = new VcfSample(new LinkedHashMap<>());
     sample.putProperty("DP", "");
 
+    writer.writeHeader(metadata);
     writer.writeLine(metadata, position, Collections.singletonList(sample));
     assertTrue(sw.toString().contains("\tDP\t."));
   }
@@ -147,8 +148,47 @@ public class VcfWriterTest {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
 
+    writer.writeHeader(metadata);
     writer.writeLine(metadata, position, Collections.emptyList());
     assertTrue(sw.toString().contains("NS=1"));
+  }
+
+  @Test
+  public void testValidateBeforeWriteRejectsLineBeforeHeader() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+
+    assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.emptyList()));
+  }
+
+  @Test
+  public void testValidateBeforeWriteRejectsDuplicateHeader() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+
+    writer.writeHeader(metadata);
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+  }
+
+  @Test
+  public void testValidateBeforeWriteRejectsMetadataMismatchWithHeader() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata headerMetadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata otherMetadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+
+    writer.writeHeader(headerMetadata);
+    // a different (even if equivalent-looking) VcfMetadata object than the one used for the header would make the
+    // emitted header and this record inconsistent if either were mutated independently afterward
+    assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(otherMetadata, position, Collections.emptyList()));
   }
 
   @Test

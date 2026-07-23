@@ -63,7 +63,10 @@ this also re-normalizes a lone `PASS` or `.` `FILTER` value left by such a mutat
 The default writer path is optimized for data written directly after parsing. It preserves parser-normalized values and
 maintains record and sample-column structure without full revalidation. If data has been mutated and a full structural
 validity and diagnostic check is required, build the writer with `VcfWriter.Builder.validateBeforeWrite()`. In that
-mode, structurally invalid output is rejected and detected semantic non-compliance is reported with a warning.
+mode, structurally invalid output is rejected and detected semantic non-compliance is reported with a warning. This
+mode also enforces file-level consistency: `writeHeader()` may not be called more than once, `writeLine()` may not be
+called before `writeHeader()`, and every `writeLine()` call must be given the same `VcfMetadata` object `writeHeader()`
+was given (so a header and its records can't end up describing different metadata).
 
 **Lenient — warns when encountered or accessed and preserves usable data.** Non-structural content may be accepted
 initially and validated only when the relevant getter or typed conversion is used. Malformed metadata declarations

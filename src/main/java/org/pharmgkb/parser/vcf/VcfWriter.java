@@ -46,6 +46,8 @@ public class VcfWriter implements Closeable {
   private final PrintWriter m_writer;
   private final boolean m_validateBeforeWrite;
   private int m_lineNumber;
+  private boolean m_headerWritten;
+  private @Nullable VcfMetadata m_headerMetadata;
 
   private VcfWriter(@Nullable Path file, PrintWriter writer, boolean validateBeforeWrite) {
     m_file = file;
@@ -56,6 +58,9 @@ public class VcfWriter implements Closeable {
   public void writeHeader(VcfMetadata metadata) {
 
     if (m_validateBeforeWrite) {
+      if (m_headerWritten) {
+        throw new VcfFormatException("writeHeader() was already called; a VCF file must have exactly one header");
+      }
       validateMetadata(metadata);
     }
 
@@ -86,6 +91,8 @@ public class VcfWriter implements Closeable {
     printLine(sb);
 
     m_writer.flush();
+    m_headerWritten = true;
+    m_headerMetadata = metadata;
     sf_logger.info("Wrote {} lines of header{}", m_lineNumber, (m_file == null ? "" : " to " + m_file));
   }
 
@@ -100,6 +107,14 @@ public class VcfWriter implements Closeable {
       List<VcfSample> samples) {
 
     if (m_validateBeforeWrite) {
+      if (!m_headerWritten) {
+        throw new VcfFormatException("writeLine() was called before writeHeader(); every VCF file must have a " +
+            "header before any data line");
+      }
+      if (metadata != m_headerMetadata) {
+        throw new VcfFormatException("writeLine() was given different metadata than writeHeader() used; the " +
+            "emitted header and this record would be inconsistent");
+      }
       position.validate();
       validateMetadata(metadata);
       validateInfo(metadata, position);
