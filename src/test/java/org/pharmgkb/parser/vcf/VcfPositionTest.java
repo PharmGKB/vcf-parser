@@ -33,10 +33,11 @@ public class VcfPositionTest {
     empty.setRawQuality("");
     assertNull(empty.getQuality());
 
-    // an invalid QUAL is validated lazily: setting it does not throw, reading it does
+    // an invalid QUAL is a value-quality issue, not a structural one; it warns and is treated as missing, rather
+    // than throwing
     VcfPosition bad = newPosition();
     bad.setRawQuality("not-a-number");
-    assertThrows(VcfFormatException.class, bad::getQuality);
+    assertNull(bad.getQuality());
 
     // setQuality overrides any pending raw value
     VcfPosition override = newPosition();

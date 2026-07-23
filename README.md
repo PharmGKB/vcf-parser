@@ -74,6 +74,8 @@ stored:
   other than `0`. An unparseable `Type` leaves the metadata's type `null`.
 - A header/metadata sample-count mismatch, or a sample named in the header but absent from the metadata.
 - INFO, FILTER, FORMAT, and sample content that is semantically malformed but can be preserved or normalized safely.
+- A non-numeric `QUAL`: the column itself is still well-formed, so this is treated as the missing value rather than
+  a structural failure.
 
 An empty ("zero-length") entry in a delimited record field — e.g. `ID=rs1;;rs2`, `ALT=T,`, `FILTER=q10;`,
 `FORMAT=GT:DP:`, a sample value like `0/1:`, or `INFO=AD=1,,2` — is also lenient rather than strict when it can be

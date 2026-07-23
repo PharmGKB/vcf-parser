@@ -378,7 +378,10 @@ public class VcfPosition {
         try {
           m_quality = new BigDecimal(raw);
         } catch (NumberFormatException e) {
-          throw new VcfFormatException("QUAL '" + raw + "' is not a number");
+          // a non-numeric QUAL is a value-quality issue, not a structural one (the column itself is well-formed);
+          // warn and recover as the missing value, consistent with how other non-structural content issues are
+          // handled, rather than throwing
+          sf_logger.warn("QUAL '{}' is not a number; treating it as the missing value", raw);
         }
       }
     }
