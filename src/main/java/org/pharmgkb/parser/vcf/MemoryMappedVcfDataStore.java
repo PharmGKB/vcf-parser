@@ -28,19 +28,23 @@ public class MemoryMappedVcfDataStore {
 
   private @Nullable VcfMetadata m_metadata;
   private final Map<String, VcfPosition> m_idToPosition = new HashMap<>();
-  private final Map<Locus, VcfPosition> m_locusToPosition = new HashMap<>();
+  private final Map<Locus, List<VcfPosition>> m_locusToPositions = new HashMap<>();
   private final Map<String, List<VcfSample>> m_idToSamples = new HashMap<>();
-  private final Map<Locus, List<VcfSample>> m_locusToSamples = new HashMap<>();
+  private final Map<Locus, List<List<VcfSample>>> m_locusToSamplesList = new HashMap<>();
 
   /**
-   * @return Every position read, or null if none no lines read.
+   * @return Every position read, or null if no lines read.
    */
   public @Nullable
   Collection<VcfPosition> getAllPositions() {
     if (m_metadata == null) {
       return null;
     }
-    return m_locusToPosition.values();
+    List<VcfPosition> all = new ArrayList<>();
+    for (List<VcfPosition> positions : m_locusToPositions.values()) {
+      all.addAll(positions);
+    }
+    return all;
   }
 
   /**
@@ -50,7 +54,11 @@ public class MemoryMappedVcfDataStore {
     if (m_metadata == null) {
       return null;
     }
-    return m_locusToSamples.values();
+    List<List<VcfSample>> all = new ArrayList<>();
+    for (List<List<VcfSample>> samplesList : m_locusToSamplesList.values()) {
+      all.addAll(samplesList);
+    }
+    return all;
   }
 
   /**
@@ -72,12 +80,19 @@ public class MemoryMappedVcfDataStore {
     return m_idToSamples.get(id);
   }
 
-  public @Nullable VcfPosition getPositionAtLocus(String chromosome, long position) {
-    return m_locusToPosition.get(new Locus(chromosome, position));
+  /**
+   * @return Every record at this locus, in the order they were read, or null if this locus was never read.
+   */
+  public @Nullable List<VcfPosition> getPositionsAtLocus(String chromosome, long position) {
+    return m_locusToPositions.get(new Locus(chromosome, position));
   }
 
-  public @Nullable List<VcfSample> getSamplesAtLocus(String chromosome, long position) {
-    return m_locusToSamples.get(new Locus(chromosome, position));
+  /**
+   * @return The samples for every record at this locus, index-aligned with {@link #getPositionsAtLocus}, or null if
+   * this locus was never read.
+   */
+  public @Nullable List<List<VcfSample>> getSamplesAtLocus(String chromosome, long position) {
+    return m_locusToSamplesList.get(new Locus(chromosome, position));
   }
 
   public @Nullable VcfSample getSampleForId(String positionId, String sampleId) {
@@ -94,18 +109,18 @@ public class MemoryMappedVcfDataStore {
     return samples == null ? null : samples.get(sampleIndex);
   }
 
-  public @Nullable VcfSample getSampleAtLocus(String chromosome, long position, String sampleId) {
-    List<VcfSample> samples = m_locusToSamples.get(new Locus(chromosome, position));
-    if (samples == null) {
+  public @Nullable VcfSample getSampleAtLocus(String chromosome, long position, int recordIndex, String sampleId) {
+    List<List<VcfSample>> samplesList = m_locusToSamplesList.get(new Locus(chromosome, position));
+    if (samplesList == null) {
       return null;
     }
     int idx = m_metadata.getSampleIndex(sampleId);
-    return idx < 0 ? null : samples.get(idx);
+    return idx < 0 ? null : samplesList.get(recordIndex).get(idx);
   }
 
-  public @Nullable VcfSample getSampleAtLocus(String chromosome, long position, int sampleIndex) {
-    List<VcfSample> samples = m_locusToSamples.get(new Locus(chromosome, position));
-    return samples == null ? null : samples.get(sampleIndex);
+  public @Nullable VcfSample getSampleAtLocus(String chromosome, long position, int recordIndex, int sampleIndex) {
+    List<List<VcfSample>> samplesList = m_locusToSamplesList.get(new Locus(chromosome, position));
+    return samplesList == null ? null : samplesList.get(recordIndex).get(sampleIndex);
   }
 
   public @Nullable Genotype getGenotypeForId(String positionId, String sampleId) {
@@ -121,18 +136,18 @@ public class MemoryMappedVcfDataStore {
     return doGetGenotype(position, samples.get(idx));
   }
 
-  public @Nullable Genotype getGenotypeAtLocus(String chromosome, long position, String sampleId) {
+  public @Nullable Genotype getGenotypeAtLocus(String chromosome, long position, int recordIndex, String sampleId) {
     Locus locus = new Locus(chromosome, position);
-    VcfPosition pos = m_locusToPosition.get(locus);
-    List<VcfSample> samples = m_locusToSamples.get(locus);
-    if (pos == null || samples == null) {
+    List<VcfPosition> positions = m_locusToPositions.get(locus);
+    List<List<VcfSample>> samplesList = m_locusToSamplesList.get(locus);
+    if (positions == null || samplesList == null) {
       return null;
     }
     int idx = m_metadata.getSampleIndex(sampleId);
     if (idx < 0) {
       return null;
     }
-    return doGetGenotype(pos, samples.get(idx));
+    return doGetGenotype(positions.get(recordIndex), samplesList.get(recordIndex).get(idx));
   }
 
   public @Nullable Genotype getGenotypeForId(String positionId, int sampleIndex) {
@@ -144,14 +159,14 @@ public class MemoryMappedVcfDataStore {
     return doGetGenotype(position, samples.get(sampleIndex));
   }
 
-  public @Nullable Genotype getGenotypeAtLocus(String chromosome, long position, int sampleIndex) {
+  public @Nullable Genotype getGenotypeAtLocus(String chromosome, long position, int recordIndex, int sampleIndex) {
     Locus locus = new Locus(chromosome, position);
-    VcfPosition pos = m_locusToPosition.get(locus);
-    List<VcfSample> samples = m_locusToSamples.get(locus);
-    if (pos == null || samples == null) {
+    List<VcfPosition> positions = m_locusToPositions.get(locus);
+    List<List<VcfSample>> samplesList = m_locusToSamplesList.get(locus);
+    if (positions == null || samplesList == null) {
       return null;
     }
-    return doGetGenotype(pos, samples.get(sampleIndex));
+    return doGetGenotype(positions.get(recordIndex), samplesList.get(recordIndex).get(sampleIndex));
   }
 
   private @Nullable Genotype doGetGenotype(VcfPosition position, VcfSample sample) {
@@ -206,16 +221,16 @@ public class MemoryMappedVcfDataStore {
     return m_idToPosition;
   }
 
-  protected Map<Locus, VcfPosition> getLocusToPosition() {
-    return m_locusToPosition;
+  protected Map<Locus, List<VcfPosition>> getLocusToPositions() {
+    return m_locusToPositions;
   }
 
   protected Map<String, List<VcfSample>> getIdToSamples() {
     return m_idToSamples;
   }
 
-  protected Map<Locus, List<VcfSample>> getLocusToSamples() {
-    return m_locusToSamples;
+  protected Map<Locus, List<List<VcfSample>>> getLocusToSamplesList() {
+    return m_locusToSamplesList;
   }
 
   @Immutable

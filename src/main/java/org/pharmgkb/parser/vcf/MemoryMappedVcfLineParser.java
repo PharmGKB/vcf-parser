@@ -1,5 +1,6 @@
 package org.pharmgkb.parser.vcf;
 
+import java.util.ArrayList;
 import java.util.List;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
@@ -17,18 +18,22 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
  * <em>This implementation is memory-intensive and should only be used for short VCF files where repeated arbitrary
  * (random) access to VCF records is required.</em>
  * <p>
- * By default, a {@link VcfFormatException} is thrown each time a duplicate ID or locus is found.
- * To change this behavior, see {@link Builder#setDuplicateIdHandler} and {@link Builder#setDuplicateLocusHandler}.
+ * VCF permits more than one record at the same locus (e.g. multi-allelic sites split across lines), so every locus
+ * is stored as a list of records rather than a single one; by default, a {@link VcfFormatException} is thrown
+ * instead when a locus is seen more than once — see {@link Builder#setDuplicateLocusHandler}. A repeated {@code ID},
+ * by contrast, is not a normal VCF occurrence and is still treated as a single-valued duplicate: by default, a
+ * {@link VcfFormatException} is thrown each time a duplicate ID is found. To change this behavior, see
+ * {@link Builder#setDuplicateIdHandler}.
  *
  * @author Douglas Myers-Turnbull
  */
 public class MemoryMappedVcfLineParser implements VcfLineParser {
   private MemoryMappedVcfDataStore m_dataStore = new MemoryMappedVcfDataStore();
   private DuplicateHandler m_duplicateIdHandler;
-  private DuplicateHandler m_duplicateLocusHandler;
+  private LocusDuplicateHandler m_duplicateLocusHandler;
 
 
-  private MemoryMappedVcfLineParser(DuplicateHandler idHandler, DuplicateHandler locusHandler) {
+  private MemoryMappedVcfLineParser(DuplicateHandler idHandler, LocusDuplicateHandler locusHandler) {
     m_duplicateIdHandler = idHandler;
     m_duplicateLocusHandler = locusHandler;
   }
@@ -46,14 +51,12 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
 
     // link by locus
     MemoryMappedVcfDataStore.Locus locus = new MemoryMappedVcfDataStore.Locus(position.getChromosome(), position.getPosition());
-    boolean containsPosition = m_dataStore.getLocusToPosition().containsKey(locus);
-    if (containsPosition && m_duplicateLocusHandler == DuplicateHandler.FAIL) {
+    List<VcfPosition> positionsAtLocus = m_dataStore.getLocusToPositions().computeIfAbsent(locus, l -> new ArrayList<>());
+    if (!positionsAtLocus.isEmpty() && m_duplicateLocusHandler == LocusDuplicateHandler.FAIL) {
       throw new VcfFormatException("Duplicate VCF record for position " + locus);
     }
-    if (!containsPosition || m_duplicateLocusHandler == DuplicateHandler.KEEP_LAST) {
-      m_dataStore.getLocusToPosition().put(locus, position);
-      m_dataStore.getLocusToSamples().put(locus, sampleData);
-    }
+    positionsAtLocus.add(position);
+    m_dataStore.getLocusToSamplesList().computeIfAbsent(locus, l -> new ArrayList<>()).add(sampleData);
 
     // link by ID
     for (String id : position.getIds()) {
@@ -71,14 +74,13 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
 
   public static class Builder {
     private DuplicateHandler m_duplicateIdHandler = DuplicateHandler.FAIL;
-    private DuplicateHandler m_duplicateLocusHandler = DuplicateHandler.FAIL;
+    private LocusDuplicateHandler m_duplicateLocusHandler = LocusDuplicateHandler.FAIL;
 
     /**
      * Determines what to do when an ID that was previously set is encountered, regardless of whether the two IDs
      * correspond to the same locus.
      *
-     * This is independent of {@link #setDuplicateLocusHandler(DuplicateHandler)}, except when either is set to
-     * {@link DuplicateHandler#FAIL}.
+     * This is independent of {@link #setDuplicateLocusHandler(LocusDuplicateHandler)}.
      */
     public Builder setDuplicateIdHandler(DuplicateHandler handler) {
       m_duplicateIdHandler = handler;
@@ -89,10 +91,9 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
      * Determines what to do when a VCF record is encountered with a locus (chromosome and position) that was already
      * found.
      *
-     * This is independent of {@link #setDuplicateIdHandler(DuplicateHandler)}, except when either is set to
-     * {@link DuplicateHandler#FAIL}.
+     * This is independent of {@link #setDuplicateIdHandler(DuplicateHandler)}.
      */
-    public Builder setDuplicateLocusHandler(DuplicateHandler handler) {
+    public Builder setDuplicateLocusHandler(LocusDuplicateHandler handler) {
       m_duplicateLocusHandler = handler;
       return this;
     }
@@ -124,6 +125,22 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
      * In other words, ignore the fact that the record is a duplicate and record it anyway.
      */
     KEEP_LAST
+  }
+
+  /**
+   * What to do when a VCF record is encountered at a locus (chromosome and position) that was already seen.
+   */
+  public enum LocusDuplicateHandler {
+
+    /**
+     * Throw a {@link VcfFormatException} when a locus is seen more than once.
+     */
+    FAIL,
+
+    /**
+     * Keep every record seen at the locus.
+     */
+    KEEP_ALL
   }
 
 }

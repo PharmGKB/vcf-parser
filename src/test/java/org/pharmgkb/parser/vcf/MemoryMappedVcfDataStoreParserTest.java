@@ -9,6 +9,7 @@ import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
+import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -54,14 +55,14 @@ public class MemoryMappedVcfDataStoreParserTest {
       // unknown id / locus lookups return null instead of throwing
       assertNull(dataStore.getSampleForId("nope", "sample1"));
       assertNull(dataStore.getGenotypeForId("nope", "sample1"));
-      assertNull(dataStore.getSampleAtLocus("chrX", 999, "sample1"));
-      assertNull(dataStore.getGenotypeAtLocus("chrX", 999, "sample1"));
+      assertNull(dataStore.getSampleAtLocus("chrX", 999, 0, "sample1"));
+      assertNull(dataStore.getGenotypeAtLocus("chrX", 999, 0, "sample1"));
 
       // an unknown sample name (for a known record) returns null instead of throwing IndexOutOfBoundsException
       assertNull(dataStore.getSampleForId("rsb", "nosuchsample"));
       assertNull(dataStore.getGenotypeForId("rsb", "nosuchsample"));
-      assertNull(dataStore.getSampleAtLocus("chr1", 2, "nosuchsample"));
-      assertNull(dataStore.getGenotypeAtLocus("chr1", 2, "nosuchsample"));
+      assertNull(dataStore.getSampleAtLocus("chr1", 2, 0, "nosuchsample"));
+      assertNull(dataStore.getGenotypeAtLocus("chr1", 2, 0, "nosuchsample"));
 
       // a partial no-call ("0/.") keeps the missing allele as "." instead of failing to parse it
       MemoryMappedVcfDataStore.Genotype partial = dataStore.getGenotypeForId("rse", "sample1");
@@ -119,6 +120,64 @@ public class MemoryMappedVcfDataStoreParserTest {
       assertEquals(2, genotype.getAlleles().size());
       assertEquals("A", genotype.getAlleles().get(0));
       assertEquals(".", genotype.getAlleles().get(1));
+    }
+  }
+
+  @Test
+  public void testDuplicateLocusDefaultsToFail() throws IOException {
+    // VCF permits multiple records at the same locus (e.g. multi-allelic sites split across lines), but this
+    // parser's default is still to reject them unless KEEP_ALL is requested
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n" +
+        "chr1\t1\trsx\tA\tT\t.\tPASS\t.\tGT\t0/1\n" +
+        "chr1\t1\trsy\tA\tC\t.\tPASS\t.\tGT\t1/1\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf))) {
+      MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+      VcfParser parser = new VcfParser.Builder()
+          .fromReader(reader)
+          .parseWith(lineParser)
+          .build();
+      assertThrows(VcfFormatException.class, parser::parse);
+    }
+  }
+
+  @Test
+  public void testDuplicateLocusKeepAllRetainsAllRecords() throws IOException {
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n" +
+        "chr1\t1\trsx\tA\tT\t.\tPASS\t.\tGT\t0/1\n" +
+        "chr1\t1\trsy\tA\tC\t.\tPASS\t.\tGT\t1/1\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf))) {
+      MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder()
+          .setDuplicateLocusHandler(MemoryMappedVcfLineParser.LocusDuplicateHandler.KEEP_ALL)
+          .build();
+      new VcfParser.Builder()
+          .fromReader(reader)
+          .parseWith(lineParser)
+          .build().parse();
+      MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
+
+      List<VcfPosition> positions = dataStore.getPositionsAtLocus("chr1", 1);
+      assertNotNull(positions);
+      assertEquals(2, positions.size());
+      assertEquals("rsx", positions.get(0).getIds().get(0));
+      assertEquals("rsy", positions.get(1).getIds().get(0));
+
+      List<List<VcfSample>> samplesList = dataStore.getSamplesAtLocus("chr1", 1);
+      assertNotNull(samplesList);
+      assertEquals(2, samplesList.size());
+      assertEquals("0/1", samplesList.get(0).get(0).getProperty(ReservedFormatProperty.Genotype));
+      assertEquals("1/1", samplesList.get(1).get(0).getProperty(ReservedFormatProperty.Genotype));
+
+      // recordIndex-aware accessors reach the correct record, not just the first one at the locus
+      VcfSample secondSample = dataStore.getSampleAtLocus("chr1", 1, 1, "sample1");
+      assertNotNull(secondSample);
+      assertEquals("1/1", secondSample.getProperty(ReservedFormatProperty.Genotype));
+
+      MemoryMappedVcfDataStore.Genotype genotype = dataStore.getGenotypeAtLocus("chr1", 1, 1, "sample1");
+      assertNotNull(genotype);
+      assertEquals("C", genotype.getAlleles().get(0));
+      assertEquals("C", genotype.getAlleles().get(1));
     }
   }
 

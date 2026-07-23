@@ -12,7 +12,12 @@ The main parser class ([`VcfParser`](src/main/java/org/pharmgkb/parser/vcf/VcfPa
 
 Check out [`VcfParserTest.java`](src/test/java/org/pharmgkb/parser/vcf/VcfParserTest.java) for a quick and dirty view of it in action.
 
-[`MemoryMappedVcfLineParser`](src/main/java/org/pharmgkb/parser/vcf/MemoryMappedVcfLineParser.java) is an implementation of `VcfLineParser` that reads everything into memory.
+[`MemoryMappedVcfLineParser`](src/main/java/org/pharmgkb/parser/vcf/MemoryMappedVcfLineParser.java) is an example
+`VcfLineParser` implementation, showing how to read an entire file into memory for constant-time record lookup; it
+is not part of the core parser. VCF permits multiple records at the same locus, so each locus is stored as a list of
+records; by default this class throws when a locus repeats, but `Builder.setDuplicateLocusHandler(KEEP_ALL)` retains
+every record. A repeated `ID`, by contrast, is not a normal VCF occurrence, so it remains single-valued and
+`Builder.setDuplicateIdHandler` controls whether it's rejected or which record wins.
 
 **VCF version support:** The target specification is VCF 4.2. The parser accepts representable VCF 4.x input from
 before and after that version. Where VCF versions differ or input is ambiguous, it uses VCF 4.2 semantics. Later 4.x
