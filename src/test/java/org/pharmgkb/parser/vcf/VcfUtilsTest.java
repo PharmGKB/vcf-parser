@@ -69,6 +69,20 @@ public class VcfUtilsTest {
   }
 
   @Test
+  public void testAltBasePatternAcceptsLargeInsertionShorthand() {
+    // VCFv4.2's own "Large Insertions" section gives this as a real example (13 321682 INS0 T C<ctg1> ...),
+    // calling it "the shorthand notation" for "the special case of the complete insertion of a sequence between
+    // two base pairs": a base run directly followed by a symbolic ID, with NO breakend bracket between them.
+    // Confirmed present in the raw VCFv4.2 spec text itself (not just later versions). A prior review round
+    // mistakenly "fixed" this as over-permissive and rejected it, based on incomplete spec research -- that
+    // change was reverted. Note that the EBI vcf_validator 0.10.2 (github.com/ebivariation/vcf-validator) does
+    // NOT implement this shorthand -- it rejects "C<ctg1>" with the same generic error it gives for clearly
+    // invalid ALT syntax -- but the VCFv4.2 spec text is unambiguous that this form is valid, so this parser
+    // accepts it. This test exists specifically to prevent this exact regression from recurring.
+    assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher("C<ctg1>").matches());
+  }
+
+  @Test
   public void testExtractPropertiesWithEscapes() {
     // an escaped backslash (\\) and an escaped double-quote (\") inside a quoted Description must not crash and must be
     // preserved (the split must not treat the escaped quote as a real quote)
