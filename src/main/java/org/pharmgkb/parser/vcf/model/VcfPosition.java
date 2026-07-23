@@ -90,7 +90,7 @@ public class VcfPosition {
       checkInfoEntries(info.entries());
     }
     if (format != null) {
-      checkFormat(format);
+      format = checkFormat(format);
     }
 
     /*
@@ -243,7 +243,20 @@ public class VcfPosition {
     }
   }
 
-  private static void checkFormat(List<String> format) {
+  /**
+   * @return {@code format} unchanged, or a new empty list if {@code format} was the single-element list
+   * {@code ["."]} -- FORMAT being "." means no per-sample format fields at all when sample columns are present.
+   * VCFv4.2 through 4.5 are all silent on this exact case (FORMAT is only described as required "if genotype
+   * information is present"), but bcftools 1.23.1 accepts and correctly interprets it: {@code bcftools query -f
+   * '[%GT]'} against a FORMAT=. record returns the missing value regardless of that sample's own raw column
+   * content, and {@code bcftools view} round-trips such a sample as "." even given other input text there.
+   * Verified live against bcftools 1.23.1; per this project's policy of falling back to bcftools when the spec is
+   * silent, this is treated as valid here too.
+   */
+  private static List<String> checkFormat(List<String> format) {
+    if (format.size() == 1 && format.get(0).equals(".")) {
+      return new ArrayList<>();
+    }
     // duplicate keys are explicitly disallowed by the VCF spec (VCFv4.3+ states this outright; empty keys are
     // excluded from this check since they're already handled, and warned about, separately below)
     Set<String> seenKeys = new HashSet<>();
@@ -266,6 +279,7 @@ public class VcfPosition {
     if (format.indexOf("GT") > 0) {
       throw new VcfFormatException("FORMAT GT must be the first sub-field when present");
     }
+    return format;
   }
 
   /**
@@ -305,7 +319,7 @@ public class VcfPosition {
     m_filter = checkFilters(m_filter);
     normalizeFilters();
     checkInfoEntries(info().entries());
-    checkFormat(m_format);
+    m_format = checkFormat(m_format);
   }
 
   /**

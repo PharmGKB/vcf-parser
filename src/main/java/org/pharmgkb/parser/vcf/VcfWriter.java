@@ -130,12 +130,6 @@ public class VcfWriter implements Closeable {
     } else if (samples.size() != numSamples) {
       throw new VcfFormatException("Position " + position.getChromosome() + ":" + position.getPosition() +
           " has " + samples.size() + " sample(s), but the header declares " + numSamples);
-    } else if (position.getFormat().isEmpty()) {
-      // without a FORMAT, addFormatConditionally/addSampleConditionally write nothing at all for these columns
-      // (not even a missing-value placeholder), silently producing a line with fewer columns than the header
-      // declares and discarding any sample data outright
-      throw new VcfFormatException("Position " + position.getChromosome() + ":" + position.getPosition() +
-          " has no FORMAT, but the header declares " + numSamples + " sample(s)");
     }
     if (position.getRef().isEmpty()) {
       // REF has no missing-value sentinel in the spec ("." means something else entirely for other columns); writing
@@ -164,7 +158,7 @@ public class VcfWriter implements Closeable {
             position.getChromosome(), position.getPosition(), key, m_lineNumber));
 
     // these columns can be skipped completely
-    addFormatConditionally(position, sb);
+    addFormatConditionally(position, numSamples, sb);
     int sampleIndex = 0;
     for (VcfSample sample : samples) {
       addSampleConditionally(metadata, sampleIndex, position, sample, sb);
@@ -182,9 +176,14 @@ public class VcfWriter implements Closeable {
     IOUtils.closeQuietly(m_writer);
   }
 
-  private void addFormatConditionally(VcfPosition position, StringBuilder sb) {
+  private void addFormatConditionally(VcfPosition position, int numSamples, StringBuilder sb) {
     Iterator<String> formats = position.getFormat().iterator();
     if (!formats.hasNext()) {
+      if (numSamples > 0) {
+        // FORMAT="." (no per-sample format fields) is valid when sample columns are declared -- see
+        // VcfPosition.checkFormat's javadoc for the bcftools 1.23.1-verified rationale
+        sb.append(".\t");
+      }
       return;
     }
     while (formats.hasNext()) {
@@ -477,7 +476,16 @@ public class VcfWriter implements Closeable {
       VcfPosition position, VcfSample sample, StringBuilder sb) {
 
     List<String> formatKeys = position.getFormat();
-    if (sample.getPropertyKeys().isEmpty() && formatKeys.isEmpty()) {
+    if (formatKeys.isEmpty()) {
+      // FORMAT="." (no per-sample format fields) is valid when sample columns are declared -- see
+      // VcfPosition.checkFormat's javadoc for the bcftools 1.23.1-verified rationale. Every sample column is
+      // written as "." regardless of any properties a caller may have set on this VcfSample, since there is no
+      // FORMAT key left for them to correspond to.
+      if (!sample.getPropertyKeys().isEmpty()) {
+        sf_logger.warn("Sample #{} has propert(y/ies) set, but FORMAT is empty ('.'); they will not be written " +
+            "(on line {})", sampleIndex, m_lineNumber);
+      }
+      sb.append(".\t");
       return;
     }
 

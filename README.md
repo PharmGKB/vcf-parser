@@ -56,9 +56,8 @@ invalid:
   its own encoding, not a delimiter between independent sub-fields; a colon in the key `GLE` itself, or a tab in its
   value, is still rejected.
 - `VcfWriter.writeLine` is given a number of samples that disagrees with the header's declared sample count, any
-  FORMAT/sample data at all when the header declares no samples, an empty `FORMAT` when the header declares one or
-  more samples, or an empty `REF` (which has no missing-value sentinel in the spec, unlike `ALT`/`ID`/`FILTER`): in
-  every case the output would not be valid, re-parseable VCF.
+  FORMAT/sample data at all when the header declares no samples, or an empty `REF` (which has no missing-value
+  sentinel in the spec, unlike `ALT`/`ID`/`FILTER`): in every case the output would not be valid, re-parseable VCF.
 
 These checks run when a `VcfPosition` is constructed (including by the parser). Its setters and the mutable lists
 returned by its accessors (e.g. `getAltBases()`, `getFilters()`) do *not* re-run them, to support transformation
@@ -105,6 +104,14 @@ Reserved `Float`-typed `INFO`/`FORMAT` properties (e.g. `AF`, `MQ`, `GL`) are co
 [`VcfFloat`](src/main/java/org/pharmgkb/parser/vcf/model/VcfFloat.java), not a plain `BigDecimal`: VCFv4.2 doesn't
 define `Float`'s literal grammar, and VCFv4.5 clarifies it accepts `NAN`/`INF`/`INFINITY` (case-insensitive,
 optionally signed) in addition to a normal decimal number — values a plain `BigDecimal` cannot represent at all.
+
+A `FORMAT` value of `.` (with one or more samples present) means no per-sample format fields at all for that
+record; each sample is read as having zero properties, and any raw sample-column content there is ignored (with a
+warning). VCFv4.2 through 4.5 are all silent on this exact case — FORMAT is only described as required "if
+genotype information is present" — but bcftools 1.23.1 accepts and correctly interprets it (verified directly:
+`bcftools query` returns the missing value for such a sample's `GT` regardless of that sample's own raw column
+content, and `bcftools view` round-trips it as `.`), so this parser and writer both treat it as valid, matching
+bcftools 1.23.1 behavior.
 
 
 ## Get It

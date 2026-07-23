@@ -249,7 +249,13 @@ public class VcfParser implements Closeable {
       List<String> format = null;
       if (data.size() >= 9) {
         format = toList(COLON, data.get(8));
+        if (format.size() == 1 && format.get(0).equals(".")) {
+          // no per-sample format fields at all; see VcfPosition.checkFormat's javadoc for why this is valid
+          // (matches bcftools 1.23.1 behavior, though VCFv4.2 through 4.5 are all silent on this exact case)
+          format = new ArrayList<>();
+        }
       }
+      boolean noFormatFields = format != null && format.isEmpty();
 
       // QUAL and INFO are parsed lazily by VcfPosition (see setRawQuality/setRawInfo); many consumers never read them.
       VcfPosition pos = new VcfPosition(chromosome, position, ids, ref, alt,
@@ -258,13 +264,22 @@ public class VcfParser implements Closeable {
       pos.setRawInfo(data.get(7));
       List<VcfSample> samples = new ArrayList<>();
       for (int x = 9; x < data.size(); x++) {
-        List<String> values = toSampleValues(format, data.get(x));
-        VcfUtils.fillEmptyEntriesWithDot(sf_logger, "sample value", values);
-        // per the VCF spec, trailing FORMAT sub-fields may be dropped from a sample; pad any missing ones with the
-        // missing value so the sample's value count matches the FORMAT key count
-        if (format != null) {
-          while (values.size() < format.size()) {
-            values.add(".");
+        List<String> values;
+        if (noFormatFields) {
+          if (!data.get(x).equals(".")) {
+            sf_logger.warn("Sample column \"{}\" has content, but FORMAT is '.' (no format fields declared); " +
+                "ignoring it, matching bcftools 1.23.1 behavior", data.get(x));
+          }
+          values = new ArrayList<>();
+        } else {
+          values = toSampleValues(format, data.get(x));
+          VcfUtils.fillEmptyEntriesWithDot(sf_logger, "sample value", values);
+          // per the VCF spec, trailing FORMAT sub-fields may be dropped from a sample; pad any missing ones with the
+          // missing value so the sample's value count matches the FORMAT key count
+          if (format != null) {
+            while (values.size() < format.size()) {
+              values.add(".");
+            }
           }
         }
         samples.add(new VcfSample(format, values));

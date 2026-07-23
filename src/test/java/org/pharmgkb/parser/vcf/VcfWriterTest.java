@@ -512,10 +512,10 @@ public class VcfWriterTest {
   }
 
   @Test
-  public void testWriteLineRejectsSampleDataWithoutFormat() throws Exception {
-    // header declares 1 sample, and one is provided, but position.getFormat() was never populated: without a
-    // FORMAT, addFormatConditionally/addSampleConditionally previously wrote nothing at all for these columns,
-    // silently producing a line with fewer columns than the header declares and discarding the sample's properties
+  public void testWriteLineWritesDotFormatAndSampleWhenFormatEmpty() throws Exception {
+    // FORMAT="." (no per-sample format fields) is valid when sample columns are declared -- see
+    // VcfPosition.checkFormat's javadoc for the bcftools 1.23.1-verified rationale. A sample's own properties are
+    // warned about and dropped, since there is no FORMAT key left for them to correspond to.
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .build();
@@ -526,8 +526,25 @@ public class VcfWriterTest {
     sample.putProperty(ReservedFormatProperty.Genotype, "0/1");
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    assertThrows(VcfFormatException.class,
-        () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
+    writer.writeLine(metadata, position, Collections.singletonList(sample));
+    assertTrue(sw.toString().endsWith("\tPASS\t.\t.\t.\n"));
+  }
+
+  @Test
+  public void testWriteLineValidateBeforeWriteAllowsEmptyFormatWithEmptySample() throws Exception {
+    // the clean case: FORMAT is empty and the sample has no properties either, so no warning path is exercised;
+    // this must also work in validateBeforeWrite() mode, not just the default fast path
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    writer.writeHeader(metadata);
+    writer.writeLine(metadata, position, Collections.singletonList(sample));
+    assertTrue(sw.toString().endsWith("\tPASS\t.\t.\t.\n"));
   }
 
   @Test

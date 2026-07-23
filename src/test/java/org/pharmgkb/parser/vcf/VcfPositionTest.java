@@ -316,6 +316,16 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testLoneDotFormatMeansNoFormatFields() {
+    // FORMAT="." (no per-sample format fields at all) is valid when sample columns are present -- VCFv4.2 through
+    // 4.5 are all silent on this exact case, but bcftools 1.23.1 accepts and correctly interprets it; see
+    // VcfPosition.checkFormat's javadoc for the full rationale
+    VcfPosition position = new VcfPosition("chr", 1, null, "C", null, null, null, null,
+        new ArrayList<>(Collections.singletonList(".")));
+    assertTrue(position.getFormat().isEmpty());
+  }
+
+  @Test
   public void testBadChromosome() {
     assertThrows(VcfFormatException.class, () -> {
       new VcfPosition("chr 1", 1, null, "C", null, null, null, null, null); // whitespace is not allowed

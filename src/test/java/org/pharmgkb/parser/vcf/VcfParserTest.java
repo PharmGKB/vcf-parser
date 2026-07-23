@@ -331,6 +331,51 @@ public class VcfParserTest {
   }
 
   @Test
+  void testFormatDotMeansNoFormatFields() throws IOException {
+    // FORMAT="." (no per-sample format fields at all) is valid when sample columns are present -- VCFv4.2 through
+    // 4.5 are all silent on this exact case, but bcftools 1.23.1 accepts and correctly interprets it (verified
+    // live: bcftools query returns the missing value for the sample's GT regardless of that sample's own raw
+    // column content). See VcfPosition.checkFormat's javadoc for the full rationale.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n" +
+        "chr1\t100\t.\tA\tT\t.\tPASS\t.\t.\t.\n";
+    List<VcfPosition> positions = new ArrayList<>();
+    List<VcfSample> captured = new ArrayList<>();
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, position, sampleData) -> {
+               positions.add(position);
+               captured.addAll(sampleData);
+             })
+             .build()) {
+      parser.parse();
+    }
+    assertTrue(positions.get(0).getFormat().isEmpty());
+    assertEquals(1, captured.size());
+    assertTrue(captured.get(0).getPropertyKeys().isEmpty());
+  }
+
+  @Test
+  void testFormatDotIgnoresMismatchedSampleContent() throws IOException {
+    // a sample column with real content is ignored (with a warning), not rejected, when FORMAT is "." -- matching
+    // bcftools 1.23.1, which silently normalizes such a sample to "." on output regardless of its input content
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n" +
+        "chr1\t100\t.\tA\tT\t.\tPASS\t.\t.\tfoo\n";
+    List<VcfSample> captured = new ArrayList<>();
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, position, sampleData) -> captured.addAll(sampleData))
+             .build()) {
+      parser.parse();
+    }
+    assertEquals(1, captured.size());
+    assertTrue(captured.get(0).getPropertyKeys().isEmpty());
+  }
+
+  @Test
   void testEmptySampleValueFilledWithDot() throws IOException {
     // unlike a genuinely dropped trailing sub-field (above), an explicit empty sub-field (interior or trailing) is
     // not allowed by VCF as a zero-length field; it's filled with the missing value '.' rather than thrown, since
