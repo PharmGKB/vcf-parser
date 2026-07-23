@@ -37,8 +37,8 @@ invalid:
 - An empty mandatory fixed field (the missing value must be `.`), an empty `CHROM`, or a negative `POS`.
 - Invalid `REF`/`ALT` bases; an `ALT` missing value (`.`) combined with a real allele; whitespace where the spec forbids
   it (`CHROM`, `ID`, `FILTER`, `INFO`); a duplicate identifier within a single `ID` field; a `FILTER` of `0` or `PASS`
-  combined with other filters; or a `FORMAT` in which `GT` is present but not the first sub-field or a (non-empty) key
-  is duplicated.
+  combined with other filters; an `INFO` missing value (`.`) combined with a real property; or a `FORMAT` in which
+  `GT` is present but not the first sub-field or a (non-empty) key is duplicated.
 - A sample with more sub-fields than its `FORMAT` declares (trailing sub-fields may be dropped, but not added).
 - An invalid genotype passed to `VcfGenotype`, a malformed or out-of-range `GT` allele index looked up through
   `MemoryMappedVcfDataStore`, or a failed conversion when a typed value is requested.

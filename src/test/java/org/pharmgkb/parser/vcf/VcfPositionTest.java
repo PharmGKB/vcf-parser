@@ -103,6 +103,21 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testLazyInfoDotCannotCombineWithOtherProperties() {
+    // "." (no INFO at all) cannot be combined with a real property, the same as ALT/FILTER's exclusivity rule for
+    // their own "." sentinel
+    VcfPosition combined = newPosition();
+    combined.setRawInfo(".;DP=1");
+    assertThrows(VcfFormatException.class, combined::getInfo);
+
+    // a stray trailing ';' after a lone "." is not "combined with other content" (the only other split part is an
+    // empty-string artifact, already warned about and dropped elsewhere) -- must not throw
+    VcfPosition trailingSemicolon = newPosition();
+    trailingSemicolon.setRawInfo(".;");
+    assertEquals(Collections.singletonList("."), new ArrayList<>(trailingSemicolon.getInfo().keySet()));
+  }
+
+  @Test
   public void testGetInfoMappingQuality() {
     // MQ is a float reserved property; getInfo must convert it (it was previously typed Float.class, which threw)
     VcfPosition p = newPosition();

@@ -452,12 +452,22 @@ public class VcfPosition {
       if (raw != null && !raw.isEmpty() && !raw.equals(".")) {
         // limit -1 preserves an empty prop/value (e.g. a trailing ';' or ','), handled below rather than silently
         // dropped; VCF does not allow zero-length fields. See EMPTY_FIELD_HANDLING.md.
+        List<String> props = new ArrayList<>();
         for (String prop : raw.split(";", -1)) {
           if (prop.isEmpty()) {
             sf_logger.warn("INFO contains an empty entry between ';'s (VCF does not allow zero-length fields); " +
                 "dropping it");
             continue;
           }
+          props.add(prop);
+        }
+        // "." (missing value: no INFO at all) cannot be combined with a real property, the same as ALT/FILTER's
+        // exclusivity rule for their own "." sentinel; unlike an empty prop (dropped above), this isn't a stray
+        // delimiter artifact, it directly contradicts "." meaning "nothing here"
+        if (props.contains(".") && props.size() > 1) {
+          throw new VcfFormatException("INFO contains '.' (missing value) along with other properties");
+        }
+        for (String prop : props) {
           int idx = prop.indexOf('=');
           if (idx == -1) {
             info.put(prop, "");
