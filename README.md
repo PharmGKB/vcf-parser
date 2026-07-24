@@ -157,9 +157,9 @@ another code) and `passed_meta_contig.vcf` (duplicate `##contig` ID) are hts-spe
 library's pre-existing, stricter FILTER and contig validation correctly rejects.
 
 The 40 `parser-throw-or-warn` entries are `failed/` fixtures whose invalidity this library still doesn't detect,
-grouped by cause: 16 are `AltStructuralVariant`'s code-hierarchy validation not being invoked automatically during
+grouped by cause: 14 are `AltStructuralVariant`'s code-hierarchy validation not being invoked automatically during
 ALT declaration parsing (it exists but is opt-in only); 9 are malformed metadata key-value pair/empty-value
-syntax; 4 are declared-attribute-order enforcement (`##INFO`/`##FORMAT`/`##ALT` fields declared out of canonical
+syntax; 6 are declared-attribute-order enforcement (`##INFO`/`##FORMAT`/`##ALT` fields declared out of canonical
 order) — VCFv4.2 does not mandate attribute order within a declaration (confirmed against the spec text during
 the writer-ordering-preservation work), so hts-specs rejecting these is testing something stricter than this
 library's target spec; this is deferred for later reconsideration, not decided against. The remaining 11 are a
