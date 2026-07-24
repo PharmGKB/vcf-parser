@@ -116,4 +116,59 @@ java {
   targetCompatibility = JavaVersion.VERSION_17
 }
 
+// hts-specs conformance test (see docs/superpowers/specs/2026-07-23-hts-specs-conformance-test-design.md)
+ext {
+  htsSpecsPinnedSha = 'da617203a9527537746e200abda2885bec3a822c'
+  htsSpecsCheckoutDir = layout.buildDirectory.dir('hts-specs-checkout')
+}
+
+tasks.register('htsSpecsCheckout') {
+  doLast {
+    def checkoutDir = htsSpecsCheckoutDir.get().asFile
+    if (!new File(checkoutDir, '.git').exists()) {
+      logger.lifecycle("Cloning hts-specs (test/vcf only) into ${checkoutDir}...")
+      def cloneResult = ['git', 'clone', '--filter=blob:none', '--sparse', '--no-checkout',
+          'https://github.com/samtools/hts-specs.git', checkoutDir.absolutePath].execute()
+      cloneResult.waitFor()
+      if (cloneResult.exitValue() != 0) {
+        throw new RuntimeException("git clone failed: ${cloneResult.err.text}")
+      }
+
+      def sparseResult = ['git', '-C', checkoutDir.absolutePath, 'sparse-checkout', 'set', 'test/vcf'].execute()
+      sparseResult.waitFor()
+      if (sparseResult.exitValue() != 0) {
+        throw new RuntimeException("git sparse-checkout set failed: ${sparseResult.err.text}")
+      }
+
+      def checkoutResult = ['git', '-C', checkoutDir.absolutePath, 'checkout', htsSpecsPinnedSha].execute()
+      checkoutResult.waitFor()
+      if (checkoutResult.exitValue() != 0) {
+        throw new RuntimeException("git checkout failed: ${checkoutResult.err.text}")
+      }
+    }
+
+    def fetchResult = ['git', '-C', checkoutDir.absolutePath, 'fetch', 'origin', 'master'].execute()
+    fetchResult.waitFor()
+    if (fetchResult.exitValue() != 0) {
+      throw new RuntimeException("git fetch failed: ${fetchResult.err.text}")
+    }
+
+    def fetchedShaResult = ['git', '-C', checkoutDir.absolutePath, 'rev-parse', 'FETCH_HEAD'].execute()
+    def fetchedSha = fetchedShaResult.text.trim()
+    fetchedShaResult.waitFor()
+
+    if (fetchedSha != htsSpecsPinnedSha) {
+      def changedLogResult = ['git', '-C', checkoutDir.absolutePath, 'log', "${htsSpecsPinnedSha}..${fetchedSha}",
+          '--oneline', '--', 'test/vcf'].execute()
+      def changedLog = changedLogResult.text.trim()
+      changedLogResult.waitFor()
+      if (!changedLog.isEmpty()) {
+        logger.warn("hts-specs has commits touching test/vcf since the pinned commit " +
+            "${htsSpecsPinnedSha}:\n${changedLog}\n" +
+            "Consider bumping htsSpecsPinnedSha in build.gradle if these fixtures should be picked up.")
+      }
+    }
+  }
+}
+
 apply from: 'pgkb-build.gradle'
