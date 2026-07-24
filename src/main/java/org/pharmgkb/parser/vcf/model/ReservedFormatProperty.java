@@ -1,5 +1,7 @@
 package org.pharmgkb.parser.vcf.model;
 
+import org.jspecify.annotations.Nullable;
+
 
 /**
  * A FORMAT field specified as reserved in the VCF specification.
@@ -90,6 +92,7 @@ public enum ReservedFormatProperty implements ReservedProperty {
     return m_expectedNumber;
   }
 
+  @Nullable
   public static ReservedFormatProperty fromId(String id) {
     switch (id) {
       case "GT":

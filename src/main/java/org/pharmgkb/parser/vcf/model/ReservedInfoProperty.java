@@ -1,5 +1,7 @@
 package org.pharmgkb.parser.vcf.model;
 
+import org.jspecify.annotations.Nullable;
+
 
 /**
  * An INFO field specified as reserved in the VCF specification.
@@ -125,6 +127,7 @@ public enum ReservedInfoProperty implements ReservedProperty {
     return m_expectedNumber;
   }
 
+  @Nullable
   public static ReservedInfoProperty fromId(String id) {
     switch (id) {
       case "AA":
