@@ -119,6 +119,22 @@ content, and `bcftools view` round-trips it as `.`), so this parser and writer b
 bcftools 1.23.1 behavior.
 
 
+## hts-specs conformance test
+
+`./gradlew htsSpecsTest` runs this parser against
+[hts-specs](https://github.com/samtools/hts-specs)' official VCF conformance fixture suite
+(`test/vcf/{4.1,4.2,4.3,4.5}/{passed,failed}`), fetched at build time and pinned to a specific commit
+(`htsSpecsPinnedSha` in `build.gradle`). It asserts every `passed/` fixture parses without error, and every
+`failed/` fixture (for versions up to this library's VCFv4.2 target) either throws `VcfFormatException` or logs a
+warning — this library is deliberately more permissive than strict compliance for non-structural violations, so a
+`failed/` fixture parsing without error is not itself a failure; parsing it with *no signal at all* is.
+
+This task requires network access (to `github.com`) and is **not** part of the required `./gradlew test` check,
+which stays network-free. The pinned commit is bumped deliberately, not automatically; `htsSpecsCheckout` (which
+`htsSpecsTest` depends on) prints a warning if hts-specs has upstream changes to `test/vcf` that the current pin
+doesn't include.
+
+
 ## Get It
 
 ### Maven
