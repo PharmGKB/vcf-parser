@@ -148,9 +148,9 @@ which stays network-free. The pinned commit is bumped deliberately, not automati
 `htsSpecsTest` depends on) prints a warning if hts-specs has upstream changes to `test/vcf` that the current pin
 doesn't include.
 
-As of the current `htsSpecsPinnedSha`, `./gradlew htsSpecsTest` reports **601 total tests, 195 baselined
+As of the current `htsSpecsPinnedSha`, `./gradlew htsSpecsTest` reports **601 total tests, 151 + 4 baselined
 entries**, and this is the expected current state, not a regression to chase down: 5 `parser-no-throw` + 146
-`parser-throw-or-warn` (both pre-existing, predating the baseline mechanism) + 44 `writer-bytediff` (0
+`parser-throw-or-warn` (both pre-existing, predating the baseline mechanism) + 4 `writer-bytediff` (0
 `writer-semantic`). The 5 `parser-no-throw` entries are two `passed/` fixtures recurring across their per-version
 copies (`complexfile_passed_000.vcf` in 4.1/4.2/4.3; `passed_meta_contig.vcf` in 4.1/4.2 — 3 + 2 = 5):
 `complexfile_passed_000.vcf` (FILTER combines `PASS` with another code) and `passed_meta_contig.vcf` (duplicate
@@ -158,16 +158,17 @@ copies (`complexfile_passed_000.vcf` in 4.1/4.2/4.3; `passed_meta_contig.vcf` in
 validation correctly rejects. The 146 `parser-throw-or-warn` entries are `failed/` fixtures whose invalidity is
 metadata-declaration content — reserved `##INFO`/`##FORMAT` key `Number`/`Type` values and ALT structural codes —
 that this library does not yet cross-validate against its own `ReservedInfoProperty`/`ReservedFormatProperty`
-definitions during normal parsing, so those fixtures parse without a `VcfFormatException` or warning. The 44
-`writer-bytediff` entries are newly discovered by the writer round-trip checks: the writer does not preserve
-original field ordering when it re-serializes a record. The confirmed root cause is that `VcfPosition.info()`'s
-`ArrayListMultimap` doesn't preserve INFO key insertion order from the raw text (e.g. parsing
-`AN=2184;AC=249;AF=0.11` yields keys in a different order than written), and `VcfMetadata`'s `HashMap`-backed
-metadata maps (`m_info`/`m_format`/`m_alt`/etc.) don't preserve declaration order relative to each other. No data
-is lost — same keys and values, just reordered — which zero `writer-semantic` findings confirm, so this is
-accepted into the baseline as a known, low-severity issue and tracked as a candidate for a future fix; it is not
-part of this test-infrastructure-only change. Closing the `parser-throw-or-warn` gap is likewise tracked
-separately, not part of this test task.
+definitions during normal parsing, so those fixtures parse without a `VcfFormatException` or warning; closing
+this gap is tracked separately, not part of this test task.
+
+The writer round-trip checks no longer find any ordering-related divergences: `VcfUtils.extractProperties()`,
+`VcfMetadata`'s six keyed maps and its generic-property map, and `VcfPosition.info()` all now preserve insertion
+order through parse-write round trips (see `docs/superpowers/specs/2026-07-24-writer-ordering-preservation-design.md`).
+The 4 remaining `writer-bytediff` entries are unrelated to ordering: 3 are `QUAL` scientific-notation case
+normalization (`2e+1` in the original fixture is written back as `2E+1`, from `BigDecimal`'s own string
+formatting), and 1 is empty-sample-value-to-`.` normalization in `zero_length_LAA.vcf`, consistent with this
+library's documented empty-field-handling policy. Both are pre-existing, deliberate canonicalization behaviors,
+not data loss (0 `writer-semantic` findings confirm this), and are out of scope for this writer-ordering fix.
 
 Every `htsSpecsTest`/`htsSpecsUpdateBaseline` run writes two (gitignored, not committed) reports under
 `build/reports/hts-specs-conformance/`: `summary.md` (counts by version x check type) and `findings.tsv` (only
