@@ -138,16 +138,21 @@ tasks.register('htsSpecsCheckout') {
         executable 'git'
         args = ['-C', checkoutDir.absolutePath, 'sparse-checkout', 'set', 'test/vcf']
       }.result.get()
-
-      providers.exec {
-        executable 'git'
-        args = ['-C', checkoutDir.absolutePath, 'checkout', htsSpecsPinnedSha]
-      }.result.get()
     }
 
     providers.exec {
       executable 'git'
       args = ['-C', checkoutDir.absolutePath, 'fetch', 'origin', 'master']
+    }.result.get()
+
+    // Always reconcile the working tree to the currently-configured pin -- not just on first clone -- so that
+    // bumping htsSpecsPinnedSha takes effect on the next run without deleting the checkout directory. The fetch
+    // above guarantees the pinned commit's object is available locally even if it's newer than what was
+    // originally cloned; --filter=blob:none (not --depth) retains full history, so checking out an arbitrary
+    // historical pinned SHA always works.
+    providers.exec {
+      executable 'git'
+      args = ['-C', checkoutDir.absolutePath, 'checkout', htsSpecsPinnedSha]
     }.result.get()
 
     def fetchedSha = providers.exec {
