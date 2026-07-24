@@ -78,4 +78,15 @@ class WriterRoundTripTest {
     String written = WriterRoundTrip.write(parsed);
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
   }
+
+  @Test
+  void testInfoKeyOrderRoundTripsByteIdentical() throws IOException {
+    String vcf =
+        "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT\t.\tPASS\tAN=2184;AC=249;AF=0.11\n";
+    WriterRoundTrip.ParsedFile parsed = WriterRoundTrip.parseText(vcf);
+    String written = WriterRoundTrip.write(parsed);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
+  }
 }

@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import com.google.common.base.Joiner;
-import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.LinkedListMultimap;
 import com.google.common.collect.ListMultimap;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfFormatException;
@@ -475,7 +475,7 @@ public class VcfPosition {
   private ListMultimap<String, String> info() {
     ListMultimap<String, String> info = m_info;
     if (info == null) {
-      info = ArrayListMultimap.create();
+      info = LinkedListMultimap.create();
       String raw = m_rawInfo;
       if (raw != null && !raw.isEmpty() && !raw.equals(".")) {
         // limit -1 preserves an empty prop/value (e.g. a trailing ';' or ','), handled below rather than silently

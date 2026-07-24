@@ -203,6 +203,15 @@ public class VcfPositionTest {
     assertEquals(Arrays.asList(-100L, -110L), p.getInfo(ReservedInfoProperty.StructuralVariantLength));
   }
 
+  @Test
+  public void testGetInfoKeysPreservesInsertionOrder() {
+    // confirmed via direct reproduction during the writer-ordering investigation: ArrayListMultimap's key
+    // iteration order is hash-based, not insertion order, so this previously came back as [AC, AF, AN]
+    VcfPosition p = newPosition();
+    p.setRawInfo("AN=2184;AC=249;AF=0.11");
+    assertEquals(Arrays.asList("AN", "AC", "AF"), new ArrayList<>(p.getInfoKeys()));
+  }
+
   private static VcfPosition newPosition() {
     return new VcfPosition("chr", 1, null, "C", null, null, null, null, null);
   }
