@@ -5,8 +5,10 @@ import java.util.Arrays;
 import java.util.Map;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.Test;
+import org.pharmgkb.parser.vcf.model.FormatType;
 import org.pharmgkb.parser.vcf.model.InfoType;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
+import org.pharmgkb.parser.vcf.model.VcfFloat;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -289,6 +291,23 @@ public class VcfUtilsTest {
     // matching the "warn and drop" convention used for FILTER's own empty entries
     String value = VcfUtils.convertProperty(ReservedFormatProperty.Filter, "q10;;q20");
     assertEquals("q10;q20", value);
+  }
+
+  @Test
+  public void testToJavaTypeMapsInfoType() {
+    assertEquals(Long.class, VcfUtils.toJavaType(InfoType.Integer));
+    assertEquals(VcfFloat.class, VcfUtils.toJavaType(InfoType.Float));
+    assertEquals(Character.class, VcfUtils.toJavaType(InfoType.Character));
+    assertEquals(String.class, VcfUtils.toJavaType(InfoType.String));
+    assertEquals(Boolean.class, VcfUtils.toJavaType(InfoType.Flag));
+  }
+
+  @Test
+  public void testToJavaTypeMapsFormatType() {
+    assertEquals(Long.class, VcfUtils.toJavaType(FormatType.Integer));
+    assertEquals(VcfFloat.class, VcfUtils.toJavaType(FormatType.Float));
+    assertEquals(Character.class, VcfUtils.toJavaType(FormatType.Character));
+    assertEquals(String.class, VcfUtils.toJavaType(FormatType.String));
   }
 
 }

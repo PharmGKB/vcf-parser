@@ -5,8 +5,10 @@ import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 public class InfoMetadataTest {
@@ -101,6 +103,102 @@ public class InfoMetadataTest {
     InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(
         "ID=X", "Number=1", "Type=String", "Description=\"d\"", "Custom=extra"));
     assertEquals("extra", md.getPropertyRaw("Custom"));
+  }
+
+  @Test
+  public void testReservedNumberMismatchWarnsAndPreservesValue() {
+    // AC's reserved Number is "A" (VCFv4.3's Reserved INFO Keys table); declaring it "1" is a mismatch
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    InfoMetadata md;
+    try {
+      md = new InfoMetadata(VcfUtils.extractProperties(
+          "ID=AC", "Number=1", "Type=Integer", "Description=\"d\""));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    // warn-and-preserve, not reject-and-rewrite: the declared (non-compliant) value is unchanged
+    assertEquals("1", md.getNumber());
+  }
+
+  @Test
+  public void testReservedTypeMismatchWarns() {
+    // AC's reserved Type is Integer; declaring it String is a mismatch
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new InfoMetadata(VcfUtils.extractProperties("ID=AC", "Number=A", "Type=String", "Description=\"d\""));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testCorrectlyDeclaredReservedKeyDoesNotWarn() {
+    // AC declared exactly as the reserved definition expects (Number=A, Type=Integer) must not warn
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new InfoMetadata(VcfUtils.extractProperties("ID=AC", "Number=A", "Type=Integer", "Description=\"d\""));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testCorrectlyDeclaredStructuralVariantKeyDoesNotWarn() {
+    // END is declared natively in VCFv4.2.tex itself (Number=1, Type=Integer) -- exercises the "no 4.3
+    // clarification needed" sourcing path, not just the "standard" 4.3-table path
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new InfoMetadata(VcfUtils.extractProperties("ID=END", "Number=1", "Type=Integer", "Description=\"d\""));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testNonReservedKeyIsNotChecked() {
+    // a custom/non-reserved ID has no canonical Number/Type to check against -- VCFv4.2 explicitly allows extra
+    // fields, so this must not warn regardless of what Number/Type it declares
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new InfoMetadata(VcfUtils.extractProperties("ID=MYCUSTOM", "Number=3", "Type=String", "Description=\"d\""));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
   }
 
   @Test

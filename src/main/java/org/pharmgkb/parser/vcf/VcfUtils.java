@@ -372,49 +372,44 @@ public class VcfUtils {
     }
   }
 
-  public static @Nullable <T> T convertProperty(FormatType type, @Nullable String value) {
-    Class<?> clas;
+  public static Class<?> toJavaType(FormatType type) {
     switch (type) {
       case Integer:
-        clas = Long.class;
-        break;
+        return Long.class;
       case Float:
-        clas = VcfFloat.class;
-        break;
+        return VcfFloat.class;
       case Character:
-        clas = Character.class;
-        break;
+        return Character.class;
       case String:
-        clas = String.class;
-        break;
+        return String.class;
       default:
         throw new VcfFormatException(FormatType.class.getSimpleName() + " " + type + " isn't covered?!");
     }
-    return convertProperty(clas, value, false);
   }
 
-  public static @Nullable <T> T convertProperty(InfoType type, @Nullable String value) {
-    Class<?> clas;
+  public static @Nullable <T> T convertProperty(FormatType type, @Nullable String value) {
+    return convertProperty(toJavaType(type), value, false);
+  }
+
+  public static Class<?> toJavaType(InfoType type) {
     switch (type) {
       case Integer:
-        clas = Long.class;
-        break;
+        return Long.class;
       case Float:
-        clas = VcfFloat.class;
-        break;
+        return VcfFloat.class;
       case Character:
-        clas = Character.class;
-        break;
+        return Character.class;
       case String:
-        clas = String.class;
-        break;
+        return String.class;
       case Flag:
-        clas = Boolean.class;
-        break;
+        return Boolean.class;
       default:
         throw new VcfFormatException(InfoType.class.getSimpleName() + " " + type + " isn't covered?!");
     }
-    return convertProperty(clas, value, false);
+  }
+
+  public static @Nullable <T> T convertProperty(InfoType type, @Nullable String value) {
+    return convertProperty(toJavaType(type), value, false);
   }
 
   private static @Nullable Object convertElement(Class<?> clas, @Nullable String value) {

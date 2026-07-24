@@ -3,6 +3,7 @@ package org.pharmgkb.parser.vcf.model;
 import java.lang.invoke.MethodHandles;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
+import org.pharmgkb.parser.vcf.VcfUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -79,6 +80,18 @@ public class InfoMetadata extends IdDescriptionMetadata {
       String value = getPropertyRaw(optional);
       if (value != null && (!value.startsWith("\"") || !value.endsWith("\""))) {
         sf_logger.warn("Metadata property \"{}\" should be quoted but was: {}", optional, value);
+      }
+    }
+    String id = getId();
+    ReservedInfoProperty reserved = id == null ? null : ReservedInfoProperty.fromId(id);
+    if (reserved != null) {
+      if (number != null && !reserved.getExpectedNumber().equals(number)) {
+        sf_logger.warn("INFO {} has Number '{}' but the reserved definition expects '{}'", getId(), number,
+            reserved.getExpectedNumber());
+      }
+      if (m_type != null && !VcfUtils.toJavaType(m_type).equals(reserved.getType())) {
+        sf_logger.warn("INFO {} has Type '{}' but the reserved definition expects '{}'", getId(), m_type,
+            reserved.getType().getSimpleName());
       }
     }
     // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included

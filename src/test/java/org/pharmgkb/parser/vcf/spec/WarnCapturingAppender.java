@@ -13,7 +13,7 @@ import ch.qos.logback.core.AppenderBase;
  * operation. This repo has no SLF4J provider bound outside tests (see build.gradle's testImplementation
  * logback-classic and src/test/resources/logback-test.xml), so this is the only way to observe a warning.
  */
-class WarnCapturingAppender extends AppenderBase<ILoggingEvent> {
+public class WarnCapturingAppender extends AppenderBase<ILoggingEvent> {
 
   private final List<ILoggingEvent> m_events = Collections.synchronizedList(new ArrayList<>());
 
@@ -22,7 +22,7 @@ class WarnCapturingAppender extends AppenderBase<ILoggingEvent> {
     m_events.add(event);
   }
 
-  boolean hasWarnOrHigher() {
+  public boolean hasWarnOrHigher() {
     return m_events.stream().anyMatch(event -> event.getLevel().isGreaterOrEqual(Level.WARN));
   }
 }
