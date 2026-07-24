@@ -127,41 +127,39 @@ tasks.register('htsSpecsCheckout') {
     def checkoutDir = htsSpecsCheckoutDir.get().asFile
     if (!new File(checkoutDir, '.git').exists()) {
       logger.lifecycle("Cloning hts-specs (test/vcf only) into ${checkoutDir}...")
-      def cloneResult = ['git', 'clone', '--filter=blob:none', '--sparse', '--no-checkout',
-          'https://github.com/samtools/hts-specs.git', checkoutDir.absolutePath].execute()
-      cloneResult.waitFor()
-      if (cloneResult.exitValue() != 0) {
-        throw new RuntimeException("git clone failed: ${cloneResult.err.text}")
-      }
+      providers.exec {
+        executable 'git'
+        args = ['clone', '--filter=blob:none', '--sparse', '--no-checkout',
+            'https://github.com/samtools/hts-specs.git', checkoutDir.absolutePath]
+      }.result.get()
 
-      def sparseResult = ['git', '-C', checkoutDir.absolutePath, 'sparse-checkout', 'set', 'test/vcf'].execute()
-      sparseResult.waitFor()
-      if (sparseResult.exitValue() != 0) {
-        throw new RuntimeException("git sparse-checkout set failed: ${sparseResult.err.text}")
-      }
+      providers.exec {
+        executable 'git'
+        args = ['-C', checkoutDir.absolutePath, 'sparse-checkout', 'set', 'test/vcf']
+      }.result.get()
 
-      def checkoutResult = ['git', '-C', checkoutDir.absolutePath, 'checkout', htsSpecsPinnedSha].execute()
-      checkoutResult.waitFor()
-      if (checkoutResult.exitValue() != 0) {
-        throw new RuntimeException("git checkout failed: ${checkoutResult.err.text}")
-      }
+      providers.exec {
+        executable 'git'
+        args = ['-C', checkoutDir.absolutePath, 'checkout', htsSpecsPinnedSha]
+      }.result.get()
     }
 
-    def fetchResult = ['git', '-C', checkoutDir.absolutePath, 'fetch', 'origin', 'master'].execute()
-    fetchResult.waitFor()
-    if (fetchResult.exitValue() != 0) {
-      throw new RuntimeException("git fetch failed: ${fetchResult.err.text}")
-    }
+    providers.exec {
+      executable 'git'
+      args = ['-C', checkoutDir.absolutePath, 'fetch', 'origin', 'master']
+    }.result.get()
 
-    def fetchedShaResult = ['git', '-C', checkoutDir.absolutePath, 'rev-parse', 'FETCH_HEAD'].execute()
-    def fetchedSha = fetchedShaResult.text.trim()
-    fetchedShaResult.waitFor()
+    def fetchedSha = providers.exec {
+      executable 'git'
+      args = ['-C', checkoutDir.absolutePath, 'rev-parse', 'FETCH_HEAD']
+    }.standardOutput.asText.get().trim()
 
     if (fetchedSha != htsSpecsPinnedSha) {
-      def changedLogResult = ['git', '-C', checkoutDir.absolutePath, 'log', "${htsSpecsPinnedSha}..${fetchedSha}",
-          '--oneline', '--', 'test/vcf'].execute()
-      def changedLog = changedLogResult.text.trim()
-      changedLogResult.waitFor()
+      def changedLog = providers.exec {
+        executable 'git'
+        args = ['-C', checkoutDir.absolutePath, 'log', "${htsSpecsPinnedSha}..${fetchedSha}",
+            '--oneline', '--', 'test/vcf']
+      }.standardOutput.asText.get().trim()
       if (!changedLog.isEmpty()) {
         logger.warn("hts-specs has commits touching test/vcf since the pinned commit " +
             "${htsSpecsPinnedSha}:\n${changedLog}\n" +
