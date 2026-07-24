@@ -117,7 +117,7 @@ java {
   targetCompatibility = JavaVersion.VERSION_17
 }
 
-// hts-specs conformance test (see docs/superpowers/specs/2026-07-23-hts-specs-conformance-test-design.md)
+// hts-specs conformance test (see README.md's "hts-specs conformance test" section for rationale and known state)
 ext {
   htsSpecsPinnedSha = 'da617203a9527537746e200abda2885bec3a822c'
   htsSpecsCheckoutDir = layout.buildDirectory.dir('hts-specs-checkout')
@@ -186,6 +186,9 @@ tasks.register('htsSpecsTest', Test) {
 }
 
 test {
+  // pgkb-build.gradle's tasks.withType(Test).configureEach { useJUnitPlatform() } also applies to this task (lazily,
+  // so it may run before or after this block); this works because repeated useJUnitPlatform() calls layer their
+  // JUnitPlatformOptions instead of resetting them.
   useJUnitPlatform {
     excludeTags 'hts-specs'
   }
