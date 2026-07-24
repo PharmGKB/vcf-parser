@@ -121,30 +121,57 @@ bcftools 1.23.1 behavior.
 
 ## hts-specs conformance test
 
-`./gradlew htsSpecsTest` runs this parser against
+`./gradlew htsSpecsTest` runs this parser and writer against
 [hts-specs](https://github.com/samtools/hts-specs)' official VCF conformance fixture suite
 (`test/vcf/{4.1,4.2,4.3,4.5}/{passed,failed}`), fetched at build time and pinned to a specific commit
-(`htsSpecsPinnedSha` in `build.gradle`). It asserts every `passed/` fixture parses without error, and every
-`failed/` fixture (for versions up to this library's VCFv4.2 target) either throws `VcfFormatException` or logs a
-warning — this library is deliberately more permissive than strict compliance for non-structural violations, so a
-`failed/` fixture parsing without error is not itself a failure; parsing it with *no signal at all* is.
+(`htsSpecsPinnedSha` in `build.gradle`). It runs four checks:
+
+- `parser-no-throw`: every `passed/` fixture (all versions) parses without error.
+- `parser-throw-or-warn`: every `failed/` fixture (for versions up to this library's VCFv4.2 target) either throws
+  `VcfFormatException` or logs a warning — this library is deliberately more permissive than strict compliance for
+  non-structural violations, so a `failed/` fixture parsing without error is not itself a failure; parsing it with
+  *no signal at all* is.
+- `writer-semantic` and `writer-bytediff`: every `passed/` fixture (all versions) is parsed, written back out via
+  `VcfWriter`, and re-parsed; the round trip is compared both semantically (parsed data equal) and as raw text
+  (byte-for-byte equal, ignoring line-ending differences).
+
+Every check's outcome is compared against a committed baseline file
+(`src/test/resources/org/pharmgkb/parser/vcf/spec/hts-specs-baseline.tsv`): a run fails only on a NEW divergence
+(a fixture/check-type pair not yet in the baseline) or a STALE entry (baselined but no longer reproduces) — an
+already-accepted divergence never fails the build. A fully green `htsSpecsTest` run means current behavior exactly
+matches the committed baseline. After a deliberate behavior change, run `./gradlew htsSpecsUpdateBaseline` to
+regenerate the baseline from current results, then review the `git diff` of that file before committing — removed
+entries mean improved behavior, added entries mean a new divergence is being accepted.
 
 This task requires network access (to `github.com`) and is **not** part of the required `./gradlew test` check,
 which stays network-free. The pinned commit is bumped deliberately, not automatically; `htsSpecsCheckout` (which
 `htsSpecsTest` depends on) prints a warning if hts-specs has upstream changes to `test/vcf` that the current pin
 doesn't include.
 
-As of the current `htsSpecsPinnedSha`, `./gradlew htsSpecsTest` reports **460 total tests, 151 known failures**,
-and this is the expected current state, not a regression to chase down. 5 failures are in the `passed/` factory,
-all from two fixtures recurring across their per-version copies (`complexfile_passed_000.vcf` in 4.1/4.2/4.3;
-`passed_meta_contig.vcf` in 4.1/4.2 — 3 + 2 = 5): `complexfile_passed_000.vcf` (FILTER combines `PASS` with another
-code) and `passed_meta_contig.vcf` (duplicate `##contig` ID) are hts-specs `passed/` fixtures that this library's
-pre-existing, stricter FILTER and contig validation correctly rejects. The other 146 failures are in the `failed/`
-factory: fixtures whose invalidity is
+As of the current `htsSpecsPinnedSha`, `./gradlew htsSpecsTest` reports **601 total tests, 195 baselined
+entries**, and this is the expected current state, not a regression to chase down: 5 `parser-no-throw` + 146
+`parser-throw-or-warn` (both pre-existing, predating the baseline mechanism) + 44 `writer-bytediff` (0
+`writer-semantic`). The 5 `parser-no-throw` entries are two `passed/` fixtures recurring across their per-version
+copies (`complexfile_passed_000.vcf` in 4.1/4.2/4.3; `passed_meta_contig.vcf` in 4.1/4.2 — 3 + 2 = 5):
+`complexfile_passed_000.vcf` (FILTER combines `PASS` with another code) and `passed_meta_contig.vcf` (duplicate
+`##contig` ID) are hts-specs `passed/` fixtures that this library's pre-existing, stricter FILTER and contig
+validation correctly rejects. The 146 `parser-throw-or-warn` entries are `failed/` fixtures whose invalidity is
 metadata-declaration content — reserved `##INFO`/`##FORMAT` key `Number`/`Type` values and ALT structural codes —
 that this library does not yet cross-validate against its own `ReservedInfoProperty`/`ReservedFormatProperty`
-definitions during normal parsing, so those fixtures parse without a `VcfFormatException` or warning. Closing that
-gap is tracked separately; it is not part of this test task.
+definitions during normal parsing, so those fixtures parse without a `VcfFormatException` or warning. The 44
+`writer-bytediff` entries are newly discovered by the writer round-trip checks: the writer does not preserve
+original field ordering when it re-serializes a record. The confirmed root cause is that `VcfPosition.info()`'s
+`ArrayListMultimap` doesn't preserve INFO key insertion order from the raw text (e.g. parsing
+`AN=2184;AC=249;AF=0.11` yields keys in a different order than written), and `VcfMetadata`'s `HashMap`-backed
+metadata maps (`m_info`/`m_format`/`m_alt`/etc.) don't preserve declaration order relative to each other. No data
+is lost — same keys and values, just reordered — which zero `writer-semantic` findings confirm, so this is
+accepted into the baseline as a known, low-severity issue and tracked as a candidate for a future fix; it is not
+part of this test-infrastructure-only change. Closing the `parser-throw-or-warn` gap is likewise tracked
+separately, not part of this test task.
+
+Every `htsSpecsTest`/`htsSpecsUpdateBaseline` run writes two (gitignored, not committed) reports under
+`build/reports/hts-specs-conformance/`: `summary.md` (counts by version x check type) and `findings.tsv` (only
+NEW/STALE rows — empty except for the header on a clean run).
 
 
 ## Get It
