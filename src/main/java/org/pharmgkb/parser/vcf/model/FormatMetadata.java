@@ -3,6 +3,7 @@ package org.pharmgkb.parser.vcf.model;
 import java.lang.invoke.MethodHandles;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
+import org.pharmgkb.parser.vcf.VcfUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,6 +52,18 @@ public class FormatMetadata extends IdDescriptionMetadata {
         m_type = FormatType.valueOf(type);
       } catch (IllegalArgumentException e) {
         sf_logger.warn("{} '{}' is not a valid FORMAT type", TYPE, type);
+      }
+    }
+    String id = getId();
+    ReservedFormatProperty reserved = id == null ? null : ReservedFormatProperty.fromId(id);
+    if (reserved != null) {
+      if (number != null && !reserved.getExpectedNumber().equals(number)) {
+        sf_logger.warn("FORMAT {} has Number '{}' but the reserved definition expects '{}'", getId(), number,
+            reserved.getExpectedNumber());
+      }
+      if (m_type != null && !VcfUtils.toJavaType(m_type).equals(reserved.getType())) {
+        sf_logger.warn("FORMAT {} has Type '{}' but the reserved definition expects '{}'", getId(), m_type,
+            reserved.getType().getSimpleName());
       }
     }
     // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included

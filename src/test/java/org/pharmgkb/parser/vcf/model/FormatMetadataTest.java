@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.VcfUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 public class FormatMetadataTest {
@@ -51,5 +53,98 @@ public class FormatMetadataTest {
     FormatMetadata md = new FormatMetadata(VcfUtils.extractProperties(
         "ID=X", "Number=1", "Type=String", "Description=\"d\"", "Custom=extra"));
     assertEquals("extra", md.getPropertyRaw("Custom"));
+  }
+
+  @Test
+  public void testReservedNumberMismatchWarnsAndPreservesValue() {
+    // GT's reserved Number is "1"; declaring it "G" is a mismatch
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    FormatMetadata md;
+    try {
+      md = new FormatMetadata(VcfUtils.extractProperties(
+          "ID=GT", "Number=G", "Type=String", "Description=\"d\""));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals("G", md.getNumber());
+  }
+
+  @Test
+  public void testReservedTypeMismatchWarns() {
+    // GT's reserved Type is String; declaring it Integer is a mismatch
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new FormatMetadata(VcfUtils.extractProperties("ID=GT", "Number=1", "Type=Integer", "Description=\"d\""));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testCorrectlyDeclaredReservedKeyDoesNotWarn() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new FormatMetadata(VcfUtils.extractProperties("ID=GT", "Number=1", "Type=String", "Description=\"d\""));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testCorrectlyDeclaredGleDoesNotWarn() {
+    // GLE is the trickiest entry: its expectedNumber ("G") is sourced from hts-specs fixtures, not a formal spec
+    // table (see ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy's comment) -- a correct declaration
+    // must still produce no warning
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new FormatMetadata(VcfUtils.extractProperties("ID=GLE", "Number=G", "Type=String", "Description=\"d\""));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testNonReservedKeyIsNotChecked() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new FormatMetadata(VcfUtils.extractProperties("ID=MYCUSTOM", "Number=3", "Type=String", "Description=\"d\""));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
   }
 }

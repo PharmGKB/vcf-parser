@@ -5,6 +5,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -100,6 +101,34 @@ class WriterRoundTripTest {
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
         "1\t100\t.\tA\tT\t.\tPASS\t.\n";
     WriterRoundTrip.ParsedFile parsed = WriterRoundTrip.parseText(vcf);
+    String written = WriterRoundTrip.write(parsed);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
+  }
+
+  @Test
+  void testCorrectlyDeclaredReservedKeysRoundTripWithoutWarning() throws IOException {
+    // ##SAMPLE declares S1 (matching the #CHROM sample column) so VcfParser's own "samples in the header but not in
+    // the metadata" cross-check (unrelated to the reserved-key mechanism under test) doesn't also warn here
+    String vcf =
+        "##fileformat=VCFv4.2\n" +
+        "##INFO=<ID=AC,Number=A,Type=Integer,Description=\"Allele count\">\n" +
+        "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##SAMPLE=<ID=S1,Description=\"S1\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "1\t100\trs1\tA\tT\t.\tPASS\tAC=1\tGT\t0/1\n";
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    WriterRoundTrip.ParsedFile parsed;
+    try {
+      parsed = WriterRoundTrip.parseText(vcf);
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
     String written = WriterRoundTrip.write(parsed);
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
   }
