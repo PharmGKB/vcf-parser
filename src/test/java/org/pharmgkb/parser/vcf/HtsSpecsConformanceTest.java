@@ -33,6 +33,14 @@ class HtsSpecsConformanceTest {
   // AGENTS.md ("The library accepts VCF 4.x input from before and after the target version")
   private static final List<String> PASSED_VERSIONS = List.of("4.1", "4.2", "4.3", "4.5");
 
+  // failed/ fixtures are capped at this library's spec target (VCFv4.2): a later version's "failure" can be a rule
+  // that version introduced which VCFv4.2 leaves silent (e.g. VCFv4.3's explicit "duplicate keys are not allowed"
+  // for INFO) -- content this library correctly, silently accepts as genuinely valid under 4.2 semantics, not
+  // merely tolerated. Testing those against "throw or warn" would be a false failure, not a real bug.
+  private static final List<String> FAILED_VERSIONS = List.of("4.1", "4.2");
+
+  private static final String CAUSE_OF_FAILURE_PREFIX = "##CauseOfFailure=";
+
   @Test
   void testAppenderCapturesWarnEvents() {
     Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -62,6 +70,22 @@ class HtsSpecsConformanceTest {
     return files.stream().map(file -> DynamicTest.dynamicTest(relativeName(file), () -> assertParsesCleanly(file)));
   }
 
+  @TestFactory
+  Stream<DynamicTest> failedFixturesThrowOrWarn() throws IOException {
+    List<Path> files = new ArrayList<>();
+    for (String version : FAILED_VERSIONS) {
+      collectVcfFiles(fixtureDir(version, "failed"), files);
+    }
+    if (files.isEmpty()) {
+      return Stream.of(DynamicTest.dynamicTest("hts-specs checkout missing", () ->
+          fail("No failed/ fixtures found under " + htsSpecsDir() + " -- run `./gradlew htsSpecsCheckout` first")));
+    }
+    return files.stream().map(file -> {
+      String cause = readCauseOfFailure(file);
+      return DynamicTest.dynamicTest(relativeName(file) + " (" + cause + ")", () -> assertThrowsOrWarns(file, cause));
+    });
+  }
+
   private static void collectVcfFiles(Path dir, List<Path> into) throws IOException {
     if (!Files.isDirectory(dir)) {
       return;
@@ -77,6 +101,47 @@ class HtsSpecsConformanceTest {
         .parseWith((metadata, position, sampleData) -> { })
         .build()) {
       parser.parse();
+    }
+  }
+
+  private static String readCauseOfFailure(Path file) {
+    try {
+      for (String line : Files.readAllLines(file)) {
+        if (line.startsWith(CAUSE_OF_FAILURE_PREFIX)) {
+          return line.substring(CAUSE_OF_FAILURE_PREFIX.length());
+        }
+        if (!line.startsWith("##")) {
+          break;
+        }
+      }
+    } catch (IOException e) {
+      return "unreadable: " + e.getMessage();
+    }
+    return "unknown";
+  }
+
+  private static void assertThrowsOrWarns(Path file, String causeOfFailure) throws IOException {
+    Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    boolean threw = false;
+    try {
+      try (VcfParser parser = new VcfParser.Builder()
+          .fromFile(file)
+          .parseWith((metadata, position, sampleData) -> { })
+          .build()) {
+        parser.parse();
+      } catch (VcfFormatException e) {
+        threw = true;
+      }
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    if (!threw) {
+      assertTrue(appender.hasWarnOrHigher(), () -> relativeName(file) + " (CauseOfFailure: " + causeOfFailure +
+          ") was accepted with no VcfFormatException and no logged warning -- invalid content silently accepted");
     }
   }
 
