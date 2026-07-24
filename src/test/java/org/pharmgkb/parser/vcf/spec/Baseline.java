@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -120,9 +121,10 @@ final class Baseline {
   void writeUpdatedBaseline(Path baselineFile) throws IOException {
     List<String> lines = new ArrayList<>();
     lines.add("fixture_path\tcheck_type\tcategory\treason");
-    for (Entry entry : m_currentlyDiverging.values()) {
-      lines.add(entry.fixturePath() + "\t" + entry.checkType() + "\t" + entry.category() + "\t" + entry.reason());
-    }
+    m_currentlyDiverging.values().stream()
+        .sorted(Comparator.comparing(Entry::checkType).thenComparing(Entry::fixturePath))
+        .forEach(entry -> lines.add(entry.fixturePath() + "\t" + entry.checkType() + "\t" + entry.category() + "\t" +
+            entry.reason()));
     if (baselineFile.getParent() != null) {
       Files.createDirectories(baselineFile.getParent());
     }

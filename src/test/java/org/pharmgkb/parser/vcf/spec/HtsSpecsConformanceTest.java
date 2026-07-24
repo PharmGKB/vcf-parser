@@ -310,6 +310,6 @@ class HtsSpecsConformanceTest {
   }
 
   private static String relativeName(Path file) {
-    return Path.of(htsSpecsDir()).relativize(file).toString();
+    return Path.of(htsSpecsDir()).relativize(file).toString().replace('\\', '/');
   }
 }
