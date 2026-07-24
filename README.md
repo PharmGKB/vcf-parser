@@ -148,18 +148,30 @@ which stays network-free. The pinned commit is bumped deliberately, not automati
 `htsSpecsTest` depends on) prints a warning if hts-specs has upstream changes to `test/vcf` that the current pin
 doesn't include.
 
-As of the current `htsSpecsPinnedSha`, `./gradlew htsSpecsTest` reports **601 total tests, 151 + 4 baselined
-entries**, and this is the expected current state, not a regression to chase down: 5 `parser-no-throw` + 146
-`parser-throw-or-warn` (both pre-existing, predating the baseline mechanism) + 4 `writer-bytediff` (0
-`writer-semantic`). The 5 `parser-no-throw` entries are two `passed/` fixtures recurring across their per-version
-copies (`complexfile_passed_000.vcf` in 4.1/4.2/4.3; `passed_meta_contig.vcf` in 4.1/4.2 — 3 + 2 = 5):
-`complexfile_passed_000.vcf` (FILTER combines `PASS` with another code) and `passed_meta_contig.vcf` (duplicate
-`##contig` ID) are hts-specs `passed/` fixtures that this library's pre-existing, stricter FILTER and contig
-validation correctly rejects. The 146 `parser-throw-or-warn` entries are `failed/` fixtures whose invalidity is
-metadata-declaration content — reserved `##INFO`/`##FORMAT` key `Number`/`Type` values and ALT structural codes —
-that this library does not yet cross-validate against its own `ReservedInfoProperty`/`ReservedFormatProperty`
-definitions during normal parsing, so those fixtures parse without a `VcfFormatException` or warning; closing
-this gap is tracked separately, not part of this test task.
+As of the current `htsSpecsPinnedSha`, `./gradlew htsSpecsTest` reports **601 total tests, 49 baselined
+entries**, and this is the expected current state, not a regression to chase down: 5 `parser-no-throw` + 40
+`parser-throw-or-warn` + 4 `writer-bytediff` (0 `writer-semantic`). The 5 `parser-no-throw` entries are two
+`passed/` fixtures recurring across their per-version copies (`complexfile_passed_000.vcf` in 4.1/4.2/4.3;
+`passed_meta_contig.vcf` in 4.1/4.2 — 3 + 2 = 5): `complexfile_passed_000.vcf` (FILTER combines `PASS` with
+another code) and `passed_meta_contig.vcf` (duplicate `##contig` ID) are hts-specs `passed/` fixtures that this
+library's pre-existing, stricter FILTER and contig validation correctly rejects.
+
+The 40 `parser-throw-or-warn` entries are `failed/` fixtures whose invalidity this library still doesn't detect,
+grouped by cause: 16 are `AltStructuralVariant`'s code-hierarchy validation not being invoked automatically during
+ALT declaration parsing (it exists but is opt-in only); 9 are malformed metadata key-value pair/empty-value
+syntax; 4 are declared-attribute-order enforcement (`##INFO`/`##FORMAT`/`##ALT` fields declared out of canonical
+order) — VCFv4.2 does not mandate attribute order within a declaration (confirmed against the spec text during
+the writer-ordering-preservation work), so hts-specs rejecting these is testing something stricter than this
+library's target spec; this is deferred for later reconsideration, not decided against. The remaining 11 are a
+mix of genome ID validation (4, whitespace/punctuation in `SAMPLE`'s `Genomes`), invalid URLs (3), unescaped
+`Description` quotes (2), and 2 fixtures hts-specs itself doesn't document a cause for. None of these are part of
+this test task; each is a candidate for separate, future work.
+
+This library previously did not cross-validate a declared `##INFO`/`##FORMAT` key's `Number`/`Type` against the
+canonical values for well-known reserved keys (`AC`, `AN`, `GT`, `PL`, etc.) — `ReservedInfoProperty` and
+`ReservedFormatProperty` now expose `getExpectedNumber()`/`fromId()` for this (see
+`docs/superpowers/specs/2026-07-24-reserved-property-number-type-validation-design.md`), and `InfoMetadata.init()`/
+`FormatMetadata.init()` warn on a mismatch. This closed 106 of the previous 146 `parser-throw-or-warn` findings.
 
 The writer round-trip checks no longer find any ordering-related divergences: `VcfUtils.extractProperties()`,
 `VcfMetadata`'s six keyed maps and its generic-property map, and `VcfPosition.info()` all now preserve insertion
