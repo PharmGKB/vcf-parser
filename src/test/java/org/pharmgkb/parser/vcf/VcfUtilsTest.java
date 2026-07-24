@@ -1,5 +1,7 @@
 package org.pharmgkb.parser.vcf;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Map;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.Test;
@@ -164,6 +166,16 @@ public class VcfUtilsTest {
         "ID=X,Description=\"literal ~~~~ and \\\"q, v\\\"\"");
     assertEquals("X", props.get("ID"));
     assertEquals("\"literal ~~~~ and \\\"q, v\\\"\"", props.get("Description"));
+  }
+
+  @Test
+  public void testExtractPropertiesPreservesInsertionOrder() {
+    // real example from an hts-specs SAMPLE fixture: this attribute order was previously scrambled to
+    // Description,Genomes,Mixture on write because extractProperties built a plain HashMap (hash-bucket order),
+    // not insertion order
+    Map<String, String> props = VcfUtils.extractPropertiesFromLine(
+        "ID=Sample_ok,Genomes=G1_ID;G2_ID;GK_ID,Mixture=N1;N2;NK,Description=\"S1;S2;SK\"");
+    assertEquals(Arrays.asList("ID", "Genomes", "Mixture", "Description"), new ArrayList<>(props.keySet()));
   }
 
   @Test

@@ -717,12 +717,26 @@ public class VcfWriter implements Closeable {
     sb.append(name).append("=<");
     Map<String, String> props = metadata.getPropertiesRaw();
     List<String> keys = new ArrayList<>(props.keySet());
-    // emit the known fields in spec order, then any remaining fields alphabetically, so output does not depend on the
-    // backing map's iteration order
-    keys.sort(Comparator.comparingInt((String k) -> {
-      int idx = METADATA_FIELD_ORDER.indexOf(k);
-      return idx >= 0 ? idx : METADATA_FIELD_ORDER.size();
-    }).thenComparing(Comparator.naturalOrder()));
+    // sort fields in spec order for INFO and FORMAT; preserve insertion order for other metadata types
+    if ("INFO".equals(name) || "FORMAT".equals(name)) {
+      // separate known fields (in spec order) from unknown fields (preserve insertion order)
+      List<String> knownFields = new ArrayList<>();
+      List<String> unknownFields = new ArrayList<>();
+      for (String key : keys) {
+        int idx = METADATA_FIELD_ORDER.indexOf(key);
+        if (idx >= 0) {
+          knownFields.add(key);
+        } else {
+          unknownFields.add(key);
+        }
+      }
+      // sort known fields by their position in METADATA_FIELD_ORDER
+      knownFields.sort(Comparator.comparingInt(METADATA_FIELD_ORDER::indexOf));
+      // concatenate known fields first (in spec order), then unknown fields (in insertion order)
+      List<String> finalOrder = new ArrayList<>(knownFields);
+      finalOrder.addAll(unknownFields);
+      keys = finalOrder;
+    }
     int i = 0;
     for (String key : keys) {
       if (i > 0) {

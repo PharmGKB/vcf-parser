@@ -52,4 +52,16 @@ class WriterRoundTripTest {
     assertTrue(diff.isPresent());
     assertTrue(diff.get().contains("ALT"));
   }
+
+  @Test
+  void testSampleDeclarationAttributeOrderRoundTripsByteIdentical() throws IOException {
+    String vcf =
+        "##fileformat=VCFv4.2\n" +
+        "##SAMPLE=<ID=Sample_ok,Genomes=G1_ID;G2_ID;GK_ID,Mixture=N1;N2;NK,Description=\"S1;S2;SK\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT\t.\tPASS\t.\n";
+    WriterRoundTrip.ParsedFile parsed = WriterRoundTrip.parseText(vcf);
+    String written = WriterRoundTrip.write(parsed);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
+  }
 }

@@ -1,7 +1,7 @@
 package org.pharmgkb.parser.vcf.model;
 
 import java.lang.invoke.MethodHandles;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -28,7 +28,7 @@ public class IdMetadata extends BaseMetadata {
   }
 
   protected IdMetadata(String id, boolean isBaseType) {
-    super(new HashMap<>());
+    super(new LinkedHashMap<>());
     m_isBaseType = isBaseType;
     putPropertyRaw(ID, id);
     init(isBaseType);

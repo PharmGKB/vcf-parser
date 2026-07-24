@@ -13,8 +13,8 @@
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
 ##ALT=<ID=CNV,Description="Copy Number Polymorphism">
 ##contig=<ID=1,assembly=b37,length=249250621>
-##SAMPLE=<ID=sample1,Description="test",Genome=a;b;c;d>
-##SAMPLE=<ID=sample2,Description="test",Genome=a;b;c;d>
+##SAMPLE=<ID=sample1,Genome=a;b;c;d,Description="test">
+##SAMPLE=<ID=sample2,Genome=a;b;c;d,Description="test">
 ##PEDIGREE=<NAME_0=A,NAME_1=B>
 ##assembly=GRCh38
 ##extraproperty=sdfadsf
