@@ -8,9 +8,7 @@ import java.io.PrintWriter;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -708,41 +706,16 @@ public class VcfWriter implements Closeable {
     }
   }
 
-  // the spec's default structured-metadata fields, in order; any other fields follow these in a deterministic order
-  private static final List<String> METADATA_FIELD_ORDER =
-      Arrays.asList("ID", "Number", "Type", "Description", "Source", "Version");
-
   private String getAllProperties(String name, BaseMetadata metadata) {
     StringBuilder sb = new StringBuilder("##");
     sb.append(name).append("=<");
     Map<String, String> props = metadata.getPropertiesRaw();
-    List<String> keys = new ArrayList<>(props.keySet());
-    // sort fields in spec order for INFO and FORMAT; preserve insertion order for other metadata types
-    if ("INFO".equals(name) || "FORMAT".equals(name)) {
-      // separate known fields (in spec order) from unknown fields (preserve insertion order)
-      List<String> knownFields = new ArrayList<>();
-      List<String> unknownFields = new ArrayList<>();
-      for (String key : keys) {
-        int idx = METADATA_FIELD_ORDER.indexOf(key);
-        if (idx >= 0) {
-          knownFields.add(key);
-        } else {
-          unknownFields.add(key);
-        }
-      }
-      // sort known fields by their position in METADATA_FIELD_ORDER
-      knownFields.sort(Comparator.comparingInt(METADATA_FIELD_ORDER::indexOf));
-      // concatenate known fields first (in spec order), then unknown fields (in insertion order)
-      List<String> finalOrder = new ArrayList<>(knownFields);
-      finalOrder.addAll(unknownFields);
-      keys = finalOrder;
-    }
     int i = 0;
-    for (String key : keys) {
+    for (Map.Entry<String, String> entry : props.entrySet()) {
       if (i > 0) {
         sb.append(",");
       }
-      sb.append(key).append("=").append(props.get(key));
+      sb.append(entry.getKey()).append("=").append(entry.getValue());
       i++;
     }
     sb.append(">");
