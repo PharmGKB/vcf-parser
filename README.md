@@ -135,10 +135,12 @@ which stays network-free. The pinned commit is bumped deliberately, not automati
 doesn't include.
 
 As of the current `htsSpecsPinnedSha`, `./gradlew htsSpecsTest` reports **460 total tests, 151 known failures**,
-and this is the expected current state, not a regression to chase down. 5 failures are in the `passed/` factory:
-`complexfile_passed_000.vcf` (FILTER combines `PASS` with another code) and `passed_meta_contig.vcf` (duplicate
-`##contig` ID) are hts-specs `passed/` fixtures that this library's pre-existing, stricter FILTER and contig
-validation correctly rejects. The other 146 failures are in the `failed/` factory: fixtures whose invalidity is
+and this is the expected current state, not a regression to chase down. 5 failures are in the `passed/` factory,
+all from two fixtures recurring across their per-version copies (`complexfile_passed_000.vcf` in 4.1/4.2/4.3;
+`passed_meta_contig.vcf` in 4.1/4.2 — 3 + 2 = 5): `complexfile_passed_000.vcf` (FILTER combines `PASS` with another
+code) and `passed_meta_contig.vcf` (duplicate `##contig` ID) are hts-specs `passed/` fixtures that this library's
+pre-existing, stricter FILTER and contig validation correctly rejects. The other 146 failures are in the `failed/`
+factory: fixtures whose invalidity is
 metadata-declaration content — reserved `##INFO`/`##FORMAT` key `Number`/`Type` values and ALT structural codes —
 that this library does not yet cross-validate against its own `ReservedInfoProperty`/`ReservedFormatProperty`
 definitions during normal parsing, so those fixtures parse without a `VcfFormatException` or warning. Closing that
