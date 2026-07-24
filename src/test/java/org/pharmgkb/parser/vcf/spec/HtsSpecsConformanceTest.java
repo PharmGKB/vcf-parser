@@ -1,12 +1,15 @@
 package org.pharmgkb.parser.vcf.spec;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 import ch.qos.logback.classic.Logger;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -25,13 +28,10 @@ import static org.junit.jupiter.api.Assertions.fail;
  * and checks this library's behavior against it. Tagged so it only runs under the opt-in `htsSpecsTest` Gradle
  * task, never under `test`, since it requires that fixture checkout to already exist.
  *
- * <p>As of the current {@code htsSpecsPinnedSha}, running this suite reports 460 total tests with 151 known
- * failures: 5 in {@link #passedFixturesParseWithoutError()} (hts-specs {@code passed/} fixtures that this
- * library's pre-existing, stricter FILTER and contig validation correctly rejects) and 146 in
- * {@link #failedFixturesThrowOrWarn()} (fixtures whose invalidity is reserved INFO/FORMAT
- * {@code Number}/{@code Type} or ALT structural-code metadata that this library doesn't yet cross-validate). This
- * is the expected current state, not a regression; see the README's "hts-specs conformance test" section for the
- * full breakdown.
+ * <p>Every check's outcome is compared against the committed {@code hts-specs-baseline.tsv}: a dynamic test only
+ * fails on a NEW divergence (not yet baselined) or a STALE baseline entry (no longer reproduces) -- see
+ * {@link Baseline}. Run {@code ./gradlew htsSpecsUpdateBaseline} after a deliberate change to regenerate the
+ * baseline file from current results.
  *
  * @author Douglas Myers-Turnbull
  */
@@ -49,6 +49,37 @@ class HtsSpecsConformanceTest {
   private static final List<String> FAILED_VERSIONS = List.of("4.1", "4.2");
 
   private static final String CAUSE_OF_FAILURE_PREFIX = "##CauseOfFailure=";
+
+  // literal, project-relative path to the committed baseline file -- used both to locate it as a classpath
+  // resource for reading (works regardless of working directory) and, in update mode, as a real filesystem path
+  // to overwrite (classpath resources aren't writable; this only matters for htsSpecsUpdateBaseline)
+  private static final Path BASELINE_FILE =
+      Path.of("src/test/resources/org/pharmgkb/parser/vcf/spec/hts-specs-baseline.tsv");
+
+  private static final Baseline BASELINE = createBaseline();
+
+  private static Baseline createBaseline() {
+    try (InputStream in = HtsSpecsConformanceTest.class.getResourceAsStream("hts-specs-baseline.tsv")) {
+      return new Baseline(in, Boolean.getBoolean("htsSpecsUpdateBaseline"));
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  @AfterAll
+  static void writeReports() throws IOException {
+    Path reportsDir = Path.of("build/reports/hts-specs-conformance");
+    if (Boolean.getBoolean("htsSpecsUpdateBaseline")) {
+      BASELINE.writeUpdatedBaseline(BASELINE_FILE);
+    } else {
+      BASELINE.writeFindings(reportsDir.resolve("findings.tsv"));
+      if (BASELINE.hasFindings()) {
+        System.out.println(BASELINE.findingsCount() + " new/stale divergence(s) -- see " +
+            reportsDir.resolve("findings.tsv") + ", or run htsSpecsUpdateBaseline if these are expected");
+      }
+    }
+    BASELINE.writeSummary(reportsDir.resolve("summary.md"));
+  }
 
   @Test
   void testAppenderCapturesWarnEvents() {
@@ -105,12 +136,25 @@ class HtsSpecsConformanceTest {
   }
 
   private static void assertParsesCleanly(Path file) throws IOException {
+    String fixturePath = relativeName(file);
+    boolean diverged = false;
+    String reason = "";
     try (VcfParser parser = new VcfParser.Builder()
         .fromFile(file)
         .parseWith((metadata, position, sampleData) -> { })
         .build()) {
       parser.parse();
+    } catch (RuntimeException e) {
+      diverged = true;
+      reason = String.valueOf(e.getMessage());
     }
+    boolean acceptable = BASELINE.check(fixturePath, "parser-no-throw", diverged, "parse-exception", reason);
+    boolean finalDiverged = diverged;
+    String finalReason = reason;
+    assertTrue(acceptable, () -> finalDiverged
+        ? fixturePath + " (parser-no-throw): " + finalReason
+        : "baseline entry for " + fixturePath +
+            " (parser-no-throw) no longer reproduces -- remove it from hts-specs-baseline.tsv");
   }
 
   private static String readCauseOfFailure(Path file) {
@@ -130,6 +174,7 @@ class HtsSpecsConformanceTest {
   }
 
   private static void assertThrowsOrWarns(Path file, String causeOfFailure) throws IOException {
+    String fixturePath = relativeName(file);
     Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
     appender.start();
@@ -148,10 +193,14 @@ class HtsSpecsConformanceTest {
       root.detachAppender(appender);
       appender.stop();
     }
-    if (!threw) {
-      assertTrue(appender.hasWarnOrHigher(), () -> relativeName(file) + " (CauseOfFailure: " + causeOfFailure +
-          ") was accepted with no VcfFormatException and no logged warning -- invalid content silently accepted");
-    }
+    boolean silentlyAccepted = !threw && !appender.hasWarnOrHigher();
+    boolean acceptable = BASELINE.check(fixturePath, "parser-throw-or-warn", silentlyAccepted, "silently-accepted",
+        "CauseOfFailure: " + causeOfFailure);
+    assertTrue(acceptable, () -> silentlyAccepted
+        ? fixturePath + " (CauseOfFailure: " + causeOfFailure +
+            ") was accepted with no VcfFormatException and no logged warning -- invalid content silently accepted"
+        : "baseline entry for " + fixturePath +
+            " (parser-throw-or-warn) no longer reproduces -- remove it from hts-specs-baseline.tsv");
   }
 
   private static String htsSpecsDir() {

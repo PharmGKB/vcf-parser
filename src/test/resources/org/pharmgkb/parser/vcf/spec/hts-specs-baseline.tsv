@@ -1,0 +1,152 @@
+fixture_path	check_type	category	reason
+test/vcf/4.1/passed/complexfile_passed_000.vcf	parser-no-throw	parse-exception	[Line #61] Error parsing data: FILTER contains PASS along with other filters!
+test/vcf/4.1/passed/passed_meta_contig.vcf	parser-no-throw	parse-exception	[Line #3] Error parsing metadata: Duplicate ID 1 for CONTIG
+test/vcf/4.2/passed/complexfile_passed_000.vcf	parser-no-throw	parse-exception	[Line #61] Error parsing data: FILTER contains PASS along with other filters!
+test/vcf/4.2/passed/passed_meta_contig.vcf	parser-no-throw	parse-exception	[Line #3] Error parsing metadata: Duplicate ID 1 for CONTIG
+test/vcf/4.3/passed/complexfile_passed_000.vcf	parser-no-throw	parse-exception	[Line #61] Error parsing data: FILTER contains PASS along with other filters!
+test/vcf/4.1/failed/failed_header_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: unknown
+test/vcf/4.1/failed/failed_meta_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Description contains non-escaped quotes
+test/vcf/4.1/failed/failed_meta_009.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Meta-data entry is not a key-value pair (empty value)
+test/vcf/4.1/failed/failed_meta_alt_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect ALT ID value
+test/vcf/4.1/failed/failed_meta_alt_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect ALT Number value
+test/vcf/4.1/failed/failed_meta_alt_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect ALT Type value
+test/vcf/4.1/failed/failed_meta_alt_004.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect order of ALT fields
+test/vcf/4.1/failed/failed_meta_alt_005.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: The ALT prefix is none of the supported ones (INS, DEL, etc)
+test/vcf/4.1/failed/failed_meta_alt_006.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: The ALT ID contains a whitespace
+test/vcf/4.1/failed/failed_meta_alt_008.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: The ALT ID contains an opening angle bracket
+test/vcf/4.1/failed/failed_meta_alt_009.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: The ALT ID contains a closing angle bracket
+test/vcf/4.1/failed/failed_meta_assembly_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Meta-data entry is not a key-value pair
+test/vcf/4.1/failed/failed_meta_assembly_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Non-valid URL
+test/vcf/4.1/failed/failed_meta_format_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect order of FORMAT fields
+test/vcf/4.1/failed/failed_meta_format_004.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect FORMAT Number value
+test/vcf/4.1/failed/failed_meta_format_005.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT DP Type is not Integer
+test/vcf/4.1/failed/failed_meta_format_006.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT DP Number is not 1
+test/vcf/4.1/failed/failed_meta_format_007.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT EC Type is not Integer
+test/vcf/4.1/failed/failed_meta_format_008.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT EC Number is not A
+test/vcf/4.1/failed/failed_meta_format_009.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT FT Type is not String
+test/vcf/4.1/failed/failed_meta_format_010.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT FT Number is not 1
+test/vcf/4.1/failed/failed_meta_format_011.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT GL Type is not Float
+test/vcf/4.1/failed/failed_meta_format_012.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT GL Number is not G
+test/vcf/4.1/failed/failed_meta_format_013.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT GP Type is not Float
+test/vcf/4.1/failed/failed_meta_format_014.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT GP Number is not G
+test/vcf/4.1/failed/failed_meta_format_015.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT GQ Type is not Integer
+test/vcf/4.1/failed/failed_meta_format_016.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT GQ Number is not 1
+test/vcf/4.1/failed/failed_meta_format_017.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT GT Type is not String
+test/vcf/4.1/failed/failed_meta_format_018.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT GT Number is not 1
+test/vcf/4.1/failed/failed_meta_format_019.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT HQ Type is not Integer
+test/vcf/4.1/failed/failed_meta_format_020.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT HQ Number is not 2
+test/vcf/4.1/failed/failed_meta_format_021.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT MQ Type is not Integer
+test/vcf/4.1/failed/failed_meta_format_022.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT MQ Number is not 1
+test/vcf/4.1/failed/failed_meta_format_023.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT PL Type is not Integer
+test/vcf/4.1/failed/failed_meta_format_024.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT PL Number is not G
+test/vcf/4.1/failed/failed_meta_format_025.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT PQ Type is not Integer
+test/vcf/4.1/failed/failed_meta_format_026.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT PQ Number is not 1
+test/vcf/4.1/failed/failed_meta_format_027.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT PS Type is not Integer
+test/vcf/4.1/failed/failed_meta_format_028.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT PS Number is not 1
+test/vcf/4.1/failed/failed_meta_format_030.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT GLE Number is not G
+test/vcf/4.1/failed/failed_meta_info_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect order of INFO fields
+test/vcf/4.1/failed/failed_meta_info_004.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect INFO Number value
+test/vcf/4.1/failed/failed_meta_info_005.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AA Type is not String
+test/vcf/4.1/failed/failed_meta_info_006.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AA Number is not 1
+test/vcf/4.1/failed/failed_meta_info_007.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AC Type is not Integer
+test/vcf/4.1/failed/failed_meta_info_008.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AC Number is not A
+test/vcf/4.1/failed/failed_meta_info_009.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AF Type is not Float
+test/vcf/4.1/failed/failed_meta_info_010.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AF Number is not A
+test/vcf/4.1/failed/failed_meta_info_011.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AN Type is not Integer
+test/vcf/4.1/failed/failed_meta_info_012.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AN Number is not 1
+test/vcf/4.1/failed/failed_meta_info_013.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO BQ Type is not Float
+test/vcf/4.1/failed/failed_meta_info_014.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO BQ Number is not 1
+test/vcf/4.1/failed/failed_meta_info_015.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO CIGAR Type is not String
+test/vcf/4.1/failed/failed_meta_info_016.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO CIGAR Number is not A
+test/vcf/4.1/failed/failed_meta_info_017.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO DB Type is not Flag
+test/vcf/4.1/failed/failed_meta_info_019.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO DP Type is not Integer
+test/vcf/4.1/failed/failed_meta_info_020.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO DP Number is not 1
+test/vcf/4.1/failed/failed_meta_info_021.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO END Type is not Integer
+test/vcf/4.1/failed/failed_meta_info_022.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO END Number is not 1
+test/vcf/4.1/failed/failed_meta_info_023.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO H2 Type is not Flag
+test/vcf/4.1/failed/failed_meta_info_025.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO H3 Type is not Flag
+test/vcf/4.1/failed/failed_meta_info_027.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO MQ Number is not 1
+test/vcf/4.1/failed/failed_meta_info_028.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO MQ0 Type is not Integer
+test/vcf/4.1/failed/failed_meta_info_029.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO MQ0 Number is not 1
+test/vcf/4.1/failed/failed_meta_info_030.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO NS Type is not Integer
+test/vcf/4.1/failed/failed_meta_info_031.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO NS Number is not 1
+test/vcf/4.1/failed/failed_meta_info_032.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO SOMATIC Type is not Flag
+test/vcf/4.1/failed/failed_meta_info_034.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO VALIDATED Type is not Flag
+test/vcf/4.1/failed/failed_meta_info_036.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO 1000G Type is not Flag
+test/vcf/4.1/failed/failed_meta_pedigree_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Genome ID with whitespace
+test/vcf/4.1/failed/failed_meta_pedigree_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Genome ID with non-accepted punctuation character
+test/vcf/4.1/failed/failed_meta_pedigreedb_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Meta-data entry is not a key-value pair
+test/vcf/4.1/failed/failed_meta_pedigreedb_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Meta-data entry is not a key-value pair
+test/vcf/4.1/failed/failed_meta_pedigreedb_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Non-valid URL
+test/vcf/4.2/failed/failed_header_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: unknown
+test/vcf/4.2/failed/failed_meta_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Description contains non-escaped quotes
+test/vcf/4.2/failed/failed_meta_009.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Meta-data entry is not a key-value pair (empty value)
+test/vcf/4.2/failed/failed_meta_alt_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect ALT ID value
+test/vcf/4.2/failed/failed_meta_alt_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect ALT Number value
+test/vcf/4.2/failed/failed_meta_alt_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect ALT Type value
+test/vcf/4.2/failed/failed_meta_alt_004.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect order of ALT fields
+test/vcf/4.2/failed/failed_meta_alt_005.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: The ALT prefix is none of the supported ones (INS, DEL, etc)
+test/vcf/4.2/failed/failed_meta_alt_006.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: The ALT ID contains a whitespace
+test/vcf/4.2/failed/failed_meta_alt_008.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: The ALT ID contains an opening angle bracket
+test/vcf/4.2/failed/failed_meta_alt_009.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: The ALT ID contains a closing angle bracket
+test/vcf/4.2/failed/failed_meta_assembly_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Meta-data entry is not a key-value pair
+test/vcf/4.2/failed/failed_meta_assembly_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Meta-data entry is not a key-value pair
+test/vcf/4.2/failed/failed_meta_format_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect order of FORMAT fields
+test/vcf/4.2/failed/failed_meta_format_004.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT DP Type is not Integer
+test/vcf/4.2/failed/failed_meta_format_005.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT DP Number is not 1
+test/vcf/4.2/failed/failed_meta_format_006.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT EC Type is not Integer
+test/vcf/4.2/failed/failed_meta_format_007.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT EC Number is not A
+test/vcf/4.2/failed/failed_meta_format_008.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT FT Type is not String
+test/vcf/4.2/failed/failed_meta_format_009.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT FT Number is not 1
+test/vcf/4.2/failed/failed_meta_format_010.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT GL Type is not Float
+test/vcf/4.2/failed/failed_meta_format_011.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT GL Number is not G
+test/vcf/4.2/failed/failed_meta_format_012.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT GP Type is not Float
+test/vcf/4.2/failed/failed_meta_format_013.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT GP Number is not G
+test/vcf/4.2/failed/failed_meta_format_014.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT GQ Type is not Integer
+test/vcf/4.2/failed/failed_meta_format_015.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT GQ Number is not 1
+test/vcf/4.2/failed/failed_meta_format_016.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT GT Type is not String
+test/vcf/4.2/failed/failed_meta_format_017.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT GT Number is not 1
+test/vcf/4.2/failed/failed_meta_format_018.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT HQ Type is not Integer
+test/vcf/4.2/failed/failed_meta_format_019.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT HQ Number is not 2
+test/vcf/4.2/failed/failed_meta_format_020.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT MQ Type is not Integer
+test/vcf/4.2/failed/failed_meta_format_021.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT MQ Number is not 1
+test/vcf/4.2/failed/failed_meta_format_022.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT PL Type is not Integer
+test/vcf/4.2/failed/failed_meta_format_023.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT PL Number is not G
+test/vcf/4.2/failed/failed_meta_format_024.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT PQ Type is not Integer
+test/vcf/4.2/failed/failed_meta_format_025.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT PQ Number is not 1
+test/vcf/4.2/failed/failed_meta_format_026.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT PS Type is not Integer
+test/vcf/4.2/failed/failed_meta_format_027.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT PS Number is not 1
+test/vcf/4.2/failed/failed_meta_format_029.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT GLE Number is not G
+test/vcf/4.2/failed/failed_meta_info_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect order of INFO fields
+test/vcf/4.2/failed/failed_meta_info_004.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AA Type is not String
+test/vcf/4.2/failed/failed_meta_info_005.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AA Number is not 1
+test/vcf/4.2/failed/failed_meta_info_006.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AC Type is not Integer
+test/vcf/4.2/failed/failed_meta_info_007.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AC Number is not A
+test/vcf/4.2/failed/failed_meta_info_008.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AF Type is not Float
+test/vcf/4.2/failed/failed_meta_info_009.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AF Number is not A
+test/vcf/4.2/failed/failed_meta_info_010.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AN Type is not Integer
+test/vcf/4.2/failed/failed_meta_info_011.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AN Number is not 1
+test/vcf/4.2/failed/failed_meta_info_012.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO BQ Type is not Float
+test/vcf/4.2/failed/failed_meta_info_013.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO BQ Number is not 1
+test/vcf/4.2/failed/failed_meta_info_014.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO CIGAR Type is not String
+test/vcf/4.2/failed/failed_meta_info_015.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO CIGAR Number is not A
+test/vcf/4.2/failed/failed_meta_info_016.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO DB Type is not Flag
+test/vcf/4.2/failed/failed_meta_info_018.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO DP Type is not Integer
+test/vcf/4.2/failed/failed_meta_info_019.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO DP Number is not 1
+test/vcf/4.2/failed/failed_meta_info_020.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO END Type is not Integer
+test/vcf/4.2/failed/failed_meta_info_021.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO END Number is not 1
+test/vcf/4.2/failed/failed_meta_info_022.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO H2 Type is not Flag
+test/vcf/4.2/failed/failed_meta_info_024.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO H3 Type is not Flag
+test/vcf/4.2/failed/failed_meta_info_026.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO MQ Number is not 1
+test/vcf/4.2/failed/failed_meta_info_027.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO MQ0 Type is not Integer
+test/vcf/4.2/failed/failed_meta_info_028.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO MQ0 Number is not 1
+test/vcf/4.2/failed/failed_meta_info_029.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO NS Type is not Integer
+test/vcf/4.2/failed/failed_meta_info_030.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO NS Number is not 1
+test/vcf/4.2/failed/failed_meta_info_031.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO SOMATIC Type is not Flag
+test/vcf/4.2/failed/failed_meta_info_033.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO VALIDATED Type is not Flag
+test/vcf/4.2/failed/failed_meta_info_035.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO 1000G Type is not Flag
+test/vcf/4.2/failed/failed_meta_pedigree_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Genome ID with whitespace
+test/vcf/4.2/failed/failed_meta_pedigree_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Genome ID with non-accepted punctuation character
+test/vcf/4.2/failed/failed_meta_pedigreedb_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Meta-data entry is not a key-value pair
+test/vcf/4.2/failed/failed_meta_pedigreedb_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Meta-data entry is not a key-value pair
+test/vcf/4.2/failed/failed_meta_pedigreedb_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Non-valid URL

@@ -185,6 +185,17 @@ tasks.register('htsSpecsTest', Test) {
   systemProperty 'htsSpecsDir', htsSpecsCheckoutDir.get().asFile.absolutePath
 }
 
+tasks.register('htsSpecsUpdateBaseline', Test) {
+  dependsOn htsSpecsCheckout
+  testClassesDirs = sourceSets.test.output.classesDirs
+  classpath = sourceSets.test.runtimeClasspath
+  useJUnitPlatform {
+    includeTags 'hts-specs'
+  }
+  systemProperty 'htsSpecsDir', htsSpecsCheckoutDir.get().asFile.absolutePath
+  systemProperty 'htsSpecsUpdateBaseline', 'true'
+}
+
 test {
   // pgkb-build.gradle's tasks.withType(Test).configureEach { useJUnitPlatform() } also applies to this task (lazily,
   // so it may run before or after this block); this works because repeated useJUnitPlatform() calls layer their
