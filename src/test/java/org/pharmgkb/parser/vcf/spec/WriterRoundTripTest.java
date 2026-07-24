@@ -64,4 +64,18 @@ class WriterRoundTripTest {
     String written = WriterRoundTrip.write(parsed);
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
   }
+
+  @Test
+  void testMultipleInfoDeclarationOrderRoundTripsByteIdentical() throws IOException {
+    String vcf =
+        "##fileformat=VCFv4.2\n" +
+        "##INFO=<ID=ZED,Number=1,Type=String,Description=\"d\">\n" +
+        "##INFO=<ID=YAK,Number=1,Type=String,Description=\"d\">\n" +
+        "##INFO=<ID=XEN,Number=1,Type=String,Description=\"d\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT\t.\tPASS\t.\n";
+    WriterRoundTrip.ParsedFile parsed = WriterRoundTrip.parseText(vcf);
+    String written = WriterRoundTrip.write(parsed);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
+  }
 }

@@ -1,5 +1,6 @@
 package org.pharmgkb.parser.vcf.model;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.VcfFormatException;
@@ -24,6 +25,21 @@ public class VcfMetadataTest {
     // an unknown sample name, and a name that collides with a fixed column, both return -1 (not -10)
     assertEquals(-1, metadata.getSampleIndex("nosuchsample"));
     assertEquals(-1, metadata.getSampleIndex("INFO"));
+  }
+
+  @Test
+  public void testGetInfoPreservesDeclarationOrder() {
+    // five distinct IDs added in a deliberately non-alphabetical order; HashMap's hash-bucket order for five
+    // distinct keys is extremely unlikely to coincidentally match this insertion order
+    VcfMetadata metadata = new VcfMetadata.Builder()
+        .setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata("ZED", "d", InfoType.String, "1", null, null))
+        .addInfo(new InfoMetadata("YAK", "d", InfoType.String, "1", null, null))
+        .addInfo(new InfoMetadata("XEN", "d", InfoType.String, "1", null, null))
+        .addInfo(new InfoMetadata("WOW", "d", InfoType.String, "1", null, null))
+        .addInfo(new InfoMetadata("VIM", "d", InfoType.String, "1", null, null))
+        .build();
+    assertEquals(Arrays.asList("ZED", "YAK", "XEN", "WOW", "VIM"), new ArrayList<>(metadata.getInfo().keySet()));
   }
 
   @Test

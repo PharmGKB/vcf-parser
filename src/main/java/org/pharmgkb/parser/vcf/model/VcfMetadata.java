@@ -1,7 +1,7 @@
 package org.pharmgkb.parser.vcf.model;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.SortedSet;
@@ -40,12 +40,12 @@ public class VcfMetadata {
     Preconditions.checkNotNull(fileFormat);
     Preconditions.checkNotNull(columns);
     m_fileFormat = fileFormat;
-    m_alt        = alt==null?        new HashMap<>()            : alt;
-    m_info       = info==null?       new HashMap<>()            : info;
-    m_filter     = filter==null?     new HashMap<>()            : filter;
-    m_format     = format==null?     new HashMap<>()            : format;
-    m_contig     = contig==null?     new HashMap<>()            : contig;
-    m_sample     = sample==null?     new HashMap<>()            : sample;
+    m_alt        = alt==null?        new LinkedHashMap<>()      : alt;
+    m_info       = info==null?       new LinkedHashMap<>()      : info;
+    m_filter     = filter==null?     new LinkedHashMap<>()      : filter;
+    m_format     = format==null?     new LinkedHashMap<>()      : format;
+    m_contig     = contig==null?     new LinkedHashMap<>()      : contig;
+    m_sample     = sample==null?     new LinkedHashMap<>()      : sample;
     m_pedigree   = pedigree==null?   new ArrayList<>()          : pedigree;
     m_properties = properties==null? ArrayListMultimap.create() : properties;
     m_columns    = columns;
@@ -317,12 +317,12 @@ public class VcfMetadata {
 
   public static class Builder {
     private @Nullable String m_fileFormat;
-    private final Map<String, IdDescriptionMetadata> m_alt = new HashMap<>();
-    private final Map<String, InfoMetadata> m_info = new HashMap<>();
-    private final Map<String, IdDescriptionMetadata> m_filter = new HashMap<>();
-    private final Map<String, FormatMetadata> m_format = new HashMap<>();
-    private final Map<String, ContigMetadata> m_contig = new HashMap<>();
-    private final Map<String, IdDescriptionMetadata> m_sample = new HashMap<>();
+    private final Map<String, IdDescriptionMetadata> m_alt = new LinkedHashMap<>();
+    private final Map<String, InfoMetadata> m_info = new LinkedHashMap<>();
+    private final Map<String, IdDescriptionMetadata> m_filter = new LinkedHashMap<>();
+    private final Map<String, FormatMetadata> m_format = new LinkedHashMap<>();
+    private final Map<String, ContigMetadata> m_contig = new LinkedHashMap<>();
+    private final Map<String, IdDescriptionMetadata> m_sample = new LinkedHashMap<>();
     private final List<BaseMetadata> m_pedigree = new ArrayList<>();
     private List<String> m_columns = new ArrayList<>();
     private final ListMultimap<String, String> m_properties = ArrayListMultimap.create();
