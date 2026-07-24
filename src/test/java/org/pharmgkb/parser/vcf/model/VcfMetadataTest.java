@@ -43,6 +43,18 @@ public class VcfMetadataTest {
   }
 
   @Test
+  public void testGetRawPropertyKeysPreservesInsertionOrder() {
+    // "phasing" would sort after "assembly" and "source" alphabetically; this asserts insertion order instead
+    VcfMetadata metadata = new VcfMetadata.Builder()
+        .setFileFormat("VCFv4.2")
+        .addRawProperty("phasing", "partial")
+        .addRawProperty("source", "myImputationProgramV3.1")
+        .addRawProperty("assembly", "file://somewhere")
+        .build();
+    assertEquals(Arrays.asList("phasing", "source", "assembly"), new ArrayList<>(metadata.getRawPropertyKeys()));
+  }
+
+  @Test
   public void testAddAssemblyRejectsLineTerminator() {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.addAssembly("bad\nvalue"));

@@ -2,12 +2,12 @@ package org.pharmgkb.parser.vcf.model;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.SortedSet;
-import java.util.TreeSet;
+import java.util.Set;
 import com.google.common.base.Preconditions;
-import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.LinkedListMultimap;
 import com.google.common.collect.ListMultimap;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfFormatException;
@@ -47,7 +47,7 @@ public class VcfMetadata {
     m_contig     = contig==null?     new LinkedHashMap<>()      : contig;
     m_sample     = sample==null?     new LinkedHashMap<>()      : sample;
     m_pedigree   = pedigree==null?   new ArrayList<>()          : pedigree;
-    m_properties = properties==null? ArrayListMultimap.create() : properties;
+    m_properties = properties==null? LinkedListMultimap.create() : properties;
     m_columns    = columns;
   }
 
@@ -265,9 +265,11 @@ public class VcfMetadata {
    *   <li>{@link #getSamples}</li>
    * </ul>
    * However, contains any in {@link #getAssemblies} and {@link #getPedigreeDatabases}.
+   * <p>
+   * Iterates in the order each key was first added, not alphabetically.
    */
-  public SortedSet<String> getRawPropertyKeys() {
-    return new TreeSet<>(m_properties.keySet());
+  public Set<String> getRawPropertyKeys() {
+    return new LinkedHashSet<>(m_properties.keySet());
   }
 
   public int getColumnIndex(String column) {
@@ -325,7 +327,7 @@ public class VcfMetadata {
     private final Map<String, IdDescriptionMetadata> m_sample = new LinkedHashMap<>();
     private final List<BaseMetadata> m_pedigree = new ArrayList<>();
     private List<String> m_columns = new ArrayList<>();
-    private final ListMultimap<String, String> m_properties = ArrayListMultimap.create();
+    private final ListMultimap<String, String> m_properties = LinkedListMultimap.create();
 
     /**
      * Sets the VCF version string.
