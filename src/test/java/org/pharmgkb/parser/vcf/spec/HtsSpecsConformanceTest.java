@@ -25,6 +25,14 @@ import static org.junit.jupiter.api.Assertions.fail;
  * and checks this library's behavior against it. Tagged so it only runs under the opt-in `htsSpecsTest` Gradle
  * task, never under `test`, since it requires that fixture checkout to already exist.
  *
+ * <p>As of the current {@code htsSpecsPinnedSha}, running this suite reports 460 total tests with 151 known
+ * failures: 5 in {@link #passedFixturesParseWithoutError()} (hts-specs {@code passed/} fixtures that this
+ * library's pre-existing, stricter FILTER and contig validation correctly rejects) and 146 in
+ * {@link #failedFixturesThrowOrWarn()} (fixtures whose invalidity is reserved INFO/FORMAT
+ * {@code Number}/{@code Type} or ALT structural-code metadata that this library doesn't yet cross-validate). This
+ * is the expected current state, not a regression; see the README's "hts-specs conformance test" section for the
+ * full breakdown.
+ *
  * @author Douglas Myers-Turnbull
  */
 @Tag("hts-specs")
