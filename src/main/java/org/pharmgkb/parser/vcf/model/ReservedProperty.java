@@ -13,4 +13,10 @@ public interface ReservedProperty {
   Class getType();
 
   boolean isList();
+
+  /**
+   * @return The exact VCF {@code Number} value this reserved key's declaration should have: an integer literal
+   * (e.g. {@code "1"}, {@code "4"}) or one of {@code "A"}, {@code "G"}, {@code "R"}, {@code "."}.
+   */
+  String getExpectedNumber();
 }
