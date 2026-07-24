@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Stream;
 import ch.qos.logback.classic.Logger;
 import org.junit.jupiter.api.AfterAll;
@@ -126,6 +127,34 @@ class HtsSpecsConformanceTest {
     });
   }
 
+  @TestFactory
+  Stream<DynamicTest> passedFixturesRoundTripSemantically() throws IOException {
+    List<Path> files = new ArrayList<>();
+    for (String version : PASSED_VERSIONS) {
+      collectVcfFiles(fixtureDir(version, "passed"), files);
+    }
+    if (files.isEmpty()) {
+      return Stream.of(DynamicTest.dynamicTest("hts-specs checkout missing", () ->
+          fail("No passed/ fixtures found under " + htsSpecsDir() + " -- run `./gradlew htsSpecsCheckout` first")));
+    }
+    return files.stream().map(file -> DynamicTest.dynamicTest(relativeName(file),
+        () -> checkRoundTripSemantic(file)));
+  }
+
+  @TestFactory
+  Stream<DynamicTest> passedFixturesRoundTripByteIdentical() throws IOException {
+    List<Path> files = new ArrayList<>();
+    for (String version : PASSED_VERSIONS) {
+      collectVcfFiles(fixtureDir(version, "passed"), files);
+    }
+    if (files.isEmpty()) {
+      return Stream.of(DynamicTest.dynamicTest("hts-specs checkout missing", () ->
+          fail("No passed/ fixtures found under " + htsSpecsDir() + " -- run `./gradlew htsSpecsCheckout` first")));
+    }
+    return files.stream().map(file -> DynamicTest.dynamicTest(relativeName(file),
+        () -> checkRoundTripByteDiff(file)));
+  }
+
   private static void collectVcfFiles(Path dir, List<Path> into) throws IOException {
     if (!Files.isDirectory(dir)) {
       return;
@@ -201,6 +230,75 @@ class HtsSpecsConformanceTest {
             ") was accepted with no VcfFormatException and no logged warning -- invalid content silently accepted"
         : "baseline entry for " + fixturePath +
             " (parser-throw-or-warn) no longer reproduces -- remove it from hts-specs-baseline.tsv");
+  }
+
+  private static void checkRoundTripSemantic(Path file) throws IOException {
+    String fixturePath = relativeName(file);
+    WriterRoundTrip.ParsedFile before;
+    try {
+      before = WriterRoundTrip.parseFile(file);
+    } catch (RuntimeException e) {
+      // this fixture already fails parser-no-throw (or is baselined there) -- there's no successfully-parsed
+      // data to write, so there's nothing to test about the writer here; skip rather than reporting a
+      // misleading "write-exception" for what is actually a parse failure
+      return;
+    }
+    String written;
+    try {
+      written = WriterRoundTrip.write(before);
+    } catch (RuntimeException e) {
+      boolean acceptable = BASELINE.check(fixturePath, "writer-semantic", true, "write-exception",
+          String.valueOf(e.getMessage()));
+      assertTrue(acceptable, () -> fixturePath + " (writer-semantic): unexpectedly threw while writing: " +
+          e.getMessage());
+      return;
+    }
+    WriterRoundTrip.ParsedFile after;
+    try {
+      after = WriterRoundTrip.parseText(written);
+    } catch (RuntimeException e) {
+      boolean acceptable = BASELINE.check(fixturePath, "writer-semantic", true, "reparse-exception",
+          String.valueOf(e.getMessage()));
+      assertTrue(acceptable, () -> fixturePath +
+          " (writer-semantic): unexpectedly threw while re-parsing written output: " + e.getMessage());
+      return;
+    }
+    Optional<String> diff = WriterRoundTrip.semanticDiff(before, after);
+    boolean acceptable = BASELINE.check(fixturePath, "writer-semantic", diff.isPresent(), "semantic-mismatch",
+        diff.orElse(""));
+    assertTrue(acceptable, () -> diff.isPresent()
+        ? fixturePath + " (writer-semantic): " + diff.get()
+        : "baseline entry for " + fixturePath +
+            " (writer-semantic) no longer reproduces -- remove it from hts-specs-baseline.tsv");
+  }
+
+  private static void checkRoundTripByteDiff(Path file) throws IOException {
+    String fixturePath = relativeName(file);
+    String original = Files.readString(file);
+    WriterRoundTrip.ParsedFile before;
+    try {
+      before = WriterRoundTrip.parseFile(file);
+    } catch (RuntimeException e) {
+      // see checkRoundTripSemantic: a fixture that doesn't even parse has nothing meaningful to byte-diff
+      return;
+    }
+    String written;
+    try {
+      written = WriterRoundTrip.write(before);
+    } catch (RuntimeException e) {
+      boolean acceptable = BASELINE.check(fixturePath, "writer-bytediff", true, "write-exception",
+          String.valueOf(e.getMessage()));
+      assertTrue(acceptable, () -> fixturePath + " (writer-bytediff): unexpectedly threw while writing: " +
+          e.getMessage());
+      return;
+    }
+    Optional<String> diff = WriterRoundTrip.byteDiff(original, written);
+    boolean acceptable = BASELINE.check(fixturePath, "writer-bytediff", diff.isPresent(), "byte-diff",
+        diff.orElse(""));
+    assertTrue(acceptable, () -> diff.isPresent()
+        ? fixturePath + " (writer-bytediff): " + diff.get()
+        : "baseline entry for " + fixturePath +
+            " (writer-bytediff) no longer reproduces -- remove it from hts-specs-baseline.tsv");
   }
 
   private static String htsSpecsDir() {
