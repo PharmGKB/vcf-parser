@@ -1,4 +1,4 @@
-package org.pharmgkb.parser.vcf;
+package org.pharmgkb.parser.vcf.spec;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -11,6 +11,8 @@ import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
+import org.pharmgkb.parser.vcf.VcfFormatException;
+import org.pharmgkb.parser.vcf.VcfParser;
 import org.slf4j.LoggerFactory;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -22,14 +24,6 @@ import static org.junit.jupiter.api.Assertions.fail;
  * Parses every fixture in hts-specs' official VCF conformance suite (fetched by the htsSpecsCheckout Gradle task)
  * and checks this library's behavior against it. Tagged so it only runs under the opt-in `htsSpecsTest` Gradle
  * task, never under `test`, since it requires that fixture checkout to already exist.
- *
- * <p>As of the current {@code htsSpecsPinnedSha}, running this suite reports 460 total tests with 151 known
- * failures: 5 in {@link #passedFixturesParseWithoutError()} (hts-specs {@code passed/} fixtures that this
- * library's pre-existing, stricter FILTER and contig validation correctly rejects) and 146 in
- * {@link #failedFixturesThrowOrWarn()} (fixtures whose invalidity is reserved INFO/FORMAT
- * {@code Number}/{@code Type} or ALT structural-code metadata that this library doesn't yet cross-validate). This
- * is the expected current state, not a regression; see the README's "hts-specs conformance test" section for the
- * full breakdown.
  *
  * @author Douglas Myers-Turnbull
  */

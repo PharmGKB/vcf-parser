@@ -1,4 +1,4 @@
-package org.pharmgkb.parser.vcf;
+package org.pharmgkb.parser.vcf.spec;
 
 import java.util.ArrayList;
 import java.util.Collections;
