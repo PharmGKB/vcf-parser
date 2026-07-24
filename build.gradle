@@ -102,6 +102,7 @@ dependencies {
   )
 
   testImplementation(
+      'ch.qos.logback:logback-classic:1.6.0',
       'org.hamcrest:hamcrest:3.0',
       'org.jsoup:jsoup:1.22.2',
       'org.junit.jupiter:junit-jupiter:6.1.2',
@@ -166,6 +167,22 @@ tasks.register('htsSpecsCheckout') {
             "Consider bumping htsSpecsPinnedSha in build.gradle if these fixtures should be picked up.")
       }
     }
+  }
+}
+
+tasks.register('htsSpecsTest', Test) {
+  dependsOn htsSpecsCheckout
+  testClassesDirs = sourceSets.test.output.classesDirs
+  classpath = sourceSets.test.runtimeClasspath
+  useJUnitPlatform {
+    includeTags 'hts-specs'
+  }
+  systemProperty 'htsSpecsDir', htsSpecsCheckoutDir.get().asFile.absolutePath
+}
+
+test {
+  useJUnitPlatform {
+    excludeTags 'hts-specs'
   }
 }
 
