@@ -7,6 +7,7 @@ test/vcf/4.3/passed/complexfile_passed_000.vcf	parser-no-throw	parse-exception	[
 test/vcf/4.1/failed/failed_header_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: unknown
 test/vcf/4.1/failed/failed_meta_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Description contains non-escaped quotes
 test/vcf/4.1/failed/failed_meta_009.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Meta-data entry is not a key-value pair (empty value)
+test/vcf/4.1/failed/failed_meta_alt_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect ALT ID value
 test/vcf/4.1/failed/failed_meta_assembly_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Meta-data entry is not a key-value pair
 test/vcf/4.1/failed/failed_meta_assembly_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Non-valid URL
 test/vcf/4.1/failed/failed_meta_pedigree_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Genome ID with whitespace
@@ -17,6 +18,7 @@ test/vcf/4.1/failed/failed_meta_pedigreedb_002.vcf	parser-throw-or-warn	silently
 test/vcf/4.2/failed/failed_header_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: unknown
 test/vcf/4.2/failed/failed_meta_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Description contains non-escaped quotes
 test/vcf/4.2/failed/failed_meta_009.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Meta-data entry is not a key-value pair (empty value)
+test/vcf/4.2/failed/failed_meta_alt_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect ALT ID value
 test/vcf/4.2/failed/failed_meta_assembly_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Meta-data entry is not a key-value pair
 test/vcf/4.2/failed/failed_meta_assembly_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Meta-data entry is not a key-value pair
 test/vcf/4.2/failed/failed_meta_pedigree_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Genome ID with whitespace

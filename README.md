@@ -148,19 +148,20 @@ which stays network-free. The pinned commit is bumped deliberately, not automati
 `htsSpecsTest` depends on) prints a warning if hts-specs has upstream changes to `test/vcf` that the current pin
 doesn't include.
 
-As of the current `htsSpecsPinnedSha`, `./gradlew htsSpecsTest` reports **601 total tests, 29 baselined
-entries**, and this is the expected current state, not a regression to chase down: 5 `parser-no-throw` + 20
+As of the current `htsSpecsPinnedSha`, `./gradlew htsSpecsTest` reports **601 total tests, 31 baselined
+entries**, and this is the expected current state, not a regression to chase down: 5 `parser-no-throw` + 22
 `parser-throw-or-warn` + 4 `writer-bytediff` (0 `writer-semantic`). The 5 `parser-no-throw` entries are two
 `passed/` fixtures recurring across their per-version copies (`complexfile_passed_000.vcf` in 4.1/4.2/4.3;
 `passed_meta_contig.vcf` in 4.1/4.2 — 3 + 2 = 5): `complexfile_passed_000.vcf` (FILTER combines `PASS` with
 another code) and `passed_meta_contig.vcf` (duplicate `##contig` ID) are hts-specs `passed/` fixtures that this
 library's pre-existing, stricter FILTER and contig validation correctly rejects.
 
-The 20 `parser-throw-or-warn` entries are `failed/` fixtures whose invalidity this library still doesn't detect,
+The 22 `parser-throw-or-warn` entries are `failed/` fixtures whose invalidity this library still doesn't detect,
 grouped by cause: 9 are malformed metadata key-value pair/empty-value syntax; 4 are genome ID validation
 (whitespace/punctuation in `SAMPLE`'s `Genomes`); 3 are invalid URLs; 2 are unescaped `Description` quotes; 2 are
-fixtures hts-specs itself doesn't document a cause for. None of these are part of this test task; each is a
-candidate for separate, future work.
+fixtures hts-specs itself doesn't document a cause for; 2 are `failed_meta_alt_000.vcf` (`ID=DEL1`), a deliberately
+accepted false negative — see below. None of these are part of this test task; each is a candidate for separate,
+future work.
 
 This library previously did not cross-validate a declared `##INFO`/`##FORMAT` key's `Number`/`Type` against the
 canonical values for well-known reserved keys (`AC`, `AN`, `GT`, `PL`, etc.) — `ReservedInfoProperty` and
@@ -168,16 +169,24 @@ canonical values for well-known reserved keys (`AC`, `AN`, `GT`, `PL`, etc.) —
 `docs/superpowers/specs/2026-07-24-reserved-property-number-type-validation-design.md`), and `InfoMetadata.init()`/
 `FormatMetadata.init()` warn on a mismatch. This closed 106 of the previous 146 `parser-throw-or-warn` findings.
 
-Two more clusters have since closed (see
+Two more clusters have since mostly closed (see
 `docs/superpowers/specs/2026-07-24-alt-structural-variant-validation-design.md`): `AltStructuralVariant`'s
 code-hierarchy validation (already existed, but was never invoked during ALT declaration parsing) is now wired
 into `VcfMetadata.addAlt()`/`Builder.addAlt()`, which also gained a character-set check (no whitespace or angle
 brackets in a structural-variant ID, per VCFv4.2.tex line 105) and validation of any extra `Number`/`Type`
-property an `##ALT` line happens to declare — closing 14 findings. Separately, declared-attribute order
-(`##INFO`/`##FORMAT`/`##ALT`/`##FILTER`/`##SAMPLE` attributes out of the canonical `ID, Number, Type, Description,
-Source, Version` order every spec example uses) is now warned on via `BaseMetadata.checkAttributeOrder()` — closing
-the remaining 6 findings. This reverses the prior deferral of that cluster: `AGENTS.md` now treats hts-specs'
-conformance suite as spec guidance on the same footing as spec prose, resolving VCFv4.2's silence on attribute
+property an `##ALT` line happens to declare — closing 12 of the 14 findings in that cluster. The remaining 2
+(`failed_meta_alt_000.vcf`, `ID=DEL1`) are a deliberate, narrower scope: the reserved-code hierarchy (DEL/INS/DUP/
+INV/CNV and colon-delimited subtypes) is only enforced when an ALT ID actually contains `:`, since a bare
+single-token ID has other spec-sanctioned, non-structural-variant uses this library must not reject — VCFv4.3.tex's
+IUPAC ambiguity codes (`##ALT=<ID=R,...>`) and the real-world copy-number-allele convention (`##ALT=<ID=CN0,...>`
+through `CN124`, used by 1000 Genomes and exercised by this repo's own `src/test/resources/cnv.vcf`). There is no
+way to distinguish a legitimate custom code like `CN0` from a typo'd reserved code like `DEL1` by ID shape alone
+without a colon, so `DEL1` is accepted as a deliberate, documented false negative rather than rejecting `CN0`.
+Separately, declared-attribute order (`##INFO`/`##FORMAT`/`##ALT`/`##FILTER`/`##SAMPLE` attributes out of the
+canonical `ID, Number, Type, Description, Source, Version` order every spec example uses) is now warned on via
+`BaseMetadata.checkAttributeOrder()` — closing all 6 findings in that cluster. This reverses the prior deferral of
+that cluster: `AGENTS.md` now treats hts-specs' conformance suite as spec guidance on the same footing as spec
+prose, resolving VCFv4.2's silence on attribute
 order the same way the reserved-property work resolved its silence on `Number`/`Type`.
 
 The writer round-trip checks no longer find any ordering-related divergences: `VcfUtils.extractProperties()`,
