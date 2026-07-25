@@ -25,4 +25,11 @@ public class WarnCapturingAppender extends AppenderBase<ILoggingEvent> {
   public boolean hasWarnOrHigher() {
     return m_events.stream().anyMatch(event -> event.getLevel().isGreaterOrEqual(Level.WARN));
   }
+
+  /**
+   * @return true if any captured event's formatted message contains {@code substring}
+   */
+  public boolean anyMessageContains(String substring) {
+    return m_events.stream().anyMatch(event -> event.getFormattedMessage().contains(substring));
+  }
 }

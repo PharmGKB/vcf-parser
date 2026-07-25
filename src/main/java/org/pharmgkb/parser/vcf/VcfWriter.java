@@ -186,7 +186,14 @@ public class VcfWriter implements Closeable {
     }
     addInfoOrDot(metadata, position, sb);
 
-    position.getFilters().stream().filter(key -> !metadata.getFilters().containsKey(key)).forEach(key ->
+    // "PASS" is VCF's reserved "all filters passed" keyword (VCFv4.2.tex line 185: "PASS if this position has
+    // passed all filters"), never expected to have its own ##FILTER=<ID=PASS,...> declaration. This filter must
+    // exclude it explicitly: since VcfPosition.checkFilters() now warns instead of throwing when FILTER combines
+    // PASS with another code, position.getFilters() can legitimately contain a literal "PASS" entry alongside
+    // other codes -- a case this check could never previously see, because that combination used to be rejected
+    // during parsing before reaching the writer.
+    position.getFilters().stream()
+        .filter(key -> !key.equals("PASS") && !metadata.getFilters().containsKey(key)).forEach(key ->
         sf_logger.warn("Position {}:{} has FILTER {}, but there is no FILTER metadata with that name (on line {})",
             position.getChromosome(), position.getPosition(), key, m_lineNumber));
 

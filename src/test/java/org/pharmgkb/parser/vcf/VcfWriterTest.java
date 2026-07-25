@@ -23,6 +23,7 @@ import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -60,6 +61,36 @@ public class VcfWriterTest {
     position.getAltBases().add("not-a-valid-base");
     writer.writeLine(metadata, position, Collections.emptyList());
     assertTrue(sw.toString().contains("not-a-valid-base"));
+  }
+
+  @Test
+  public void testWriteLineDoesNotWarnAboutPassFilter() throws Exception {
+    // PASS is VCF's reserved "all filters passed" keyword (VCFv4.2.tex line 185) and is never expected to have its
+    // own ##FILTER=<ID=PASS,...> declaration. FILTER combining PASS with another code now warns instead of
+    // throwing during parsing (see VcfPosition.checkFilters), so position.getFilters() can legitimately contain a
+    // literal "PASS" entry -- this must not trigger the undeclared-FILTER warning below.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addFilter(new IdDescriptionMetadata("STD_FILTER", "Standard filter"))
+        .build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getFilters().add("STD_FILTER");
+    position.getFilters().add("PASS");
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertFalse(appender.anyMessageContains("has FILTER PASS"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
   }
 
   @Test
