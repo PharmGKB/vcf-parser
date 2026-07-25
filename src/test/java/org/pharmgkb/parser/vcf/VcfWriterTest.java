@@ -242,6 +242,37 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteWarnsOnEmptyGenericPropertyValue() throws Exception {
+    // getRawProperties() returns the backing multimap directly; mutating an existing entry's value to empty
+    // bypasses addRawProperty()/addAssembly()/addPedigreeDatabase()'s own checks entirely (those only run once,
+    // at insertion time), so validateBeforeWrite() must re-check it at write time. Unlike the parse-time path,
+    // this only warns -- it does not remove the entry from the caller's own metadata object.
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addRawProperty("reference", "file:///seq/reference.fasta")
+        .build();
+    metadata.getRawProperties().remove("reference", "file:///seq/reference.fasta");
+    metadata.getRawProperties().put("reference", "");
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    // warn, not drop: the entry is still present in the caller's own metadata object after the write
+    assertEquals(Collections.singletonList(""), metadata.getRawValuesOfProperty("reference"));
+  }
+
+  @Test
   public void testValidateBeforeWriteRejectsDuplicatePedigreeId() throws Exception {
     // PEDIGREE entries are stored in a List, not a Map keyed by ID like INFO/FORMAT/FILTER/ALT/contig/SAMPLE, so
     // validateKeyedMetadataEntries's "ID matches map key" check can't cover them -- duplicate IDs across PEDIGREE
