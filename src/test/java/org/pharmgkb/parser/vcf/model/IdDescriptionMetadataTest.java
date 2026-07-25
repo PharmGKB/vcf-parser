@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.VcfUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests {@link IdDescriptionMetadata} (the base class used for {@code ##ALT}, {@code ##FILTER}, and
@@ -18,6 +20,43 @@ public class IdDescriptionMetadataTest {
     IdDescriptionMetadata md = new IdDescriptionMetadata(
         VcfUtils.extractProperties("ID=X", "Description=\"d\"", "Custom=extra"), true);
     assertEquals("extra", md.getPropertyRaw("Custom"));
+  }
+
+  @Test
+  public void testAttributeOrderWarnsWhenOutOfCanonicalOrder() {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_alt_004.vcf's ##CauseOfFailure=Incorrect order of ALT fields
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new IdDescriptionMetadata(VcfUtils.extractProperties(
+          "ID=DEL", "Type=String", "Number=1", "Description=\"Deletion\""), true);
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testAttributeOrderDoesNotWarnForCanonicalIdThenDescription() {
+    // ##ALT/##FILTER's own canonical form is just ID,Description -- the common case
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new IdDescriptionMetadata(VcfUtils.extractProperties("ID=DEL", "Description=\"Deletion\""), true);
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
   }
 
 }

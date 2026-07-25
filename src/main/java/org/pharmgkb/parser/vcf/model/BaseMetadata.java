@@ -1,9 +1,11 @@
 package org.pharmgkb.parser.vcf.model;
 
 import java.lang.invoke.MethodHandles;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -125,6 +127,35 @@ public class BaseMetadata {
     warnIfMissing(logger, "Number", number);
     if (number != null && !VcfUtils.NUMBER_PATTERN.matcher(number).matches()) {
       logger.warn("Number is not a valid VCF number: '{}'", number);
+    }
+  }
+
+  private static final List<String> CANONICAL_ATTRIBUTE_ORDER =
+      List.of("ID", "Number", "Type", "Description", "Source", "Version");
+
+  /**
+   * Warns (via the caller's own logger) if this declaration's attributes, restricted to the well-known VCF metadata
+   * keys ID/Number/Type/Description/Source/Version, are not declared in that canonical relative order. A key this
+   * declaration kind doesn't use, or any other extra/unrecognized key, is ignored -- order is checked only among
+   * whichever of those six keys are actually present, so e.g. an ALT line's Description immediately after ID, with
+   * no Number/Type/Source/Version present at all, triggers no warning.
+   * VCFv4.2.tex line 69 (##INFO), line 94 (##FORMAT), line 103 (##ALT), line 87 (##FILTER): every canonical template
+   * and worked example in the spec uses this relative order; test/vcf/{4.1,4.2}/failed/failed_meta_{info_003,
+   * format_003}.vcf and failed_meta_alt_004.vcf (##CauseOfFailure=Incorrect order of ALT/INFO/FORMAT fields)
+   * establish that a declaration violating it is invalid, resolving the spec text's own silence on whether the
+   * order shown is required.
+   */
+  protected void checkAttributeOrder(Logger logger) {
+    List<String> actual = new ArrayList<>();
+    for (String key : getPropertyKeys()) {
+      if (CANONICAL_ATTRIBUTE_ORDER.contains(key)) {
+        actual.add(key);
+      }
+    }
+    List<String> expected = new ArrayList<>(CANONICAL_ATTRIBUTE_ORDER);
+    expected.retainAll(actual);
+    if (!actual.equals(expected)) {
+      logger.warn("Metadata attributes declared out of canonical order: {} (expected order: {})", actual, expected);
     }
   }
 

@@ -213,4 +213,43 @@ public class InfoMetadataTest {
     assertEquals("1", md.getNumber());
     assertEquals("extra", md.getPropertyRaw("Custom"));
   }
+
+  @Test
+  public void testAttributeOrderWarnsWhenOutOfCanonicalOrder() {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_info_003.vcf's ##CauseOfFailure=Incorrect order of INFO fields
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new InfoMetadata(VcfUtils.extractProperties(
+          "Number=1", "Type=Integer", "Description=\"Raw read depth\"", "ID=DP"));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testTypedConstructorDoesNotWarnAboutAttributeOrder() {
+    // the typed constructor has no textual "declared order" to check -- see Task 2's implementation note. Its own
+    // internal property-insertion order (ID, Description, then Number/Type/Source/Version) does not match the
+    // canonical order checked for parsed/Map-based construction, so this must never warn regardless.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new InfoMetadata("DP", "Raw read depth", InfoType.Integer, "1", null, null);
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
 }

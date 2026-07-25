@@ -36,6 +36,7 @@ public class IdDescriptionMetadata extends IdMetadata {
     super(properties, false);
     m_isBaseType = isBaseType;
     init(isBaseType);
+    checkAttributeOrder(sf_logger);
   }
 
   protected IdDescriptionMetadata(String id, String description, boolean isBaseType) {

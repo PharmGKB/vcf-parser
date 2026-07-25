@@ -147,4 +147,41 @@ public class FormatMetadataTest {
       appender.stop();
     }
   }
+
+  @Test
+  public void testAttributeOrderWarnsWhenOutOfCanonicalOrder() {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_format_003.vcf's
+    // ##CauseOfFailure=Incorrect order of FORMAT fields
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new FormatMetadata(VcfUtils.extractProperties(
+          "Number=1", "Type=Integer", "Description=\"Raw read depth\"", "ID=DP"));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testTypedConstructorDoesNotWarnAboutAttributeOrder() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new FormatMetadata("DP", "Raw read depth", "1", FormatType.Integer);
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
 }
