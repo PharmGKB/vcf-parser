@@ -216,7 +216,12 @@ public class VcfPosition {
         throw new VcfFormatException("FILTER column entry should not be 0");
       }
       if (f.equals("PASS") && filters.size() > 1) {
-        throw new VcfFormatException("FILTER contains PASS along with other filters!");
+        // VCFv4.2.tex line 185 only implies PASS is exclusive ("PASS if this position has passed all filters ...
+        // Otherwise ... a semicolon-separated list of codes for filters that fail"); it never states this as a
+        // hard rule. hts-specs' own test/vcf/{4.1,4.2,4.3}/passed/complexfile_passed_000.vcf fixture combines PASS
+        // with another code (line 61: "STD_FILTER;PASS") and is expected to parse. Confirmed valid by
+        // vcf_validator 0.10.2 and accepted silently by bcftools 1.23.1 (htslib 1.23.1).
+        sf_logger.warn("FILTER contains PASS along with other filters: {}", filters);
       }
       if (f.equals(".") && filters.size() > 1) {
         throw new VcfFormatException("FILTER contains '.' (missing value) along with other filters!");

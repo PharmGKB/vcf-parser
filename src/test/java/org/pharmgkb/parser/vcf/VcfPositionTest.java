@@ -296,10 +296,24 @@ public class VcfPositionTest {
 
   @Test
   public void testBadFilter2() {
-    assertThrows(VcfFormatException.class, () -> {
-      new VcfPosition("chr", 1, null, "C", null, null, Arrays.asList("bad", "PASS"),
+    // PASS combined with another code now warns, not throws (see VcfPosition.checkFilters) -- hts-specs' own
+    // passed/complexfile_passed_000.vcf fixture (all versions) does exactly this and is expected to parse
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfPosition position;
+    try {
+      position = new VcfPosition("chr", 1, null, "C", null, null, Arrays.asList("bad", "PASS"),
           null, null);
-    });
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(Arrays.asList("bad", "PASS"), position.getFilters());
   }
 
   @Test

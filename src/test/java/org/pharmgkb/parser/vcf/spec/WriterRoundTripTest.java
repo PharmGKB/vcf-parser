@@ -240,4 +240,29 @@ class WriterRoundTripTest {
     assertTrue(written.contains("##contig=<ID=1,length=100>"));
     assertFalse(written.contains("length=200"));
   }
+
+  @Test
+  void testFilterPassCombinedWithOtherCodeRoundTripsWithoutRewriting() throws IOException {
+    // warn-and-preserve, not reject: reproduces complexfile_passed_000.vcf's FILTER=STD_FILTER;PASS
+    String vcf =
+        "##fileformat=VCFv4.2\n" +
+        "##FILTER=<ID=STD_FILTER,Description=\"Standard filter\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT\t.\tSTD_FILTER;PASS\t.\n";
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    WriterRoundTrip.ParsedFile parsed;
+    try {
+      parsed = WriterRoundTrip.parseText(vcf);
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    String written = WriterRoundTrip.write(parsed);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
+  }
 }
