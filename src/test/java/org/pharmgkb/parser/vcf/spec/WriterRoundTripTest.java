@@ -213,4 +213,31 @@ class WriterRoundTripTest {
     String written = WriterRoundTrip.write(parsed);
     assertFalse(written.contains("##reference="));
   }
+
+  @Test
+  void testDuplicateContigDeclarationRoundTripsKeepingFirstOnly() throws IOException {
+    // warn-and-drop-duplicate, not reject: reproduces passed_meta_contig.vcf's repeated ##contig ID=1 declaration
+    String vcf =
+        "##fileformat=VCFv4.2\n" +
+        "##contig=<ID=1,length=100>\n" +
+        "##contig=<ID=1,length=200>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT\t.\tPASS\t.\n";
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    WriterRoundTrip.ParsedFile parsed;
+    try {
+      parsed = WriterRoundTrip.parseText(vcf);
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    String written = WriterRoundTrip.write(parsed);
+    assertTrue(written.contains("##contig=<ID=1,length=100>"));
+    assertFalse(written.contains("length=200"));
+  }
 }

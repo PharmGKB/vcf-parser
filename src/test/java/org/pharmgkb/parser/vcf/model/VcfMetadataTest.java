@@ -386,4 +386,137 @@ public class VcfMetadataTest {
       appender.stop();
     }
   }
+
+  @Test
+  public void testAddAltWarnsAndKeepsFirstOnDuplicateId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+          .addAlt(new IdDescriptionMetadata("DEL", "First"))
+          .addAlt(new IdDescriptionMetadata("DEL", "Second"))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals("First", metadata.getAlts().get("DEL").getDescription());
+  }
+
+  @Test
+  public void testAddInfoWarnsAndKeepsFirstOnDuplicateId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+          .addInfo(new InfoMetadata("DP", "First depth", InfoType.Integer, "1", null, null))
+          .addInfo(new InfoMetadata("DP", "Second depth", InfoType.Integer, "1", null, null))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals("First depth", metadata.getInfo().get("DP").getDescription());
+  }
+
+  @Test
+  public void testAddFormatWarnsAndKeepsFirstOnDuplicateId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+          .addFormat(new FormatMetadata("GT", "First genotype", "1", FormatType.String))
+          .addFormat(new FormatMetadata("GT", "Second genotype", "1", FormatType.String))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals("First genotype", metadata.getFormats().get("GT").getDescription());
+  }
+
+  @Test
+  public void testAddFilterWarnsAndKeepsFirstOnDuplicateId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+          .addFilter(new IdDescriptionMetadata("q10", "First"))
+          .addFilter(new IdDescriptionMetadata("q10", "Second"))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals("First", metadata.getFilters().get("q10").getDescription());
+  }
+
+  @Test
+  public void testAddContigWarnsAndKeepsFirstOnDuplicateId() {
+    // reproduces test/vcf/{4.1,4.2}/passed/passed_meta_contig.vcf's repeated ##contig ID=1 declaration
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+          .addContig(new ContigMetadata("1", 100L, "GRCh38", null, null, null, null))
+          .addContig(new ContigMetadata("1", 200L, "GRCh37", null, null, null, null))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(100L, metadata.getContigs().get("1").getLength());
+  }
+
+  @Test
+  public void testAddSampleWarnsAndKeepsFirstOnDuplicateId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+          .addSample(new IdDescriptionMetadata("S1", "First"))
+          .addSample(new IdDescriptionMetadata("S1", "Second"))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals("First", metadata.getSamples().get("S1").getDescription());
+  }
 }

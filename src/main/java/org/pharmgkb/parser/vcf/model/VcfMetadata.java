@@ -416,9 +416,29 @@ public class VcfMetadata {
       return this;
     }
 
+    /**
+     * Warns and returns {@code true} (does not throw) when {@code id} is already present in {@code map} -- the
+     * caller must skip storing its value and keep the existing (first) declaration.
+     * <p>
+     * Neither VCFv4.2.tex nor VCFv4.3.tex states that a repeated declaration ID is an error for CONTIG/INFO/FORMAT/
+     * FILTER/ALT/SAMPLE (contrast with duplicate #CHROM sample-column names, which remain a structural error per
+     * AGENTS.md). hts-specs' own test/vcf/{4.1,4.2}/passed/passed_meta_contig.vcf fixture declares
+     * ##contig=&lt;ID=1&gt; twice and is expected to parse successfully. Confirmed valid by vcf_validator 0.10.2
+     * for all six declaration types tested; bcftools 1.23.1 (htslib 1.23.1) keeps the first declaration and
+     * silently drops each duplicate, with no warning, for all six -- see DUPLICATE_METADATA_ID_HANDLING.md.
+     */
+    private boolean warnIfDuplicate(Map<String, ?> map, String id, String typeName) {
+      if (map.containsKey(id)) {
+        sf_logger.warn("Duplicate ID \"{}\" for {} metadata declaration ignored; keeping the first declaration",
+            id, typeName);
+        return true;
+      }
+      return false;
+    }
+
     public Builder addAlt(IdDescriptionMetadata md) {
-      if (m_alt.containsKey(md.getId())) {
-        throw new VcfFormatException("Duplicate ID " + md.getId() + " for ALT");
+      if (warnIfDuplicate(m_alt, md.getId(), "ALT")) {
+        return this;
       }
       validateAlt(md);
       m_alt.put(md.getId(), md);
@@ -426,40 +446,40 @@ public class VcfMetadata {
     }
 
     public Builder addInfo(InfoMetadata md) {
-      if (m_info.containsKey(md.getId())) {
-        throw new VcfFormatException("Duplicate ID " + md.getId() + " for INFO");
+      if (warnIfDuplicate(m_info, md.getId(), "INFO")) {
+        return this;
       }
       m_info.put(md.getId(), md);
       return this;
     }
 
     public Builder addFilter(IdDescriptionMetadata md) {
-      if (m_filter.containsKey(md.getId())) {
-        throw new VcfFormatException("Duplicate ID " + md.getId() + " for FILTER");
+      if (warnIfDuplicate(m_filter, md.getId(), "FILTER")) {
+        return this;
       }
       m_filter.put(md.getId(), md);
       return this;
     }
 
     public Builder addFormat(FormatMetadata md) {
-      if (m_format.containsKey(md.getId())) {
-        throw new VcfFormatException("Duplicate ID " + md.getId() + " for FORMAT");
+      if (warnIfDuplicate(m_format, md.getId(), "FORMAT")) {
+        return this;
       }
       m_format.put(md.getId(), md);
       return this;
     }
 
     public Builder addContig(ContigMetadata md) {
-      if (m_contig.containsKey(md.getId())) {
-        throw new VcfFormatException("Duplicate ID " + md.getId() + " for CONTIG");
+      if (warnIfDuplicate(m_contig, md.getId(), "CONTIG")) {
+        return this;
       }
       m_contig.put(md.getId(), md);
       return this;
     }
 
     public Builder addSample(IdDescriptionMetadata md) {
-      if (m_sample.containsKey(md.getId())) {
-        throw new VcfFormatException("Duplicate ID " + md.getId() + " for SAMPLE");
+      if (warnIfDuplicate(m_sample, md.getId(), "SAMPLE")) {
+        return this;
       }
       m_sample.put(md.getId(), md);
       return this;
