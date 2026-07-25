@@ -66,7 +66,7 @@ more useful reading of what's normally just a stray delimiter.
 | GT allele (`:`-separated by `/` or `\|`) | `0/` | Not tested against bcftools | Warn + substitute `.` | `0/.` |
 | Reserved list-typed FORMAT value (e.g. `HQ`) | `1,2,` | Not tested against bcftools | Warn + substitute `.` (`null` in the returned list) | n/a (read-side conversion only) |
 | Reserved `FORMAT/FT` value | `q10;;q20` | Not tested against bcftools | Warn + drop (read-side only, like the row above) | n/a (read-side conversion only) |
-| Generic metadata property (`##reference=`, `##assembly=`, `##pedigreeDB=`, or any other) | `##reference=` | Not tested against bcftools for `reference` specifically, but `##assembly=`/`##pedigreeDB=` with an empty value are both silently dropped entirely by bcftools 1.23.1 | Warn + drop the entire property entry | Line omitted entirely |
+| Generic metadata property (`##reference=`, `##assembly=`, `##pedigreeDB=`, or any other) | `##reference=` | Silent passthrough, no warning (verified for `reference`/`assembly`/`pedigreeDB`) | Warn + drop the entire property entry | Line omitted entirely |
 
 The INFO flag row is included as a contrast, not an empty-field case: a flag key with no `=` sign (e.g. `DB`) is
 stored internally with an empty-string sentinel value, the same representation used for the "was this value actually
@@ -83,10 +83,11 @@ behavior.
 The generic-metadata-property row differs from every other row in this table in what gets dropped: every other
 row drops or substitutes one *element* of a delimited list, but a generic property (`##reference=`, `##assembly=`,
 `##pedigreeDB=`, or any unrecognized `##key=value` line) has no internal delimiter to drop an element from -- the
-entire line is empty. Dropping the whole entry, rather than keeping an empty one or substituting `.`, matches
-bcftools's own observed behavior (verified for `##assembly=`/`##pedigreeDB=`) and is the closest analogue to the
-ID/FILTER/INFO-top-level "position-independent list: drop" strategy above, since nothing else depends on a generic
-property's order or count.
+entire line is empty. Unlike every other row above, bcftools does *not* diverge from silent passthrough here --
+it preserves an empty-value generic property line unchanged. Dropping the whole entry anyway is a deliberate
+stricter choice, the same way this library is already stricter than bcftools for an empty ID/FILTER/ALT list
+entry (the "position-independent list: drop" strategy above), and is justified directly by `VCFv4.3.tex` line 39
+("Zero length fields are not allowed, a dot ('.') must be used instead").
 
 `VcfWriter.validateBeforeWrite()` warns on this same condition but does not drop the entry -- unlike the parse-time
 path, the writer must not silently remove content the caller is already holding a reference to.
@@ -116,3 +117,6 @@ separately — two empty keys are not "duplicates" in the sense the spec means.
 - `VcfSample.validate()` — warns and substitutes `.` for a sample property whose value was mutated to empty through
   `propertyEntrySet()`, consistent with `VcfWriter`'s own warn-only treatment of an empty INFO value or an empty
   comma-separated FORMAT element in `validateBeforeWrite()` mode.
+- `VcfMetadata.Builder.addRawProperty()` / `addAssembly()` / `addPedigreeDatabase()` -- warn and drop a generic
+  metadata property with an empty value, or an empty bracket pair (`<>`). `VcfWriter.validateBeforeWrite()` runs
+  the identical check but only warns, without dropping.

@@ -168,10 +168,11 @@ work.
 
 The malformed-metadata-key-value-pair/empty-value cluster (formerly 9 findings) is now closed (see
 `docs/superpowers/specs/2026-07-25-empty-metadata-value-validation-design.md`): a generic metadata property
-(`##reference=`, `##assembly=`, `##pedigreeDB=`, or any other) with a completely empty value — or, for
-`pedigreeDB` specifically, an empty bracket pair `##pedigreeDB=<>` — now warns and is dropped, via
-`VcfMetadata.Builder.addRawProperty()`/`addAssembly()`/`addPedigreeDatabase()`, matching bcftools 1.23.1's own
-observed behavior (see `EMPTY_FIELD_HANDLING.md`). This also fixed a real pre-existing bug:
+(`##reference=`, `##assembly=`, `##pedigreeDB=`, or any other) with a completely empty value — or an empty
+bracket pair, e.g. `##pedigreeDB=<>` — now warns and is dropped, via
+`VcfMetadata.Builder.addRawProperty()`/`addAssembly()`/`addPedigreeDatabase()`. bcftools 1.23.1 actually preserves
+a plain empty value silently, but this library is deliberately stricter here, per `VCFv4.3.tex` line 39 (see
+`EMPTY_FIELD_HANDLING.md`). This also fixed a real pre-existing bug:
 `addPedigreeDatabase()`/`removePedigreeDb()` incorrectly required angle-bracket wrapping, contradicting
 VCFv4.2.tex/4.3.tex/4.4.tex's own bracket-less template and hts-specs' own `passed_meta_pedigreedb.vcf` fixture.
 `VcfWriter.validateBeforeWrite()` warns (without dropping) on the same condition for metadata built or mutated

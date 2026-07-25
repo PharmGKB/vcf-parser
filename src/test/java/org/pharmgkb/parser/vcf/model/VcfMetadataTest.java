@@ -221,12 +221,10 @@ public class VcfMetadataTest {
 
   @Test
   public void testIsEmptyMetadataValue() {
-    assertTrue(VcfMetadata.isEmptyMetadataValue("reference", ""));
-    assertTrue(VcfMetadata.isEmptyMetadataValue("reference", "   "));
-    assertTrue(VcfMetadata.isEmptyMetadataValue("pedigreeDB", "<>"));
-    assertFalse(VcfMetadata.isEmptyMetadataValue("assembly", "ftp://example.com/db"));
-    // the "<>" special case is pedigreeDB-specific -- no fixture exercises the analogous case for other keys
-    assertFalse(VcfMetadata.isEmptyMetadataValue("assembly", "<>"));
+    assertTrue(VcfMetadata.isEmptyMetadataValue(""));
+    assertTrue(VcfMetadata.isEmptyMetadataValue("   "));
+    assertTrue(VcfMetadata.isEmptyMetadataValue("<>"));
+    assertFalse(VcfMetadata.isEmptyMetadataValue("ftp://example.com/db"));
   }
 
   @Test

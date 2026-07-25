@@ -269,7 +269,7 @@ public class VcfWriter implements Closeable {
       }
       for (String value : metadata.getRawValuesOfProperty(key)) {
         VcfUtils.checkNoLineTerminator(key, value);
-        if (VcfMetadata.isEmptyMetadataValue(key, value)) {
+        if (VcfMetadata.isEmptyMetadataValue(value)) {
           // unlike VcfMetadata.Builder.addRawProperty()/addAssembly()/addPedigreeDatabase() (which drop an empty
           // value at insertion time), this only warns -- silently removing content the caller is already holding
           // a reference to, right before serializing it, is a bigger behavioral surprise than dropping it before

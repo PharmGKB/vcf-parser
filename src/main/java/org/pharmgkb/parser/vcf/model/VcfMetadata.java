@@ -184,18 +184,17 @@ public class VcfMetadata {
   }
 
   /**
-   * @return Whether {@code value} (for the generic metadata property {@code name}) has no meaningful content --
-   * either fully empty, or (pedigreeDB-specific) an empty bracket pair.
+   * @return Whether {@code value} has no meaningful content -- either fully empty, or an empty bracket pair
+   * ({@code <>}).
    */
-  public static boolean isEmptyMetadataValue(String name, String value) {
+  public static boolean isEmptyMetadataValue(String value) {
     String trimmed = value.trim();
-    if (trimmed.isEmpty()) {
-      return true;
-    }
     // ##pedigreeDB=<> (test/vcf/{4.1,4.2}/failed/failed_meta_pedigreedb_001.vcf, ##CauseOfFailure=Meta-data entry
     // is not a key-value pair) has no meaningful content between the brackets -- effectively the same as empty.
-    // No fixture exercises the analogous case for other keys, so this is pedigreeDB-specific.
-    return "pedigreeDB".equals(name) && trimmed.equals("<>");
+    // Not pedigreeDB-specific: confirmed directly that bcftools 1.23.1 rejects "##assembly=<>" (and, by the same
+    // htslib attribute-list-grammar collision, any other key) with "[E::bcf_hdr_parse_line] Could not parse the
+    // header line", not just "##pedigreeDB=<>" -- so the check applies uniformly to every key.
+    return trimmed.isEmpty() || trimmed.equals("<>");
   }
 
   /**
@@ -232,7 +231,7 @@ public class VcfMetadata {
    */
   public void addAssembly(String value) {
     VcfUtils.checkNoLineTerminator("assembly", value);
-    if (isEmptyMetadataValue("assembly", value)) {
+    if (isEmptyMetadataValue(value)) {
       sf_logger.warn("Metadata property \"assembly\" has an empty value and was dropped: {}", value);
       return;
     }
@@ -250,8 +249,11 @@ public class VcfMetadata {
     // (unlike ##ALT/##INFO/etc, which use <ID=...> attribute-list syntax) -- bcftools hard-errors on
     // "##pedigreeDB=<>" specifically because it collides with that other grammar, not because brackets are this
     // field's own syntax.
+    // Known, deliberately out-of-scope gap: a non-empty bracket-wrapped value (e.g. "<ftp://example.com/db>") is
+    // still accepted here as a literal string today, even though bcftools would also reject it via that same
+    // grammar collision -- not fixed in this pass.
     VcfUtils.checkNoLineTerminator("pedigreeDB", value);
-    if (isEmptyMetadataValue("pedigreeDB", value)) {
+    if (isEmptyMetadataValue(value)) {
       sf_logger.warn("Metadata property \"pedigreeDB\" has an empty value and was dropped: {}", value);
       return;
     }
@@ -306,7 +308,9 @@ public class VcfMetadata {
    * However, contains any in {@link #getAssemblies} and {@link #getPedigreeDatabases}.
    * <p>
    * This is the backing, mutable multimap. Unlike {@link #addAssembly} and {@link #addPedigreeDatabase}, mutations
-   * made directly through it do not run the line-terminator check.
+   * made directly through it do not run the line-terminator check or the empty-value check
+   * ({@link org.pharmgkb.parser.vcf.VcfWriter}'s {@code validateBeforeWrite()} mode re-checks the latter at write
+   * time).
    */
   public ListMultimap<String, String> getRawProperties() {
     return m_properties;
@@ -468,12 +472,14 @@ public class VcfMetadata {
 
     public Builder addRawProperty(String name, String value) {
       VcfUtils.checkNoLineTerminator(name, value);
-      if (isEmptyMetadataValue(name, value)) {
+      if (isEmptyMetadataValue(value)) {
         // VCFv4.3.tex line 39: "Zero length fields are not allowed, a dot ('.') must be used instead" -- stated
         // generally for meta-information/header/data lines, not scoped to data fields only; VCFv4.1/4.2 are
-        // silent. Confirmed against bcftools 1.23.1 (htslib 1.23.1): it silently drops a generic metadata line
-        // with an empty value entirely (rather than keeping an empty entry or substituting "."), so this matches
-        // that behavior -- see EMPTY_FIELD_HANDLING.md's "position-independent list: drop" strategy.
+        // silent. bcftools 1.23.1 (htslib 1.23.1) actually silently PRESERVES a generic metadata line with a
+        // completely empty value unchanged, with no warning -- confirmed directly ("##reference=" round-trips
+        // through "bcftools view -h" unmodified). Dropping it here is a deliberate stricter choice, the same way
+        // this library is already stricter than bcftools for an empty ID/FILTER/ALT list entry -- see
+        // EMPTY_FIELD_HANDLING.md's "position-independent list: drop" strategy, used there for the same reason.
         sf_logger.warn("Metadata property \"{}\" has an empty value and was dropped: {}", name, value);
         return this;
       }
