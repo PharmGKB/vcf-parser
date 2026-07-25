@@ -148,30 +148,37 @@ which stays network-free. The pinned commit is bumped deliberately, not automati
 `htsSpecsTest` depends on) prints a warning if hts-specs has upstream changes to `test/vcf` that the current pin
 doesn't include.
 
-As of the current `htsSpecsPinnedSha`, `./gradlew htsSpecsTest` reports **601 total tests, 49 baselined
-entries**, and this is the expected current state, not a regression to chase down: 5 `parser-no-throw` + 40
+As of the current `htsSpecsPinnedSha`, `./gradlew htsSpecsTest` reports **601 total tests, 29 baselined
+entries**, and this is the expected current state, not a regression to chase down: 5 `parser-no-throw` + 20
 `parser-throw-or-warn` + 4 `writer-bytediff` (0 `writer-semantic`). The 5 `parser-no-throw` entries are two
 `passed/` fixtures recurring across their per-version copies (`complexfile_passed_000.vcf` in 4.1/4.2/4.3;
 `passed_meta_contig.vcf` in 4.1/4.2 — 3 + 2 = 5): `complexfile_passed_000.vcf` (FILTER combines `PASS` with
 another code) and `passed_meta_contig.vcf` (duplicate `##contig` ID) are hts-specs `passed/` fixtures that this
 library's pre-existing, stricter FILTER and contig validation correctly rejects.
 
-The 40 `parser-throw-or-warn` entries are `failed/` fixtures whose invalidity this library still doesn't detect,
-grouped by cause: 14 are `AltStructuralVariant`'s code-hierarchy validation not being invoked automatically during
-ALT declaration parsing (it exists but is opt-in only); 9 are malformed metadata key-value pair/empty-value
-syntax; 6 are declared-attribute-order enforcement (`##INFO`/`##FORMAT`/`##ALT` fields declared out of canonical
-order) — VCFv4.2 does not mandate attribute order within a declaration (confirmed against the spec text during
-the writer-ordering-preservation work), so hts-specs rejecting these is testing something stricter than this
-library's target spec; this is deferred for later reconsideration, not decided against. The remaining 11 are a
-mix of genome ID validation (4, whitespace/punctuation in `SAMPLE`'s `Genomes`), invalid URLs (3), unescaped
-`Description` quotes (2), and 2 fixtures hts-specs itself doesn't document a cause for. None of these are part of
-this test task; each is a candidate for separate, future work.
+The 20 `parser-throw-or-warn` entries are `failed/` fixtures whose invalidity this library still doesn't detect,
+grouped by cause: 9 are malformed metadata key-value pair/empty-value syntax; 4 are genome ID validation
+(whitespace/punctuation in `SAMPLE`'s `Genomes`); 3 are invalid URLs; 2 are unescaped `Description` quotes; 2 are
+fixtures hts-specs itself doesn't document a cause for. None of these are part of this test task; each is a
+candidate for separate, future work.
 
 This library previously did not cross-validate a declared `##INFO`/`##FORMAT` key's `Number`/`Type` against the
 canonical values for well-known reserved keys (`AC`, `AN`, `GT`, `PL`, etc.) — `ReservedInfoProperty` and
 `ReservedFormatProperty` now expose `getExpectedNumber()`/`fromId()` for this (see
 `docs/superpowers/specs/2026-07-24-reserved-property-number-type-validation-design.md`), and `InfoMetadata.init()`/
 `FormatMetadata.init()` warn on a mismatch. This closed 106 of the previous 146 `parser-throw-or-warn` findings.
+
+Two more clusters have since closed (see
+`docs/superpowers/specs/2026-07-24-alt-structural-variant-validation-design.md`): `AltStructuralVariant`'s
+code-hierarchy validation (already existed, but was never invoked during ALT declaration parsing) is now wired
+into `VcfMetadata.addAlt()`/`Builder.addAlt()`, which also gained a character-set check (no whitespace or angle
+brackets in a structural-variant ID, per VCFv4.2.tex line 105) and validation of any extra `Number`/`Type`
+property an `##ALT` line happens to declare — closing 14 findings. Separately, declared-attribute order
+(`##INFO`/`##FORMAT`/`##ALT`/`##FILTER`/`##SAMPLE` attributes out of the canonical `ID, Number, Type, Description,
+Source, Version` order every spec example uses) is now warned on via `BaseMetadata.checkAttributeOrder()` — closing
+the remaining 6 findings. This reverses the prior deferral of that cluster: `AGENTS.md` now treats hts-specs'
+conformance suite as spec guidance on the same footing as spec prose, resolving VCFv4.2's silence on attribute
+order the same way the reserved-property work resolved its silence on `Number`/`Type`.
 
 The writer round-trip checks no longer find any ordering-related divergences: `VcfUtils.extractProperties()`,
 `VcfMetadata`'s six keyed maps and its generic-property map, and `VcfPosition.info()` all now preserve insertion
