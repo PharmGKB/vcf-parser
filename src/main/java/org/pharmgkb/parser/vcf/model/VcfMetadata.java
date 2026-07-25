@@ -121,10 +121,10 @@ public class VcfMetadata {
   }
 
   /**
-   * @return The URLs from the field(s) in the <em>pedigreeDB</em> metadata line(s), including angle brackets if any
+   * @return The URLs from the field(s) in the <em>pedigreeDB</em> metadata line(s)
    */
   public List<String> getPedigreeDatabases() {
-    // spec says: ##pedigreeDB=<url> (with angle brackets)
+    // spec says: ##pedigreeDB=url (no angle brackets; see addPedigreeDatabase's comment)
     return m_properties.get("pedigreeDB");
   }
 
@@ -232,22 +232,30 @@ public class VcfMetadata {
    */
   public void addAssembly(String value) {
     VcfUtils.checkNoLineTerminator("assembly", value);
+    if (isEmptyMetadataValue("assembly", value)) {
+      sf_logger.warn("Metadata property \"assembly\" has an empty value and was dropped: {}", value);
+      return;
+    }
     m_properties.put("assembly", value);
   }
 
   /**
    * Adds {@code value} to the list of pedigreeDB.
-   * @param value Must be wrapped in angle brackets
-   * @throws VcfFormatException If {@code value} is not wrapped in angle brackets
+   * @param value Should not be wrapped in angle brackets
    */
   public void addPedigreeDatabase(String value) {
-    if (value.startsWith("<") && value.endsWith(">")) {
-      VcfUtils.checkNoLineTerminator("pedigreeDB", value);
-      m_properties.put("pedigreeDB", value);
-    } else {
-      throw new VcfFormatException("pedigreeDB string " + value +
-          " should be enclosed in angle brackets according to spec");
+    // VCFv4.2.tex/4.3.tex/4.4.tex's Pedigree field format section all template this bracket-less:
+    // "##pedigreeDB=URL". hts-specs' own passed/passed_meta_pedigreedb.vcf fixture (all versions) is bracket-less
+    // and expected to parse; confirmed bcftools 1.23.1 accepts it. Brackets are not required or expected here
+    // (unlike ##ALT/##INFO/etc, which use <ID=...> attribute-list syntax) -- bcftools hard-errors on
+    // "##pedigreeDB=<>" specifically because it collides with that other grammar, not because brackets are this
+    // field's own syntax.
+    VcfUtils.checkNoLineTerminator("pedigreeDB", value);
+    if (isEmptyMetadataValue("pedigreeDB", value)) {
+      sf_logger.warn("Metadata property \"pedigreeDB\" has an empty value and was dropped: {}", value);
+      return;
     }
+    m_properties.put("pedigreeDB", value);
   }
 
   public void removeAlt(IdDescriptionMetadata value) {
@@ -275,17 +283,11 @@ public class VcfMetadata {
   }
 
   /**
-   * Adds {@code value} to the list of pedigreeDB.
-   * @param value Must be wrapped in angle brackets
-   * @throws VcfFormatException If {@code value} is not wrapped in angle brackets
+   * Removes {@code value} from the list of pedigreeDB.
+   * @param value Should not be wrapped in angle brackets
    */
   public void removePedigreeDb(String value) {
-    if (value.startsWith("<") && value.endsWith(">")) {
-      m_properties.remove("pedigreeDB", value);
-    } else { // be strict to avoid needing to delete both value and <value>
-      throw new VcfFormatException("pedigreeDB string " + value +
-          " should be enclosed in angle brackets according to spec");
-    }
+    m_properties.remove("pedigreeDB", value);
   }
 
   /**

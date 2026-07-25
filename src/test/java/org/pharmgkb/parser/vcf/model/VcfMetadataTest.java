@@ -68,6 +68,84 @@ public class VcfMetadataTest {
   }
 
   @Test
+  public void testAddAssemblyWarnsAndDropsEmptyValue() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addAssembly("");
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getAssemblies().isEmpty());
+  }
+
+  @Test
+  public void testAddPedigreeDatabaseWarnsAndDropsEmptyValue() {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_pedigreedb_000.vcf's ##pedigreeDB= (empty value)
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addPedigreeDatabase("");
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getPedigreeDatabases().isEmpty());
+  }
+
+  @Test
+  public void testAddPedigreeDatabaseWarnsAndDropsEmptyBrackets() {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_pedigreedb_001.vcf's ##pedigreeDB=<>
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addPedigreeDatabase("<>");
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getPedigreeDatabases().isEmpty());
+  }
+
+  @Test
+  public void testAddPedigreeDatabaseAcceptsBracketLessUrl() {
+    // regression test for the bracket-requirement bug: VCFv4.2.tex/4.3.tex/4.4.tex's Pedigree field format section
+    // all template this bracket-less ("##pedigreeDB=URL"); hts-specs' own passed/passed_meta_pedigreedb.vcf
+    // fixture (all versions) is bracket-less and expected to parse; confirmed bcftools 1.23.1 accepts it
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    metadata.addPedigreeDatabase("ftp://www.ebi.ac.uk:8080/valid/host/to/file.db");
+    assertEquals(java.util.Collections.singletonList("ftp://www.ebi.ac.uk:8080/valid/host/to/file.db"),
+        metadata.getPedigreeDatabases());
+  }
+
+  @Test
+  public void testRemovePedigreeDbAcceptsBracketLessUrl() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    metadata.addPedigreeDatabase("ftp://www.ebi.ac.uk:8080/valid/host/to/file.db");
+    metadata.removePedigreeDb("ftp://www.ebi.ac.uk:8080/valid/host/to/file.db");
+    assertTrue(metadata.getPedigreeDatabases().isEmpty());
+  }
+
+  @Test
   public void testBuilderAddRawPropertyRejectsLineTerminator() {
     VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
     assertThrows(VcfFormatException.class, () -> builder.addRawProperty("name", "bad\nvalue"));
