@@ -5,7 +5,7 @@
 ##INFO=<ID=AN,Number=1,Type=Integer,Description="Total number of alleles in called genotypes">
 ##INFO=<Type=Flag,Description="Imprecise structural variation",Number=0,ID=IMPRECISE>
 ##INFO=<Type=Flag,Description="Appears in dbSNP",Number=0,ID=DB>
-##INFO=<ID=an_id,Description="a_description",Number=G,Type=String>
+##INFO=<ID=an_id,Number=G,Type=String,Description="a_description">
 ##FILTER=<ID=PASS,Description="All filters passed">
 ##FILTER=<ID=BAD,Description="Something bad happened">
 ##FILTER=<ID=Transformation,Description="A transformation was applied">

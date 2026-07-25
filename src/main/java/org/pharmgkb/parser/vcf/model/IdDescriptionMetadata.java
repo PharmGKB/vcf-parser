@@ -46,6 +46,18 @@ public class IdDescriptionMetadata extends IdMetadata {
     init(isBaseType);
   }
 
+  /**
+   * For subclasses (InfoMetadata, FormatMetadata) whose own typed constructor must insert additional properties
+   * between ID and Description to match their own canonical attribute order (see
+   * BaseMetadata#checkAttributeOrder) -- unlike the (id, description, isBaseType) constructor above, this does
+   * not insert Description; the caller must add it itself afterward, via putAndQuoteProperty, in whatever
+   * position is canonical for its own subtype.
+   */
+  protected IdDescriptionMetadata(String id, boolean isBaseType) {
+    super(id, false);
+    m_isBaseType = isBaseType;
+  }
+
   @Override
   public void validate() {
     super.validate();

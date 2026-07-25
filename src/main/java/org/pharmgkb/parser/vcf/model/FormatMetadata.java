@@ -30,9 +30,12 @@ public class FormatMetadata extends IdDescriptionMetadata {
   private @Nullable FormatType m_type;
 
   public FormatMetadata(String id, String description, String number, FormatType type) {
-    super(id, description, false);
+    super(id, false);
     putPropertyRaw(NUMBER, number);
     putPropertyRaw(TYPE, type.name());
+    // Description inserted last -- see InfoMetadata's identical constructor for why (matches canonical
+    // ID, Number, Type, Description order per VCFv4.2.tex line 94).
+    putAndQuoteProperty(DESCRIPTION, description);
     init();
   }
 

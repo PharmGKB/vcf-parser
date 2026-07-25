@@ -407,7 +407,7 @@ public class VcfWriterTest {
   public void testNoSamples() throws Exception {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    // ##INFO=<ID=NS,Description="Number of samples with data",Number=1,Type=Integer>
+    // ##INFO=<ID=NS,Number=1,Type=Integer,Description="Number of samples with data">
     InfoMetadata info = new InfoMetadata("NS", "Number of samples with data", InfoType.Integer, "1", null, null);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
     VcfPosition first = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
