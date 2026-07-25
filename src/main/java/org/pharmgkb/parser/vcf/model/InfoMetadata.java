@@ -46,18 +46,18 @@ public class InfoMetadata extends IdDescriptionMetadata {
     super(id, false);
     putPropertyRaw(NUMBER, number);
     putPropertyRaw(TYPE, type.name());
+    // Description is inserted here, before Source/Version and not immediately after ID, so this constructor's
+    // property-insertion order matches the canonical ID, Number, Type, Description, Source, Version order that
+    // BaseMetadata.checkAttributeOrder() checks (VCFv4.2.tex line 69) -- inserting it via the (id, description,
+    // isBaseType) super constructor instead would produce ID, Description, Number, Type, ..., which fails that
+    // check on any parse of this constructor's own written-out output.
+    putAndQuoteProperty(DESCRIPTION, description);
     if (source != null) {
       putAndQuoteProperty(SOURCE, source);
     }
     if (version != null) {
       putAndQuoteProperty(VERSION, version);
     }
-    // Description is inserted last, not immediately after ID, so this constructor's property-insertion order
-    // matches the canonical ID, Number, Type, Description, Source, Version order that
-    // BaseMetadata.checkAttributeOrder() checks (VCFv4.2.tex line 69) -- inserting it via the (id, description,
-    // isBaseType) super constructor instead would produce ID, Description, Number, Type, ..., which fails that
-    // check on any parse of this constructor's own written-out output.
-    putAndQuoteProperty(DESCRIPTION, description);
     init();
   }
 

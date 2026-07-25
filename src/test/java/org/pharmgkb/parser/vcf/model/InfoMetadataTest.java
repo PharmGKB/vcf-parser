@@ -235,9 +235,12 @@ public class InfoMetadataTest {
 
   @Test
   public void testTypedConstructorDoesNotWarnAboutAttributeOrder() {
-    // the typed constructor has no textual "declared order" to check -- see Task 2's implementation note. Its own
-    // internal property-insertion order (ID, Description, then Number/Type/Source/Version) does not match the
-    // canonical order checked for parsed/Map-based construction, so this must never warn regardless.
+    // the typed constructor's own internal property-insertion order matches the canonical
+    // ID, Number, Type, Description, Source, Version order (see the constructor's own comment); checkAttributeOrder
+    // is called directly here (it isn't wired into init()/validate() for a typed-constructed instance -- see
+    // IdDescriptionMetadata's Map-based-constructor-only wiring -- so this is the only way to exercise it against
+    // one). Source/Version are both non-null here because an earlier version of this constructor inserted
+    // Description after Source/Version instead of before them, which only this specific case would have caught.
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -245,7 +248,8 @@ public class InfoMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new InfoMetadata("DP", "Raw read depth", InfoType.Integer, "1", null, null);
+      InfoMetadata info = new InfoMetadata("DP", "Raw read depth", InfoType.Integer, "1", "src", "1.0");
+      info.checkAttributeOrder(org.slf4j.LoggerFactory.getLogger(InfoMetadataTest.class));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
