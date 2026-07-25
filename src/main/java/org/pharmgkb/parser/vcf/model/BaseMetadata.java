@@ -145,7 +145,7 @@ public class BaseMetadata {
    * establish that a declaration violating it is invalid, resolving the spec text's own silence on whether the
    * order shown is required.
    */
-  protected void checkAttributeOrder(Logger logger) {
+  public void checkAttributeOrder(Logger logger) {
     List<String> actual = new ArrayList<>();
     for (String key : getPropertyKeys()) {
       if (CANONICAL_ATTRIBUTE_ORDER.contains(key)) {

@@ -19,6 +19,7 @@ import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.model.BaseMetadata;
 import org.pharmgkb.parser.vcf.model.FormatMetadata;
 import org.pharmgkb.parser.vcf.model.FormatType;
+import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
 import org.pharmgkb.parser.vcf.model.InfoMetadata;
 import org.pharmgkb.parser.vcf.model.InfoType;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
@@ -286,6 +287,10 @@ public class VcfWriter implements Closeable {
       String mapKey = mapEntry.getKey();
       BaseMetadata entry = mapEntry.getValue();
       entry.validate();
+      entry.checkAttributeOrder(LoggerFactory.getLogger(entry.getClass()));
+      if ("ALT".equals(kind) && entry instanceof IdDescriptionMetadata idDescriptionMetadata) {
+        VcfMetadata.validateAlt(idDescriptionMetadata);
+      }
       Map<String, String> properties = entry.getPropertiesRaw();
       validateMetadataProperties(kind, properties);
       String id = properties.get("ID");
