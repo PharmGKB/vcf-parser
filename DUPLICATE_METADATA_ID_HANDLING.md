@@ -60,3 +60,16 @@ surfaces any complaint about a dropped duplicate's content either.
 - `VcfMetadata.Builder.addAlt()` / `addInfo()` / `addFormat()` / `addFilter()` / `addContig()` / `addSample()` —
   each calls `warnIfDuplicate()` before storing a new declaration, and returns immediately (without storing) if it
   reports a duplicate.
+
+## Out of scope
+
+1. `##PEDIGREE` declarations are not covered by this fix. `VcfMetadata.Builder.addPedigree()` has no duplicate-ID
+   check at all and always accepts every declaration unconditionally, while `VcfWriter.validateBeforeWrite()` still
+   throws `VcfFormatException` on a duplicate PEDIGREE ID (see `VcfWriter.java` around line 243-251, search for
+   "for PEDIGREE metadata") — an inconsistency with the six keyed types above, left as-is since no hts-specs
+   fixture or tool evidence motivates touching it in this pass.
+2. `VcfMetadata`'s own instance methods (`addAlt`/`addInfo`/`addFormat`/`addFilter`/`addContig`, defined directly
+   on `VcfMetadata`, not on `VcfMetadata.Builder`) retain a separate, pre-existing behavior on a duplicate ID:
+   silent overwrite (effectively "keep last"), with no warning at all. This differs from `Builder`'s new
+   warn-and-keep-first behavior documented above, and is intentionally out of scope for this fix — only
+   `Builder`'s construction-time path was changed.

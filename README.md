@@ -161,14 +161,18 @@ bcftools 1.23.1 (htslib 1.23.1), which both tolerate these constructs.
 Unlocking those 5 fixtures from parse-time rejection also exposed them, for the first time, to the
 `writer-bytediff`/`writer-semantic` round-trip checks (a fixture that never finishes parsing was never previously
 round-tripped at all) — this is why the total test count rose from 601 to 611 (5 fixtures × 2 newly-applicable
-checks). `writer-semantic` stayed at 0 for all of them, confirming no data loss; `writer-bytediff` gained exactly
-5 new baselined entries: 3 are `complexfile_passed_000.vcf` (all versions), which interleaves `##INFO`/`##ALT`/
-`##FILTER`/`##FORMAT`/more `##INFO` lines, and is reordered by `VcfWriter.buildHeaderLines()`'s pre-existing,
-fixed per-type grouping (INFO, FILTER, FORMAT, ALT, contig, SAMPLE, PEDIGREE, then generic properties) — a
-long-standing writer property this plan didn't change, just newly revealed. The other 2 are
+checks). `writer-semantic` stayed at 0 for all of them; that check's `semanticDiff()` only compares parsed
+position/sample data, not metadata, so it confirms no data loss for the `complexfile_passed_000.vcf` reordering
+case below but has nothing to say about the `passed_meta_contig.vcf` case discussed next. `writer-bytediff` gained
+exactly 5 new baselined entries: 3 are `complexfile_passed_000.vcf` (all versions), which interleaves `##INFO`/
+`##ALT`/`##FILTER`/`##FORMAT`/more `##INFO` lines, and is reordered by `VcfWriter.buildHeaderLines()`'s
+pre-existing, fixed per-type grouping (INFO, FILTER, FORMAT, ALT, contig, SAMPLE, PEDIGREE, then generic
+properties) — a long-standing writer property this plan didn't change, just newly revealed. The other 2 are
 `passed_meta_contig.vcf` (4.1/4.2), which is this plan's own doing: the duplicate `##contig=<ID=1,length=123456>`
 line is now dropped (per `DUPLICATE_METADATA_ID_HANDLING.md`), so the written output is naturally one line shorter
-than the original.
+than the original. This is real, intended information loss at the metadata level — the duplicate's own
+`length=123456` attribute is permanently gone — as a direct, deliberate consequence of the keep-first policy; it
+isn't something `writer-semantic` needs to "confirm" away, since that check doesn't look at metadata at all.
 
 The 14 `parser-throw-or-warn` entries are `failed/` fixtures whose invalidity this library still doesn't detect,
 grouped by cause: 4 are genome ID validation (whitespace/punctuation in `SAMPLE`'s `Genomes`); 3 are invalid URLs;
@@ -218,14 +222,17 @@ that cluster: `AGENTS.md` now treats hts-specs' conformance suite as spec guidan
 prose, resolving VCFv4.2's silence on attribute
 order the same way the reserved-property work resolved its silence on `Number`/`Type`.
 
-The writer round-trip checks no longer find any ordering-related divergences: `VcfUtils.extractProperties()`,
-`VcfMetadata`'s six keyed maps and its generic-property map, and `VcfPosition.info()` all now preserve insertion
-order through parse-write round trips (see `docs/superpowers/specs/2026-07-24-writer-ordering-preservation-design.md`).
-The 4 remaining `writer-bytediff` entries are unrelated to ordering: 3 are `QUAL` scientific-notation case
-normalization (`2e+1` in the original fixture is written back as `2E+1`, from `BigDecimal`'s own string
-formatting), and 1 is empty-sample-value-to-`.` normalization in `zero_length_LAA.vcf`, consistent with this
-library's documented empty-field-handling policy. Both are pre-existing, deliberate canonicalization behaviors,
-not data loss (0 `writer-semantic` findings confirm this), and are out of scope for this writer-ordering fix.
+The writer round-trip checks found no ordering-related divergences at the time this fix landed:
+`VcfUtils.extractProperties()`, `VcfMetadata`'s six keyed maps and its generic-property map, and
+`VcfPosition.info()` all preserve insertion order through parse-write round trips (see
+`docs/superpowers/specs/2026-07-24-writer-ordering-preservation-design.md`). Of the 4 `writer-bytediff` entries
+existing at that point, 3 are `QUAL` scientific-notation case normalization (`2e+1` in the original fixture is
+written back as `2E+1`, from `BigDecimal`'s own string formatting), and 1 is empty-sample-value-to-`.`
+normalization in `zero_length_LAA.vcf`, consistent with this library's documented empty-field-handling policy.
+Both are pre-existing, deliberate canonicalization behaviors, not data loss (0 `writer-semantic` findings confirm
+this), and were out of scope for this writer-ordering fix. (A later plan grew `writer-bytediff` to 9 entries; 3 of
+the 5 new ones ARE ordering-related — see the `complexfile_passed_000.vcf` discussion above, under "As of the
+current `htsSpecsPinnedSha`".)
 
 Every `htsSpecsTest`/`htsSpecsUpdateBaseline` run writes two (gitignored, not committed) reports under
 `build/reports/hts-specs-conformance/`: `summary.md` (counts by version x check type) and `findings.tsv` (only
