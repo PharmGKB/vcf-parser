@@ -76,7 +76,8 @@ public class VcfMetadataTest {
 
   @Test
   public void testAddAltWarnsOnInvalidStructuralVariantCode() {
-    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_alt_000.vcf's ##CauseOfFailure=Incorrect ALT ID value
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_alt_005.vcf's ##CauseOfFailure=The ALT prefix is none of
+    // the supported ones (INS, DEL, etc)
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -85,7 +86,7 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata("DEL1", "My deletion"));
+      metadata.addAlt(new IdDescriptionMetadata("THIS:IS-NOT-VALID", "Not a real code"));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -95,6 +96,8 @@ public class VcfMetadataTest {
 
   @Test
   public void testBuilderAddAltWarnsOnInvalidStructuralVariantCode() {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_alt_005.vcf's ##CauseOfFailure=The ALT prefix is none of
+    // the supported ones (INS, DEL, etc)
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -102,7 +105,8 @@ public class VcfMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new VcfMetadata.Builder().setFileFormat("VCFv4.2").addAlt(new IdDescriptionMetadata("DEL1", "My deletion"));
+      new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+          .addAlt(new IdDescriptionMetadata("THIS:IS-NOT-VALID", "Not a real code"));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -184,6 +188,46 @@ public class VcfMetadataTest {
           org.pharmgkb.parser.vcf.VcfUtils.extractProperties("ID=DEL", "Number=1", "Type=String",
               "Description=\"Deletion\""), true));
       assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testAddAltDoesNotWarnForCustomSingleTokenId() {
+    // CN0 is not a reserved structural-variant code, but it's a legitimate real-world convention (1000 Genomes
+    // copy-number alleles, see src/test/resources/cnv.vcf) with no colon -- must not be rejected as an invalid SV
+    // code (see VcfMetadata.validateAlt's comment for the full reasoning)
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.1").build();
+    try {
+      metadata.addAlt(new IdDescriptionMetadata("CN0", "Copy number allele: 0 copies"));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testAddAltWarnsOnWhitespaceEvenWithoutColon() {
+    // the character-set check is not SV-specific -- it applies to every ALT ID regardless of colon
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addAlt(new IdDescriptionMetadata("AB CD", "d"));
+      assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
       appender.stop();

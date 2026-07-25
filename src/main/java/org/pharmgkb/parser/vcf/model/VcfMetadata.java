@@ -141,13 +141,28 @@ public class VcfMetadata {
    * {@code value}'s ID is not a valid ALT structural variant code, or if it declares a Number/Type extra property
    * with a syntactically invalid value.
    */
-  private static void validateAlt(IdDescriptionMetadata value) {
+  public static void validateAlt(IdDescriptionMetadata value) {
     String id = value.getId();
     if (id != null) {
-      try {
-        new AltStructuralVariant(id);
-      } catch (VcfFormatException e) {
-        sf_logger.warn("ALT {} is not a valid structural variant code: {}", id, e.getMessage());
+      // VCFv4.2.tex line 105: "ID values are case sensitive strings and may not contain whitespace or angle
+      // brackets" -- this applies to every ALT ID, structural-variant or not, so it is checked unconditionally.
+      if (id.chars().anyMatch(c -> Character.isWhitespace(c) || c == '<' || c == '>')) {
+        sf_logger.warn("ALT {} must not contain whitespace or angle brackets", id);
+      } else if (id.contains(":")) {
+        // Only an ID containing ':' unambiguously invokes the structural-variant-code grammar (VCFv4.2.tex lines
+        // 100-117: DEL/INS/DUP/INV/CNV and their colon-delimited subtypes, e.g. DEL:ME). A bare single-token ID
+        // has other spec-sanctioned, non-SV uses this library must not reject: VCFv4.3.tex's IUPAC ambiguity
+        // codes (##ALT=<ID=R,Description="IUPAC code R = A/G">) and the real-world copy-number-allele convention
+        // (##ALT=<ID=CN0,...> through CN124, used by 1000 Genomes; see src/test/resources/cnv.vcf, itself a
+        // VCFv4.1 file) that predates and coexists with every VCF version. There is no way to distinguish "CN0"
+        // (legitimate) from "DEL1" (a typo of the reserved code DEL) by ID shape alone when there is no colon, so
+        // the reserved-code hierarchy is only enforced when the ID's own colon-delimited structure signals that
+        // is what was intended.
+        try {
+          new AltStructuralVariant(id);
+        } catch (VcfFormatException e) {
+          sf_logger.warn("ALT {} is not a valid structural variant code: {}", id, e.getMessage());
+        }
       }
     }
     // ##ALT's only defined fields are ID/Description (VCFv4.2.tex line 103: ##ALT=<ID=type,Description="description">);
