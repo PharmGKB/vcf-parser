@@ -63,4 +63,23 @@ public class AltStructuralVariantTest {
   public void testInteriorEmptyComponentRejected() {
     assertThrows(VcfFormatException.class, () -> new AltStructuralVariant("INS::LINE"));
   }
+
+  @Test
+  public void testWhitespaceInComponentRejected() {
+    // VCFv4.2.tex line 105: "ID values are case sensitive strings and may not contain whitespace or angle brackets."
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_alt_006.vcf's ##CauseOfFailure=The ALT ID contains a whitespace
+    assertThrows(VcfFormatException.class, () -> new AltStructuralVariant("DEL:A B"));
+  }
+
+  @Test
+  public void testOpeningAngleBracketInComponentRejected() {
+    // reproduces failed_meta_alt_008.vcf's ##CauseOfFailure=The ALT ID contains an opening angle bracket
+    assertThrows(VcfFormatException.class, () -> new AltStructuralVariant("DEL:A<B"));
+  }
+
+  @Test
+  public void testClosingAngleBracketInComponentRejected() {
+    // reproduces failed_meta_alt_009.vcf's ##CauseOfFailure=The ALT ID contains a closing angle bracket
+    assertThrows(VcfFormatException.class, () -> new AltStructuralVariant("DEL:A>B"));
+  }
 }

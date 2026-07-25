@@ -42,6 +42,12 @@ public class AltStructuralVariant {
     if (string.isEmpty()) { // could be replaced with javax.validation.constraints.Size(min=1);
       throw new VcfFormatException("Structural variant code must not be empty");
     }
+    if (string.chars().anyMatch(c -> Character.isWhitespace(c) || c == '<' || c == '>')) {
+      // VCFv4.2.tex line 105: "ID values are case sensitive strings and may not contain whitespace or angle
+      // brackets."
+      throw new VcfFormatException("Structural variant code \"" + string + "\" must not contain whitespace or " +
+          "angle brackets");
+    }
 
     // limit -1 preserves trailing empty components (e.g. a trailing colon), which are rejected below rather than
     // silently dropped as Pattern.split's default limit of 0 would do
