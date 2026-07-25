@@ -148,20 +148,34 @@ which stays network-free. The pinned commit is bumped deliberately, not automati
 `htsSpecsTest` depends on) prints a warning if hts-specs has upstream changes to `test/vcf` that the current pin
 doesn't include.
 
-As of the current `htsSpecsPinnedSha`, `./gradlew htsSpecsTest` reports **601 total tests, 31 baselined
-entries**, and this is the expected current state, not a regression to chase down: 5 `parser-no-throw` + 22
+As of the current `htsSpecsPinnedSha`, `./gradlew htsSpecsTest` reports **601 total tests, 23 baselined
+entries**, and this is the expected current state, not a regression to chase down: 5 `parser-no-throw` + 14
 `parser-throw-or-warn` + 4 `writer-bytediff` (0 `writer-semantic`). The 5 `parser-no-throw` entries are two
 `passed/` fixtures recurring across their per-version copies (`complexfile_passed_000.vcf` in 4.1/4.2/4.3;
 `passed_meta_contig.vcf` in 4.1/4.2 — 3 + 2 = 5): `complexfile_passed_000.vcf` (FILTER combines `PASS` with
 another code) and `passed_meta_contig.vcf` (duplicate `##contig` ID) are hts-specs `passed/` fixtures that this
 library's pre-existing, stricter FILTER and contig validation correctly rejects.
 
-The 22 `parser-throw-or-warn` entries are `failed/` fixtures whose invalidity this library still doesn't detect,
-grouped by cause: 9 are malformed metadata key-value pair/empty-value syntax; 4 are genome ID validation
-(whitespace/punctuation in `SAMPLE`'s `Genomes`); 3 are invalid URLs; 2 are unescaped `Description` quotes; 2 are
-fixtures hts-specs itself doesn't document a cause for; 2 are `failed_meta_alt_000.vcf` (`ID=DEL1`), a deliberately
-accepted false negative — see below. None of these are part of this test task; each is a candidate for separate,
-future work.
+The 14 `parser-throw-or-warn` entries are `failed/` fixtures whose invalidity this library still doesn't detect,
+grouped by cause: 4 are genome ID validation (whitespace/punctuation in `SAMPLE`'s `Genomes`); 3 are invalid URLs;
+2 are unescaped `Description` quotes; 2 are fixtures hts-specs itself doesn't document a cause for; 2 are
+`failed_meta_alt_000.vcf` (`ID=DEL1`), a deliberately accepted false negative — see below; 1 is
+`failed_meta_assembly_001.vcf`'s 4.2 copy, which is really the same invalid-URL issue as the 3 above but is
+labeled with a different `##CauseOfFailure=` in that one fixture copy (see
+`docs/superpowers/specs/2026-07-25-empty-metadata-value-validation-design.md`'s Context section, and
+`non-valid-url-issue.md`). None of these are part of this test task; each is a candidate for separate, future
+work.
+
+The malformed-metadata-key-value-pair/empty-value cluster (formerly 9 findings) is now closed (see
+`docs/superpowers/specs/2026-07-25-empty-metadata-value-validation-design.md`): a generic metadata property
+(`##reference=`, `##assembly=`, `##pedigreeDB=`, or any other) with a completely empty value — or, for
+`pedigreeDB` specifically, an empty bracket pair `##pedigreeDB=<>` — now warns and is dropped, via
+`VcfMetadata.Builder.addRawProperty()`/`addAssembly()`/`addPedigreeDatabase()`, matching bcftools 1.23.1's own
+observed behavior (see `EMPTY_FIELD_HANDLING.md`). This also fixed a real pre-existing bug:
+`addPedigreeDatabase()`/`removePedigreeDb()` incorrectly required angle-bracket wrapping, contradicting
+VCFv4.2.tex/4.3.tex/4.4.tex's own bracket-less template and hts-specs' own `passed_meta_pedigreedb.vcf` fixture.
+`VcfWriter.validateBeforeWrite()` warns (without dropping) on the same condition for metadata built or mutated
+programmatically.
 
 This library previously did not cross-validate a declared `##INFO`/`##FORMAT` key's `Number`/`Type` against the
 canonical values for well-known reserved keys (`AC`, `AN`, `GT`, `PL`, etc.) — `ReservedInfoProperty` and

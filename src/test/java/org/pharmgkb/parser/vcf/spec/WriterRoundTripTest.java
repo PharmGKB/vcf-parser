@@ -186,4 +186,31 @@ class WriterRoundTripTest {
     String written = WriterRoundTrip.write(parsed);
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
   }
+
+  @Test
+  void testEmptyGenericPropertyValueIsDroppedNotPreserved() throws IOException {
+    // unlike every other warn-and-preserve case in this test class, an empty generic property value is warn-and-
+    // DROP (see VcfMetadata.Builder.addRawProperty) -- the written output omits the line entirely, so this is not
+    // a byte-diff-empty assertion like the other round-trip tests here
+    String vcf =
+        "##fileformat=VCFv4.2\n" +
+        "##reference=\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT\t.\tPASS\t.\n";
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    WriterRoundTrip.ParsedFile parsed;
+    try {
+      parsed = WriterRoundTrip.parseText(vcf);
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    String written = WriterRoundTrip.write(parsed);
+    assertFalse(written.contains("##reference="));
+  }
 }

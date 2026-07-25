@@ -66,6 +66,7 @@ more useful reading of what's normally just a stray delimiter.
 | GT allele (`:`-separated by `/` or `\|`) | `0/` | Not tested against bcftools | Warn + substitute `.` | `0/.` |
 | Reserved list-typed FORMAT value (e.g. `HQ`) | `1,2,` | Not tested against bcftools | Warn + substitute `.` (`null` in the returned list) | n/a (read-side conversion only) |
 | Reserved `FORMAT/FT` value | `q10;;q20` | Not tested against bcftools | Warn + drop (read-side only, like the row above) | n/a (read-side conversion only) |
+| Generic metadata property (`##reference=`, `##assembly=`, `##pedigreeDB=`, or any other) | `##reference=` | Not tested against bcftools for `reference` specifically, but `##assembly=`/`##pedigreeDB=` with an empty value are both silently dropped entirely by bcftools 1.23.1 | Warn + drop the entire property entry | Line omitted entirely |
 
 The INFO flag row is included as a contrast, not an empty-field case: a flag key with no `=` sign (e.g. `DB`) is
 stored internally with an empty-string sentinel value, the same representation used for the "was this value actually
@@ -78,6 +79,17 @@ haploid, which is a materially different, incorrect result — not just a cosmet
 other rows in this table, this and the reserved-list-value row were not verified against bcftools; the "warn and
 substitute" treatment was chosen for consistency with the rest of this table rather than from observed reference
 behavior.
+
+The generic-metadata-property row differs from every other row in this table in what gets dropped: every other
+row drops or substitutes one *element* of a delimited list, but a generic property (`##reference=`, `##assembly=`,
+`##pedigreeDB=`, or any unrecognized `##key=value` line) has no internal delimiter to drop an element from -- the
+entire line is empty. Dropping the whole entry, rather than keeping an empty one or substituting `.`, matches
+bcftools's own observed behavior (verified for `##assembly=`/`##pedigreeDB=`) and is the closest analogue to the
+ID/FILTER/INFO-top-level "position-independent list: drop" strategy above, since nothing else depends on a generic
+property's order or count.
+
+`VcfWriter.validateBeforeWrite()` warns on this same condition but does not drop the entry -- unlike the parse-time
+path, the writer must not silently remove content the caller is already holding a reference to.
 
 ## A related, but distinct, fix: duplicate FORMAT keys
 
