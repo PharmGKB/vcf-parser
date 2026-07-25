@@ -135,14 +135,16 @@ class WriterRoundTripTest {
 
   @Test
   void testInvalidAltIdRoundTripsWithoutRewriting() throws IOException {
-    // warn-and-preserve, not reject-and-rewrite: DEL1 is not a valid structural variant code (not a reserved
-    // top-level code, see AltStructuralVariantTest/VcfMetadataTest), but the declaration must still round-trip
-    // byte-for-byte unchanged
+    // warn-and-preserve, not reject-and-rewrite: THIS:IS-NOT-VALID is not a valid structural variant code (its
+    // colon-delimited structure invokes the SV-code grammar, but "THIS" is not a reserved top-level code, see
+    // AltStructuralVariantTest/VcfMetadataTest), but the declaration must still round-trip byte-for-byte unchanged.
+    // (A bare single-token ID like "DEL1" is deliberately NOT used here -- see VcfMetadata.validateAlt -- since it
+    // has legitimate non-SV uses and must not warn at all.)
     String vcf =
         "##fileformat=VCFv4.2\n" +
-        "##ALT=<ID=DEL1,Description=\"My deletion\">\n" +
+        "##ALT=<ID=THIS:IS-NOT-VALID,Description=\"Not a real code\">\n" +
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
-        "1\t100\t.\tA\t<DEL1>\t.\tPASS\t.\n";
+        "1\t100\t.\tA\t<THIS:IS-NOT-VALID>\t.\tPASS\t.\n";
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
