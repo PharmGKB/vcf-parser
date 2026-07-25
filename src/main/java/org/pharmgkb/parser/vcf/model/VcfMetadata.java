@@ -1,5 +1,6 @@
 package org.pharmgkb.parser.vcf.model;
 
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -12,6 +13,8 @@ import com.google.common.collect.ListMultimap;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -20,6 +23,9 @@ import org.pharmgkb.parser.vcf.VcfUtils;
  * @author Mark Woon
  */
 public class VcfMetadata {
+
+  private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
   private String m_fileFormat;
   private final Map<String, IdDescriptionMetadata> m_alt;
   private final Map<String, InfoMetadata> m_info;
@@ -126,7 +132,40 @@ public class VcfMetadata {
    * Adds {@code value} to the map of ALT metadata, using its {@link IdDescriptionMetadata#getId() ID} as the key.
    */
   public void addAlt(IdDescriptionMetadata value) {
+    validateAlt(value);
     m_alt.put(value.getId(), value);
+  }
+
+  /**
+   * Warns (does not throw -- matching this project's warn-and-preserve policy for metadata declarations) if
+   * {@code value}'s ID is not a valid ALT structural variant code, or if it declares a Number/Type extra property
+   * with a syntactically invalid value.
+   */
+  private static void validateAlt(IdDescriptionMetadata value) {
+    String id = value.getId();
+    if (id != null) {
+      try {
+        new AltStructuralVariant(id);
+      } catch (VcfFormatException e) {
+        sf_logger.warn("ALT {} is not a valid structural variant code: {}", id, e.getMessage());
+      }
+    }
+    // ##ALT's only defined fields are ID/Description (VCFv4.2.tex line 103: ##ALT=<ID=type,Description="description">);
+    // Number/Type are unrecognized extras, but test/vcf/4.2/failed/failed_meta_alt_001.vcf and
+    // .../failed_meta_alt_002.vcf (##CauseOfFailure=Incorrect ALT Number/Type value) establish that, once
+    // declared, they're still expected to be syntactically valid VCF Number/Type tokens.
+    String number = value.getPropertyRaw(InfoMetadata.NUMBER);
+    if (number != null && !VcfUtils.NUMBER_PATTERN.matcher(number).matches()) {
+      sf_logger.warn("ALT {} has Number '{}' but it is not a valid VCF number", id, number);
+    }
+    String type = value.getPropertyRaw(InfoMetadata.TYPE);
+    if (type != null) {
+      try {
+        InfoType.valueOf(type);
+      } catch (IllegalArgumentException e) {
+        sf_logger.warn("ALT {} has Type '{}' but it is not a recognized VCF type", id, type);
+      }
+    }
   }
 
   /**
@@ -345,6 +384,7 @@ public class VcfMetadata {
       if (m_alt.containsKey(md.getId())) {
         throw new VcfFormatException("Duplicate ID " + md.getId() + " for ALT");
       }
+      validateAlt(md);
       m_alt.put(md.getId(), md);
       return this;
     }

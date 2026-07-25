@@ -73,4 +73,120 @@ public class VcfMetadataTest {
     assertThrows(VcfFormatException.class, () -> builder.addRawProperty("name", "bad\nvalue"));
     assertThrows(VcfFormatException.class, () -> builder.addRawProperty("bad\nname", "value"));
   }
+
+  @Test
+  public void testAddAltWarnsOnInvalidStructuralVariantCode() {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_alt_000.vcf's ##CauseOfFailure=Incorrect ALT ID value
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addAlt(new IdDescriptionMetadata("DEL1", "My deletion"));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testBuilderAddAltWarnsOnInvalidStructuralVariantCode() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new VcfMetadata.Builder().setFileFormat("VCFv4.2").addAlt(new IdDescriptionMetadata("DEL1", "My deletion"));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testAddAltDoesNotWarnForValidStructuralVariantCode() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addAlt(new IdDescriptionMetadata("DEL", "Deletion"));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testAddAltWarnsOnInvalidExtraNumber() {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_alt_001.vcf's ##CauseOfFailure=Incorrect ALT Number value
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addAlt(new IdDescriptionMetadata(
+          org.pharmgkb.parser.vcf.VcfUtils.extractProperties("ID=DEL", "Number=B", "Type=String",
+              "Description=\"Deletion\""), true));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testAddAltWarnsOnInvalidExtraType() {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_alt_002.vcf's ##CauseOfFailure=Incorrect ALT Type value
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addAlt(new IdDescriptionMetadata(
+          org.pharmgkb.parser.vcf.VcfUtils.extractProperties("ID=DEL", "Number=1", "Type=Text",
+              "Description=\"Deletion\""), true));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testAddAltDoesNotWarnForWellFormedExtraNumberAndType() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addAlt(new IdDescriptionMetadata(
+          org.pharmgkb.parser.vcf.VcfUtils.extractProperties("ID=DEL", "Number=1", "Type=String",
+              "Description=\"Deletion\""), true));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
 }
