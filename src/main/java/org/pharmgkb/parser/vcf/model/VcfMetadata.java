@@ -184,6 +184,21 @@ public class VcfMetadata {
   }
 
   /**
+   * @return Whether {@code value} (for the generic metadata property {@code name}) has no meaningful content --
+   * either fully empty, or (pedigreeDB-specific) an empty bracket pair.
+   */
+  public static boolean isEmptyMetadataValue(String name, String value) {
+    String trimmed = value.trim();
+    if (trimmed.isEmpty()) {
+      return true;
+    }
+    // ##pedigreeDB=<> (test/vcf/{4.1,4.2}/failed/failed_meta_pedigreedb_001.vcf, ##CauseOfFailure=Meta-data entry
+    // is not a key-value pair) has no meaningful content between the brackets -- effectively the same as empty.
+    // No fixture exercises the analogous case for other keys, so this is pedigreeDB-specific.
+    return "pedigreeDB".equals(name) && trimmed.equals("<>");
+  }
+
+  /**
    * Adds {@code value} to the map of INFO metadata, using its {@link InfoMetadata#getId() ID} as the key.
    */
   public void addInfo(InfoMetadata value) {
@@ -451,6 +466,15 @@ public class VcfMetadata {
 
     public Builder addRawProperty(String name, String value) {
       VcfUtils.checkNoLineTerminator(name, value);
+      if (isEmptyMetadataValue(name, value)) {
+        // VCFv4.3.tex line 39: "Zero length fields are not allowed, a dot ('.') must be used instead" -- stated
+        // generally for meta-information/header/data lines, not scoped to data fields only; VCFv4.1/4.2 are
+        // silent. Confirmed against bcftools 1.23.1 (htslib 1.23.1): it silently drops a generic metadata line
+        // with an empty value entirely (rather than keeping an empty entry or substituting "."), so this matches
+        // that behavior -- see EMPTY_FIELD_HANDLING.md's "position-independent list: drop" strategy.
+        sf_logger.warn("Metadata property \"{}\" has an empty value and was dropped: {}", name, value);
+        return this;
+      }
       m_properties.put(name, value);
       return this;
     }

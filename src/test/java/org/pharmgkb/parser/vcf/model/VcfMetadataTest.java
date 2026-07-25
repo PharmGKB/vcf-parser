@@ -75,6 +75,83 @@ public class VcfMetadataTest {
   }
 
   @Test
+  public void testBuilderAddRawPropertyWarnsAndDropsEmptyValue() {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_009.vcf's ##reference= (empty value)
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addRawProperty("reference", "").build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertFalse(metadata.getRawPropertyKeys().contains("reference"));
+  }
+
+  @Test
+  public void testBuilderAddRawPropertyWarnsAndDropsEmptyValueForAnyKey() {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_assembly_000.vcf's ##assembly= (empty value) -- the check
+    // applies uniformly to any key, not just a hardcoded list
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+          .addRawProperty("assembly", "")
+          .addRawProperty("myCustomKey", "")
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertFalse(metadata.getRawPropertyKeys().contains("assembly"));
+    assertFalse(metadata.getRawPropertyKeys().contains("myCustomKey"));
+  }
+
+  @Test
+  public void testBuilderAddRawPropertyDoesNotWarnForNonEmptyValue() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+          .addRawProperty("source", "myImputationProgramV3.1")
+          .build();
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(java.util.Collections.singletonList("myImputationProgramV3.1"),
+        metadata.getRawValuesOfProperty("source"));
+  }
+
+  @Test
+  public void testIsEmptyMetadataValue() {
+    assertTrue(VcfMetadata.isEmptyMetadataValue("reference", ""));
+    assertTrue(VcfMetadata.isEmptyMetadataValue("reference", "   "));
+    assertTrue(VcfMetadata.isEmptyMetadataValue("pedigreeDB", "<>"));
+    assertFalse(VcfMetadata.isEmptyMetadataValue("assembly", "ftp://example.com/db"));
+    // the "<>" special case is pedigreeDB-specific -- no fixture exercises the analogous case for other keys
+    assertFalse(VcfMetadata.isEmptyMetadataValue("assembly", "<>"));
+  }
+
+  @Test
   public void testAddAltWarnsOnInvalidStructuralVariantCode() {
     // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_alt_005.vcf's ##CauseOfFailure=The ALT prefix is none of
     // the supported ones (INS, DEL, etc)
