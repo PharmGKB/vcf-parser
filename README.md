@@ -148,13 +148,27 @@ which stays network-free. The pinned commit is bumped deliberately, not automati
 `htsSpecsTest` depends on) prints a warning if hts-specs has upstream changes to `test/vcf` that the current pin
 doesn't include.
 
-As of the current `htsSpecsPinnedSha`, `./gradlew htsSpecsTest` reports **601 total tests, 23 baselined
-entries**, and this is the expected current state, not a regression to chase down: 5 `parser-no-throw` + 14
-`parser-throw-or-warn` + 4 `writer-bytediff` (0 `writer-semantic`). The 5 `parser-no-throw` entries are two
-`passed/` fixtures recurring across their per-version copies (`complexfile_passed_000.vcf` in 4.1/4.2/4.3;
-`passed_meta_contig.vcf` in 4.1/4.2 — 3 + 2 = 5): `complexfile_passed_000.vcf` (FILTER combines `PASS` with
-another code) and `passed_meta_contig.vcf` (duplicate `##contig` ID) are hts-specs `passed/` fixtures that this
-library's pre-existing, stricter FILTER and contig validation correctly rejects.
+As of the current `htsSpecsPinnedSha`, `./gradlew htsSpecsTest` reports **611 total tests, 23 baselined
+entries**, and this is the expected current state, not a regression to chase down: 0 `parser-no-throw` + 14
+`parser-throw-or-warn` + 9 `writer-bytediff` (0 `writer-semantic`). The `parser-no-throw` cluster (formerly 5
+entries) is now closed (see
+`docs/superpowers/specs/2026-07-25-duplicate-metadata-id-and-filter-pass-validation-design.md`): a repeated
+declaration ID for `##contig`/`##INFO`/`##FORMAT`/`##FILTER`/`##ALT`/`##SAMPLE` now warns and keeps the first
+declaration instead of throwing (see `DUPLICATE_METADATA_ID_HANDLING.md`), and a `FILTER` value combining `PASS`
+with another code now warns instead of being rejected. Both changes were verified against vcf_validator 0.10.2 and
+bcftools 1.23.1 (htslib 1.23.1), which both tolerate these constructs.
+
+Unlocking those 5 fixtures from parse-time rejection also exposed them, for the first time, to the
+`writer-bytediff`/`writer-semantic` round-trip checks (a fixture that never finishes parsing was never previously
+round-tripped at all) — this is why the total test count rose from 601 to 611 (5 fixtures × 2 newly-applicable
+checks). `writer-semantic` stayed at 0 for all of them, confirming no data loss; `writer-bytediff` gained exactly
+5 new baselined entries: 3 are `complexfile_passed_000.vcf` (all versions), which interleaves `##INFO`/`##ALT`/
+`##FILTER`/`##FORMAT`/more `##INFO` lines, and is reordered by `VcfWriter.buildHeaderLines()`'s pre-existing,
+fixed per-type grouping (INFO, FILTER, FORMAT, ALT, contig, SAMPLE, PEDIGREE, then generic properties) — a
+long-standing writer property this plan didn't change, just newly revealed. The other 2 are
+`passed_meta_contig.vcf` (4.1/4.2), which is this plan's own doing: the duplicate `##contig=<ID=1,length=123456>`
+line is now dropped (per `DUPLICATE_METADATA_ID_HANDLING.md`), so the written output is naturally one line shorter
+than the original.
 
 The 14 `parser-throw-or-warn` entries are `failed/` fixtures whose invalidity this library still doesn't detect,
 grouped by cause: 4 are genome ID validation (whitespace/punctuation in `SAMPLE`'s `Genomes`); 3 are invalid URLs;
