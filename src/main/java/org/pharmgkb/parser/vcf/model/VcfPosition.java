@@ -182,19 +182,21 @@ public class VcfPosition {
   }
 
   /**
-   * @return {@code altBases} unchanged, or a new list with any empty entry dropped (with a warning); see
+   * @return {@code altBases}, with any empty entry substituted in place with {@code "."} (with a warning); see
    * {@code EMPTY_FIELD_HANDLING.md}
    */
   private static List<String> checkAltBases(List<String> altBases) {
-    altBases = VcfUtils.dropEmptyEntries(sf_logger, "ALT", altBases);
+    // ALT is position-dependent: GT genotype values index into it positionally (VCFv4.2.tex line 217: "1 for the
+    // first allele listed in ALT, 2 for the second allele listed in ALT and so on"; see getAllele(int)). Dropping
+    // an empty entry (the previous behavior) would shift every subsequent allele's index down by one, silently
+    // misdirecting a GT value referencing a position after the dropped entry to the wrong allele. Substituting
+    // '.' instead preserves every index, matching bcftools 1.23.1 exactly (confirmed empirically: "T,,C" becomes
+    // "T,.,C", with no warning, and genotype indices before/at/after the dot still resolve correctly).
+    VcfUtils.fillEmptyEntriesWithDot(sf_logger, "ALT", altBases);
     for (String base : altBases) {
       if (!VcfUtils.ALT_BASE_PATTERN.matcher(base).matches()) {
         throw new VcfFormatException("Invalid alternate base '" + base + "' (must match " + VcfUtils.ALT_BASE_PATTERN + ")");
       }
-    }
-    // "." is the missing value, representing "no alternate allele"; it cannot be combined with a real allele
-    if (altBases.size() > 1 && altBases.contains(".")) {
-      throw new VcfFormatException("ALT contains '.' (missing value) along with other alleles");
     }
     return altBases;
   }

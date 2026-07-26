@@ -293,4 +293,33 @@ class WriterRoundTripTest {
     assertTrue(written.contains("Father=Dad"));
     assertFalse(written.contains("Mother=Mom"));
   }
+
+  @Test
+  void testEmptyAltEntryRoundTripsAsSubstitutedDot() throws IOException {
+    // warn-and-substitute, not drop: dropping would shift every subsequent GT index (see VcfPositionTest's
+    // testGetAlleleAfterAltDotSubstitutionPreservesIndex for the underlying bug this prevents)
+    String vcf =
+        "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT,,C\t.\tPASS\t.\n";
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    WriterRoundTrip.ParsedFile parsed;
+    try {
+      parsed = WriterRoundTrip.parseText(vcf);
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    String written = WriterRoundTrip.write(parsed);
+    String expected =
+        "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT,.,C\t.\tPASS\t.\n";
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(expected, written));
+  }
 }

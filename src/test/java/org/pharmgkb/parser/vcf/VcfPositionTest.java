@@ -341,14 +341,32 @@ public class VcfPositionTest {
   }
 
   @Test
-  public void testEmptyAltEntriesDropped() {
+  public void testEmptyAltEntriesSubstitutedWithDot() {
+    // ALT is position-dependent (GT indexes into it -- see testGetAlleleAfterAltDotSubstitutionPreservesIndex),
+    // so an empty entry is substituted with '.', not dropped, unlike ID/FILTER above
     VcfPosition interior = new VcfPosition("chr", 1, null, "C",
         new ArrayList<>(Arrays.asList("T", "", "G")), null, null, null, null);
-    assertEquals(Arrays.asList("T", "G"), interior.getAltBases());
+    assertEquals(Arrays.asList("T", ".", "G"), interior.getAltBases());
 
     VcfPosition trailing = new VcfPosition("chr", 1, null, "C",
         new ArrayList<>(Arrays.asList("T", "")), null, null, null, null);
-    assertEquals(Collections.singletonList("T"), trailing.getAltBases());
+    assertEquals(Arrays.asList("T", "."), trailing.getAltBases());
+  }
+
+  @Test
+  public void testGetAlleleAfterAltDotSubstitutionPreservesIndex() {
+    // regression test for the actual bug: dropping an empty ALT entry (the old behavior) shifted every subsequent
+    // allele's index down by one, so GT=4 (meaning "G") would silently resolve to the wrong allele after
+    // normalization instead of throwing or staying correct. Substituting '.' instead preserves every index --
+    // confirmed against bcftools 1.23.1, which does the same thing (see EMPTY_FIELD_HANDLING.md)
+    VcfPosition position = new VcfPosition("chr1", 1, null, "C",
+        new ArrayList<>(Arrays.asList("T", "C", "", "G")), null, null, null, null);
+    assertEquals(Arrays.asList("T", "C", ".", "G"), position.getAltBases());
+    assertEquals("C", position.getAllele(0));
+    assertEquals("T", position.getAllele(1));
+    assertEquals("C", position.getAllele(2));
+    assertEquals(".", position.getAllele(3));
+    assertEquals("G", position.getAllele(4));
   }
 
   @Test
@@ -496,12 +514,19 @@ public class VcfPositionTest {
   }
 
   @Test
-  public void testAltMissingValueCombinedWithAlleleRejected() {
+  public void testAltMissingValueCombinedWithAlleleAccepted() {
+    // VCFv4.2.tex line 183 only states that '.' replaces the ENTIRE ALT field "if there are no alternative
+    // alleles"; it is silent on '.' as one entry among several. VCFv4.3.tex/4.4.tex/4.5.tex all resolve that
+    // ambiguity identically: "Each allele in this list must be one of: ... the MISSING value '.' (no variant);
+    // ...". Confirmed bcftools 1.23.1 accepts this with no warning, whether the '.' is literal or substituted, and
+    // genotype indices before/at/after the dot still resolve correctly.
     new VcfPosition("chr1", 1, null, "C", Collections.singletonList("."), null, null, null, null); // "." alone is fine
-    assertThrows(VcfFormatException.class, () -> // "." cannot be combined with a real allele
-        new VcfPosition("chr1", 1, null, "C", Arrays.asList("A", "."), null, null, null, null));
-    assertThrows(VcfFormatException.class, () ->
-        new VcfPosition("chr1", 1, null, "C", Arrays.asList(".", "A"), null, null, null, null));
+    VcfPosition afterReal = new VcfPosition("chr1", 1, null, "C", new ArrayList<>(Arrays.asList("A", ".")), null,
+        null, null, null);
+    assertEquals(Arrays.asList("A", "."), afterReal.getAltBases());
+    VcfPosition beforeReal = new VcfPosition("chr1", 1, null, "C", new ArrayList<>(Arrays.asList(".", "A")), null,
+        null, null, null);
+    assertEquals(Arrays.asList(".", "A"), beforeReal.getAltBases());
   }
 
   @Test
