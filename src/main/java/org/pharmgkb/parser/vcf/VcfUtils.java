@@ -107,8 +107,37 @@ public class VcfUtils {
   private static final Pattern sf_whitespacePattern = Pattern.compile("\\s");
 
   public static Map<String, String> extractPropertiesFromLine(String value) {
+    if (hasUnbalancedQuotes(value)) {
+      // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_001.vcf (##CauseOfFailure=Description contains
+      // non-escaped quotes). Checked on the raw, unsplit string rather than per-attribute after splitTopLevel:
+      // an unescaped quote can make splitTopLevel itself mis-split at the wrong comma (its open/close toggle
+      // flips on every unescaped '"', so a stray one can make a comma meant to stay inside a value look
+      // top-level), so checking post-split could miss or misattribute the very problem being detected here.
+      sf_logger.warn("Metadata declaration attribute list \"{}\" contains an unescaped quote, making attribute " +
+          "boundaries ambiguous; parsing it best-effort", value);
+    }
     // split on top-level commas (those not inside a double-quoted value); splitTopLevel preserves escaped characters
     return extractProperties(splitTopLevel(value, ',').toArray(new String[0]));
+  }
+
+  /**
+   * @return Whether {@code value} has an odd number of unescaped {@code "} characters -- an even count means every
+   * quote is part of a matched open/close pair (or there are none); an odd count means some quote is unmatched,
+   * making the boundary of whichever value it belongs to ambiguous. Respects the same {@code \\}/{@code \"} escape
+   * convention as {@link #splitTopLevel} and {@link #unquote}, so a properly-escaped inner quote is not
+   * miscounted.
+   */
+  private static boolean hasUnbalancedQuotes(String value) {
+    int unescapedQuoteCount = 0;
+    for (int i = 0; i < value.length(); i++) {
+      char c = value.charAt(i);
+      if (c == '\\' && i + 1 < value.length() && (value.charAt(i + 1) == '\\' || value.charAt(i + 1) == '"')) {
+        i++; // skip the escaped character, matching splitTopLevel's own escape handling
+      } else if (c == '"') {
+        unescapedQuoteCount++;
+      }
+    }
+    return unescapedQuoteCount % 2 != 0;
   }
 
   public static Map<String, String> extractProperties(String... props) {

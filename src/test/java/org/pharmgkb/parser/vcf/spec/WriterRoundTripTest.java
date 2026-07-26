@@ -322,4 +322,30 @@ class WriterRoundTripTest {
         "1\t100\t.\tA\tT,.,C\t.\tPASS\t.\n";
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(expected, written));
   }
+
+  @Test
+  void testUnescapedQuoteInDescriptionRoundTripsWithoutRewriting() throws IOException {
+    // warn-and-preserve, not reject-and-rewrite: reproduces failed_meta_001.vcf's
+    // Description="Description with "non-escaped quote" (an odd count of unescaped '"' characters)
+    String vcf =
+        "##fileformat=VCFv4.2\n" +
+        "##ALT=<ID=DEL,Number=1,Type=String,Description=\"Description with \"non-escaped quote\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\t<DEL>\t.\tPASS\t.\n";
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    WriterRoundTrip.ParsedFile parsed;
+    try {
+      parsed = WriterRoundTrip.parseText(vcf);
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    String written = WriterRoundTrip.write(parsed);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
+  }
 }

@@ -181,6 +181,84 @@ public class VcfUtilsTest {
   }
 
   @Test
+  public void testExtractPropertiesFromLineWarnsOnUnbalancedQuotes() {
+    // an unescaped quote makes it ambiguous where a quoted value ends -- reproduces
+    // test/vcf/{4.1,4.2}/failed/failed_meta_001.vcf's Description="Description with "non-escaped quote" (an odd
+    // count of unescaped '"' characters). Confirmed bcftools 1.23.1 hard-errors here and vcf_validator 0.10.2
+    // reports the file invalid, but this stays warn-not-throw per AGENTS.md's metadata-declaration leniency policy
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    Map<String, String> props;
+    try {
+      props = VcfUtils.extractPropertiesFromLine(
+          "ID=DEL,Number=1,Type=String,Description=\"Description with \"non-escaped quote\"");
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    // best-effort split is unchanged by the warning -- still recovers the earlier attributes correctly
+    assertEquals("DEL", props.get("ID"));
+    assertEquals("1", props.get("Number"));
+    assertEquals("String", props.get("Type"));
+  }
+
+  @Test
+  public void testExtractPropertiesFromLineDoesNotWarnOnEscapedQuote() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      VcfUtils.extractPropertiesFromLine("ID=X,Description=\"a \\\" b\"");
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testExtractPropertiesFromLineDoesNotWarnOnEmptyQuotedValue() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      VcfUtils.extractPropertiesFromLine("ID=X,Description=\"\"");
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testExtractPropertiesFromLineDoesNotWarnOnUnquotedValue() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      VcfUtils.extractPropertiesFromLine("ID=X,Number=1,Type=String");
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testSymbolicAltRejectsWhitespace() {
     // an angle-bracketed ALT ID may not contain whitespace, commas, or angle brackets
     assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher("<DEL>").matches());
