@@ -60,7 +60,7 @@ A record accepted by the parser must be writable without losing fields or produc
 
 - Use the checked-in Gradle wrapper. The Node/Yarn files support semantic-release; they are not the application build.
 - **Keep parser changes streaming-friendly**. Do not load an entire VCF into memory unless the affected class explicitly provides an in-memory data store.
-- Commit messages use conventional-commits style (`type(scope): summary`). `scope` is exactly one of `parser`, `writer`, or `memoryMappedImpl` -- never a class name.
+- Commit messages use conventional-commits style (`type(scope): summary`). `scope` is drawn from `parser`, `writer`, and `memoryMappedImpl` -- never a class name. A commit touching more than one of these areas may list multiple, comma-separated (e.g. `type(parser,writer): summary`), rather than picking one to cover the rest.
 
 ### Repository Layout
 
