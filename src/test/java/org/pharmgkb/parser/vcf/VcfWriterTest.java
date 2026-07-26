@@ -796,4 +796,24 @@ public class VcfWriterTest {
     assertThrows(RuntimeException.class, () -> writer.writeHeader(metadata));
   }
 
+  @Test
+  public void testToFileWritesUtf8() throws Exception {
+    // VcfParser.Builder.build() reads files with Files.newBufferedReader (UTF-8 by default); toFile() must
+    // write with the same encoding or non-ASCII content can be corrupted on a JVM whose platform-default
+    // charset isn't UTF-8
+    java.nio.file.Path file = java.nio.file.Files.createTempFile("vcf-writer-charset-test", ".vcf");
+    try {
+      VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+          .addRawProperty("source", "café")
+          .build();
+      try (VcfWriter writer = new VcfWriter.Builder().toFile(file).build()) {
+        writer.writeHeader(metadata);
+      }
+      String content = java.nio.file.Files.readString(file, java.nio.charset.StandardCharsets.UTF_8);
+      assertTrue(content.contains("café"));
+    } finally {
+      java.nio.file.Files.deleteIfExists(file);
+    }
+  }
+
 }

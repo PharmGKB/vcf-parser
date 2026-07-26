@@ -2,7 +2,6 @@ package org.pharmgkb.parser.vcf;
 
 import java.io.BufferedWriter;
 import java.io.Closeable;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.invoke.MethodHandles;
@@ -784,7 +783,8 @@ public class VcfWriter implements Closeable {
 
     public VcfWriter build() throws IOException {
       if (m_file != null) {
-        m_writer = new PrintWriter(new BufferedWriter(new FileWriter(m_file.toFile()), 65536));
+        m_writer = new PrintWriter(new BufferedWriter(
+            java.nio.file.Files.newBufferedWriter(m_file, java.nio.charset.StandardCharsets.UTF_8), 65536));
       }
       if (m_writer == null) {
         throw new IllegalStateException("Must specify either file or writer");
