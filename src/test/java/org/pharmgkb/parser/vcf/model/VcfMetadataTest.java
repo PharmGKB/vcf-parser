@@ -755,18 +755,4 @@ public class VcfMetadataTest {
     builder.addInfo(new InfoMetadata("AC", "d", InfoType.Integer, "A", null, null));
     assertEquals(1, metadata.getInfo().size());
   }
-
-  @Test
-  public void testCopyConstructorCreatesIndependentObject() {
-    VcfMetadata original = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-        .addInfo(new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null))
-        .build();
-    VcfMetadata copy = new VcfMetadata(original);
-    copy.getInfo().put("EXTRA", new InfoMetadata("EXTRA", "d", InfoType.Integer, "1", null, null));
-    assertEquals(1, original.getInfo().size());
-    assertEquals(2, copy.getInfo().size());
-    original.getInfo().put("ANOTHER", new InfoMetadata("ANOTHER", "d", InfoType.Integer, "1", null, null));
-    assertEquals(2, original.getInfo().size());
-    assertEquals(2, copy.getInfo().size());
-  }
 }

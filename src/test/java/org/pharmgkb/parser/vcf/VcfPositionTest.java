@@ -213,25 +213,6 @@ public class VcfPositionTest {
     assertEquals(Arrays.asList("AN", "AC", "AF"), new ArrayList<>(p.getInfoKeys()));
   }
 
-  @Test
-  public void testCopyConstructorCreatesIndependentObject() {
-    VcfPosition original = new VcfPosition("chr1", 100, Arrays.asList("rs1"), "A",
-        Arrays.asList("T"), new BigDecimal("50"), Arrays.asList("LowQual"), null, null);
-    VcfPosition copy = new VcfPosition(original);
-    copy.getIds().add("rs2");
-    copy.getAltBases().add("G");
-    copy.getFilters().add("q10");
-    copy.setPosition(200);
-    assertEquals(1, original.getIds().size());
-    assertEquals(1, original.getAltBases().size());
-    assertEquals(1, original.getFilters().size());
-    assertEquals(100, original.getPosition());
-    assertEquals(2, copy.getIds().size());
-    assertEquals(2, copy.getAltBases().size());
-    assertEquals(2, copy.getFilters().size());
-    assertEquals(200, copy.getPosition());
-  }
-
   private static VcfPosition newPosition() {
     return new VcfPosition("chr", 1, null, "C", null, null, null, null, null);
   }

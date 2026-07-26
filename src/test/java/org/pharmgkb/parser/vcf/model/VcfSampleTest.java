@@ -176,25 +176,4 @@ class VcfSampleTest {
     // a tab in GLE's value is still rejected (tab always means a spurious sample column, regardless of key)
     assertThrows(VcfFormatException.class, () -> sample.putProperty("GLE", "a\tb"));
   }
-
-  @Test
-  void testCopyConstructorCreatesIndependentObjectFromListForm() {
-    VcfSample original = new VcfSample(new ArrayList<>(Arrays.asList("GT", "DP")),
-        new ArrayList<>(Arrays.asList("0/1", "10")));
-    VcfSample copy = new VcfSample(original);
-    copy.putProperty("AD", "5,5");
-    assertEquals(2, original.getPropertyKeys().size());
-    assertEquals(3, copy.getPropertyKeys().size());
-  }
-
-  @Test
-  void testCopyConstructorCreatesIndependentObjectFromMapForm() {
-    LinkedHashMap<String, String> properties = new LinkedHashMap<>();
-    properties.put("GT", "0/1");
-    VcfSample original = new VcfSample(properties);
-    VcfSample copy = new VcfSample(original);
-    copy.putProperty("DP", "10");
-    assertEquals(1, original.getPropertyKeys().size());
-    assertEquals(2, copy.getPropertyKeys().size());
-  }
 }

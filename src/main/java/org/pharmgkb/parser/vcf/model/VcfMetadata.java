@@ -66,17 +66,6 @@ public class VcfMetadata {
     m_columns    = List.copyOf(columns);
   }
 
-  /**
-   * Creates an independent copy of {@code other}: the two objects never share mutable state (this delegates to
-   * the same defensively-copying constructor {@link Builder#build()} uses), so mutating one's declarations does
-   * not affect the other.
-   */
-  public VcfMetadata(VcfMetadata other) {
-    this(other.m_fileFormat, other.m_alt, other.m_info, other.m_filter, other.m_format, other.m_contig,
-        other.m_sample, other.m_pedigree, other.m_columns, other.m_properties);
-  }
-
-
   public String getFileFormat() {
     return m_fileFormat;
   }
