@@ -32,6 +32,12 @@ public class VcfSample {
   // Materialized on demand (mutation / key or entry iteration), or supplied directly via the map constructor.
   private @Nullable LinkedHashMap<String, String> m_properties;
 
+  /**
+   * Takes ownership of {@code keys} and {@code values}: unlike most constructors in this library, this one does
+   * not defensively copy either list, to avoid an allocation on this library's hottest path (once per sample per
+   * data line -- see this class's own Javadoc for the parse-then-read performance rationale). Callers must not
+   * mutate either list after construction.
+   */
   public VcfSample(@Nullable List<String> keys, @Nullable List<String> values) {
     if (keys == null) {
       if (values == null || values.isEmpty()) {

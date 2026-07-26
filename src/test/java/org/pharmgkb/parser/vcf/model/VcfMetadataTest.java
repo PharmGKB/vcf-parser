@@ -2,6 +2,7 @@ package org.pharmgkb.parser.vcf.model;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.VcfFormatException;
 
@@ -716,5 +717,22 @@ public class VcfMetadataTest {
         .addPedigree(new BaseMetadata(idProps))
         .build();
     assertEquals(2, metadata.getPedigrees().size());
+  }
+
+  @Test
+  public void testColumnsAreDefensivelyCopied() {
+    // Builder.setColumns()/the private constructor must not alias the caller's own list -- mutating it after
+    // build() should not be able to change this VcfMetadata's own column data
+    List<String> columns = new ArrayList<>(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER",
+        "INFO", "FORMAT", "sample1"));
+    VcfMetadata metadata = new VcfMetadata.Builder()
+        .setFileFormat("VCFv4.2")
+        .setColumns(columns)
+        .build();
+    columns.add("sample2");
+    columns.set(9, "renamed");
+    assertEquals(1, metadata.getNumSamples());
+    assertEquals("sample1", metadata.getSampleName(0));
+    assertEquals(9, metadata.getColumnIndex("sample1"));
   }
 }

@@ -54,7 +54,7 @@ public class VcfMetadata {
     m_sample     = sample==null?     new LinkedHashMap<>()      : sample;
     m_pedigree   = pedigree==null?   new ArrayList<>()          : pedigree;
     m_properties = properties==null? LinkedListMultimap.create() : properties;
-    m_columns    = columns;
+    m_columns    = List.copyOf(columns);
   }
 
 
