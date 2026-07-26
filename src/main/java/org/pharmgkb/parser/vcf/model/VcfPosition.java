@@ -142,6 +142,26 @@ public class VcfPosition {
     m_quality = quality;
   }
 
+  /**
+   * Creates an independent copy of {@code other}: mutating the copy does not affect {@code other} and vice
+   * versa. Skips the validation the other constructors run, since {@code other} was already validated when it
+   * was built. Used by {@link TransformingVcfLineParser}'s optional per-transformation isolation.
+   */
+  public VcfPosition(VcfPosition other) {
+    m_chromosome = other.m_chromosome;
+    m_position = other.m_position;
+    m_ids = new ArrayList<>(other.m_ids);
+    m_refBases = other.m_refBases;
+    m_altBases = new ArrayList<>(other.m_altBases);
+    m_quality = other.m_quality;
+    m_rawQuality = other.m_rawQuality;
+    m_filter = new ArrayList<>(other.m_filter);
+    m_filtersApplied = other.m_filtersApplied;
+    m_info = other.m_info == null ? null : LinkedListMultimap.create(other.m_info);
+    m_rawInfo = other.m_rawInfo;
+    m_format = new ArrayList<>(other.m_format);
+  }
+
   private static void checkChromosome(String chr) {
     // the VCF spec forbids whitespace in CHROM (but not other characters, e.g. colons)
     if (chr.isEmpty() || sf_whitespace.matcher(chr).find()) {

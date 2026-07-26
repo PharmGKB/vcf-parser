@@ -22,6 +22,7 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
 import org.pharmgkb.parser.vcf.spec.FailingWriter;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -172,6 +173,96 @@ public class TransformingVcfLineParserTest {
     failingWriter.startFailing();
     assertThrows(UncheckedIOException.class, parser::close);
     assertTrue(secondWriterBacking.wasClosed());
+  }
+
+  @Test
+  public void testDefaultBehaviorCascadesPositionMutationBetweenTransformations() throws Exception {
+    // documents the current, intentional default: without isolateTransformations(), later writers see earlier
+    // transformations' mutations to the shared position object
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t1\t.\tA\tT\t.\t.\t.\n";
+    StringWriter sw1 = new StringWriter();
+    StringWriter sw2 = new StringWriter();
+    VcfTransformation addsOffset = new VcfTransformation() {
+      @Override
+      public boolean transformDataLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
+        position.setPosition(position.getPosition() + 1000);
+        return true;
+      }
+    };
+    VcfTransformation noop = new VcfTransformation() {};
+    TransformingVcfLineParser lineParser = new TransformingVcfLineParser.Builder()
+        .addTransformation(addsOffset, new PrintWriter(sw1))
+        .addTransformation(noop, new PrintWriter(sw2))
+        .build();
+    try (VcfParser parser = new VcfParser.Builder()
+        .parseWith(lineParser)
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .build()) {
+      parser.parse();
+    }
+    assertTrue(sw1.toString().contains("1\t1001\t"));
+    assertTrue(sw2.toString().contains("1\t1001\t")); // no isolation: writer 2 also sees the mutated position
+  }
+
+  @Test
+  public void testIsolateTransformationsPreventsPositionMutationLeak() throws Exception {
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t1\t.\tA\tT\t.\t.\t.\n";
+    StringWriter sw1 = new StringWriter();
+    StringWriter sw2 = new StringWriter();
+    VcfTransformation addsOffset = new VcfTransformation() {
+      @Override
+      public boolean transformDataLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
+        position.setPosition(position.getPosition() + 1000);
+        return true;
+      }
+    };
+    VcfTransformation noop = new VcfTransformation() {};
+    TransformingVcfLineParser lineParser = new TransformingVcfLineParser.Builder()
+        .addTransformation(addsOffset, new PrintWriter(sw1))
+        .addTransformation(noop, new PrintWriter(sw2))
+        .isolateTransformations()
+        .build();
+    try (VcfParser parser = new VcfParser.Builder()
+        .parseWith(lineParser)
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .build()) {
+      parser.parse();
+    }
+    assertTrue(sw1.toString().contains("1\t1001\t"));
+    assertTrue(sw2.toString().contains("1\t1\t")); // isolated: writer 2 sees the original, untouched position
+  }
+
+  @Test
+  public void testMetadataIsolationIsUnconditional() throws Exception {
+    // metadata isolation must hold even with NO isolateTransformations() flag set
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t1\t.\tA\tT\t.\t.\t.\n";
+    StringWriter sw1 = new StringWriter();
+    StringWriter sw2 = new StringWriter();
+    VcfTransformation addsInfo = new VcfTransformation() {
+      @Override
+      public void transformMetadata(VcfMetadata metadata) {
+        metadata.getInfo().put("TestInfo", new InfoMetadata("TestInfo", "d", InfoType.Integer, "1", null, null));
+      }
+    };
+    VcfTransformation noop = new VcfTransformation() {};
+    TransformingVcfLineParser lineParser = new TransformingVcfLineParser.Builder()
+        .addTransformation(addsInfo, new PrintWriter(sw1))
+        .addTransformation(noop, new PrintWriter(sw2))
+        .build();
+    try (VcfParser parser = new VcfParser.Builder()
+        .parseWith(lineParser)
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .build()) {
+      parser.parse();
+    }
+    assertTrue(sw1.toString().contains("##INFO=<ID=TestInfo"));
+    assertFalse(sw2.toString().contains("##INFO=<ID=TestInfo"));
   }
 
 }

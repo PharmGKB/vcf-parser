@@ -1,6 +1,7 @@
 package org.pharmgkb.parser.vcf.model;
 
 import java.lang.invoke.MethodHandles;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -67,6 +68,21 @@ public class VcfSample {
     m_properties = properties;
     for (Map.Entry<String, String> entry : m_properties.entrySet()) {
       checkNoStructuralDelimiter(entry.getKey(), entry.getValue());
+    }
+  }
+
+  /**
+   * Creates an independent copy of {@code other}: mutating the copy does not affect {@code other} and vice
+   * versa. Copies whichever internal representation {@code other} currently holds. Used by
+   * {@link org.pharmgkb.parser.vcf.TransformingVcfLineParser}'s optional per-transformation isolation.
+   */
+  public VcfSample(VcfSample other) {
+    if (other.m_keys != null) {
+      m_keys = new ArrayList<>(other.m_keys);
+      m_values = new ArrayList<>(other.m_values);
+    }
+    if (other.m_properties != null) {
+      m_properties = new LinkedHashMap<>(other.m_properties);
     }
   }
 
