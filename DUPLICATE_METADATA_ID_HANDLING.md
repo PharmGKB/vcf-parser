@@ -23,10 +23,13 @@ conformance suite, its own reference validator, and the ecosystem's reference im
 acceptable, so `vcf-parser` now matches that practical tolerance: it logs a warning and keeps the first declaration,
 rather than throwing `VcfFormatException`.
 
-This is a construction-time-only concern: once a `VcfMetadata` is built, each declaration type is stored in a
-`Map<String, ...>` keyed by ID, so there is no way for a "duplicate" to exist in the built object — only the
-process of adding declarations (via `VcfMetadata.Builder` or `VcfParser`, which calls the same `Builder` methods)
-can encounter one.
+For the six `Map`-backed types above, this is effectively construction-time-only: once stored, a `Map<String, ...>`
+can't hold two entries under one key, so a "duplicate" can only be encountered while *adding* a declaration --
+either via `VcfMetadata.Builder`/`VcfParser` at parse time, or via `VcfMetadata`'s own instance `addXxx` methods on
+an already-built object (see "Where this is implemented" below; both paths share the same check). `##PEDIGREE` is
+the one exception: since it's `List`-backed, a duplicate can still exist *inside* an already-built object if an
+entry is added directly through `getPedigrees()`, which is why its own check (below) has to run again at write
+time.
 
 ## Reference table
 
