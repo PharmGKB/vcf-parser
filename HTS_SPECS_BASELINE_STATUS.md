@@ -7,11 +7,26 @@ re-verify: run `./gradlew htsSpecsUpdateBaseline`, then `git diff
 src/test/resources/org/pharmgkb/parser/vcf/spec/hts-specs-baseline.tsv` against the fixture list in each row
 below — update both this document and the rows before trusting it again.
 
+If cross-referencing fixture content directly against a local hts-specs clone (e.g. via `git show`/`git diff`
+rather than through `./gradlew htsSpecsUpdateBaseline`), make sure that clone is on its `master` branch —
+`master` is the branch that matches `htsSpecsPinnedSha` (verified: `master`'s HEAD *is* the pinned SHA). A
+clone can be checked out to an arbitrary other branch (a personal fork branch with unmerged, in-progress
+changes, for example) that doesn't reflect the pinned state at all, and comparing against that instead of
+`master` will silently produce wrong conclusions about what this project's baseline is actually pinned to.
+
 This is an index, not a rationale document — each row points to where the full reasoning already lives. Don't
 duplicate that reasoning here; if a row's linked doc doesn't exist or doesn't cover the claim, that's a sign this
 document itself is stale.
 
 ## `parser-throw-or-warn` entries (10) — `failed/` fixtures whose invalidity isn't detected
+
+This check only runs `failed/` fixtures from VCF versions 4.1 and 4.2 (`HtsSpecsConformanceTest.java`'s
+`FAILED_VERSIONS = List.of("4.1", "4.2")`) — 4.3's own `failed/` fixtures are never examined at all. This is
+deliberate, not an oversight: a fixture's VCF-4.3-specific "failure" can be a rule 4.3 introduced that VCFv4.2
+(this library's target) leaves silent, so a 4.3 `failed/` fixture parsing without error wouldn't be a real
+divergence under this library's target semantics — there's nothing to gain by testing it. `passed/` fixtures
+(the `writer-*` checks) are unaffected by this and still run across all four available versions (4.1, 4.2,
+4.3, 4.5).
 
 | Cause | Fixtures | Count | Status | Details |
 |---|---|---|---|---|
@@ -40,13 +55,6 @@ warning for its `##pedigreeDB=` line. Neither VCFv4.1, VCFv4.2, nor VCFv4.3 defi
 for the `url` value in `##assembly=url` / `##pedigreeDB=URL` (VCFv4.2.tex describes both only as prose
 examples, with no BNF or validity rule).
 
-**Why permanently accepted, not filed upstream:** there is no rule here — spec or tool — for hts-specs
-to clarify that would change this library's behavior. The reference implementation (bcftools) and a
-standard URI parser both already accept this value; rejecting it would mean this library inventing its
-own unenforced heuristic (e.g. "reject all-digit hostnames") that no spec or tool actually applies. Not
-worth doing, and not worth filing upstream over, since there's nothing broken to fix — just an
-unenforceable fixture.
-
 Affected fixtures:
 
 | Fixture | Version(s) | `##CauseOfFailure=` |
@@ -54,7 +62,3 @@ Affected fixtures:
 | `failed_meta_assembly_001.vcf` | 4.1 | `Non-valid URL` |
 | `failed_meta_assembly_001.vcf` | 4.2 (file internally declares `VCFv4.3` despite living under the `4.2/` directory), 4.3 | `Meta-data entry is not a key-value pair` |
 | `failed_meta_pedigreedb_002.vcf` | 4.1, 4.2, 4.3 | `Non-valid URL` (consistent across versions) |
-
-The `##CauseOfFailure=` label differs across these copies, but that's incidental to hts-specs' own
-fixture bookkeeping — it doesn't change what this library does with any of them, so all three are
-treated identically and tracked as one cause above.
