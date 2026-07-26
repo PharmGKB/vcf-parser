@@ -22,11 +22,14 @@ realities" split described in [`README.md`](README.md#validation-strict-vs-lenie
 the "reality" is demonstrated by the reference tool itself, not just by metadata-quality concerns.
 
 **vcf_validator 0.10.2** (the EBI reference validator; the tool [hts-specs](https://github.com/samtools/hts-specs)
-uses to classify its own `passed/`/`failed/` conformance fixtures) was also checked against every row below, and
-almost uniformly reports these same inputs as **invalid** — consistent with the spec's own "zero length fields are
-not allowed" text. Its one confirmed exception is noted in the table below. No hts-specs conformance fixture
-exercises any of these exact scenarios, so this is a direct tool run, not a documented suite fixture; per
-`AGENTS.md`'s decision hierarchy, bcftools remains the tie-breaker for these spec-silent/ambiguous cases.
+uses to classify its own `passed/`/`failed/` conformance fixtures) was also checked against every row below.
+Structural, top-level fields (`ID`, `FILTER`, `ALT`, `INFO`) are consistently reported **invalid** for every empty
+entry, consistent with the spec's own "zero length fields are not allowed" text — with one asymmetry noted in the
+table below (`AD=1,2,`). Sample-column values (`GT`, reserved `FORMAT` sub-fields) are reported **valid** in every
+case tested — vcf_validator does not validate sample-value sub-structure with the same rigor. No hts-specs
+conformance fixture exercises any of these exact scenarios, so this is a direct tool run, not a documented suite
+fixture; per `AGENTS.md`'s decision hierarchy, bcftools remains the tie-breaker for these spec-silent/ambiguous
+cases.
 
 ## How each field is normalized
 
@@ -52,11 +55,21 @@ dropped entry to the wrong allele — a real correctness bug, not just a cosmeti
 `.` instead, matching bcftools exactly, preserves every index. This also required removing a separate, pre-existing
 rule that rejected `.` combined with a real allele: `VCFv4.2.tex` (the target spec) only states that `.` replaces
 the *entire* ALT field "if there are no alternative alleles" (line 183), and is silent on `.` as one entry among
-several; `VCFv4.3.tex`/`VCFv4.4.tex`/`VCFv4.5.tex` all resolve that silence identically: "Each allele in this list
-must be one of: ... the MISSING value `.` (no variant); ..." — `.` is a formally sanctioned per-entry ALT token in
-every VCF version from 4.3 onward. Confirmed bcftools 1.23.1 has no equivalent exclusivity rule either, accepting
-`T,.,C` with zero warning whether the `.` is substituted or literal, and with genotype indices before, at, and
-after the dot all resolving correctly.
+several; `VCFv4.3.tex` line 350 lists a MISSING value `.` (no variant) as one of several options for "these
+alleles" (the same comma-separated list, worded slightly differently than the newer versions), and `VCFv4.4.tex`
+line 367 / `VCFv4.5.tex` line 416 state this more explicitly: "Each allele in this list must be one of: ... the
+MISSING value `.` (no variant); ..." — `.` is a formally sanctioned per-entry ALT token in every VCF version from
+4.3 onward. Confirmed bcftools 1.23.1 has no equivalent exclusivity rule either, accepting `T,.,C` with zero
+warning whether the `.` is substituted or literal, and with genotype indices before, at, and after the dot all
+resolving correctly.
+
+This reading is contested by tooling, worth stating plainly rather than omitting: vcf_validator 0.10.2 itself
+rejects the library's own substituted output (`T,.,C`) as invalid under every version's `##fileformat` declaration
+tested, including 4.3+ — it applies `VCFv4.3.tex`'s own whole-field regex (`^([ACGTNacgtn]+|\*|\.)$`) literally, as
+"a single dot, OR a comma-separated list of pure bases," not "a dot allowed inside such a list." bcftools 1.23.1 is
+the tie-breaker here per `AGENTS.md` ("If still in doubt, consult bcftools behavior"), and it accepts this
+construction with zero warning, consistent with the newer versions' prose. This library follows bcftools and the
+newer-version prose, not vcf_validator's stricter regex reading, for the reasons given above.
 
 ## Reference table
 
@@ -89,10 +102,10 @@ stored internally with an empty-string sentinel value, the same representation u
 empty" cases above. `vcf-parser` distinguishes them at parse time (before the sentinel is created), by checking
 whether an `=` sign was present at all — a flag's absent value is never touched by this normalization.
 
-The `AD=1,2,` row is the one confirmed asymmetry in vcf_validator's own behavior across this whole table: every
-other empty-field case, interior or trailing, in any field, is reported invalid — except a *trailing* empty entry
-on an unbounded (`Number=.`) INFO field, which vcf_validator reports as valid (confirmed directly from its own
-text report, which shows no error for this case, only unrelated header-completeness warnings). An *interior*
+The `AD=1,2,` row is a confirmed asymmetry within vcf_validator's own handling of INFO fields specifically: every
+other INFO/ID/FILTER/ALT empty-field case, interior or trailing, is reported invalid — except a *trailing* empty
+entry on an unbounded (`Number=.`) INFO field, which vcf_validator reports as valid (confirmed directly from its
+own text report, which shows no error for this case, only unrelated header-completeness warnings). An *interior*
 empty entry in the same field (`AD=1,,2`) is still invalid. This doesn't change `vcf-parser`'s own behavior — both
 cases already warn and substitute `.` — it's simply worth recording as a real, reproducible quirk of vcf_validator
 itself, not a testing mistake.
