@@ -351,8 +351,6 @@ public class VcfParser implements Closeable {
         parseMetadataProperty(mdBuilder, propName, removeAngleBrackets(propValue));
         break;
 
-      case "assembly":
-      case "pedigreeDB":
       default:
         mdBuilder.addRawProperty(propName, propValue);
     }
