@@ -93,7 +93,7 @@ public class VcfWriter implements Closeable {
       m_headerText = String.join("\n", lines);
     }
     checkForWriteError();
-    sf_logger.info("Wrote {} lines of header{}", m_lineNumber, (m_file == null ? "" : " to " + m_file));
+    sf_logger.debug("Wrote {} lines of header{}", m_lineNumber, (m_file == null ? "" : " to " + m_file));
   }
 
   /**
@@ -799,8 +799,8 @@ public class VcfWriter implements Closeable {
 
   public static class Builder {
 
-    private Path m_file;
-    private PrintWriter m_writer;
+    private @Nullable Path m_file;
+    private @Nullable PrintWriter m_writer;
     private boolean m_validateBeforeWrite;
 
     /**
@@ -868,7 +868,7 @@ public class VcfWriter implements Closeable {
     m_writer.print('\n');
     m_lineNumber++;
     if (m_lineNumber % 1000 == 0) {
-      sf_logger.info("Wrote {} lines{}", m_lineNumber, (m_file == null ? "" : " to " + m_file));
+      sf_logger.debug("Wrote {} lines{}", m_lineNumber, (m_file == null ? "" : " to " + m_file));
       checkForWriteError();
     }
   }
