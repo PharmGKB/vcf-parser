@@ -162,7 +162,8 @@ public class VcfParser implements Closeable {
    * Parses just the next data line available, also reading all the metadata if it has not been read.
    * This is a specialized method; in general calling {@link #parse()} to parse the entire stream is preferred.
    *
-   * @return true if a line was read and parsed; false once the end of the stream is reached -- this happens
+   * @return true if a line was read (it may have been skipped without being delivered to the {@link VcfLineParser}
+   * callback, e.g. by {@link Builder#rsidsOnly()}); false once the end of the stream is reached -- this happens
    * only on the read attempt made *after* the last data line has already been returned, not on the call that
    * returns that last line itself
    * @throws IllegalStateException If the stream was already fully parsed
@@ -339,6 +340,7 @@ public class VcfParser implements Closeable {
         mdBuilder.setFileFormat(propValue);
         break;
 
+      // keep in sync with VcfUtils.RESERVED_METADATA_KEYS (VcfWriter/VcfMetadata reject raw properties with these names)
       case "ALT":
       case "FILTER":
       case "INFO":
@@ -552,7 +554,9 @@ public class VcfParser implements Closeable {
     }
 
     /**
-     * Tells parser to ignore data lines that are not associated with an RSID.
+     * Tells parser to ignore data lines that are not associated with an RSID: a line is kept only if at least one
+     * complete semicolon-delimited ID component matches {@code rs\d+}. An ID such as "notrs123suffix" does not
+     * qualify, even though it contains "rs123" as a substring.
      */
     public Builder rsidsOnly() {
       m_rsidsOnly = true;

@@ -370,6 +370,10 @@ public class VcfMetadata {
    * Guava's {@link ListMultimap#get}, which never returns {@code null}).
    * <strong>This method will return an empty list for a reserved property of the form
    * XX=&lt;ID=value,ID=value,...&gt;; {@code assembly} and {@code pedigreeDB} are still included.</strong>
+   * <p>
+   * Like {@link #getRawProperties()}, the returned list is a live view backed by the multimap: mutating it directly
+   * bypasses the line-terminator and empty-value checks that {@link #addAssembly} and {@link #addPedigreeDatabase}
+   * run at insertion time.
    */
   public List<String> getRawValuesOfProperty(String propertyKey) {
     return m_properties.get(propertyKey);

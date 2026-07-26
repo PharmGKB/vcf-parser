@@ -3,8 +3,11 @@ package org.pharmgkb.parser.vcf;
 import java.io.BufferedWriter;
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.lang.invoke.MethodHandles;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -761,6 +764,9 @@ public class VcfWriter implements Closeable {
     private PrintWriter m_writer;
     private boolean m_validateBeforeWrite;
 
+    /**
+     * Files are written as UTF-8, matching {@link org.pharmgkb.parser.vcf.VcfParser.Builder#fromFile}.
+     */
     public Builder toFile(Path file) {
       m_file = file;
       return this;
@@ -783,8 +789,11 @@ public class VcfWriter implements Closeable {
 
     public VcfWriter build() throws IOException {
       if (m_file != null) {
+        // explicit UTF-8 encoding is stricter than the old FileWriter's platform-default REPLACE behavior --
+        // an unpaired surrogate in metadata now throws IOException mid-write instead of emitting "?", matching
+        // VcfParser's Files.newBufferedReader decoder on the read side
         m_writer = new PrintWriter(new BufferedWriter(
-            java.nio.file.Files.newBufferedWriter(m_file, java.nio.charset.StandardCharsets.UTF_8), 65536));
+            new OutputStreamWriter(Files.newOutputStream(m_file), StandardCharsets.UTF_8), 65536));
       }
       if (m_writer == null) {
         throw new IllegalStateException("Must specify either file or writer");
