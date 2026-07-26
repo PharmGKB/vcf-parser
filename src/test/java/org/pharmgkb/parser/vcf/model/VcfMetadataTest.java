@@ -735,4 +735,38 @@ public class VcfMetadataTest {
     assertEquals("sample1", metadata.getSampleName(0));
     assertEquals(9, metadata.getColumnIndex("sample1"));
   }
+
+  @Test
+  public void testBuilderDoesNotShareStateAcrossTwoBuildCalls() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null));
+    VcfMetadata first = builder.build();
+    VcfMetadata second = builder.build();
+    first.getInfo().put("EXTRA", new InfoMetadata("EXTRA", "d", InfoType.Integer, "1", null, null));
+    assertEquals(2, first.getInfo().size());
+    assertEquals(1, second.getInfo().size());
+  }
+
+  @Test
+  public void testBuilderMutationAfterBuildDoesNotAffectAlreadyBuiltObject() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null));
+    VcfMetadata metadata = builder.build();
+    builder.addInfo(new InfoMetadata("AC", "d", InfoType.Integer, "A", null, null));
+    assertEquals(1, metadata.getInfo().size());
+  }
+
+  @Test
+  public void testCopyConstructorCreatesIndependentObject() {
+    VcfMetadata original = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null))
+        .build();
+    VcfMetadata copy = new VcfMetadata(original);
+    copy.getInfo().put("EXTRA", new InfoMetadata("EXTRA", "d", InfoType.Integer, "1", null, null));
+    assertEquals(1, original.getInfo().size());
+    assertEquals(2, copy.getInfo().size());
+    original.getInfo().put("ANOTHER", new InfoMetadata("ANOTHER", "d", InfoType.Integer, "1", null, null));
+    assertEquals(2, original.getInfo().size());
+    assertEquals(2, copy.getInfo().size());
+  }
 }

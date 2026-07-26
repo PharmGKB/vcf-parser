@@ -46,15 +46,34 @@ public class VcfMetadata {
     Preconditions.checkNotNull(fileFormat);
     Preconditions.checkNotNull(columns);
     m_fileFormat = fileFormat;
-    m_alt        = alt==null?        new LinkedHashMap<>()      : alt;
-    m_info       = info==null?       new LinkedHashMap<>()      : info;
-    m_filter     = filter==null?     new LinkedHashMap<>()      : filter;
-    m_format     = format==null?     new LinkedHashMap<>()      : format;
-    m_contig     = contig==null?     new LinkedHashMap<>()      : contig;
-    m_sample     = sample==null?     new LinkedHashMap<>()      : sample;
-    m_pedigree   = pedigree==null?   new ArrayList<>()          : pedigree;
-    m_properties = properties==null? LinkedListMultimap.create() : properties;
+    // fresh, independently-mutable copies -- NOT List.copyOf/Map.copyOf. getAlts()/getInfo()/getFilters()/
+    // getFormats()/getContigs()/getSamples() returning a live, mutable backing map is an existing, tested,
+    // intentional contract (e.g. TransformingVcfLineParserTest.java's metadata.getInfo().put(...) usage inside a
+    // VcfTransformation). Copying here only prevents a built VcfMetadata from sharing state with the Builder (or
+    // with another VcfMetadata built from the same Builder) -- it must not stop a VcfMetadata from being mutated
+    // on its own via its own getters, which is a separately supported, separately tested code path.
+    m_alt        = alt==null?        new LinkedHashMap<>()      : new LinkedHashMap<>(alt);
+    m_info       = info==null?       new LinkedHashMap<>()      : new LinkedHashMap<>(info);
+    m_filter     = filter==null?     new LinkedHashMap<>()      : new LinkedHashMap<>(filter);
+    m_format     = format==null?     new LinkedHashMap<>()      : new LinkedHashMap<>(format);
+    m_contig     = contig==null?     new LinkedHashMap<>()      : new LinkedHashMap<>(contig);
+    m_sample     = sample==null?     new LinkedHashMap<>()      : new LinkedHashMap<>(sample);
+    m_pedigree   = pedigree==null?   new ArrayList<>()          : new ArrayList<>(pedigree);
+    m_properties = properties==null? LinkedListMultimap.create() : LinkedListMultimap.create(properties);
+    // m_columns alone stays a true immutable copy: unlike the seven fields above, it has no supported
+    // mutable-getter counterpart (no getColumns() exposing the live list, only derived read-only accessors like
+    // getColumnIndex()) -- there is no mutation contract to preserve for it, so this asymmetry is intentional.
     m_columns    = List.copyOf(columns);
+  }
+
+  /**
+   * Creates an independent copy of {@code other}: the two objects never share mutable state (this delegates to
+   * the same defensively-copying constructor {@link Builder#build()} uses), so mutating one's declarations does
+   * not affect the other.
+   */
+  public VcfMetadata(VcfMetadata other) {
+    this(other.m_fileFormat, other.m_alt, other.m_info, other.m_filter, other.m_format, other.m_contig,
+        other.m_sample, other.m_pedigree, other.m_columns, other.m_properties);
   }
 
 
