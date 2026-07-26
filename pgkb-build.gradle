@@ -50,6 +50,11 @@ jar {
     attributes 'Implementation-Title': project.name
     attributes 'Implementation-Version': project.version
   }
+  bundle {
+    bnd(
+      'Export-Package': 'org.pharmgkb.parser.vcf,org.pharmgkb.parser.vcf.model,org.pharmgkb.parser.vcf.model.genotype'
+    )
+  }
 }
 
 tasks.withType(Javadoc) {
