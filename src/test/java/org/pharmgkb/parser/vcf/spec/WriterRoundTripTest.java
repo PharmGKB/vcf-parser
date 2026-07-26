@@ -265,4 +265,32 @@ class WriterRoundTripTest {
     String written = WriterRoundTrip.write(parsed);
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
   }
+
+  @Test
+  void testDuplicatePedigreeIdRoundTripsKeepingFirstOnly() throws IOException {
+    // warn-and-drop-duplicate, not reject: mirrors testDuplicateContigDeclarationRoundTripsKeepingFirstOnly's
+    // pattern for the six keyed types, applied to PEDIGREE's conditional (ID-present-only) dedup rule
+    String vcf =
+        "##fileformat=VCFv4.2\n" +
+        "##PEDIGREE=<ID=Child,Father=Dad>\n" +
+        "##PEDIGREE=<ID=Child,Mother=Mom>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT\t.\tPASS\t.\n";
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    WriterRoundTrip.ParsedFile parsed;
+    try {
+      parsed = WriterRoundTrip.parseText(vcf);
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    String written = WriterRoundTrip.write(parsed);
+    assertTrue(written.contains("Father=Dad"));
+    assertFalse(written.contains("Mother=Mom"));
+  }
 }

@@ -679,4 +679,20 @@ public class VcfMetadataTest {
     }
     assertEquals("First", metadata.getFilters().get("q10").getDescription());
   }
+
+  @Test
+  public void testAddPedigreeIdPresentDoesNotConflictWithIdAbsentEntries() {
+    // an ID-bearing entry's dedup check must not be confused by an unrelated ID-less entry already in the list
+    java.util.Map<String, String> idLessProps = new java.util.LinkedHashMap<>();
+    idLessProps.put("Name_0", "G0-ID");
+    idLessProps.put("Name_1", "G1-ID");
+    java.util.Map<String, String> idProps = new java.util.LinkedHashMap<>();
+    idProps.put("ID", "Child");
+    idProps.put("Father", "Dad");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addPedigree(new BaseMetadata(idLessProps))
+        .addPedigree(new BaseMetadata(idProps))
+        .build();
+    assertEquals(2, metadata.getPedigrees().size());
+  }
 }
