@@ -222,10 +222,11 @@ public class VcfParser implements Closeable {
       // ID
       List<String> ids = null;
       if (!data.get(2).equals(".")) {
-        if (m_rsidsOnly && !VcfUtils.RSID_PATTERN.matcher(data.get(2)).find()) {
+        List<String> parsedIds = toList(SEMICOLON, data.get(2));
+        if (m_rsidsOnly && parsedIds.stream().noneMatch(id -> VcfUtils.RSID_PATTERN.matcher(id).matches())) {
           return true;
         }
-        ids = toList(SEMICOLON, data.get(2));
+        ids = parsedIds;
       } else if (m_rsidsOnly) {
         return true;
       }

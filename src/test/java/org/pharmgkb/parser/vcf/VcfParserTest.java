@@ -575,6 +575,28 @@ public class VcfParserTest {
 
 
   @Test
+  void testRsidsOnlyRequiresExactComponentMatch() throws IOException {
+    // rsidsOnly() must match a complete semicolon-delimited ID component against "rs\d+", not merely find
+    // "rs" + digits as a substring anywhere in the raw ID field
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t100\tnotrs123suffix\tA\tT\t.\tPASS\t.\n" +
+        "chr2\t200\tfoo\tA\tT\t.\tPASS\t.\n" +
+        "chr3\t300\tfoo;rs123\tA\tT\t.\tPASS\t.\n";
+    List<VcfPosition> positions = new ArrayList<>();
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .rsidsOnly()
+             .parseWith((metadata, position, sampleData) -> positions.add(position))
+             .build()) {
+      parser.parse();
+    }
+    assertEquals(1, positions.size());
+    assertEquals("chr3", positions.get(0).getChromosome());
+  }
+
+  @Test
   void testFile() throws Exception {
 
     try (VcfParser ignored = new VcfParser.Builder()
