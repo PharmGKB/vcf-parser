@@ -121,11 +121,12 @@ public class VcfUtils {
   }
 
   /**
-   * @return Whether {@code value} has an odd number of unescaped {@code "} characters -- an even count means every
-   * quote is part of a matched open/close pair (or there are none); an odd count means some quote is unmatched,
-   * making the boundary of whichever value it belongs to ambiguous. Respects the same {@code \\}/{@code \"} escape
-   * convention as {@link #splitTopLevel} and {@link #unquote}, so a properly-escaped inner quote is not
-   * miscounted.
+   * @return Whether {@code value} has an odd number of unescaped {@code "} characters. An odd count means
+   * {@link #splitTopLevel} would finish with its internal {@code inQuotes} toggle left {@code true}, guaranteeing
+   * some quote is unmatched and making attribute boundaries ambiguous. An even count does not guarantee all quotes
+   * are correctly paired (e.g., two separate stray quotes in different attributes can cancel out to an even total);
+   * this is a best-effort heuristic, not a per-attribute validation. Respects the same {@code \\}/{@code \"} escape
+   * convention as {@link #splitTopLevel} and {@link #unquote}, so a properly-escaped inner quote is not miscounted.
    */
   private static boolean hasUnbalancedQuotes(String value) {
     int unescapedQuoteCount = 0;
