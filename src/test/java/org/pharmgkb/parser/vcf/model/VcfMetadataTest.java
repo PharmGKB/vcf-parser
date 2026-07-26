@@ -519,4 +519,64 @@ public class VcfMetadataTest {
     }
     assertEquals("First", metadata.getSamples().get("S1").getDescription());
   }
+
+  @Test
+  public void testAddPedigreeWarnsAndKeepsFirstOnDuplicateId() {
+    java.util.Map<String, String> childProps = new java.util.LinkedHashMap<>();
+    childProps.put("ID", "Child");
+    childProps.put("Father", "Dad");
+    java.util.Map<String, String> duplicateProps = new java.util.LinkedHashMap<>();
+    duplicateProps.put("ID", "Child");
+    duplicateProps.put("Mother", "Mom");
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+          .addPedigree(new BaseMetadata(childProps))
+          .addPedigree(new BaseMetadata(duplicateProps))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(1, metadata.getPedigrees().size());
+    assertEquals("Dad", metadata.getPedigrees().get(0).getPropertiesRaw().get("Father"));
+  }
+
+  @Test
+  public void testAddPedigreeKeepsBothWhenIdAbsent() {
+    // VCFv4.2.tex line 152's own grammar (##PEDIGREE=<Name_0=G0-ID,...,Name_N=GN-ID>) has no mandatory ID
+    // attribute; confirmed bcftools 1.23.1 keeps both of two ID-less duplicate PEDIGREE lines (no dedup key to
+    // compare), unlike the ID-bearing case above
+    java.util.Map<String, String> props1 = new java.util.LinkedHashMap<>();
+    props1.put("Name_0", "G0-ID");
+    props1.put("Name_1", "G1-ID");
+    java.util.Map<String, String> props2 = new java.util.LinkedHashMap<>();
+    props2.put("Name_0", "G0-ID");
+    props2.put("Name_1", "G1-ID");
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+          .addPedigree(new BaseMetadata(props1))
+          .addPedigree(new BaseMetadata(props2))
+          .build();
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(2, metadata.getPedigrees().size());
+  }
 }

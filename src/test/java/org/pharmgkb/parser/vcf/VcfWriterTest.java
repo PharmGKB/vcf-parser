@@ -304,10 +304,11 @@ public class VcfWriterTest {
   }
 
   @Test
-  public void testValidateBeforeWriteRejectsDuplicatePedigreeId() throws Exception {
-    // PEDIGREE entries are stored in a List, not a Map keyed by ID like INFO/FORMAT/FILTER/ALT/contig/SAMPLE, so
-    // validateKeyedMetadataEntries's "ID matches map key" check can't cover them -- duplicate IDs across PEDIGREE
-    // entries need their own check
+  public void testValidateBeforeWriteWarnsOnDuplicatePedigreeIdIntroducedAfterConstruction() throws Exception {
+    // Builder.addPedigree() now warns and drops a duplicate ID at construction time (see
+    // VcfMetadataTest.testAddPedigreeWarnsAndKeepsFirstOnDuplicateId), so the only way a duplicate PEDIGREE ID can
+    // still reach this write-time check is by mutating the mutable List returned by getPedigrees() directly,
+    // bypassing Builder entirely -- e.g. a transformation pipeline that appends to an already-built VcfMetadata
     Map<String, String> childProps = new LinkedHashMap<>();
     childProps.put("ID", "Child");
     childProps.put("Father", "Dad");
@@ -316,12 +317,29 @@ public class VcfWriterTest {
     duplicateProps.put("Mother", "Mom");
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
         .addPedigree(new BaseMetadata(childProps))
-        .addPedigree(new BaseMetadata(duplicateProps))
         .build();
+    metadata.getPedigrees().add(new BaseMetadata(duplicateProps));
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
 
-    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    // warn, not drop: both entries are still written -- the writer must not silently remove content the caller
+    // already holds a reference to
+    String written = sw.toString();
+    assertTrue(written.contains("Father=Dad"));
+    assertTrue(written.contains("Mother=Mom"));
   }
 
   @Test

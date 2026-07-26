@@ -2,6 +2,7 @@ package org.pharmgkb.parser.vcf.model;
 
 import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -485,7 +486,23 @@ public class VcfMetadata {
       return this;
     }
 
+    private final Set<String> m_pedigreeIds = new HashSet<>();
+
+    /**
+     * Adds {@code md} to the list of PEDIGREE metadata. If {@code md} declares a literal {@code ID} property that
+     * duplicates an earlier PEDIGREE entry's {@code ID}, warns and keeps the first entry instead of storing
+     * {@code md} -- matching the six keyed types' warn-and-keep-first rule. A PEDIGREE entry with no {@code ID}
+     * property (VCFv4.2.tex line 152's own grammar, e.g. {@code Name_0=G0-ID,...,Name_N=GN-ID}, has no mandatory
+     * ID attribute) is always added: confirmed bcftools 1.23.1 keeps both of two ID-less duplicate PEDIGREE lines,
+     * since there is no key to dedupe on -- see DUPLICATE_METADATA_ID_HANDLING.md.
+     */
     public Builder addPedigree(BaseMetadata md) {
+      String id = md.getPropertiesRaw().get("ID");
+      if (id != null && !m_pedigreeIds.add(id)) {
+        sf_logger.warn("Duplicate ID \"{}\" for PEDIGREE metadata declaration ignored; keeping the first " +
+            "declaration", id);
+        return this;
+      }
       m_pedigree.add(md);
       return this;
     }

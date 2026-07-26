@@ -74,16 +74,29 @@ surfaces any complaint about a dropped duplicate's content either.
 - `VcfMetadata.Builder.addAlt()` / `addInfo()` / `addFormat()` / `addFilter()` / `addContig()` / `addSample()` —
   each calls `warnIfDuplicate()` before storing a new declaration, and returns immediately (without storing) if it
   reports a duplicate.
+- `VcfMetadata.Builder.addPedigree()` — warns and keeps the first entry when a duplicate literal `ID` property is
+  found; always adds when no `ID` property is present.
+- `VcfWriter.validateMetadata()`'s PEDIGREE loop — the same check, but warn-only (never drops), since it runs
+  post-construction on content the caller already holds a reference to.
 
-## Out of scope
+## `##PEDIGREE`: a conditional case
 
-1. `##PEDIGREE` declarations are not covered by this fix. `VcfMetadata.Builder.addPedigree()` has no duplicate-ID
-   check at all and always accepts every declaration unconditionally, while `VcfWriter.validateBeforeWrite()` still
-   throws `VcfFormatException` on a duplicate PEDIGREE ID (see `VcfWriter.java` around line 243-251, search for
-   "for PEDIGREE metadata") — an inconsistency with the six keyed types above, left as-is since no hts-specs
-   fixture or tool evidence motivates touching it in this pass.
-2. `VcfMetadata`'s own instance methods (`addAlt`/`addInfo`/`addFormat`/`addFilter`/`addContig`, defined directly
-   on `VcfMetadata`, not on `VcfMetadata.Builder`) retain a separate, pre-existing behavior on a duplicate ID:
-   silent overwrite (effectively "keep last"), with no warning at all. This differs from `Builder`'s new
-   warn-and-keep-first behavior documented above, and is intentionally out of scope for this fix — only
-   `Builder`'s construction-time path was changed.
+Unlike the six keyed types above, `##PEDIGREE`'s grammar (`VCFv4.2.tex` line 152: `##PEDIGREE=<Name_0=G0-ID,...,
+Name_N=GN-ID>`) has no mandatory `ID` attribute — the spec's own worked example (lines 904-908) declares three
+`##PEDIGREE` lines in one file, each with a different, non-`ID` attribute schema (`Derived=...,Original=...`).
+This is why `m_pedigree` is a `List<BaseMetadata>`, not a `Map<String, ...>` like the six keyed types — there is
+no guaranteed key to map on.
+
+Empirical testing shows bcftools still dedupes PEDIGREE by `ID` whenever a line happens to declare one:
+
+| Case | bcftools 1.23.1 | vcf_validator 0.10.2 |
+|---|---|---|
+| Two `##PEDIGREE` lines, no `ID` property, otherwise identical | Keeps **both** | Valid |
+| Two `##PEDIGREE` lines sharing `ID=P1` | Keeps **first**, drops duplicate | Valid |
+
+So the rule generalizes: bcftools dedupes by `ID` wherever that key is present, regardless of the declaration's
+tag name — not six special cases plus an unrelated PEDIGREE rule, but one rule (dedupe on `ID` when present) that
+the six keyed types happen to always trigger (their grammar makes `ID` mandatory) and PEDIGREE only sometimes
+triggers (its grammar makes `ID` optional). `VcfMetadata.Builder.addPedigree()` and `VcfWriter`'s post-construction
+check both implement this: warn and keep first when `ID` is present and duplicated; always add when `ID` is
+absent.

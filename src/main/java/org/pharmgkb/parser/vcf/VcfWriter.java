@@ -254,7 +254,11 @@ public class VcfWriter implements Closeable {
       validateMetadataProperties("PEDIGREE", properties);
       String id = properties.get("ID");
       if (id != null && !pedigreeIds.add(id)) {
-        throw new VcfFormatException("Duplicate ID " + id + " for PEDIGREE metadata");
+        // unlike VcfMetadata.Builder.addPedigree() (which warns and drops a duplicate ID at construction time),
+        // this check runs post-construction and must not silently remove content the caller already holds a
+        // reference to (same "warn, don't drop" writer philosophy as the empty-metadata-value check elsewhere in
+        // this method) -- so this only warns; both entries are still written.
+        sf_logger.warn("Duplicate ID \"{}\" for PEDIGREE metadata", id);
       }
     }
     Set<String> sampleNames = new HashSet<>();
