@@ -70,10 +70,14 @@ surfaces any complaint about a dropped duplicate's content either.
 
 ## Where this is implemented
 
-- `VcfMetadata.Builder.warnIfDuplicate(Map, String, String)` — the shared helper.
-- `VcfMetadata.Builder.addAlt()` / `addInfo()` / `addFormat()` / `addFilter()` / `addContig()` / `addSample()` —
-  each calls `warnIfDuplicate()` before storing a new declaration, and returns immediately (without storing) if it
-  reports a duplicate.
+- `VcfMetadata.warnIfDuplicate(Map, String, String)` — the shared helper, used by both `VcfMetadata`'s own
+  instance `addXxx` methods and `VcfMetadata.Builder`'s `addXxx` methods.
+- `VcfMetadata.Builder.addAlt()` / `addInfo()` / `addFormat()` / `addFilter()` / `addContig()` / `addSample()`, and
+  `VcfMetadata.addAlt()` / `addInfo()` / `addFormat()` / `addFilter()` / `addContig()` (the same five, minus
+  `SAMPLE`, which has no instance-level equivalent) — each calls `warnIfDuplicate()` before storing a new
+  declaration, and returns immediately (without storing) if it reports a duplicate. To replace an existing entry,
+  call the corresponding `removeXxx()` method first, then add — there is no implicit-overwrite path anywhere in
+  this bucket.
 - `VcfMetadata.Builder.addPedigree()` — warns and keeps the first entry when a duplicate literal `ID` property is
   found; always adds when no `ID` property is present.
 - `VcfWriter.validateMetadata()`'s PEDIGREE loop — the same check, but warn-only (never drops), since it runs

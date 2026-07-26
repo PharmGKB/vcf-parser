@@ -131,8 +131,13 @@ public class VcfMetadata {
 
   /**
    * Adds {@code value} to the map of ALT metadata, using its {@link IdDescriptionMetadata#getId() ID} as the key.
+   * Warns and keeps the existing entry if {@code value}'s ID is already present -- call {@link #removeAlt} first
+   * to replace an existing declaration.
    */
   public void addAlt(IdDescriptionMetadata value) {
+    if (warnIfDuplicate(m_alt, value.getId(), "ALT")) {
+      return;
+    }
     validateAlt(value);
     m_alt.put(value.getId(), value);
   }
@@ -199,30 +204,74 @@ public class VcfMetadata {
   }
 
   /**
-   * Adds {@code value} to the map of INFO metadata, using its {@link InfoMetadata#getId() ID} as the key.
+   * Warns and returns {@code true} (does not throw) when {@code id} is already present in {@code map} -- the
+   * caller must skip storing its value and keep the existing (first, or previously-added) entry. Shared by
+   * {@code VcfMetadata}'s own instance {@code addXxx} methods and {@code VcfMetadata.Builder}'s {@code addXxx}
+   * methods, so both a parsed file's construction-time declarations and any later programmatic mutation follow
+   * the same duplicate-ID rule.
+   * <p>
+   * Neither VCFv4.2.tex nor VCFv4.3.tex states that a repeated declaration ID is an error for CONTIG/INFO/FORMAT/
+   * FILTER/ALT/SAMPLE (contrast with duplicate #CHROM sample-column names, which remain a structural error --
+   * see DUPLICATE_METADATA_ID_HANDLING.md for why). hts-specs' own test/vcf/{4.1,4.2}/passed/passed_meta_contig.vcf
+   * fixture declares ##contig=&lt;ID=1&gt; twice and is expected to parse successfully. Confirmed valid by
+   * vcf_validator 0.10.2 for all six declaration types tested; bcftools 1.23.1 (htslib 1.23.1) keeps the first
+   * declaration and silently drops each duplicate, with no warning, for all six -- see
+   * DUPLICATE_METADATA_ID_HANDLING.md.
+   */
+  private static boolean warnIfDuplicate(Map<String, ?> map, String id, String typeName) {
+    if (map.containsKey(id)) {
+      sf_logger.warn("Duplicate ID \"{}\" for {} metadata declaration ignored; keeping the first declaration",
+          id, typeName);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Adds {@code value} to the map of INFO metadata, using its {@link InfoMetadata#getId() ID} as the key. Warns
+   * and keeps the existing entry if {@code value}'s ID is already present -- call {@link #removeInfo} first to
+   * replace an existing declaration.
    */
   public void addInfo(InfoMetadata value) {
+    if (warnIfDuplicate(m_info, value.getId(), "INFO")) {
+      return;
+    }
     m_info.put(value.getId(), value);
   }
 
   /**
    * Adds {@code value} to the map of FORMAT metadata, using its {@link FormatMetadata#getId() ID} as the key.
+   * Warns and keeps the existing entry if {@code value}'s ID is already present -- call {@link #removeFormat}
+   * first to replace an existing declaration.
    */
   public void addFormat(FormatMetadata value) {
+    if (warnIfDuplicate(m_format, value.getId(), "FORMAT")) {
+      return;
+    }
     m_format.put(value.getId(), value);
   }
 
   /**
    * Adds {@code value} to the map of CONTIG metadata, using its {@link ContigMetadata#getId() ID} as the key.
+   * Warns and keeps the existing entry if {@code value}'s ID is already present -- call {@link #removeContig}
+   * first to replace an existing declaration.
    */
   public void addContig(ContigMetadata value) {
+    if (warnIfDuplicate(m_contig, value.getId(), "CONTIG")) {
+      return;
+    }
     m_contig.put(value.getId(), value);
   }
 
   /**
-   * Adds {@code value} to the map of FILTER metadata, using its {@link IdDescriptionMetadata#getId() ID} as the key.
+   * Adds {@code value} to the map of FILTER metadata, using its {@link IdDescriptionMetadata#getId() ID} as the
+   * key. Warns and keeps the existing entry if {@code value}'s ID is already present -- call {@link #removeFilter}
+   * first to replace an existing declaration.
    */
   public void addFilter(IdDescriptionMetadata value) {
+    if (warnIfDuplicate(m_filter, value.getId(), "FILTER")) {
+      return;
+    }
     m_filter.put(value.getId(), value);
   }
 
@@ -415,26 +464,6 @@ public class VcfMetadata {
         throw new VcfFormatException("Not a VCF file: fileformat is " + m_fileFormat);
       }
       return this;
-    }
-
-    /**
-     * Warns and returns {@code true} (does not throw) when {@code id} is already present in {@code map} -- the
-     * caller must skip storing its value and keep the existing (first) declaration.
-     * <p>
-     * Neither VCFv4.2.tex nor VCFv4.3.tex states that a repeated declaration ID is an error for CONTIG/INFO/FORMAT/
-     * FILTER/ALT/SAMPLE (contrast with duplicate #CHROM sample-column names, which remain a structural error per
-     * AGENTS.md). hts-specs' own test/vcf/{4.1,4.2}/passed/passed_meta_contig.vcf fixture declares
-     * ##contig=&lt;ID=1&gt; twice and is expected to parse successfully. Confirmed valid by vcf_validator 0.10.2
-     * for all six declaration types tested; bcftools 1.23.1 (htslib 1.23.1) keeps the first declaration and
-     * silently drops each duplicate, with no warning, for all six -- see DUPLICATE_METADATA_ID_HANDLING.md.
-     */
-    private boolean warnIfDuplicate(Map<String, ?> map, String id, String typeName) {
-      if (map.containsKey(id)) {
-        sf_logger.warn("Duplicate ID \"{}\" for {} metadata declaration ignored; keeping the first declaration",
-            id, typeName);
-        return true;
-      }
-      return false;
     }
 
     public Builder addAlt(IdDescriptionMetadata md) {
