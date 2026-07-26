@@ -15,6 +15,8 @@ hts-specs also publishes an official VCF conformance fixture suite (`test/vcf/{v
 
 If still in doubt, consult bcftools behavior.  Decisions made this way should be documented and have a regression fixture demonstrating the behavior.  If bcftools was consulted, include bcftools version.
 
+When hts-specs itself is silent (no fixture covers the exact case), running vcf_validator (the EBI reference validator; the tool hts-specs itself uses to generate its `passed`/`failed` corpus) directly against a hand-built input is informative but is *not* equivalent to a documented hts-specs fixture -- cite it as a direct tool run ("vcf_validator `<version>`"), not as "the suite says." vcf_validator tends to be stricter than bcftools on zero-length-field cases in structural fields (ID/FILTER/ALT/INFO) but does not apply the same rigor to sample-column sub-structure (GT, reserved FORMAT values) -- don't treat a vcf_validator "invalid" verdict there as load-bearing. When bcftools and vcf_validator disagree, bcftools remains the tie-breaker per the hierarchy above, but document the disagreement rather than silently picking a side.
+
 When code behavior is guided by a specific spec passage (a table, a sentence, a worked example) rather than being self-evident from the VCF column/record structure, cite it in a code comment specific enough that a future agent can find the exact passage without re-deriving it: name the spec file (e.g. `VCFv4.3.tex`), and the section/table/example it comes from or a short verbatim quote -- not just "per the VCF spec" or a bare version number. When the target VCF specification is silent and a later version is used as clarifying guidance (per the paragraph above), say so explicitly in the comment (e.g. "VCFv4.2 does not table this; VCFv4.3's Reserved Genotype Keys table gives Number=G") so the reasoning survives independently of whichever agent wrote it. The same specificity requirement applies when hts-specs' conformance suite is the source of a decision: name the fixture path (e.g. `test/vcf/4.2/failed/failed_meta_alt_001.vcf`) and quote or summarize its `##CauseOfFailure=` line -- not just "per hts-specs" or "the conformance suite requires it".
 
 Minimum supported bcftools version: 1.18.
@@ -32,6 +34,8 @@ The parser is intentionally permissive for non-structural VCF violations in perf
 - Report a parser finding only when invalid content is silently accepted, corrupts/misaligns data, prevents later detection when the relevant value is accessed.
 - Do not report warning-and-recovery behavior as a defect merely because the current target VCF specification would require rejection.
 - Structural violations that make record boundaries or column alignment ambiguous remain errors: malformed #CHROM header structure, wrong column counts, invalid mandatory fixed-field structure, duplicate sample IDs, invalid REF/ALT syntax, negative POS, and invalid delimiter handling that changes field alignment.
+- A duplicate metadata-declaration ID (`##INFO`/`##FORMAT`/`##FILTER`/`##ALT`/`##contig`/`##SAMPLE`, and `##PEDIGREE` when it declares one) warns and keeps the first declaration, matching bcftools -- never keep-last/overwrite. This applies uniformly regardless of when the duplicate is introduced: at parse time, via `VcfMetadata.Builder`, or via later programmatic mutation through `VcfMetadata`'s own instance methods. Do not introduce divergent duplicate-ID handling for a new declaration type or entry point without a documented, tool- or spec-backed reason (see `DUPLICATE_METADATA_ID_HANDLING.md`).
+- Before choosing to drop vs. substitute-with-`.` for an empty entry in any list-like field, check whether another field indexes into that list positionally (e.g. `GT` indexes into `ALT`; FORMAT sub-field position matches sample values by index). Dropping an entry shifts every later index -- this can silently misdirect a lookup to the wrong element with no error at the point of misuse. When such a cross-reference exists, substitute the missing-value sentinel instead of dropping, even if the field wasn't previously known to have one.
 
 
 
@@ -53,6 +57,7 @@ A record accepted by the parser must be writable without losing fields or produc
 
 - Use the checked-in Gradle wrapper. The Node/Yarn files support semantic-release; they are not the application build.
 - **Keep parser changes streaming-friendly**. Do not load an entire VCF into memory unless the affected class explicitly provides an in-memory data store.
+- Commit messages use conventional-commits style (`type(scope): summary`). `scope` is exactly one of `parser`, `writer`, or `memoryMappedImpl` -- never a class name.
 
 ### Repository Layout
 
@@ -85,6 +90,7 @@ On Unix-like systems, use `./gradlew` instead. The full `test` task is the requi
 - Use JSpecify annotations for explicit nullability and follow the surrounding API's collection/null conventions.
 - Keep changes narrow. This is a published library, so avoid changing public behavior or signatures unless the task requires it.
 - Preserve lazy parsing and allocation-conscious code in hot per-record paths unless tests and measurements justify a change.
+- Helpers that normalize a `List` in place (e.g. `VcfUtils.fillEmptyEntriesWithDot`) mutate their argument directly and require a mutable list. Callers must never pass a constructor/method parameter straight through to such a helper -- defensively copy first (`new ArrayList<>(list)`), since external callers may supply an immutable list (`List.of(...)`) or one they don't expect to be mutated (`Arrays.asList(...)`).
 
 ### Tests and Fixtures
 
