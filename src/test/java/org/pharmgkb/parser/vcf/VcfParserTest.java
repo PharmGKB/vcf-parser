@@ -237,6 +237,25 @@ public class VcfParserTest {
     assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
   }
 
+  @Test
+  void testEmptySampleNameThrows() throws IOException {
+    // a trailing tab after FORMAT produces a well-formed sample count (bypassing testFormatWithNoSamplesThrows'
+    // check) but an empty-named sample column. Confirmed bcftools 1.23.1 hard-errors ("Empty sample name:
+    // trailing spaces/tabs in the header line?") and vcf_validator 0.10.2 reports the file invalid
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t\n";
+    assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
+  }
+
+  @Test
+  void testEmptySampleNameInMiddleThrows() throws IOException {
+    // same underlying problem as testEmptySampleNameThrows, but the empty name is between two real sample names
+    // rather than trailing
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\t\tS2\n";
+    assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
+  }
+
   private static void parseMetadataOf(String vcf) throws IOException {
     try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
          VcfParser parser = new VcfParser.Builder()

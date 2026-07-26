@@ -492,6 +492,13 @@ public class VcfParser implements Closeable {
     }
     Set<String> sampleNames = new HashSet<>();
     for (int i = 9; i < cols.size(); i++) {
+      if (cols.get(i).isEmpty()) {
+        // confirmed bcftools 1.23.1 hard-errors ("[E::bcf_hdr_add_sample_len] Empty sample name: trailing
+        // spaces/tabs in the header line?") and vcf_validator 0.10.2 reports the file invalid, for both a
+        // trailing and an interior empty sample name
+        throw new VcfFormatException("Empty sample name in header (check for a trailing or duplicated tab)",
+            m_lineNumber);
+      }
       if (!sampleNames.add(cols.get(i))) {
         throw new VcfFormatException("Duplicate sample name '" + cols.get(i) + "' in header", m_lineNumber);
       }
