@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
 import org.junit.jupiter.api.Test;
@@ -516,9 +517,10 @@ public class VcfPositionTest {
   @Test
   public void testAltMissingValueCombinedWithAlleleAccepted() {
     // VCFv4.2.tex line 183 only states that '.' replaces the ENTIRE ALT field "if there are no alternative
-    // alleles"; it is silent on '.' as one entry among several. VCFv4.3.tex/4.4.tex/4.5.tex all resolve that
-    // ambiguity identically: "Each allele in this list must be one of: ... the MISSING value '.' (no variant);
-    // ...". Confirmed bcftools 1.23.1 accepts this with no warning, whether the '.' is literal or substituted, and
+    // alleles"; it is silent on '.' as one entry among several. VCFv4.3.tex line 350 lists '.' (no variant) as one
+    // option among several for the same comma-separated list; VCFv4.4.tex line 367 / VCFv4.5.tex line 416 say this
+    // more explicitly: "Each allele in this list must be one of: ... the MISSING value '.' (no variant); ...".
+    // Confirmed bcftools 1.23.1 accepts this with no warning, whether the '.' is literal or substituted, and
     // genotype indices before/at/after the dot still resolve correctly.
     new VcfPosition("chr1", 1, null, "C", Collections.singletonList("."), null, null, null, null); // "." alone is fine
     VcfPosition afterReal = new VcfPosition("chr1", 1, null, "C", new ArrayList<>(Arrays.asList("A", ".")), null,
@@ -588,6 +590,17 @@ public class VcfPositionTest {
     VcfPosition equalsInKey = newPosition();
     equalsInKey.getInfo().put("KEY=X", "value");
     assertThrows(VcfFormatException.class, equalsInKey::validate);
+  }
+
+  @Test
+  public void testCheckAltBasesDoesNotMutateCallersImmutableList() {
+    // fillEmptyEntriesWithDot mutates its argument in place; checkAltBases must defensively copy first so an
+    // immutable or caller-owned list passed to the constructor is never mutated or rejected with
+    // UnsupportedOperationException
+    List<String> immutable = List.of("T", "");
+    VcfPosition position = new VcfPosition("chr1", 1, null, "C", immutable, null, null, null, null);
+    assertEquals(Arrays.asList("T", "."), position.getAltBases());
+    assertEquals(Arrays.asList("T", ""), immutable);
   }
 
 }
