@@ -96,6 +96,15 @@ stored:
   accepts both silently — splitting an `=`-containing value on the first `=` only (same as this parser), and
   keeping only the first occurrence of a duplicate key rather than merging the two into a list. This parser matches
   that bcftools tolerance rather than being stricter than it, consistent with the empty-field policy below.
+- A declared `Number`/`Type` for a well-known reserved `INFO`/`FORMAT` key (e.g. `AC`, `AN`, `GT`, `PL`) that doesn't
+  match VCF's canonical definition for that key.
+- An `##INFO`/`##FORMAT`/`##ALT`/`##FILTER`/`##SAMPLE` declaration whose attributes are out of the canonical
+  `ID, Number, Type, Description, Source, Version` order every spec example uses.
+- An `##ALT` structural-variant ID (e.g. `<DEL:ME:ALU>`) that doesn't match VCF's reserved code hierarchy
+  (DEL/INS/DUP/INV/CNV and colon-delimited subtypes) — but only when the ID actually contains a colon; a colon-less
+  ID (e.g. an IUPAC ambiguity code, or a `CN0`-through-`CN124`-style copy-number allele used by 1000 Genomes) is not
+  checked against that hierarchy at all, since colon-less custom codes have other spec-sanctioned, non-structural-
+  variant uses this parser must not reject.
 
 An empty ("zero-length") entry in a delimited record field — e.g. `ID=rs1;;rs2`, `ALT=T,`, `FILTER=q10;`,
 `FORMAT=GT:DP:`, a sample value like `0/1:`, or `INFO=AD=1,,2` — is also lenient rather than strict when it can be
@@ -148,98 +157,9 @@ which stays network-free. The pinned commit is bumped deliberately, not automati
 `htsSpecsTest` depends on) prints a warning if hts-specs has upstream changes to `test/vcf` that the current pin
 doesn't include.
 
-As of the current `htsSpecsPinnedSha`, `./gradlew htsSpecsTest` reports **611 total tests, 19 baselined
-entries**, and this is the expected current state, not a regression to chase down: 0 `parser-no-throw` + 10
-`parser-throw-or-warn` + 9 `writer-bytediff` (0 `writer-semantic`). The `parser-no-throw` cluster (formerly 5
-entries) is now closed (see
-`docs/superpowers/specs/2026-07-25-duplicate-metadata-id-and-filter-pass-validation-design.md`): a repeated
-declaration ID for `##contig`/`##INFO`/`##FORMAT`/`##FILTER`/`##ALT`/`##SAMPLE` now warns and keeps the first
-declaration instead of throwing (see `DUPLICATE_METADATA_ID_HANDLING.md`), and a `FILTER` value combining `PASS`
-with another code now warns instead of being rejected. Both changes were verified against vcf_validator 0.10.2 and
-bcftools 1.23.1 (htslib 1.23.1), which both tolerate these constructs.
-
-Unlocking those 5 fixtures from parse-time rejection also exposed them, for the first time, to the
-`writer-bytediff`/`writer-semantic` round-trip checks (a fixture that never finishes parsing was never previously
-round-tripped at all) — this is why the total test count rose from 601 to 611 (5 fixtures × 2 newly-applicable
-checks). `writer-semantic` stayed at 0 for all of them; that check's `semanticDiff()` only compares parsed
-position/sample data, not metadata, so it confirms no data loss for the `complexfile_passed_000.vcf` reordering
-case below but has nothing to say about the `passed_meta_contig.vcf` case discussed next. `writer-bytediff` gained
-exactly 5 new baselined entries: 3 are `complexfile_passed_000.vcf` (all versions), which interleaves `##INFO`/
-`##ALT`/`##FILTER`/`##FORMAT`/more `##INFO` lines, and is reordered by `VcfWriter.buildHeaderLines()`'s
-pre-existing, fixed per-type grouping (INFO, FILTER, FORMAT, ALT, contig, SAMPLE, PEDIGREE, then generic
-properties) — a long-standing writer property this plan didn't change, just newly revealed. The other 2 are
-`passed_meta_contig.vcf` (4.1/4.2), which is this plan's own doing: the duplicate `##contig=<ID=1,length=123456>`
-line is now dropped (per `DUPLICATE_METADATA_ID_HANDLING.md`), so the written output is naturally one line shorter
-than the original. This is real, intended information loss at the metadata level — the duplicate's own
-`length=123456` attribute is permanently gone — as a direct, deliberate consequence of the keep-first policy; it
-isn't something `writer-semantic` needs to "confirm" away, since that check doesn't look at metadata at all.
-
-The 10 `parser-throw-or-warn` entries are `failed/` fixtures whose invalidity this library still doesn't detect,
-grouped by cause: 4 are genome ID validation (whitespace/punctuation in `SAMPLE`'s `Genomes`); 3 are invalid URLs;
-2 are `failed_meta_alt_000.vcf` (`ID=DEL1`), a deliberately accepted false negative — see below; 1 is
-`failed_meta_assembly_001.vcf`'s 4.2 copy, which is really the same invalid-URL issue as the 3 above but is
-labeled with a different `##CauseOfFailure=` in that one fixture copy (see
-`docs/superpowers/specs/2026-07-25-empty-metadata-value-validation-design.md`'s Context section, and
-`non-valid-url-issue.md`). None of these are part of this test task; each is a candidate for separate, future
-work.
-
-Two clusters formerly in this count are now closed (see
-`docs/superpowers/specs/2026-07-25-2158-chrom-format-and-unbalanced-quote-validation-design.md`): a `#CHROM`
-header declaring `FORMAT` with zero sample columns now throws (`VcfParser.parseColumnInfo()`), matching bcftools
-1.23.1's own hard error and vcf_validator 0.10.2's invalid verdict; and an unescaped quote inside a metadata
-attribute value (e.g. `Description="..."`) now warns (`VcfUtils.extractPropertiesFromLine()`) instead of being
-silently accepted — checked on the raw attribute-list string before splitting, since the ambiguity can otherwise
-corrupt the split itself, not just the one affected value.
-
-The malformed-metadata-key-value-pair/empty-value cluster (formerly 9 findings) is now closed (see
-`docs/superpowers/specs/2026-07-25-empty-metadata-value-validation-design.md`): a generic metadata property
-(`##reference=`, `##assembly=`, `##pedigreeDB=`, or any other) with a completely empty value — or an empty
-bracket pair, e.g. `##pedigreeDB=<>` — now warns and is dropped, via
-`VcfMetadata.Builder.addRawProperty()`/`addAssembly()`/`addPedigreeDatabase()`. bcftools 1.23.1 actually preserves
-a plain empty value silently, but this library is deliberately stricter here, per `VCFv4.3.tex` line 39 (see
-`EMPTY_FIELD_HANDLING.md`). This also fixed a real pre-existing bug:
-`addPedigreeDatabase()`/`removePedigreeDb()` incorrectly required angle-bracket wrapping, contradicting
-VCFv4.2.tex/4.3.tex/4.4.tex's own bracket-less template and hts-specs' own `passed_meta_pedigreedb.vcf` fixture.
-`VcfWriter.validateBeforeWrite()` warns (without dropping) on the same condition for metadata built or mutated
-programmatically.
-
-This library previously did not cross-validate a declared `##INFO`/`##FORMAT` key's `Number`/`Type` against the
-canonical values for well-known reserved keys (`AC`, `AN`, `GT`, `PL`, etc.) — `ReservedInfoProperty` and
-`ReservedFormatProperty` now expose `getExpectedNumber()`/`fromId()` for this (see
-`docs/superpowers/specs/2026-07-24-reserved-property-number-type-validation-design.md`), and `InfoMetadata.init()`/
-`FormatMetadata.init()` warn on a mismatch. This closed 106 of the previous 146 `parser-throw-or-warn` findings.
-
-Two more clusters have since mostly closed (see
-`docs/superpowers/specs/2026-07-24-alt-structural-variant-validation-design.md`): `AltStructuralVariant`'s
-code-hierarchy validation (already existed, but was never invoked during ALT declaration parsing) is now wired
-into `VcfMetadata.addAlt()`/`Builder.addAlt()`, which also gained a character-set check (no whitespace or angle
-brackets in a structural-variant ID, per VCFv4.2.tex line 105) and validation of any extra `Number`/`Type`
-property an `##ALT` line happens to declare — closing 12 of the 14 findings in that cluster. The remaining 2
-(`failed_meta_alt_000.vcf`, `ID=DEL1`) are a deliberate, narrower scope: the reserved-code hierarchy (DEL/INS/DUP/
-INV/CNV and colon-delimited subtypes) is only enforced when an ALT ID actually contains `:`, since a bare
-single-token ID has other spec-sanctioned, non-structural-variant uses this library must not reject — VCFv4.3.tex's
-IUPAC ambiguity codes (`##ALT=<ID=R,...>`) and the real-world copy-number-allele convention (`##ALT=<ID=CN0,...>`
-through `CN124`, used by 1000 Genomes and exercised by this repo's own `src/test/resources/cnv.vcf`). There is no
-way to distinguish a legitimate custom code like `CN0` from a typo'd reserved code like `DEL1` by ID shape alone
-without a colon, so `DEL1` is accepted as a deliberate, documented false negative rather than rejecting `CN0`.
-Separately, declared-attribute order (`##INFO`/`##FORMAT`/`##ALT`/`##FILTER`/`##SAMPLE` attributes out of the
-canonical `ID, Number, Type, Description, Source, Version` order every spec example uses) is now warned on via
-`BaseMetadata.checkAttributeOrder()` — closing all 6 findings in that cluster. This reverses the prior deferral of
-that cluster: `AGENTS.md` now treats hts-specs' conformance suite as spec guidance on the same footing as spec
-prose, resolving VCFv4.2's silence on attribute
-order the same way the reserved-property work resolved its silence on `Number`/`Type`.
-
-The writer round-trip checks found no ordering-related divergences at the time this fix landed:
-`VcfUtils.extractProperties()`, `VcfMetadata`'s six keyed maps and its generic-property map, and
-`VcfPosition.info()` all preserve insertion order through parse-write round trips (see
-`docs/superpowers/specs/2026-07-24-writer-ordering-preservation-design.md`). Of the 4 `writer-bytediff` entries
-existing at that point, 3 are `QUAL` scientific-notation case normalization (`2e+1` in the original fixture is
-written back as `2E+1`, from `BigDecimal`'s own string formatting), and 1 is empty-sample-value-to-`.`
-normalization in `zero_length_LAA.vcf`, consistent with this library's documented empty-field-handling policy.
-Both are pre-existing, deliberate canonicalization behaviors, not data loss (0 `writer-semantic` findings confirm
-this), and were out of scope for this writer-ordering fix. (A later plan grew `writer-bytediff` to 9 entries; 3 of
-the 5 new ones ARE ordering-related — see the `complexfile_passed_000.vcf` discussion above, under "As of the
-current `htsSpecsPinnedSha`".)
+For the current baseline's contents — every fixture this library still doesn't detect as invalid, or doesn't
+round-trip byte-identically, along with each entry's status and rationale — see
+[`HTS_SPECS_BASELINE_STATUS.md`](HTS_SPECS_BASELINE_STATUS.md).
 
 Every `htsSpecsTest`/`htsSpecsUpdateBaseline` run writes two (gitignored, not committed) reports under
 `build/reports/hts-specs-conformance/`: `summary.md` (counts by version x check type) and `findings.tsv` (only
