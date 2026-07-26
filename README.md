@@ -148,8 +148,8 @@ which stays network-free. The pinned commit is bumped deliberately, not automati
 `htsSpecsTest` depends on) prints a warning if hts-specs has upstream changes to `test/vcf` that the current pin
 doesn't include.
 
-As of the current `htsSpecsPinnedSha`, `./gradlew htsSpecsTest` reports **611 total tests, 23 baselined
-entries**, and this is the expected current state, not a regression to chase down: 0 `parser-no-throw` + 14
+As of the current `htsSpecsPinnedSha`, `./gradlew htsSpecsTest` reports **611 total tests, 19 baselined
+entries**, and this is the expected current state, not a regression to chase down: 0 `parser-no-throw` + 10
 `parser-throw-or-warn` + 9 `writer-bytediff` (0 `writer-semantic`). The `parser-no-throw` cluster (formerly 5
 entries) is now closed (see
 `docs/superpowers/specs/2026-07-25-duplicate-metadata-id-and-filter-pass-validation-design.md`): a repeated
@@ -174,15 +174,22 @@ than the original. This is real, intended information loss at the metadata level
 `length=123456` attribute is permanently gone — as a direct, deliberate consequence of the keep-first policy; it
 isn't something `writer-semantic` needs to "confirm" away, since that check doesn't look at metadata at all.
 
-The 14 `parser-throw-or-warn` entries are `failed/` fixtures whose invalidity this library still doesn't detect,
+The 10 `parser-throw-or-warn` entries are `failed/` fixtures whose invalidity this library still doesn't detect,
 grouped by cause: 4 are genome ID validation (whitespace/punctuation in `SAMPLE`'s `Genomes`); 3 are invalid URLs;
-2 are unescaped `Description` quotes; 2 are fixtures hts-specs itself doesn't document a cause for; 2 are
-`failed_meta_alt_000.vcf` (`ID=DEL1`), a deliberately accepted false negative — see below; 1 is
+2 are `failed_meta_alt_000.vcf` (`ID=DEL1`), a deliberately accepted false negative — see below; 1 is
 `failed_meta_assembly_001.vcf`'s 4.2 copy, which is really the same invalid-URL issue as the 3 above but is
 labeled with a different `##CauseOfFailure=` in that one fixture copy (see
 `docs/superpowers/specs/2026-07-25-empty-metadata-value-validation-design.md`'s Context section, and
 `non-valid-url-issue.md`). None of these are part of this test task; each is a candidate for separate, future
 work.
+
+Two clusters formerly in this count are now closed (see
+`docs/superpowers/specs/2026-07-25-2158-chrom-format-and-unbalanced-quote-validation-design.md`): a `#CHROM`
+header declaring `FORMAT` with zero sample columns now throws (`VcfParser.parseColumnInfo()`), matching bcftools
+1.23.1's own hard error and vcf_validator 0.10.2's invalid verdict; and an unescaped quote inside a metadata
+attribute value (e.g. `Description="..."`) now warns (`VcfUtils.extractPropertiesFromLine()`) instead of being
+silently accepted — checked on the raw attribute-list string before splitting, since the ambiguity can otherwise
+corrupt the split itself, not just the one affected value.
 
 The malformed-metadata-key-value-pair/empty-value cluster (formerly 9 findings) is now closed (see
 `docs/superpowers/specs/2026-07-25-empty-metadata-value-validation-design.md`): a generic metadata property
