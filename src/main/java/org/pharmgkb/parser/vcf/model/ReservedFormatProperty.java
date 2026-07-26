@@ -1,5 +1,9 @@
 package org.pharmgkb.parser.vcf.model;
 
+import java.util.Arrays;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 
@@ -92,50 +96,12 @@ public enum ReservedFormatProperty implements ReservedProperty {
     return m_expectedNumber;
   }
 
+  private static final Map<String, ReservedFormatProperty> BY_ID = Arrays.stream(values())
+      .collect(Collectors.toUnmodifiableMap(ReservedFormatProperty::getId, Function.identity()));
+
   @Nullable
   public static ReservedFormatProperty fromId(String id) {
-    switch (id) {
-      case "GT":
-        return Genotype;
-      case "DP":
-        return Depth;
-      case "FT":
-        return Filter;
-      case "GL":
-        return GenotypeLikelihoods;
-      case "GLE":
-        return GenotypeLikelihoodsOfHeterogenousPloidy;
-      case "PL":
-        return PhredScaledGenotypeLikelihoods;
-      case "GP":
-        return GenotypePosteriorProbabilitiesPhredScaled;
-      case "GQ":
-        return GenotypeQualityConditional;
-      case "HQ":
-        return HaplotypeQualities;
-      case "PS":
-        return PhaseSet;
-      case "PQ":
-        return PhasingQuality;
-      case "EC":
-        return ExpectedAlleleCounts;
-      case "MQ":
-        return MappingQuality;
-      case "CN":
-        return CopyNumber;
-      case "CNQ":
-        return CopyNumberGenotypeQuality;
-      case "CNL":
-        return CopyNumberLikelihood;
-      case "NQ":
-        return PhredScoreForNovelty;
-      case "HAP":
-        return HaplotypeId;
-      case "AHAP":
-        return AncestralHaplotypeId;
-      default:
-        return null;
-    }
+    return BY_ID.get(id);
   }
 
 }

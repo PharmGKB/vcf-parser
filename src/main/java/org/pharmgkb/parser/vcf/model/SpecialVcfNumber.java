@@ -1,5 +1,9 @@
 package org.pharmgkb.parser.vcf.model;
 
+import java.util.Arrays;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 
@@ -14,15 +18,12 @@ public enum SpecialVcfNumber {
   ONE_PER_GENOTYPE("G"),
   UNKNOWN_OR_UNBOUNDED(".");
 
+  private static final Map<String, SpecialVcfNumber> BY_ID = Arrays.stream(values())
+      .collect(Collectors.toUnmodifiableMap(SpecialVcfNumber::getId, Function.identity()));
+
   @Nullable
   public static SpecialVcfNumber fromId(String id) {
-    switch(id) {
-      case "A": return ONE_PER_ALT;
-      case "R": return ONE_PER_ALT_OR_REF;
-      case "G": return ONE_PER_GENOTYPE;
-      case ".": return UNKNOWN_OR_UNBOUNDED;
-    }
-    return null;
+    return BY_ID.get(id);
   }
 
   private final String m_id;

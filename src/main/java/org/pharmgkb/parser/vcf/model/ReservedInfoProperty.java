@@ -1,5 +1,9 @@
 package org.pharmgkb.parser.vcf.model;
 
+import java.util.Arrays;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 
@@ -127,94 +131,12 @@ public enum ReservedInfoProperty implements ReservedProperty {
     return m_expectedNumber;
   }
 
+  private static final Map<String, ReservedInfoProperty> BY_ID = Arrays.stream(values())
+      .collect(Collectors.toUnmodifiableMap(ReservedInfoProperty::getId, Function.identity()));
+
   @Nullable
   public static ReservedInfoProperty fromId(String id) {
-    switch (id) {
-      case "AA":
-        return AncestralAllele;
-      case "AC":
-        return AlleleCount;
-      case "AF":
-        return AlleleFrequency;
-      case "AN":
-        return AlleleNumber;
-      case "BQ":
-        return BaseQuality;
-      case "CIGAR":
-        return Cigar;
-      case "DB":
-        return Dbsnp;
-      case "DP":
-        return Depth;
-      case "H2":
-        return Hapmap2;
-      case "H3":
-        return Hapmap3;
-      case "MQ":
-        return MappingQuality;
-      case "MQ0":
-        return MappingQualityZeroCount;
-      case "NS":
-        return NumberOfSamples;
-      case "SB":
-        return StrandBias;
-      case "SOMATIC":
-        return SomaticMutation;
-      case "VALIDATED":
-        return Validated;
-      case "1000G":
-        return ThousandGenomes;
-      case "IMPRECISE":
-        return Imprecise;
-      case "NOVEL":
-        return Novel;
-      case "END":
-        return End;
-      case "SVTYPE":
-        return StructuralVariantType;
-      case "SVLEN":
-        return StructuralVariantLength;
-      case "CIPOS":
-        return ConfidenceIntervalForPosition;
-      case "CIEND":
-        return ConfidenceIntervalForEnd;
-      case "HOMLEN":
-        return HomologyLength;
-      case "HOMSEQ":
-        return HomologySequence;
-      case "BKPTID":
-        return BreakpointId;
-      case "MEINFO":
-        return MobileElementInfo;
-      case "METRANS":
-        return MobileElementTransduction;
-      case "DGVID":
-        return DgvId;
-      case "DBVARID":
-        return DbvarId;
-      case "DBRIPID":
-        return DbripId;
-      case "MATEID":
-        return MateId;
-      case "PARID":
-        return PartnerId;
-      case "EVENT":
-        return EventId;
-      case "CILEN":
-        return ConfidenceIntervalForInsertedMaterial;
-      case "DPADJ":
-        return ReadDepthOfAdjacency;
-      case "CN":
-        return CopyNumberOfSegment;
-      case "CNADJ":
-        return CopyNumberOfAdjacency;
-      case "CICN":
-        return ConfidenceIntervalForSegmentCopyNumber;
-      case "CICNADJ":
-        return ConfidenceIntervalForAdjacencyCopyNumber;
-      default:
-        return null;
-    }
+    return BY_ID.get(id);
   }
 
 }

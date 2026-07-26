@@ -2,6 +2,9 @@ package org.pharmgkb.parser.vcf.model;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 
@@ -24,26 +27,12 @@ public enum ReservedStructuralVariantCode {
   private final int m_level;
   private final List<ReservedStructuralVariantCode> m_parentCodes;
 
+  private static final Map<String, ReservedStructuralVariantCode> BY_ID = Arrays.stream(values())
+      .collect(Collectors.toUnmodifiableMap(ReservedStructuralVariantCode::getId, Function.identity()));
+
   @Nullable
   public static ReservedStructuralVariantCode fromId(String id) {
-    switch(id) {
-      case "DEL":
-        return Deletion;
-      case "INS":
-        return Insertion;
-      case "DUP":
-        return Duplication;
-      case "INV":
-        return Inversion;
-      case "CNV":
-        return Cnv;
-      case "TANDEM":
-        return Tandem;
-      case "ME":
-        return MobileElement;
-      default:
-        return null;
-    }
+    return BY_ID.get(id);
   }
 
   private ReservedStructuralVariantCode(String id) {
