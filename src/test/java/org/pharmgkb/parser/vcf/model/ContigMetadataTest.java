@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests {@link ContigMetadata}.
@@ -16,10 +17,24 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  */
 public class ContigMetadataTest {
 
-  public void testNoId() { // should warn
-    Map<String, String> map = new HashMap<>();
-    map.put(ContigMetadata.URL, "one");
-    new ContigMetadata(map);
+  @Test
+  public void testNoId() {
+    // IdMetadata.init()'s warnIfMissing() should warn when ID is absent
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      Map<String, String> map = new HashMap<>();
+      map.put(ContigMetadata.URL, "one");
+      new ContigMetadata(map);
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
   }
 
   /**
@@ -35,13 +50,27 @@ public class ContigMetadataTest {
     new ContigMetadata(map);
   }
 
-  public void testBadLength() { // should warn
-    Map<String, String> map = new HashMap<>();
-    map.put(ContigMetadata.ID, "id");
-    map.put(ContigMetadata.ASSEMBLY, "assembly");
-    map.put(ContigMetadata.LENGTH, "234asdgasdgasdg");
-    map.put(ContigMetadata.URL, "url");
-    new ContigMetadata(map);
+  @Test
+  public void testBadLength() {
+    // ContigMetadata.init()'s catch (NumberFormatException) block should warn on a non-numeric length
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      Map<String, String> map = new HashMap<>();
+      map.put(ContigMetadata.ID, "id");
+      map.put(ContigMetadata.ASSEMBLY, "assembly");
+      map.put(ContigMetadata.LENGTH, "234asdgasdgasdg");
+      map.put(ContigMetadata.URL, "url");
+      new ContigMetadata(map);
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
   }
 
   @Test
