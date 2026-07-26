@@ -366,9 +366,10 @@ public class VcfMetadata {
   }
 
   /**
-   * Returns the value of a property, or null if the property is not set or has no value.
-   * <strong>This method will return null for a reserved property of the form XX=&lt;ID=value,ID=value,...&gt;;
-   * {@code assembly} and {@code pedigreeDB} are still included.</strong>
+   * Returns the values of a property, or an empty list if the property is not set (this delegates directly to
+   * Guava's {@link ListMultimap#get}, which never returns {@code null}).
+   * <strong>This method will return an empty list for a reserved property of the form
+   * XX=&lt;ID=value,ID=value,...&gt;; {@code assembly} and {@code pedigreeDB} are still included.</strong>
    */
   public List<String> getRawValuesOfProperty(String propertyKey) {
     return m_properties.get(propertyKey);

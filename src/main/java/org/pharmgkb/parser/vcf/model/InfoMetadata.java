@@ -36,6 +36,7 @@ public class InfoMetadata extends IdDescriptionMetadata {
   public static final String SOURCE = "Source"; // should be quoted
   public static final String VERSION = "Version"; // should be quoted
 
+  @Nullable
   private InfoType m_type;
 
   public InfoMetadata(String id, String description, InfoType type, String number,

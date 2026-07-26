@@ -162,7 +162,9 @@ public class VcfParser implements Closeable {
    * Parses just the next data line available, also reading all the metadata if it has not been read.
    * This is a specialized method; in general calling {@link #parse()} to parse the entire stream is preferred.
    *
-   * @return Whether another line may be available to read; false only if and only if this is the last line available
+   * @return true if a line was read and parsed; false once the end of the stream is reached -- this happens
+   * only on the read attempt made *after* the last data line has already been returned, not on the call that
+   * returns that last line itself
    * @throws IllegalStateException If the stream was already fully parsed
    * @throws VcfFormatException If a VCF formatting error is found
    */
