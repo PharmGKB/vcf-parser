@@ -42,9 +42,23 @@ declaration type, each declaring the same ID twice with different attributes.
 | `##ALT` | Silent | Valid | Keeps first, drops duplicate, no warning | Warn + keep first |
 | `##SAMPLE` | Silent | Valid | Keeps first, drops duplicate, no warning | Warn + keep first |
 
-Contrast with a duplicate `#CHROM` sample-column name, which remains a structural error in `vcf-parser` per
-`AGENTS.md`'s Parser Validation Policy — that is a different kind of duplication (positional data columns, not a
-keyed metadata declaration) and is out of scope for this doc.
+Contrast with a duplicate `#CHROM` sample-column name, which remains a structural error in `vcf-parser`. This is a
+different *kind* of duplication, not merely a stricter policy choice: `#CHROM`'s sample columns are *positional* —
+every data line's per-sample values are aligned to them by index, and `VcfMetadata.getSampleIndex(id)` resolves a
+name via `m_columns.indexOf(id)`. A duplicate name makes the *second* column's data permanently unreachable by
+name (only reachable positionally), silently misdirecting any name-based lookup to the first column's data instead
+— a real data-integrity hazard none of the six declaration types above have, since a declaration merely describes
+something; nothing else in the file indexes into it by position.
+
+Both reference tools independently draw this same line:
+
+| Case | vcf_validator 0.10.2 | bcftools 1.23.1 |
+|---|---|---|
+| Duplicate `##contig`/`##INFO`/etc. ID | Valid | Keeps first, drops duplicate, no warning |
+| Duplicate `#CHROM` sample-column name | **Invalid** | **Hard error — refuses to parse the file at all** |
+
+(Verified directly: `bcftools view` on a file with two `S1` sample columns emits `[E::bcf_hdr_add_sample_len]
+Duplicated sample name 'S1'` and fails to parse; `vcf_validator` reports the file invalid.)
 
 ## Why "keep first," not "keep last"
 
