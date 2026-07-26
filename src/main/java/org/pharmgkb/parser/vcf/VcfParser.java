@@ -479,9 +479,16 @@ public class VcfParser implements Closeable {
             "' but was '" + cols.get(i) + "'", m_lineNumber);
       }
     }
-    if (cols.size() > 8 && !cols.get(8).equals("FORMAT")) {
-      throw new VcfFormatException("Header column 9 must be 'FORMAT' when sample columns are present but was '" +
-          cols.get(8) + "'", m_lineNumber);
+    if (cols.size() > 8) {
+      if (!cols.get(8).equals("FORMAT")) {
+        throw new VcfFormatException("Header column 9 must be 'FORMAT' when sample columns are present but was '" +
+            cols.get(8) + "'", m_lineNumber);
+      }
+      if (cols.size() == 9) {
+        // FORMAT only has meaning relative to sample columns; confirmed bcftools 1.23.1 hard-errors on this
+        // exact shape and vcf_validator 0.10.2 reports it invalid (see VcfParserTest.testFormatWithNoSamplesThrows)
+        throw new VcfFormatException("Header declares FORMAT but no sample columns follow it", m_lineNumber);
+      }
     }
     Set<String> sampleNames = new HashSet<>();
     for (int i = 9; i < cols.size(); i++) {

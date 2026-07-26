@@ -226,6 +226,17 @@ public class VcfParserTest {
     assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
   }
 
+  @Test
+  void testFormatWithNoSamplesThrows() throws IOException {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_header_001.vcf: FORMAT is declared as column 9 but no sample
+    // columns follow it. Confirmed bcftools 1.23.1 hard-errors ("Could not parse the #CHROM.. line, either
+    // FORMAT is missing or spaces are present instead of tabs", exit code 255) and vcf_validator 0.10.2 reports
+    // the file invalid -- FORMAT only has meaning relative to sample columns, so this is a structural violation.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\n";
+    assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
+  }
+
   private static void parseMetadataOf(String vcf) throws IOException {
     try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
          VcfParser parser = new VcfParser.Builder()
