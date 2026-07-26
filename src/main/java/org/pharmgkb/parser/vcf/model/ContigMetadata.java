@@ -67,7 +67,8 @@ public class ContigMetadata extends IdMetadata {
   }
 
   /**
-   * @return Null only when invalid
+   * @return Null when the optional {@code assembly} tag is absent (spec-compliant -- see VCFv4.2.tex line 121)
+   * or otherwise unusable
    */
   @Nullable
   public String getAssembly() {
