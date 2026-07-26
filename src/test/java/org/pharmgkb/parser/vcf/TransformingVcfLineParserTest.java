@@ -142,11 +142,13 @@ public class TransformingVcfLineParserTest {
   @Test
   public void testCloseReleasesAllWritersEvenWhenOneFails() throws Exception {
     // VcfWriter.close() can now throw UncheckedIOException; this class's close() must still release every
-    // writer, not abandon the rest via forEach's fail-fast iteration
-    StringWriter goodOutput = new StringWriter();
+    // writer, not abandon the rest via forEach's fail-fast iteration. The writer AFTER the failing one is what
+    // actually proves this: VcfWriter.close() always closes its own underlying writer before throwing, so
+    // checking the failing writer itself would pass even against a fail-fast forEach.
     FailingWriter failingWriter = new FailingWriter();
+    FailingWriter secondWriterBacking = new FailingWriter(); // never armed to fail -- just observes whether close() reached it
     VcfWriter failingVcfWriter = new VcfWriter.Builder().toWriter(new PrintWriter(failingWriter)).build();
-    VcfWriter goodVcfWriter = new VcfWriter.Builder().toWriter(new PrintWriter(goodOutput)).build();
+    VcfWriter secondVcfWriter = new VcfWriter.Builder().toWriter(new PrintWriter(secondWriterBacking)).build();
 
     VcfTransformation noop = new VcfTransformation() {
       @Override
@@ -161,7 +163,7 @@ public class TransformingVcfLineParserTest {
 
     TransformingVcfLineParser parser = new TransformingVcfLineParser.Builder()
         .addTransformation(noop, failingVcfWriter)
-        .addTransformation(noop, goodVcfWriter)
+        .addTransformation(noop, secondVcfWriter)
         .build();
 
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
@@ -169,7 +171,7 @@ public class TransformingVcfLineParserTest {
 
     failingWriter.startFailing();
     assertThrows(UncheckedIOException.class, parser::close);
-    assertTrue(failingWriter.wasClosed());
+    assertTrue(secondWriterBacking.wasClosed());
   }
 
 }
