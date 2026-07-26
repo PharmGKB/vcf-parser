@@ -540,6 +540,14 @@ public class VcfMetadata {
 
     public Builder addRawProperty(String name, String value) {
       VcfUtils.checkNoLineTerminator(name, value);
+      if (VcfUtils.isReservedMetadataKey(name)) {
+        // this cannot currently be reached through normal parsing -- VcfParser.parseMetadata's switch routes
+        // every reserved name to the structured path, never to addRawProperty -- but it closes the hole for
+        // direct/programmatic Builder use, matching the empty-value case below's warn-and-drop style
+        sf_logger.warn("Metadata property name \"{}\" collides with a structured declaration keyword and was " +
+            "dropped: {}", name, value);
+        return this;
+      }
       if (isEmptyMetadataValue(value)) {
         // VCFv4.3.tex line 39: "Zero length fields are not allowed, a dot ('.') must be used instead" -- stated
         // generally for meta-information/header/data lines, not scoped to data fields only; VCFv4.1/4.2 are

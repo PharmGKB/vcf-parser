@@ -173,6 +173,28 @@ public class VcfMetadataTest {
   }
 
   @Test
+  public void testBuilderAddRawPropertyWarnsAndDropsReservedKey() {
+    // "INFO" collides with the structured ##INFO=<...> declaration keyword; VcfParser.parseMetadata's switch
+    // would route a reparsed "INFO" key to the structured path, not back to a raw property, so keeping it here
+    // would silently misrepresent what gets written
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addRawProperty("INFO", "bad").build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertFalse(metadata.getRawPropertyKeys().contains("INFO"));
+  }
+
+  @Test
   public void testBuilderAddRawPropertyWarnsAndDropsEmptyValueForAnyKey() {
     // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_assembly_000.vcf's ##assembly= (empty value) -- the check
     // applies uniformly to any key, not just a hardcoded list

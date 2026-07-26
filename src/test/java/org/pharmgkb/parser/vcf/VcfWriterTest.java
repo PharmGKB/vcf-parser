@@ -304,6 +304,19 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteRejectsReservedRawPropertyKey() throws Exception {
+    // getRawProperties() returns the backing multimap directly; a caller can insert a raw property whose key
+    // collides with a structured declaration keyword (here "INFO") after the builder-side check in
+    // addRawProperty() has already run once, at insertion time -- validateBeforeWrite() is the only remaining
+    // check that can catch this before the writer emits an "##INFO=bad" line VcfParser cannot read back
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    metadata.getRawProperties().put("INFO", "bad");
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+  }
+
+  @Test
   public void testValidateBeforeWriteWarnsOnDuplicatePedigreeIdIntroducedAfterConstruction() throws Exception {
     // Builder.addPedigree() now warns and drops a duplicate ID at construction time (see
     // VcfMetadataTest.testAddPedigreeWarnsAndKeepsFirstOnDuplicateId), so the only way a duplicate PEDIGREE ID can

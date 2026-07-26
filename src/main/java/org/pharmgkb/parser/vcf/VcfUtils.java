@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
@@ -249,6 +250,19 @@ public class VcfUtils {
     if (key.contains("\n") || key.contains("\r") || (value != null && (value.contains("\n") || value.contains("\r")))) {
       throw new VcfFormatException("Property [[[" + key + "=" + value + "]]] contains a line terminator");
     }
+  }
+
+  private static final Set<String> RESERVED_METADATA_KEYS =
+      Set.of("fileformat", "ALT", "FILTER", "INFO", "FORMAT", "contig", "SAMPLE", "PEDIGREE");
+
+  /**
+   * @return true if {@code name} is one of the structured metadata declaration keywords (e.g. "INFO",
+   * "FORMAT") that {@link VcfParser#parseMetadata} always routes to its own structured-parsing path -- a raw
+   * property using one of these names could never be re-read as what it was written, since reparsing would
+   * route it through the wrong path entirely
+   */
+  public static boolean isReservedMetadataKey(String name) {
+    return RESERVED_METADATA_KEYS.contains(name);
   }
 
   /**

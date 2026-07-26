@@ -281,6 +281,14 @@ public class VcfWriter implements Closeable {
         throw new VcfFormatException("Metadata property name \"" + key + "\" contains '=', which would shift " +
             "where the key/value split falls when re-read");
       }
+      if (VcfUtils.isReservedMetadataKey(key)) {
+        // getRawProperties() returns the backing multimap directly, so a caller can insert this after
+        // addRawProperty()'s own check has already run once, at insertion time; unlike that check, this one
+        // rejects outright, since a raw "INFO"/"FORMAT"/etc. property would produce output VcfParser cannot
+        // read back as what was written (see VcfParser.parseMetadata's switch)
+        throw new VcfFormatException("Metadata property name \"" + key + "\" collides with a structured " +
+            "declaration keyword");
+      }
       for (String value : metadata.getRawValuesOfProperty(key)) {
         VcfUtils.checkNoLineTerminator(key, value);
         if (VcfMetadata.isEmptyMetadataValue(value)) {
