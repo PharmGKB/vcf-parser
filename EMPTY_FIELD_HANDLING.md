@@ -12,14 +12,21 @@ nothing between it and the next delimiter (or the end of the field) — is not v
 A hard rejection would seem like the natural way to enforce this. In practice, the reference implementation most
 of the ecosystem treats as canonical, [bcftools](https://github.com/samtools/bcftools)/htslib, does **not** reject
 any of these cases. Tested directly against **bcftools 1.23.1 (htslib 1.23.1)**: every example below parses with
-exit code 0, and bcftools either normalizes the empty entry away, substitutes `.` for it, or (for two field types)
-warns but still keeps the record.
+exit code 0 (except where noted), and bcftools either normalizes the empty entry away, substitutes `.` for it, or
+(for two field types) warns but still keeps the record.
 
 Rejecting these outright would make `vcf-parser` stricter than bcftools on inputs that demonstrably occur and are
 tolerated in practice, so `vcf-parser` matches that practical tolerance: it logs a warning and normalizes, rather
 than throwing `VcfFormatException`. This is consistent with the "strict for structure, lenient for practical
 realities" split described in [`README.md`](README.md#validation-strict-vs-lenient) — the difference here is that
 the "reality" is demonstrated by the reference tool itself, not just by metadata-quality concerns.
+
+**vcf_validator 0.10.2** (the EBI reference validator; the tool [hts-specs](https://github.com/samtools/hts-specs)
+uses to classify its own `passed/`/`failed/` conformance fixtures) was also checked against every row below, and
+almost uniformly reports these same inputs as **invalid** — consistent with the spec's own "zero length fields are
+not allowed" text. Its one confirmed exception is noted in the table below. No hts-specs conformance fixture
+exercises any of these exact scenarios, so this is a direct tool run, not a documented suite fixture; per
+`AGENTS.md`'s decision hierarchy, bcftools remains the tie-breaker for these spec-silent/ambiguous cases.
 
 ## How each field is normalized
 
@@ -28,66 +35,86 @@ Two different normalization strategies are used, depending on whether the field'
 - **Position-independent lists** (ID, FILTER, and INFO's top-level `;`-separated entries): an empty entry is
   **dropped**. Nothing else depends on these lists' element order or exact count, so removing the bad entry is a
   clean fix.
-- **Position-dependent lists** (a sample's `:`-separated values, matched by index to the FORMAT keys; and INFO's
-  per-key `,`-separated values, whose count can matter for a `Number=`-declared arity): an empty entry is
-  **replaced with `.`**, the VCF missing-value sentinel, so every other element keeps its original index.
+- **Position-dependent lists** (a sample's `:`-separated values, matched by index to the FORMAT keys; INFO's
+  per-key `,`-separated values, whose count can matter for a `Number=`-declared arity; and ALT's alternate-allele
+  list, since `GT` genotype values index into it positionally): an empty entry is **replaced with `.`**, the VCF
+  missing-value sentinel, so every other element keeps its original index.
 - **FORMAT's `:`-separated key list** is a special case: it's a position-dependent list (every sample's values are
   matched to it by index), but "empty" isn't a value that can be replaced with `.` — an empty key is kept exactly
   as parsed, and only a warning is logged. Every other FORMAT key keeps its index this way, matching what bcftools
   itself does here (it warns "not defined in header" but does not drop the entry either).
 
-ALT is the one field where `vcf-parser` deliberately diverges from bcftools's own normalization: bcftools
-substitutes `.` for an empty ALT entry, but `vcf-parser` already rejects a `.` mixed with a real allele
-(`VcfPosition.checkAltBases`, an unrelated, pre-existing rule: `.` means "no alternate allele" and cannot appear
-alongside one). Substituting `.` here would immediately trip that other rule and throw, defeating the point of
-normalizing instead of throwing. Dropping the empty entry (as done for ID/FILTER) avoids the conflict and is the
-more useful reading of what's normally just a stray delimiter.
+ALT is a position-dependent list because `GT` genotype values index into it positionally (`VCFv4.2.tex` line 217:
+"1 for the first allele listed in ALT, 2 for the second allele listed in ALT and so on"); `VcfPosition.getAllele
+(int)` implements this as `m_altBases.get(index - 1)`. Dropping an empty entry (the previous behavior) would shift
+every subsequent allele's index down by one, silently misdirecting any `GT` value referencing a position after the
+dropped entry to the wrong allele — a real correctness bug, not just a cosmetic list-length difference. Substituting
+`.` instead, matching bcftools exactly, preserves every index. This also required removing a separate, pre-existing
+rule that rejected `.` combined with a real allele: `VCFv4.2.tex` (the target spec) only states that `.` replaces
+the *entire* ALT field "if there are no alternative alleles" (line 183), and is silent on `.` as one entry among
+several; `VCFv4.3.tex`/`VCFv4.4.tex`/`VCFv4.5.tex` all resolve that silence identically: "Each allele in this list
+must be one of: ... the MISSING value `.` (no variant); ..." — `.` is a formally sanctioned per-entry ALT token in
+every VCF version from 4.3 onward. Confirmed bcftools 1.23.1 has no equivalent exclusivity rule either, accepting
+`T,.,C` with zero warning whether the `.` is substituted or literal, and with genotype indices before, at, and
+after the dot all resolving correctly.
 
 ## Reference table
 
-| Field | Input | bcftools 1.23.1 behavior | `vcf-parser` behavior | Round-trip output |
-|---|---|---|---|---|
-| ID | `rs1;;rs2` | Silent passthrough, no warning | Warn + drop | `rs1;rs2` |
-| ID | `rs3;` | Silent passthrough, no warning | Warn + drop | `rs3` |
-| FILTER | `q10;;q20` | Warns "FILTER '' is not defined in the header" | Warn + drop | `q10;q20` |
-| FILTER | `q10;` | Silently dropped | Warn + drop | `q10` |
-| ALT | `T,,C` | Silently substitutes `.` (`T,.,C`) | Warn + drop | `T,C` |
-| ALT | `T,` | Silently substitutes `.` (`T,.`) | Warn + drop | `T` |
-| FORMAT key | `GT::GQ` | Warns "FORMAT '' ... not defined in header" + "Invalid tag name", kept as-is | Warn, kept as-is | `GT::GQ` (unchanged) |
-| FORMAT key | `GT:DP:` | Same warnings, kept as-is | Warn, kept as-is | `GT:DP:` (unchanged) |
-| Sample value (FORMAT `GT:DP`) | `0/1:` | Silently substitutes `.` (`0/1:.`) | Warn + substitute `.` | `0/1:.` |
-| Sample value (FORMAT `GT:DP:GQ`) | `0/1::30` | Warns only for Integer-typed fields ("Extreme FORMAT/DP value ... set to missing"); silent for String-typed fields | Warn + substitute `.` | `0/1:.:30` |
-| INFO top-level entry | `DP=10;;AF=0.5` | Silently dropped | Warn + drop | `DP=10;AF=0.5` |
-| INFO top-level entry | `DP=10;` | Silently dropped | Warn + drop | `DP=10` |
-| INFO value | `AD=1,,2` | Silently substitutes `.` (`AD=1,.,2`) | Warn + substitute `.` | `AD=1,.,2` |
-| INFO value | `AD=1,2,` | Silently substitutes `.` (`AD=1,2,.`) | Warn + substitute `.` | `AD=1,2,.` |
-| INFO value | `AD=` | Silently substitutes `.` (`AD=.`) | Warn + substitute `.` | `AD=.` |
-| INFO flag (no `=`) | `DB;DP=10` | Fine, as expected | Fine, unaffected | `DB;DP=10` (unchanged) |
-| GT allele (`:`-separated by `/` or `\|`) | `0/` | Not tested against bcftools | Warn + substitute `.` | `0/.` |
-| Reserved list-typed FORMAT value (e.g. `HQ`) | `1,2,` | Not tested against bcftools | Warn + substitute `.` (`null` in the returned list) | n/a (read-side conversion only) |
-| Reserved `FORMAT/FT` value | `q10;;q20` | Not tested against bcftools | Warn + drop (read-side only, like the row above) | n/a (read-side conversion only) |
-| Generic metadata property (`##reference=`, `##assembly=`, `##pedigreeDB=`, or any other) | `##reference=` | Silent passthrough, no warning (verified for `reference`/`assembly`/`pedigreeDB`) | Warn + drop the entire property entry | Line omitted entirely |
+| Field | Input | bcftools 1.23.1 behavior | vcf_validator 0.10.2 | `vcf-parser` behavior | Round-trip output |
+|---|---|---|---|---|---|
+| ID | `rs1;;rs2` | Silent passthrough, no warning | Invalid | Warn + drop | `rs1;rs2` |
+| ID | `rs3;` | Silent passthrough, no warning | Invalid | Warn + drop | `rs3` |
+| FILTER | `q10;;q20` | Warns "FILTER '' is not defined in the header" | Invalid | Warn + drop | `q10;q20` |
+| FILTER | `q10;` | Silently dropped | Invalid | Warn + drop | `q10` |
+| ALT | `T,,C` | Silently substitutes `.` (`T,.,C`) | Invalid | Warn + substitute `.` | `T,.,C` |
+| ALT | `T,` | Silently substitutes `.` (`T,.`) | Invalid | Warn + substitute `.` | `T,.` |
+| FORMAT key | `GT::GQ` | Warns "FORMAT '' ... not defined in header" + "Invalid tag name", kept as-is | Invalid | Warn, kept as-is | `GT::GQ` (unchanged) |
+| FORMAT key | `GT:DP:` | Same warnings, kept as-is | Invalid | Warn, kept as-is | `GT:DP:` (unchanged) |
+| Sample value (FORMAT `GT:DP`) | `0/1:` | Silently substitutes `.` (`0/1:.`) | Invalid | Warn + substitute `.` | `0/1:.` |
+| Sample value (FORMAT `GT:DP:GQ`, Integer field) | `0/1::30` | Warns ("Extreme FORMAT/DP value ... set to missing") and substitutes `.` | Invalid | Warn + substitute `.` | `0/1:.:30` |
+| Sample value (FORMAT `GT:XX:GQ`, String field) | `0/1::30` | Silent; represents the empty value internally as a raw NUL byte (`0x00`), not `.` — confirmed via `cat -A` on its own text output | Invalid | Warn + substitute `.` | `0/1:.:30` |
+| INFO top-level entry | `DP=10;;AF=0.5` | Silently dropped | Invalid | Warn + drop | `DP=10;AF=0.5` |
+| INFO top-level entry | `DP=10;` | Silently dropped | Invalid | Warn + drop | `DP=10` |
+| INFO value | `AD=1,,2` | Silently substitutes `.` (`AD=1,.,2`) | Invalid | Warn + substitute `.` | `AD=1,.,2` |
+| INFO value | `AD=1,2,` | Silently substitutes `.` (`AD=1,2,.`) | **Valid** (see note below) | Warn + substitute `.` | `AD=1,2,.` |
+| INFO value | `AD=` | Silently substitutes `.` (`AD=.`) | Invalid | Warn + substitute `.` | `AD=.` |
+| INFO flag (no `=`) | `DB;DP=10` | Fine, as expected | Valid | Fine, unaffected | `DB;DP=10` (unchanged) |
+| GT allele (`:`-separated by `/` or `\|`) | `0/` | **Hard error** (exit code 8: "Couldn't read GT data: value not a number or '.'") | Valid | Warn + substitute `.` (deliberate divergence, see note below) | `0/.` |
+| Reserved list-typed FORMAT value (e.g. `HQ`) | `1,2,` | Warns ("Extreme FORMAT/HQ value ... set to missing") and substitutes `.` | Valid | Warn + substitute `.` (`null` in the returned list) | n/a (read-side conversion only) |
+| Reserved `FORMAT/FT` value | `q10;;q20` | Silent passthrough, no warning (FT is an opaque String to bcftools; it has no knowledge of `FT`'s reserved grammar) | Valid | Warn + drop (read-side only, like the row above) | n/a (read-side conversion only) |
+| Generic metadata property (`##reference=`, `##assembly=`, `##pedigreeDB=`, or any other) | `##reference=` | Silent passthrough, no warning (verified for `reference`/`assembly`/`pedigreeDB`) | Invalid | Warn + drop the entire property entry | Line omitted entirely |
 
 The INFO flag row is included as a contrast, not an empty-field case: a flag key with no `=` sign (e.g. `DB`) is
 stored internally with an empty-string sentinel value, the same representation used for the "was this value actually
 empty" cases above. `vcf-parser` distinguishes them at parse time (before the sentinel is created), by checking
 whether an `=` sign was present at all — a flag's absent value is never touched by this normalization.
 
-The GT row follows the same position-dependent substitution as a sample value, not the ID/FILTER/ALT drop strategy:
+The `AD=1,2,` row is the one confirmed asymmetry in vcf_validator's own behavior across this whole table: every
+other empty-field case, interior or trailing, in any field, is reported invalid — except a *trailing* empty entry
+on an unbounded (`Number=.`) INFO field, which vcf_validator reports as valid (confirmed directly from its own
+text report, which shows no error for this case, only unrelated header-completeness warnings). An *interior*
+empty entry in the same field (`AD=1,,2`) is still invalid. This doesn't change `vcf-parser`'s own behavior — both
+cases already warn and substitute `.` — it's simply worth recording as a real, reproducible quirk of vcf_validator
+itself, not a testing mistake.
+
+The GT row follows the same position-dependent substitution as a sample value, not the ID/FILTER drop strategy:
 dropping an empty allele (e.g. turning `0/` into `0`) would silently change the call's ploidy from diploid to
-haploid, which is a materially different, incorrect result — not just a cosmetic list-length difference. Unlike the
-other rows in this table, this and the reserved-list-value row were not verified against bcftools; the "warn and
-substitute" treatment was chosen for consistency with the rest of this table rather than from observed reference
-behavior.
+haploid, which is a materially different, incorrect result — not just a cosmetic list-length difference. Now
+confirmed against bcftools 1.23.1: it actually hard-errors on this input (exit code 8), stricter than
+`vcf-parser`'s own warn-and-substitute. This is a deliberate, unchanged divergence: `AGENTS.md`'s Parser Validation
+Policy classifies sample values (which GT is) as a deliberately permissive category independent of any single
+tool's behavior, and an empty GT sub-allele creates no structural ambiguity (splitting `0/` by `/` is unambiguous)
+— so this was never a "spec silent, defer to bcftools" case. The reserved-list-value row (`HQ`) is now also
+confirmed against bcftools directly: it warns and substitutes `.`, matching `vcf-parser`'s existing choice.
 
 The generic-metadata-property row differs from every other row in this table in what gets dropped: every other
 row drops or substitutes one *element* of a delimited list, but a generic property (`##reference=`, `##assembly=`,
 `##pedigreeDB=`, or any unrecognized `##key=value` line) has no internal delimiter to drop an element from -- the
 entire line is empty. Unlike every other row above, bcftools does *not* diverge from silent passthrough here --
 it preserves an empty-value generic property line unchanged. Dropping the whole entry anyway is a deliberate
-stricter choice, the same way this library is already stricter than bcftools for an empty ID/FILTER/ALT list
-entry (the "position-independent list: drop" strategy above), and is justified directly by `VCFv4.3.tex` line 39
-("Zero length fields are not allowed, a dot ('.') must be used instead").
+stricter choice, the same way this library is already stricter than bcftools for an empty ID/FILTER list entry
+(the "position-independent list: drop" strategy above), and is justified directly by `VCFv4.3.tex` line 39 ("Zero
+length fields are not allowed, a dot ('.') must be used instead").
 
 `VcfWriter.validateBeforeWrite()` warns on this same condition but does not drop the entry -- unlike the parse-time
 path, the writer must not silently remove content the caller is already holding a reference to.
@@ -104,7 +131,9 @@ separately — two empty keys are not "duplicates" in the sense the spec means.
 ## Where this is implemented
 
 - `VcfUtils.dropEmptyEntries` / `VcfUtils.fillEmptyEntriesWithDot` — the two shared normalization strategies.
-- `VcfPosition.checkIds` / `checkFilters` / `checkAltBases` — drop empty entries (ID, FILTER, ALT).
+- `VcfPosition.checkIds` / `checkFilters` — drop empty entries (ID, FILTER).
+- `VcfPosition.checkAltBases` — substitutes `.` for an empty entry (position-dependent, like the sample/INFO
+  values below), and no longer rejects `.` combined with a real allele.
 - `VcfPosition.checkFormat` — warns and keeps an empty FORMAT key as-is; separately, throws on a duplicate
   (non-empty) FORMAT key.
 - `VcfPosition.info()` — warns and drops an empty top-level entry or empty key; warns and substitutes `.` for an
