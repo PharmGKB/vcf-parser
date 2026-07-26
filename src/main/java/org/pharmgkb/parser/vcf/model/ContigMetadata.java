@@ -95,9 +95,11 @@ public class ContigMetadata extends IdMetadata {
   }
 
   private void init() {
-    warnIfMissing(sf_logger, ASSEMBLY, getPropertyUnquoted(ASSEMBLY));
+    // assembly and length are optional, not required: VCFv4.2.tex line 121 ("all tags are optional" for the
+    // ##contig/##assembly header tags in general) and line 138 ("highly recommended (but not required)"
+    // specifically for ##contig) both say so directly -- unlike ID (required by IdMetadata's own init()),
+    // neither of these has any spec basis for a missing-value warning
     String length = getPropertyUnquoted(LENGTH);
-    warnIfMissing(sf_logger, LENGTH, length);
     if (length != null) {
       try {
         //noinspection ResultOfMethodCallIgnored

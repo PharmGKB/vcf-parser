@@ -125,4 +125,27 @@ public class ContigMetadataTest {
     assertThrows(VcfFormatException.class, contig::getLength);
   }
 
+  @Test
+  public void testMissingAssemblyAndLengthDoesNotWarn() {
+    // VCFv4.2.tex line 121: "highly recommended (but not required) that the header include tags describing
+    // the reference and contigs... all tags are optional." Line 138 repeats "highly recommended (but not
+    // required)" specifically for ##contig. Neither assembly nor length is spec-required, so their absence
+    // must not warn.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      Map<String, String> map = new HashMap<>();
+      map.put(ContigMetadata.ID, "id");
+      new ContigMetadata(map);
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
 }
