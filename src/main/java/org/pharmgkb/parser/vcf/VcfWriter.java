@@ -257,7 +257,10 @@ public class VcfWriter implements Closeable {
         // unlike VcfMetadata.Builder.addPedigree() (which warns and drops a duplicate ID at construction time),
         // this check runs post-construction and must not silently remove content the caller already holds a
         // reference to (same "warn, don't drop" writer philosophy as the empty-metadata-value check elsewhere in
-        // this method) -- so this only warns; both entries are still written.
+        // this method) -- so this only warns; both entries are still written. validateMetadata() runs once per
+        // writeLine() call in validateBeforeWrite() mode, so this warning repeats for every data record written
+        // while the duplicate remains -- the same repeat-per-record behavior already accepted for the
+        // empty-metadata-value warning above, not a new tradeoff introduced here.
         sf_logger.warn("Duplicate ID \"{}\" for PEDIGREE metadata", id);
       }
     }
