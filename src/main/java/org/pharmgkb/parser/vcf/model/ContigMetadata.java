@@ -56,6 +56,11 @@ public class ContigMetadata extends IdMetadata {
     init();
   }
 
+  /**
+   * @throws VcfFormatException if {@code length} is absent (an optional tag -- see {@link #getAssembly()}'s
+   * Javadoc for the same absent-is-normal caveat; check {@code getPropertiesRaw().containsKey(LENGTH)} first if
+   * distinguishing "absent" from "present but malformed" matters to the caller) or not a valid number
+   */
   @SuppressWarnings("ConstantConditions")
   public long getLength() {
     String length = getPropertyRaw(LENGTH);

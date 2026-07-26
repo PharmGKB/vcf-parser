@@ -36,6 +36,10 @@ import org.slf4j.LoggerFactory;
  * Writes to VCF format from a {@link VcfSample}, {@link VcfPosition VcfPositions}, and {@link VcfMetadata}.
  * The default write path stays fast by performing little validation of its own; build with
  * {@link Builder#validateBeforeWrite()} for full structural validation and semantic-compliance diagnostics.
+ * <p>
+ * {@link #close} must always be called to guarantee output is completely flushed and any write failure (disk
+ * full, broken pipe, or an encoding failure) is reported -- such a failure surfaces as an unchecked
+ * {@link java.io.UncheckedIOException} from {@link #writeHeader}, {@link #writeLine}, or {@link #close} itself.
  *
  * @author Douglas Myers-Turnbull
  * @see TransformingVcfLineParser TransformingVcfLineParser - a read-transform-write streamer that is publicly accessible
@@ -61,6 +65,14 @@ public class VcfWriter implements Closeable {
     m_validateBeforeWrite = validateBeforeWrite;
   }
 
+  /**
+   * Writes the VCF header.
+   *
+   * @throws UncheckedIOException if a write failure is detected. The header lines have already been sent to the
+   * underlying writer by the time this can throw, and the internal "header written" state is updated before this
+   * check runs -- a caller that catches this and retries {@link #writeHeader} (rather than abandoning the writer)
+   * will not emit a duplicate header.
+   */
   public void writeHeader(VcfMetadata metadata) {
 
     if (m_validateBeforeWrite) {
@@ -75,12 +87,12 @@ public class VcfWriter implements Closeable {
       printLine(line);
     }
 
-    checkForWriteError();
     m_headerWritten = true;
     m_headerMetadata = metadata;
     if (m_validateBeforeWrite) {
       m_headerText = String.join("\n", lines);
     }
+    checkForWriteError();
     sf_logger.info("Wrote {} lines of header{}", m_lineNumber, (m_file == null ? "" : " to " + m_file));
   }
 
@@ -131,7 +143,13 @@ public class VcfWriter implements Closeable {
    * <p>
    * Output is flushed, and checked for a write failure, every 1000 lines and at {@link #writeHeader}/
    * {@link #close}, not after every call to this method -- a caller that needs output visible to another
-   * reader sooner must flush the underlying stream directly.
+   * reader sooner must flush the underlying stream directly. Calling {@link #close} is required to guarantee a
+   * pending write failure is eventually reported and that all buffered output reaches the underlying stream;
+   * writing fewer than 1000 lines and never calling {@link #close} will neither surface a failure nor guarantee
+   * the data was actually written.
+   *
+   * @throws UncheckedIOException if a write failure is detected (only possible on a call that lands on the
+   * periodic 1000-line checkpoint; most calls cannot throw this)
    */
   public void writeLine(VcfMetadata metadata, VcfPosition position,
       List<VcfSample> samples) {
@@ -217,13 +235,25 @@ public class VcfWriter implements Closeable {
     printLine(line);
   }
 
+  /**
+   * Closes the underlying writer. This must be called to guarantee complete, correctly-flushed output and that
+   * any pending write failure is reported -- see the class Javadoc.
+   *
+   * @throws UncheckedIOException if a write failure is detected (this call's own, e.g. from the underlying
+   * stream's own {@code close()}, or one from an earlier periodic check that hadn't yet surfaced). The underlying
+   * writer is always released first, even when this is thrown.
+   */
   @Override
   public void close() {
+    // checkError() flushes before checking (see its own Javadoc), so this first call catches anything still
+    // buffered from writeLine()/writeHeader(). IOUtils.closeQuietly() always runs next regardless, so the
+    // resource is never leaked even when we're about to throw. The second checkError() (after closeQuietly())
+    // catches a failure from the underlying stream's own close() (e.g. an fsync-on-close error) -- safe to call
+    // again here because a closed PrintWriter's checkError() no longer attempts to flush.
     boolean hadError = m_writer.checkError();
     IOUtils.closeQuietly(m_writer);
-    if (hadError) {
-      throw new UncheckedIOException(new IOException(
-          "Error writing VCF output after line " + m_lineNumber + " (disk full, broken pipe, or encoding failure)"));
+    if (hadError || m_writer.checkError()) {
+      throw writeError();
     }
   }
 
@@ -816,10 +846,14 @@ public class VcfWriter implements Closeable {
 
   }
 
+  private UncheckedIOException writeError() {
+    return new UncheckedIOException(new IOException(
+        "Error writing VCF output after line " + m_lineNumber + " (disk full, broken pipe, or encoding failure)"));
+  }
+
   private void checkForWriteError() {
     if (m_writer.checkError()) {
-      throw new UncheckedIOException(new IOException(
-          "Error writing VCF output after line " + m_lineNumber + " (disk full, broken pipe, or encoding failure)"));
+      throw writeError();
     }
   }
 

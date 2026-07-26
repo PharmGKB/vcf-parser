@@ -1,12 +1,10 @@
 package org.pharmgkb.parser.vcf;
 
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.io.UncheckedIOException;
-import java.io.Writer;
 import java.math.BigDecimal;
 import java.nio.file.Paths;
 import java.util.Arrays;
@@ -24,6 +22,7 @@ import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
+import org.pharmgkb.parser.vcf.spec.FailingWriter;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -36,38 +35,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author Douglas Myers-Turnbull
  */
 public class VcfWriterTest {
-
-  private static class FailingWriter extends Writer {
-    private boolean m_failing = false;
-    private boolean m_closed = false;
-
-    void startFailing() {
-      m_failing = true;
-    }
-
-    boolean wasClosed() {
-      return m_closed;
-    }
-
-    @Override
-    public void write(char[] cbuf, int off, int len) throws IOException {
-      if (m_failing) {
-        throw new IOException("simulated write failure");
-      }
-    }
-
-    @Override
-    public void flush() throws IOException {
-      if (m_failing) {
-        throw new IOException("simulated flush failure");
-      }
-    }
-
-    @Override
-    public void close() {
-      m_closed = true;
-    }
-  }
 
   @Test
   public void testWriteLineRejectsEmptyRef() throws Exception {

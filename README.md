@@ -75,6 +75,12 @@ match the key it's stored under in `VcfMetadata`'s maps (mutating an entry's raw
 without it being reflected in the map key would otherwise make the header declare a different ID than what records
 reference by that entry's map key).
 
+The writer detects a write failure (disk full, broken pipe, or an encoding failure) and reports it as an
+unchecked `java.io.UncheckedIOException`, but only checks periodically (every 1000 lines) and at
+`writeHeader()`/`close()` -- not after every `writeLine()` call, to avoid forcing a flush past the writer's
+internal buffer on every line. Calling `close()` is required to guarantee both that all output is flushed and
+that any pending failure is reported.
+
 **Lenient — warns when encountered or accessed and preserves usable data.** Non-structural content may be accepted
 initially and validated only when the relevant getter or typed conversion is used. Malformed metadata declarations
 (`##INFO`, `##FORMAT`, `##contig`, `##FILTER`, `##ALT`, ...) warn rather than throw, and the declaration is still

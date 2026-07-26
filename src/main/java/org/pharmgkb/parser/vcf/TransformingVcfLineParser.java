@@ -3,6 +3,7 @@ package org.pharmgkb.parser.vcf;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -84,7 +85,21 @@ public class TransformingVcfLineParser implements VcfLineParser, Closeable {
 
   @Override
   public void close() {
-    m_writers.forEach(org.pharmgkb.parser.vcf.VcfWriter::close);
+    UncheckedIOException failure = null;
+    for (VcfWriter writer : m_writers) {
+      try {
+        writer.close();
+      } catch (UncheckedIOException e) {
+        if (failure == null) {
+          failure = e;
+        } else {
+          failure.addSuppressed(e);
+        }
+      }
+    }
+    if (failure != null) {
+      throw failure;
+    }
   }
 
   public static class Builder {

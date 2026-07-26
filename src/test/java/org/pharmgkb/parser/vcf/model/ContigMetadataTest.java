@@ -105,9 +105,10 @@ public class ContigMetadataTest {
 
   @Test
   public void testGetLengthMissingThrowsVcfFormatException() {
-    // length is not required by the spec (init() only warns for it), but getLength() previously let a raw,
-    // confusing NumberFormatException("Cannot parse null string") leak out instead of VcfFormatException, unlike
-    // every other typed getter in the codebase (getQuality, convertProperty, parseAlleleIndex, etc.)
+    // length is not required by the spec (absence doesn't even warn at construction -- see
+    // testMissingAssemblyAndLengthDoesNotWarn), but getLength() previously let a raw, confusing
+    // NumberFormatException("Cannot parse null string") leak out instead of VcfFormatException, unlike every
+    // other typed getter in the codebase (getQuality, convertProperty, parseAlleleIndex, etc.)
     Map<String, String> map = new HashMap<>();
     map.put(ContigMetadata.ID, "id");
     map.put(ContigMetadata.ASSEMBLY, "assembly");

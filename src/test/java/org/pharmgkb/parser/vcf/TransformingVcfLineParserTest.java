@@ -5,6 +5,7 @@ import java.io.FileReader;
 import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collections;
@@ -18,8 +19,11 @@ import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
+import org.pharmgkb.parser.vcf.spec.FailingWriter;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 public class TransformingVcfLineParserTest {
@@ -133,6 +137,39 @@ public class TransformingVcfLineParserTest {
       parser.parseMetadata();
     }
     assertEquals(vcf, sw.toString());
+  }
+
+  @Test
+  public void testCloseReleasesAllWritersEvenWhenOneFails() throws Exception {
+    // VcfWriter.close() can now throw UncheckedIOException; this class's close() must still release every
+    // writer, not abandon the rest via forEach's fail-fast iteration
+    StringWriter goodOutput = new StringWriter();
+    FailingWriter failingWriter = new FailingWriter();
+    VcfWriter failingVcfWriter = new VcfWriter.Builder().toWriter(new PrintWriter(failingWriter)).build();
+    VcfWriter goodVcfWriter = new VcfWriter.Builder().toWriter(new PrintWriter(goodOutput)).build();
+
+    VcfTransformation noop = new VcfTransformation() {
+      @Override
+      public void transformMetadata(VcfMetadata metadata) {
+      }
+
+      @Override
+      public boolean transformDataLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
+        return true;
+      }
+    };
+
+    TransformingVcfLineParser parser = new TransformingVcfLineParser.Builder()
+        .addTransformation(noop, failingVcfWriter)
+        .addTransformation(noop, goodVcfWriter)
+        .build();
+
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    parser.parseMetadata(metadata); // writes both headers successfully, before either writer starts failing
+
+    failingWriter.startFailing();
+    assertThrows(UncheckedIOException.class, parser::close);
+    assertTrue(failingWriter.wasClosed());
   }
 
 }

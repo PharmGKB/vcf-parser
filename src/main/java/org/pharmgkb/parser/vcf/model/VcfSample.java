@@ -33,10 +33,10 @@ public class VcfSample {
   private @Nullable LinkedHashMap<String, String> m_properties;
 
   /**
-   * Takes ownership of {@code keys} and {@code values}: unlike most constructors in this library, this one does
-   * not defensively copy either list, to avoid an allocation on this library's hottest path (once per sample per
-   * data line -- see this class's own Javadoc for the parse-then-read performance rationale). Callers must not
-   * mutate either list after construction.
+   * Takes ownership of {@code keys} and {@code values}: this constructor does not defensively copy either list,
+   * to avoid an allocation on this library's hottest path (once per sample per data line -- see this class's own
+   * Javadoc for the parse-then-read performance rationale). Callers must not mutate either list after
+   * construction. See also {@link #VcfSample(LinkedHashMap)}, which has the same no-copy contract.
    */
   public VcfSample(@Nullable List<String> keys, @Nullable List<String> values) {
     if (keys == null) {
@@ -59,6 +59,10 @@ public class VcfSample {
     m_values = values;
   }
 
+  /**
+   * Takes ownership of {@code properties}: like {@link #VcfSample(List, List)}, this does not defensively copy
+   * it. Callers must not mutate the map after construction.
+   */
   public VcfSample(LinkedHashMap<String, String> properties) {
     m_properties = properties;
     for (Map.Entry<String, String> entry : m_properties.entrySet()) {
