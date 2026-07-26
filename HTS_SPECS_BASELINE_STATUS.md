@@ -15,10 +15,10 @@ document itself is stale.
 
 | Cause | Fixtures | Count | Status | Details |
 |---|---|---|---|---|
-| Genome ID with whitespace/punctuation in `##PEDIGREE` | `failed_meta_pedigree_000.vcf`, `failed_meta_pedigree_001.vcf` (4.1, 4.2) | 4 | Candidate for upstream filing, not yet written | bcftools 1.23.1 accepts both silently (no rule enforced); `VCFv4.2.tex` line 152 gives no character grammar for genome IDs at all. Investigated but no issue doc written yet — unlike the URL cluster below. |
-| Non-valid URL / mislabeled cause | `failed_meta_assembly_001.vcf` (4.1), `failed_meta_pedigreedb_002.vcf` (4.1, 4.2) | 3 | Filed upstream, pending | See "Filed-upstream issue details" below. |
+| Genome ID with whitespace/punctuation in `##PEDIGREE` | `failed_meta_pedigree_000.vcf`, `failed_meta_pedigree_001.vcf` (4.1, 4.2) | 4 | Candidate for upstream filing, not yet written | bcftools 1.23.1 accepts both silently (no rule enforced); `VCFv4.2.tex` line 152 gives no character grammar for genome IDs at all. Investigated but no issue doc written yet. |
+| Non-valid URL / mislabeled cause | `failed_meta_assembly_001.vcf` (4.1), `failed_meta_pedigreedb_002.vcf` (4.1, 4.2) | 3 | Permanently accepted | See "Non-valid URL fixtures" below. |
 | Incorrect ALT ID value (`ID=DEL1`) | `failed_meta_alt_000.vcf` (4.1, 4.2) | 2 | Permanently accepted, deliberate | A documented false negative: the reserved structural-variant-code hierarchy is only enforced when an ALT ID contains `:`, since a bare token has other spec-sanctioned uses (IUPAC codes, `CN0`-style copy-number codes). |
-| Meta-data entry is not a key-value pair | `failed_meta_assembly_001.vcf` (4.2 only) | 1 | Filed upstream, pending | Same fixture/value as the URL row above, but this version copy has a different, inconsistent `##CauseOfFailure=` label. See "Filed-upstream issue details" below. |
+| Meta-data entry is not a key-value pair | `failed_meta_assembly_001.vcf` (4.2 only) | 1 | Permanently accepted | Same fixture/value as the URL row above, but this version copy has a different, inconsistent `##CauseOfFailure=` label than its 4.1/4.3 siblings — doesn't matter to us, both labels get the same treatment. See "Non-valid URL fixtures" below. |
 
 ## `writer-bytediff` entries (9) — `passed/` fixtures whose round trip isn't byte-identical
 
@@ -29,13 +29,7 @@ document itself is stale.
 | Duplicate `##contig` line dropped | `passed_meta_contig.vcf` (4.1, 4.2) | 2 | Permanently accepted, deliberate | Direct, intended consequence of the duplicate-metadata-ID keep-first policy. See `DUPLICATE_METADATA_ID_HANDLING.md`. |
 | Empty sample value substituted | `zero_length_LAA.vcf` (4.5) | 1 | Permanently accepted | Matches this library's established empty-field normalization policy. See `EMPTY_FIELD_HANDLING.md`. |
 
-## Filed-upstream issue details
-
-Full writeups meant for submission to hts-specs are kept as local, uncommitted scratch files (issue
-drafts, not project documentation) — the facts needed to understand why the rows above are open are
-captured here instead, so they survive independently of those files.
-
-### Non-valid URL / mislabeled cause
+## Non-valid URL fixtures: why permanently accepted
 
 Several `failed/` fixtures use `##CauseOfFailure=Non-valid URL` for an `##assembly=`/`##pedigreeDB=`
 value whose only distinguishing feature is an all-digit hostname (`ftp://8080:8080/...`). That string
@@ -44,8 +38,14 @@ by both `java.net.URI`/`URL` (OpenJDK 25) and `bcftools view` 1.23.1 (htslib 1.2
 directly: `bcftools view test/vcf/4.2/failed/failed_meta_pedigreedb_002.vcf` prints no error or
 warning for its `##pedigreeDB=` line. Neither VCFv4.1, VCFv4.2, nor VCFv4.3 defines a formal grammar
 for the `url` value in `##assembly=url` / `##pedigreeDB=URL` (VCFv4.2.tex describes both only as prose
-examples, with no BNF or validity rule) — there's no real, generalizable rule these fixtures appear to
-be testing.
+examples, with no BNF or validity rule).
+
+**Why permanently accepted, not filed upstream:** there is no rule here — spec or tool — for hts-specs
+to clarify that would change this library's behavior. The reference implementation (bcftools) and a
+standard URI parser both already accept this value; rejecting it would mean this library inventing its
+own unenforced heuristic (e.g. "reject all-digit hostnames") that no spec or tool actually applies. Not
+worth doing, and not worth filing upstream over, since there's nothing broken to fix — just an
+unenforceable fixture.
 
 Affected fixtures:
 
@@ -55,8 +55,6 @@ Affected fixtures:
 | `failed_meta_assembly_001.vcf` | 4.2 (file internally declares `VCFv4.3` despite living under the `4.2/` directory), 4.3 | `Meta-data entry is not a key-value pair` |
 | `failed_meta_pedigreedb_002.vcf` | 4.1, 4.2, 4.3 | `Non-valid URL` (consistent across versions) |
 
-Suggested resolution for hts-specs maintainers: either define what makes this URL invalid (a formal
-grammar or documented convention), or drop/retire the fixtures; separately, fix
-`test/vcf/4.2/failed/failed_meta_assembly_001.vcf`'s internal `##fileformat=VCFv4.3` mismatch with its
-own directory, and reconcile its `##CauseOfFailure=` label with its 4.1/4.3 siblings so the same
-content is labeled consistently across versions.
+The `##CauseOfFailure=` label differs across these copies, but that's incidental to hts-specs' own
+fixture bookkeeping — it doesn't change what this library does with any of them, so all three are
+treated identically and tracked as one cause above.
