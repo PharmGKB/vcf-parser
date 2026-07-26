@@ -5,6 +5,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.io.UncheckedIOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -74,7 +75,7 @@ public class VcfWriter implements Closeable {
       printLine(line);
     }
 
-    m_writer.flush();
+    checkForWriteError();
     m_headerWritten = true;
     m_headerMetadata = metadata;
     if (m_validateBeforeWrite) {
@@ -127,6 +128,10 @@ public class VcfWriter implements Closeable {
    * By default, this does not fully revalidate metadata, the position, or samples, to keep the direct
    * parse-and-write path fast. If this writer was built with {@link Builder#validateBeforeWrite()}, it rejects
    * structurally invalid output and warns about detected semantic non-compliance before writing.
+   * <p>
+   * Output is flushed, and checked for a write failure, every 1000 lines and at {@link #writeHeader}/
+   * {@link #close}, not after every call to this method -- a caller that needs output visible to another
+   * reader sooner must flush the underlying stream directly.
    */
   public void writeLine(VcfMetadata metadata, VcfPosition position,
       List<VcfSample> samples) {
@@ -210,12 +215,16 @@ public class VcfWriter implements Closeable {
     String line = sb.toString();
     if (line.endsWith("\t")) line = line.substring(0, line.length() - 1);
     printLine(line);
-    m_writer.flush();
   }
 
   @Override
   public void close() {
+    boolean hadError = m_writer.checkError();
     IOUtils.closeQuietly(m_writer);
+    if (hadError) {
+      throw new UncheckedIOException(new IOException(
+          "Error writing VCF output after line " + m_lineNumber + " (disk full, broken pipe, or encoding failure)"));
+    }
   }
 
   private void addFormatConditionally(VcfPosition position, int numSamples, StringBuilder sb) {
@@ -789,9 +798,13 @@ public class VcfWriter implements Closeable {
 
     public VcfWriter build() throws IOException {
       if (m_file != null) {
-        // explicit UTF-8 encoding is stricter than the old FileWriter's platform-default REPLACE behavior --
-        // an unpaired surrogate in metadata now throws IOException mid-write instead of emitting "?", matching
-        // VcfParser's Files.newBufferedReader decoder on the read side
+        // explicit UTF-8 encoding is stricter than the old FileWriter's platform-default REPLACE behavior: an
+        // unpaired surrogate in metadata now triggers an encoding failure in the underlying encoder instead of
+        // being silently replaced with "?", matching VcfParser's Files.newBufferedReader decoder on the read
+        // side. That failure does NOT throw here or propagate up through print()/write() -- PrintWriter catches
+        // any IOException from its underlying writer internally and only sets its own error flag. It's
+        // checkForWriteError() (called from printLine()'s periodic check, writeHeader(), and close()) that
+        // actually turns this into a visible UncheckedIOException.
         m_writer = new PrintWriter(new BufferedWriter(
             new OutputStreamWriter(Files.newOutputStream(m_file), StandardCharsets.UTF_8), 65536));
       }
@@ -801,6 +814,13 @@ public class VcfWriter implements Closeable {
       return new VcfWriter(m_file, m_writer, m_validateBeforeWrite);
     }
 
+  }
+
+  private void checkForWriteError() {
+    if (m_writer.checkError()) {
+      throw new UncheckedIOException(new IOException(
+          "Error writing VCF output after line " + m_lineNumber + " (disk full, broken pipe, or encoding failure)"));
+    }
   }
 
   private void printLine(Object line) {
@@ -815,6 +835,7 @@ public class VcfWriter implements Closeable {
     m_lineNumber++;
     if (m_lineNumber % 1000 == 0) {
       sf_logger.info("Wrote {} lines{}", m_lineNumber, (m_file == null ? "" : " to " + m_file));
+      checkForWriteError();
     }
   }
 

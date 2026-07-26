@@ -1,9 +1,12 @@
 package org.pharmgkb.parser.vcf;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.io.UncheckedIOException;
+import java.io.Writer;
 import java.math.BigDecimal;
 import java.nio.file.Paths;
 import java.util.Arrays;
@@ -33,6 +36,38 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author Douglas Myers-Turnbull
  */
 public class VcfWriterTest {
+
+  private static class FailingWriter extends Writer {
+    private boolean m_failing = false;
+    private boolean m_closed = false;
+
+    void startFailing() {
+      m_failing = true;
+    }
+
+    boolean wasClosed() {
+      return m_closed;
+    }
+
+    @Override
+    public void write(char[] cbuf, int off, int len) throws IOException {
+      if (m_failing) {
+        throw new IOException("simulated write failure");
+      }
+    }
+
+    @Override
+    public void flush() throws IOException {
+      if (m_failing) {
+        throw new IOException("simulated flush failure");
+      }
+    }
+
+    @Override
+    public void close() {
+      m_closed = true;
+    }
+  }
 
   @Test
   public void testWriteLineRejectsEmptyRef() throws Exception {
@@ -814,6 +849,50 @@ public class VcfWriterTest {
     } finally {
       java.nio.file.Files.deleteIfExists(file);
     }
+  }
+
+  @Test
+  public void testWriteHeaderDetectsWriteFailure() throws Exception {
+    // PrintWriter swallows an IOException from its underlying Writer internally (setting only its own error
+    // flag) rather than propagating it -- checkForWriteError() is what surfaces this as an actual exception
+    FailingWriter failingWriter = new FailingWriter();
+    failingWriter.startFailing();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(failingWriter)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(UncheckedIOException.class, () -> writer.writeHeader(metadata));
+  }
+
+  @Test
+  public void testCloseDetectsErrorAndStillReleasesTheWriter() throws Exception {
+    // close() must check for a write failure that happened after the last periodic check (or after
+    // writeHeader(), if no data lines were written at all) AND still release the underlying resource even
+    // though it's about to throw
+    FailingWriter failingWriter = new FailingWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(failingWriter)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata); // succeeds: failingWriter isn't failing yet
+    failingWriter.startFailing(); // arm the failure for close()'s own checkError()-triggered flush
+    assertThrows(UncheckedIOException.class, writer::close);
+    assertTrue(failingWriter.wasClosed());
+  }
+
+  @Test
+  public void testPeriodicCheckDetectsErrorDuringWriteLineWithoutClose() throws Exception {
+    // writeLine() no longer flushes/checks on every call (Task 1 removes that); this proves the periodic
+    // (every-1000-line) check inside printLine() still catches a failure introduced mid-stream, rather than
+    // only close() ever detecting it
+    FailingWriter failingWriter = new FailingWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(failingWriter)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    failingWriter.startFailing();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+    assertThrows(UncheckedIOException.class, () -> {
+      for (int i = 0; i < 1000; i++) {
+        writer.writeLine(metadata, position, Collections.emptyList());
+      }
+    });
   }
 
 }
