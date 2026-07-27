@@ -186,8 +186,13 @@ class VcfSampleTest {
     // previously let the LAST occurrence of a duplicate key silently overwrite the first, while getProperty()
     // (the un-materialized linear-scan path) already returned the FIRST occurrence -- the same VcfSample answered
     // a lookup differently depending purely on which path ran first. This constructs a VcfSample directly (the
-    // list-based constructor never checks for duplicate keys itself; VcfPosition.checkFormat is what rejects a
-    // duplicate FORMAT key during normal parsing, before a VcfSample would ever be built from that data line).
+    // list-based constructor never checks for duplicate keys itself). For a normal, non-empty duplicate FORMAT key
+    // (e.g. GT:DP:DP), VcfPosition.checkFormat does reject it during parsing, before a VcfSample would ever be
+    // built from that data line -- but a duplicate of the EMPTY key specifically is excluded from that check (see
+    // EMPTY_FIELD_HANDLING.md's "duplicate FORMAT keys" section: the exclusion is there because two empty keys
+    // aren't "duplicates" in the spec's malformed-declaration sense, not because empty-key collisions in
+    // VcfSample's own property map are safe), so FORMAT=GT:: with two "" keys IS parser-reachable -- see
+    // WriterRoundTripTest.testDuplicateEmptyFormatKeyRoundTripsWithoutColumnCorruption for that end-to-end case.
     List<String> keys = Arrays.asList("GT", "GT");
     List<String> values = Arrays.asList("0/1", "1/1");
     VcfSample sample = new VcfSample(keys, values);

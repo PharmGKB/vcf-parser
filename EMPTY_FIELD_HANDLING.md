@@ -141,6 +141,13 @@ only the first occurrence's value, discarding the rest) rather than a merely-mal
 FORMAT key (see above) is excluded from this duplicate check, since it's already handled, and warned about,
 separately — two empty keys are not "duplicates" in the sense the spec means.
 
+This exclusion is only about `checkFormat`'s rejection check, not an end-to-end guarantee: `VcfSample`'s own
+property map still collapses same-named keys by key string, including two empty-string keys, so a FORMAT
+declaration like `GT::` that reaches a real `VcfSample` (excluded from rejection for the reason above) still loses
+every occurrence after the first when that sample is read or written -- now with a warning (see
+`VcfSample.properties()`), rather than the prior silent last-wins overwrite. Two empty keys are not "duplicates"
+for rejection purposes, but they are still a data-loss case in practice.
+
 ## Where this is implemented
 
 - `VcfUtils.dropEmptyEntries` / `VcfUtils.fillEmptyEntriesWithDot` — the two shared normalization strategies.

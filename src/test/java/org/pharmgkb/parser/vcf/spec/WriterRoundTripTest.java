@@ -348,4 +348,45 @@ class WriterRoundTripTest {
     String written = WriterRoundTrip.write(parsed);
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
   }
+
+  @Test
+  void testDuplicateEmptyFormatKeyRoundTripsWithoutColumnCorruption() throws IOException {
+    // FORMAT=GT:: has two empty sub-field names -- VcfPosition.checkFormat excludes an empty key from its
+    // duplicate-key rejection (see EMPTY_FIELD_HANDLING.md's "duplicate FORMAT keys" section), so this parses
+    // successfully into a VcfSample with two "" properties ("aa" then "bb"). The guarantee here is structural,
+    // not completeness: the second empty-keyed value ("bb") is not recoverable and is lost on write (this
+    // matches the repo's existing accepted trade-off for FORMAT sub-fields beyond the header declaration) -- but
+    // the column count and delimiter placement stay correct, so the line remains well-formed and re-parseable.
+    String vcf =
+        "##fileformat=VCFv4.2\n" +
+        "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "1\t100\t.\tA\tT\t.\tPASS\t.\tGT::\t0/1:aa:bb\n";
+    WriterRoundTrip.ParsedFile parsed = WriterRoundTrip.parseText(vcf);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    String written;
+    try {
+      written = WriterRoundTrip.write(parsed);
+      // the duplicate-empty-key materialization warning fires on write (VcfWriter.addSampleConditionally's
+      // extra-property check is what triggers VcfSample's lazy materialization), not on parse
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    // verified actual output: the writer reads each FORMAT key with sample.getProperty(key), which -- both before
+    // and after materialization -- resolves the empty key "" to its FIRST occurrence's value ("aa"); "bb" is
+    // dropped entirely, and "aa" is written for BOTH empty-keyed columns, not just the first
+    String expected =
+        "##fileformat=VCFv4.2\n" +
+        "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "1\t100\t.\tA\tT\t.\tPASS\t.\tGT::\t0/1:aa:aa\n";
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(expected, written));
+  }
 }
