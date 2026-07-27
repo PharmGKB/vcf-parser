@@ -196,6 +196,26 @@ public class MemoryMappedVcfDataStoreParserTest {
   }
 
   @Test
+  public void testHeaderOnlyVcfReturnsEmptyNotNullPositionsAndSamples() throws IOException {
+    // parsing completed successfully with zero data lines -- getAllPositions()/getAllSamples() must return an
+    // empty collection (parsing happened), not null (null now means "parsing never happened at all")
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf))) {
+      MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+      new VcfParser.Builder()
+          .fromReader(reader)
+          .parseWith(lineParser)
+          .build().parse();
+      MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
+      assertNotNull(dataStore.getAllPositions());
+      assertTrue(dataStore.getAllPositions().isEmpty());
+      assertNotNull(dataStore.getAllSamples());
+      assertTrue(dataStore.getAllSamples().isEmpty());
+    }
+  }
+
+  @Test
   public void testDuplicateIdRejectionIsAtomicForWholeRecord() throws IOException {
     // a record with two IDs where the second is a pre-existing duplicate must be rejected as a whole: the first
     // (non-duplicate) ID must not end up linked, and the record must not appear in locus-based lookup either

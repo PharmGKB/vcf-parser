@@ -33,7 +33,8 @@ public class MemoryMappedVcfDataStore {
   private final Map<Locus, List<List<VcfSample>>> m_locusToSamplesList = new HashMap<>();
 
   /**
-   * @return Every position read, or null if no lines read.
+   * @return Every position read, or null if parsing has not happened yet. Returns an empty (non-null) collection
+   * if parsing completed but the file had no data lines.
    */
   public @Nullable
   Collection<VcfPosition> getAllPositions() {
@@ -48,7 +49,8 @@ public class MemoryMappedVcfDataStore {
   }
 
   /**
-   * @return The samples for every VCF record read, or null if no lines were read.
+   * @return The samples for every VCF record read, or null if parsing has not happened yet. Returns an empty
+   * (non-null) collection if parsing completed but the file had no data lines.
    */
   public @Nullable Collection<List<VcfSample>> getAllSamples() {
     if (m_metadata == null) {
@@ -62,7 +64,7 @@ public class MemoryMappedVcfDataStore {
   }
 
   /**
-   * @return The metadata, or null if no lines were read.
+   * @return The metadata, or null if parsing has not happened yet.
    */
   public @Nullable VcfMetadata getMetadata() {
     return m_metadata;

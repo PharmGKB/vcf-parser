@@ -50,6 +50,9 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
   @Override
   public void parseLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
 
+    // fallback in case parseMetadata was not invoked (e.g. parseLine called directly, not through VcfParser)
+    m_dataStore.setMetadata(metadata);
+
     // check every ID for a FAIL-mode collision before mutating anything, so a rejected record is never partially
     // committed -- neither its locus entry nor any of its (possibly several) IDs
     if (m_duplicateIdHandler == DuplicateHandler.FAIL) {

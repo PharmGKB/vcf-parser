@@ -219,4 +219,34 @@ public class TransformingVcfLineParserTest {
     assertTrue(lineParser.isValid());
   }
 
+  @Test
+  public void testWriteLineContentRejectionDoesNotInvalidateParser() throws Exception {
+    // VcfWriter.writeLine() throws VcfFormatException (not UncheckedIOException) for a per-record content
+    // rejection like a sample-count mismatch -- this must NOT invalidate the parser, unlike a genuine write
+    // (I/O) failure. A subsequent valid record must still be processed normally.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n" +
+        "1\t1\t.\tA\tT\t.\t.\t.\tGT\t0/1\n" +
+        "1\t2\t.\tA\tT\t.\t.\t.\tGT\t0/1\n";
+    StringWriter sw = new StringWriter();
+    VcfTransformation clearsSamplesOnFirstRecordOnly = new VcfTransformation() {
+      @Override
+      public boolean transformDataLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
+        if (position.getPosition() == 1) {
+          sampleData.clear(); // causes a sample-count mismatch in VcfWriter.writeLine() for this record only
+        }
+        return true;
+      }
+    };
+    TransformingVcfLineParser lineParser = new TransformingVcfLineParser.Builder()
+        .transformation(clearsSamplesOnFirstRecordOnly, new PrintWriter(sw)).build();
+    try (VcfParser parser = new VcfParser.Builder()
+        .parseWith(lineParser)
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .build()) {
+      assertThrows(VcfFormatException.class, parser::parse);
+    }
+    assertTrue(lineParser.isValid());
+  }
+
 }

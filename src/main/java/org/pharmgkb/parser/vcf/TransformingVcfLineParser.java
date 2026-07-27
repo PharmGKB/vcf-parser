@@ -3,6 +3,7 @@ package org.pharmgkb.parser.vcf;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -15,13 +16,16 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
  * Applies a {@link VcfTransformation} to a VCF file.
  * This is a streaming {@link VcfLineParser} that applies a single transformation and writes the transformed VCF.
  * <p>
- * A write failure (an exception from the underlying {@link VcfWriter}, as opposed to one thrown by the
- * {@link VcfTransformation} itself) permanently invalidates this instance: the underlying writer may be left in a
- * partially-written or otherwise inconsistent state, so no further work is attempted. Call {@link #isValid()} to
- * check without triggering an exception; once invalid, {@link #parseMetadata} and {@link #parseLine} both throw
- * {@link IllegalStateException} (with the original write failure as the cause) instead of doing anything further.
- * A {@link VcfTransformation} exception, by contrast, does not invalidate this instance -- nothing was written yet,
- * so {@link #parseMetadata}/{@link #parseLine} can be called again to retry.
+ * A write failure -- an {@link java.io.UncheckedIOException} from the underlying {@link VcfWriter}, as opposed to
+ * a {@link VcfFormatException} it throws for ordinary per-record content rejections (e.g. a sample-count mismatch),
+ * or any exception thrown by the {@link VcfTransformation} itself -- permanently invalidates this instance: the
+ * underlying writer may be left in a partially-written or otherwise inconsistent state, so no further work is
+ * attempted. Call {@link #isValid()} to check without triggering an exception; once invalid, {@link #parseMetadata}
+ * and {@link #parseLine} both throw {@link IllegalStateException} (with the original write failure as the cause)
+ * instead of doing anything further. A {@link VcfTransformation} exception or a {@link VcfWriter}
+ * {@link VcfFormatException} rejection, by contrast, does not invalidate this instance -- nothing corrupting was
+ * written, so {@link #parseMetadata}/{@link #parseLine} can be called again (for a {@link VcfTransformation}
+ * failure) or simply continue processing the next record (for a rejected record) without issue.
  * <p>
  * Example:
  * <pre>{@code
@@ -81,7 +85,7 @@ public class TransformingVcfLineParser implements VcfLineParser, Closeable {
     if (keep) {
       try {
         m_writer.writeLine(metadata, position, sampleData);
-      } catch (RuntimeException e) {
+      } catch (UncheckedIOException e) {
         m_valid = false;
         m_invalidatingCause = e;
         throw e;
@@ -109,7 +113,7 @@ public class TransformingVcfLineParser implements VcfLineParser, Closeable {
     m_headerWritten = true;
     try {
       m_writer.writeHeader(metadata);
-    } catch (RuntimeException e) {
+    } catch (UncheckedIOException e) {
       m_valid = false;
       m_invalidatingCause = e;
       throw e;
