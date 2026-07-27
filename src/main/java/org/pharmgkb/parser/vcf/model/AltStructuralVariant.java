@@ -105,7 +105,7 @@ public class AltStructuralVariant {
 
   /**
    * @return The code at the specified level (e.g. CNV)
-   * @throws ArrayIndexOutOfBoundsException
+   * @throws IndexOutOfBoundsException
    */
   public String getComponent(int level) {
     return m_components.get(level);
@@ -113,7 +113,7 @@ public class AltStructuralVariant {
 
   /**
    * @return The code at the specified level (e.g. CNV), or null if it is not a reserved code
-   * @throws ArrayIndexOutOfBoundsException
+   * @throws IndexOutOfBoundsException
    */
   @Nullable
   public ReservedStructuralVariantCode getReservedComponent(int level) {

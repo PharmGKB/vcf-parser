@@ -35,7 +35,7 @@ public class IdDescriptionMetadata extends IdMetadata {
   public IdDescriptionMetadata(Map<String, String> properties) {
     super(properties, false);
     init();
-    checkAttributeOrder(sf_logger);
+    checkAttributeOrder(LoggerFactory.getLogger(getClass()));
   }
 
   /**

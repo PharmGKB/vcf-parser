@@ -233,6 +233,9 @@ public class VcfPosition {
         throw new VcfFormatException("FILTER column entry \"" + f + "\" contains whitespace");
       }
       if (f.equals("0")) {
+        // hts-specs test/vcf/4.2/failed/failed_body_filter_004.vcf, ##CauseOfFailure=FILTER contains reserved
+        // value 0. Independently confirmed live via vcf_validator 0.10.2 ("FILTER string must not be 0
+        // (reserved value)").
         throw new VcfFormatException("FILTER column entry should not be 0");
       }
       if (f.equals("PASS") && filters.size() > 1) {

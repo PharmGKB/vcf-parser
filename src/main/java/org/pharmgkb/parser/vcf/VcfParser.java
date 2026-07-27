@@ -533,7 +533,7 @@ public class VcfParser implements Closeable {
         throw new IllegalStateException("Already loading from reader");
       }
       if (!dataFile.toString().endsWith(".vcf")) {
-        throw new IllegalArgumentException("Not a VCF file (doesn't end with .vcf extension");
+        throw new IllegalArgumentException("Not a VCF file (doesn't end with .vcf extension)");
       }
       m_vcfFile = dataFile;
       return this;
