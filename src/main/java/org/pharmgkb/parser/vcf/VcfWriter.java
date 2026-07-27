@@ -45,8 +45,9 @@ import org.slf4j.LoggerFactory;
  * and permanently invalidates this instance: the underlying writer may be left in a partially-written or
  * otherwise inconsistent state, so retrying is never safe and no further work is attempted. Call
  * {@link #isValid()} to check without triggering an exception; once invalid, {@link #writeHeader} and
- * {@link #writeLine} both throw {@link IllegalStateException} (with the original write failure as the cause)
- * instead of doing anything further. A {@link VcfFormatException} thrown for ordinary content rejection (e.g. a
+ * {@link #writeLine} both throw {@link IllegalStateException} (with the exception that first signaled the
+ * failure as the cause) instead of doing anything further. A {@link VcfFormatException} thrown for ordinary
+ * content rejection (e.g. a
  * sample-count mismatch, or invalid metadata in {@link Builder#validateBeforeWrite()} mode), by contrast, does
  * not invalidate this instance -- nothing was corrupted, so a corrected call can succeed normally afterward.
  *
