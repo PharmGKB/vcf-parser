@@ -339,6 +339,25 @@ public class VcfParserTest {
   }
 
   @Test
+  void testMissingIdInfoDeclarationDroppedWithoutAbortingParse() throws IOException {
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##INFO=<Number=1,Type=String,Description=\"no id\">\n" +
+        "##INFO=<ID=DP,Number=1,Type=Integer,Description=\"has id\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t1\t.\tA\tT\t.\t.\tDP=10\n";
+    VcfMetadata[] captured = new VcfMetadata[1];
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, position, sampleData) -> captured[0] = metadata)
+             .build()) {
+      parser.parse();
+    }
+    assertEquals(1, captured[0].getInfo().size());
+    assertTrue(captured[0].getInfo().containsKey("DP"));
+  }
+
+  @Test
   void testDroppedTrailingFormatFields() throws IOException {
     // per the VCF spec, trailing FORMAT sub-fields may be dropped; the sample "0/1" under FORMAT GT:DP:GQ must parse,
     // with the dropped fields read as the missing value rather than throwing

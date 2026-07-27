@@ -142,6 +142,10 @@ public class VcfMetadata {
    * to replace an existing declaration.
    */
   public void addAlt(IdDescriptionMetadata value) {
+    if (value.getId() == null || value.getId().trim().isEmpty()) {
+      sf_logger.warn("ALT metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
+      return;
+    }
     if (warnIfDuplicate(m_alt, value.getId(), "ALT")) {
       return;
     }
@@ -216,6 +220,9 @@ public class VcfMetadata {
    * {@code VcfMetadata}'s own instance {@code addXxx} methods and {@code VcfMetadata.Builder}'s {@code addXxx}
    * methods, so both a parsed file's construction-time declarations and any later programmatic mutation follow
    * the same duplicate-ID rule.
+   * Every caller already guards against a null or blank {@code id} before calling this method (a missing/blank ID
+   * means the declaration has no ID to dedupe on at all, and is dropped entirely before reaching here -- see each
+   * {@code addXxx} method) -- {@code id} is therefore guaranteed non-null and non-blank on every call.
    * <p>
    * Neither VCFv4.2.tex nor VCFv4.3.tex states that a repeated declaration ID is an error for CONTIG/INFO/FORMAT/
    * FILTER/ALT/SAMPLE (contrast with duplicate #CHROM sample-column names, which remain a structural error --
@@ -240,6 +247,10 @@ public class VcfMetadata {
    * replace an existing declaration.
    */
   public void addInfo(InfoMetadata value) {
+    if (value.getId() == null || value.getId().trim().isEmpty()) {
+      sf_logger.warn("INFO metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
+      return;
+    }
     if (warnIfDuplicate(m_info, value.getId(), "INFO")) {
       return;
     }
@@ -252,6 +263,10 @@ public class VcfMetadata {
    * first to replace an existing declaration.
    */
   public void addFormat(FormatMetadata value) {
+    if (value.getId() == null || value.getId().trim().isEmpty()) {
+      sf_logger.warn("FORMAT metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
+      return;
+    }
     if (warnIfDuplicate(m_format, value.getId(), "FORMAT")) {
       return;
     }
@@ -264,6 +279,10 @@ public class VcfMetadata {
    * first to replace an existing declaration.
    */
   public void addContig(ContigMetadata value) {
+    if (value.getId() == null || value.getId().trim().isEmpty()) {
+      sf_logger.warn("CONTIG metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
+      return;
+    }
     if (warnIfDuplicate(m_contig, value.getId(), "CONTIG")) {
       return;
     }
@@ -276,6 +295,10 @@ public class VcfMetadata {
    * first to replace an existing declaration.
    */
   public void addFilter(IdDescriptionMetadata value) {
+    if (value.getId() == null || value.getId().trim().isEmpty()) {
+      sf_logger.warn("FILTER metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
+      return;
+    }
     if (warnIfDuplicate(m_filter, value.getId(), "FILTER")) {
       return;
     }
@@ -479,6 +502,10 @@ public class VcfMetadata {
     }
 
     public Builder addAlt(IdDescriptionMetadata md) {
+      if (md.getId() == null || md.getId().trim().isEmpty()) {
+        sf_logger.warn("ALT metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
+        return this;
+      }
       if (warnIfDuplicate(m_alt, md.getId(), "ALT")) {
         return this;
       }
@@ -488,6 +515,10 @@ public class VcfMetadata {
     }
 
     public Builder addInfo(InfoMetadata md) {
+      if (md.getId() == null || md.getId().trim().isEmpty()) {
+        sf_logger.warn("INFO metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
+        return this;
+      }
       if (warnIfDuplicate(m_info, md.getId(), "INFO")) {
         return this;
       }
@@ -496,6 +527,10 @@ public class VcfMetadata {
     }
 
     public Builder addFilter(IdDescriptionMetadata md) {
+      if (md.getId() == null || md.getId().trim().isEmpty()) {
+        sf_logger.warn("FILTER metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
+        return this;
+      }
       if (warnIfDuplicate(m_filter, md.getId(), "FILTER")) {
         return this;
       }
@@ -504,6 +539,10 @@ public class VcfMetadata {
     }
 
     public Builder addFormat(FormatMetadata md) {
+      if (md.getId() == null || md.getId().trim().isEmpty()) {
+        sf_logger.warn("FORMAT metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
+        return this;
+      }
       if (warnIfDuplicate(m_format, md.getId(), "FORMAT")) {
         return this;
       }
@@ -512,6 +551,10 @@ public class VcfMetadata {
     }
 
     public Builder addContig(ContigMetadata md) {
+      if (md.getId() == null || md.getId().trim().isEmpty()) {
+        sf_logger.warn("CONTIG metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
+        return this;
+      }
       if (warnIfDuplicate(m_contig, md.getId(), "CONTIG")) {
         return this;
       }
@@ -520,6 +563,10 @@ public class VcfMetadata {
     }
 
     public Builder addSample(IdDescriptionMetadata md) {
+      if (md.getId() == null || md.getId().trim().isEmpty()) {
+        sf_logger.warn("SAMPLE metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
+        return this;
+      }
       if (warnIfDuplicate(m_sample, md.getId(), "SAMPLE")) {
         return this;
       }

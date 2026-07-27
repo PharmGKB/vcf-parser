@@ -755,4 +755,58 @@ public class VcfMetadataTest {
     builder.addInfo(new InfoMetadata("AC", "d", InfoType.Integer, "A", null, null));
     assertEquals(1, metadata.getInfo().size());
   }
+
+  @Test
+  public void testAddAltWarnsAndDropsMissingOrBlankId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+          .addAlt(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\""), true))
+          .addAlt(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("ID=", "Description=\"empty\""), true))
+          .addAlt(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("ID=   ", "Description=\"blank\""), true))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getAlts().isEmpty());
+  }
+
+  @Test
+  public void testTwoSeparateMissingIdDeclarationsAreEachDroppedIndependently() {
+    // regression test for the original finding: two UNRELATED declarations that both happen to lack an ID must
+    // not be treated as duplicates of each other -- each is warned about and dropped independently, not silently
+    // kept-then-collided because containsKey(null) happened to be true for the second one
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+          .addInfo(new InfoMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Number=1", "Type=String", "Description=\"zzzalphamarkerzzz\"")))
+          .addInfo(new InfoMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Number=2", "Type=String", "Description=\"zzzbetamarkerzzz\"")))
+          .build();
+      // each declaration's own warning must reference its own content -- proves both were independently warned
+      // about and dropped, not that the second was silently treated as a duplicate of the first with no warning
+      // of its own. These marker strings are deliberately unlike any word already used in warnIfDuplicate's own
+      // message text ("Duplicate ID ... keeping the first declaration") -- a plain "first"/"second" description
+      // would coincidentally match that pre-existing phrase and pass even without this fix, for the wrong reason.
+      assertTrue(appender.anyMessageContains("zzzalphamarkerzzz"));
+      assertTrue(appender.anyMessageContains("zzzbetamarkerzzz"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getInfo().isEmpty());
+  }
 }

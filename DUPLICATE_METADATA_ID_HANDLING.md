@@ -45,6 +45,59 @@ declaration type, each declaring the same ID twice with different attributes.
 | `##ALT` | Silent | Valid | Keeps first, drops duplicate, no warning | Warn + keep first |
 | `##SAMPLE` | Silent | Valid | Keeps first, drops duplicate, no warning | Warn + keep first |
 
+## Missing or empty ID
+
+Unlike a duplicate ID (above), a metadata declaration whose `ID` is **absent, empty, or whitespace-only** is a
+different failure mode entirely: it isn't a collision between two declarations, it's a single declaration that
+has no ID to dedupe on. `vcf-parser` warns and drops such a declaration in full, for all six keyed types --
+never stored, unlike a duplicate-ID-when-present (which keeps the first and drops the rest).
+
+### Missing ID is spec-grounded
+
+VCFv4.3.tex line 121 (unchanged in VCFv4.4/VCFv4.5): "All structured lines require an ID which must be unique
+within their type, i.e., within all the meta-information lines with the same `##key=` prefix." VCFv4.2 never
+uses the word "required," but its own templates for all six types show `ID=` unconditionally first, with no
+optional-field notation -- consistent with, not contradicted by, VCFv4.3's explicit statement. VCFv4.4/VCFv4.5
+additionally give `##ALT` its own explicit restatement: "ALT meta-information lines are structured lines with
+require[d] fields of ID and Description..." This applies uniformly to all six types, regardless of what bcftools
+actually does per type (see below) -- per `AGENTS.md`'s decision hierarchy, spec text governs when it isn't
+silent.
+
+### bcftools/vcf_validator behavior (live-tested)
+
+Verified with **bcftools 1.23.1 (htslib 1.23.1)** and **vcf_validator 0.10.2** against hand-built fixtures, one
+declaration of each type, for both a wholly missing `ID` attribute and an empty `ID=`:
+
+| Type | Missing ID -- bcftools | Missing ID -- vcf_validator | Empty `ID=` -- bcftools | Empty `ID=` -- vcf_validator |
+|---|---|---|---|---|
+| `##ALT` | Kept, no warning | Invalid ("Error in ALT metadata") | Kept (`ID=,...` verbatim), no warning | Invalid ("ID not prefixed by DEL/INS/...") |
+| `##SAMPLE` | Kept, no warning | Invalid | Kept, no warning | Invalid ("ID contains a character different from...") |
+| `##FILTER` | Silently dropped | Invalid | Kept, no warning | Invalid (same charset message) |
+| `##INFO` | Warn + dropped | Invalid | Warn ("Invalid tag name") + kept | Invalid (same charset message) |
+| `##FORMAT` | Warn + dropped | Invalid | Warn + kept | Invalid (presumed same pattern) |
+| `##contig` | Warn + dropped | Invalid | Warn ("Invalid contig name") + kept | Invalid (presumed same pattern) |
+
+`##ALT`/`##SAMPLE` aren't part of BCF's binary dictionary encoding, so htslib never validates their `ID` at all.
+`##INFO`/`##FORMAT`/`##contig`/`##FILTER` ARE part of BCF's dictionary, so a *missing* `ID` invalidates the whole
+declaration -- but an *empty* `ID=` is, inconsistently, tolerated. `vcf-parser` does not replicate bcftools's
+per-type inconsistency for missing IDs (see above -- the spec settles that dimension), and does not replicate
+bcftools's empty-ID leniency either (see below).
+
+### Empty/whitespace ID is a deliberate stricter-than-bcftools choice
+
+No VCF spec version (4.2 through 4.5) or hts-specs conformance fixture addresses the empty-ID case at all --
+this dimension is genuinely unresolved by spec text. Treating an empty or whitespace-only `ID=` the same as a
+missing one is a deliberate editorial decision, NOT something bcftools's own behavior supports (bcftools actually
+keeps an empty-ID `INFO`/`FORMAT`/`contig`/`FILTER` declaration, sometimes with a warning) -- consistent instead
+with this project's existing precedent of being stricter than bcftools for other empty-structural-field content
+(see `EMPTY_FIELD_HANDLING.md`).
+
+### `##FILTER` warns even though bcftools doesn't
+
+`##FILTER`'s missing/empty-ID drop warns in `vcf-parser`, even though bcftools itself is silent for the
+missing-ID case -- matching this project's established more-vocal-than-bcftools convention (see this file's
+"Why this warns instead of throwing" section above, applied the same way here).
+
 Contrast with a duplicate `#CHROM` sample-column name, which remains a structural error in `vcf-parser`. This is a
 different *kind* of duplication, not merely a stricter policy choice: `#CHROM`'s sample columns are *positional* —
 every data line's per-sample values are aligned to them by index, and `VcfMetadata.getSampleIndex(id)` resolves a
