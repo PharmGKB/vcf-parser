@@ -15,6 +15,14 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
  * Applies a {@link VcfTransformation} to a VCF file.
  * This is a streaming {@link VcfLineParser} that applies a single transformation and writes the transformed VCF.
  * <p>
+ * A write failure (an exception from the underlying {@link VcfWriter}, as opposed to one thrown by the
+ * {@link VcfTransformation} itself) permanently invalidates this instance: the underlying writer may be left in a
+ * partially-written or otherwise inconsistent state, so no further work is attempted. Call {@link #isValid()} to
+ * check without triggering an exception; once invalid, {@link #parseMetadata} and {@link #parseLine} both throw
+ * {@link IllegalStateException} (with the original write failure as the cause) instead of doing anything further.
+ * A {@link VcfTransformation} exception, by contrast, does not invalidate this instance -- nothing was written yet,
+ * so {@link #parseMetadata}/{@link #parseLine} can be called again to retry.
+ * <p>
  * Example:
  * <pre>{@code
  *   VcfTransformation transformation = new VcfTransformation() {
@@ -39,6 +47,8 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
 public class TransformingVcfLineParser implements VcfLineParser, Closeable {
 
   private boolean m_headerWritten;
+  private boolean m_valid = true;
+  private @Nullable Exception m_invalidatingCause;
   private final VcfTransformation m_transformation;
   private final VcfWriter m_writer;
 
@@ -47,32 +57,63 @@ public class TransformingVcfLineParser implements VcfLineParser, Closeable {
     m_writer = writer;
   }
 
+  /**
+   * @return {@code false} once a write failure has permanently invalidated this instance (see the class Javadoc);
+   * {@code true} otherwise, including while a retryable {@link VcfTransformation} failure is being retried.
+   */
+  public boolean isValid() {
+    return m_valid;
+  }
+
   @Override
   public void parseMetadata(VcfMetadata metadata) {
+    checkValid();
     writeHeader(metadata);
   }
 
   public void parseLine(VcfMetadata metadata, VcfPosition position,
       List<VcfSample> sampleData) {
+    checkValid();
     // fallback in case parseMetadata was not invoked (e.g. parseLine called directly, not through VcfParser); this
     // always happens before transformDataLine, so transformDataLine can't change the metadata output
     writeHeader(metadata);
     boolean keep = m_transformation.transformDataLine(metadata, position, sampleData);
     if (keep) {
-      m_writer.writeLine(metadata, position, sampleData);
+      try {
+        m_writer.writeLine(metadata, position, sampleData);
+      } catch (RuntimeException e) {
+        m_valid = false;
+        m_invalidatingCause = e;
+        throw e;
+      }
+    }
+  }
+
+  private void checkValid() {
+    if (!m_valid) {
+      throw new IllegalStateException(
+          "This TransformingVcfLineParser is no longer usable after a write failure", m_invalidatingCause);
     }
   }
 
   /**
-   * Applies the transformation's metadata step and writes the header, exactly once.
+   * Applies the transformation's metadata step and writes the header, exactly once. A {@link VcfTransformation}
+   * failure here propagates without setting {@link #m_headerWritten} -- nothing was written yet, so a later call
+   * retries the whole attempt. A {@link VcfWriter} failure invalidates this instance (see the class Javadoc).
    */
   private void writeHeader(VcfMetadata metadata) {
     if (m_headerWritten) {
       return;
     }
-    m_headerWritten = true;
     m_transformation.transformMetadata(metadata);
-    m_writer.writeHeader(metadata);
+    m_headerWritten = true;
+    try {
+      m_writer.writeHeader(metadata);
+    } catch (RuntimeException e) {
+      m_valid = false;
+      m_invalidatingCause = e;
+      throw e;
+    }
   }
 
   @Override

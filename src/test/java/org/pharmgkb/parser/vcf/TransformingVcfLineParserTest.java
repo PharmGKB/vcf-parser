@@ -5,6 +5,7 @@ import java.io.FileReader;
 import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collections;
@@ -18,9 +19,12 @@ import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
+import org.pharmgkb.parser.vcf.spec.FailingWriter;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 public class TransformingVcfLineParserTest {
@@ -149,6 +153,70 @@ public class TransformingVcfLineParserTest {
         .transformation(new VcfTransformation() {}, new PrintWriter(sw1));
     assertThrows(IllegalStateException.class,
         () -> builder.transformation(new VcfTransformation() {}, new PrintWriter(sw2)));
+  }
+
+  @Test
+  public void testTransformMetadataFailureDoesNotInvalidateAndIsRetried() throws Exception {
+    // a transformation-logic failure (not a write failure) must not permanently invalidate the parser -- nothing
+    // was written yet, so a later call retries the whole header attempt from scratch
+    int[] callCount = {0};
+    VcfTransformation flakyThenOk = new VcfTransformation() {
+      @Override
+      public void transformMetadata(VcfMetadata metadata) {
+        callCount[0]++;
+        if (callCount[0] == 1) {
+          throw new RuntimeException("simulated transformation failure");
+        }
+      }
+    };
+    StringWriter sw = new StringWriter();
+    TransformingVcfLineParser lineParser = new TransformingVcfLineParser.Builder()
+        .transformation(flakyThenOk, new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+
+    assertThrows(RuntimeException.class, () -> lineParser.parseMetadata(metadata));
+    assertTrue(lineParser.isValid());
+
+    lineParser.parseMetadata(metadata); // retried: succeeds this time
+    assertEquals(2, callCount[0]);
+    assertTrue(lineParser.isValid());
+  }
+
+  @Test
+  public void testWriteFailureInvalidatesParserAndBlocksFurtherUse() throws Exception {
+    FailingWriter failingWriter = new FailingWriter();
+    failingWriter.startFailing();
+    VcfWriter vcfWriter = new VcfWriter.Builder().toWriter(new PrintWriter(failingWriter)).build();
+    TransformingVcfLineParser lineParser = new TransformingVcfLineParser.Builder()
+        .transformation(new VcfTransformation() {}, vcfWriter).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+
+    assertThrows(UncheckedIOException.class, () -> lineParser.parseMetadata(metadata));
+    assertFalse(lineParser.isValid());
+    assertThrows(IllegalStateException.class, () -> lineParser.parseMetadata(metadata));
+  }
+
+  @Test
+  public void testTransformDataLineFailureDoesNotInvalidate() throws Exception {
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t1\t.\tA\tT\t.\t.\t.\n";
+    StringWriter sw = new StringWriter();
+    VcfTransformation throwsOnDataLine = new VcfTransformation() {
+      @Override
+      public boolean transformDataLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
+        throw new RuntimeException("simulated per-record failure");
+      }
+    };
+    TransformingVcfLineParser lineParser = new TransformingVcfLineParser.Builder()
+        .transformation(throwsOnDataLine, new PrintWriter(sw)).build();
+    try (VcfParser parser = new VcfParser.Builder()
+        .parseWith(lineParser)
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .build()) {
+      assertThrows(VcfFormatException.class, parser::parse);
+    }
+    assertTrue(lineParser.isValid());
   }
 
 }
