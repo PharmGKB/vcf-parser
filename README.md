@@ -84,7 +84,11 @@ The writer detects a write failure (disk full, broken pipe, or an encoding failu
 unchecked `java.io.UncheckedIOException`, but only checks periodically (every 1000 lines) and at
 `writeHeader()`/`close()` -- not after every `writeLine()` call, to avoid forcing a flush past the writer's
 internal buffer on every line. Calling `close()` is required to guarantee both that all output is flushed and
-that any pending failure is reported.
+that any pending failure is reported. A detected write failure permanently invalidates the `VcfWriter` (and,
+transitively, a `TransformingVcfLineParser` built on it): `isValid()` becomes `false`, and any further
+`writeHeader()`/`writeLine()` call throws `IllegalStateException` instead of attempting to write again --
+retrying after a write failure is never safe, since the underlying writer may already be in a partially-written
+or otherwise inconsistent state.
 
 **Lenient — warns when encountered or accessed and preserves usable data.** Non-structural content may be accepted
 initially and validated only when the relevant getter or typed conversion is used. Malformed metadata declarations

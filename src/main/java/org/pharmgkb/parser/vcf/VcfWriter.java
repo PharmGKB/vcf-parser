@@ -178,8 +178,12 @@ public class VcfWriter implements Closeable {
    * writing fewer than 1000 lines and never calling {@link #close} will neither surface a failure nor guarantee
    * the data was actually written.
    *
+   * @throws IllegalStateException if {@link #isValid()} is already {@code false} -- this instance must be
+   * abandoned after any prior write failure, not reused.
    * @throws UncheckedIOException if a write failure is detected (only possible on a call that lands on the
-   * periodic 1000-line checkpoint; most calls cannot throw this)
+   * periodic 1000-line checkpoint; most calls cannot throw this). This permanently invalidates the instance
+   * (see the class Javadoc) -- retrying is never safe, since some data may have already reached the underlying
+   * writer.
    */
   public void writeLine(VcfMetadata metadata, VcfPosition position,
       List<VcfSample> samples) {

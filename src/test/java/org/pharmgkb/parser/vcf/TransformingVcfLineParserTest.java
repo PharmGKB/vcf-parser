@@ -285,4 +285,27 @@ public class TransformingVcfLineParserTest {
     assertTrue(sw.toString().contains("##INFO=<ID=AF"));
   }
 
+  @Test
+  public void testIsValidReflectsWriterPoisonedByADirectExternalCall() throws Exception {
+    // the whole point of delegating isValid() to m_writer.isValid() instead of tracking separately: a caller
+    // holding their own reference to the same VcfWriter can poison it via a direct call this
+    // TransformingVcfLineParser never sees, and isValid() must still correctly reflect that
+    FailingWriter failingWriter = new FailingWriter();
+    VcfWriter vcfWriter = new VcfWriter.Builder().toWriter(new PrintWriter(failingWriter)).build();
+    TransformingVcfLineParser lineParser = new TransformingVcfLineParser.Builder()
+        .transformation(new VcfTransformation() {}, vcfWriter).build();
+
+    assertTrue(lineParser.isValid());
+
+    // the caller uses their own reference to the SAME VcfWriter directly, bypassing lineParser entirely
+    failingWriter.startFailing();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(UncheckedIOException.class, () -> vcfWriter.writeHeader(metadata));
+
+    // lineParser never called anything itself, but must still report invalid, because it delegates to the
+    // same underlying writer rather than tracking its own separate (and here, unaware) state
+    assertFalse(lineParser.isValid());
+    assertThrows(IllegalStateException.class, () -> lineParser.parseMetadata(metadata));
+  }
+
 }
