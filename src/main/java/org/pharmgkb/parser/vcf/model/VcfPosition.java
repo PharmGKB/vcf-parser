@@ -66,10 +66,10 @@ public class VcfPosition {
    * constructor does not defensively copy any of them when no normalization is needed, to avoid an unnecessary
    * allocation on this library's hot parse path (mirroring {@link VcfSample}'s own no-copy ownership contract).
    * {@link #getIds()}, {@link #getAltBases()}, {@link #getFilters()}, {@link #getFormat()}, and
-   * {@link #getInfo()} return these same objects (or an equivalent list/multimap produced by normalization) and
-   * support in-place mutation only if the object passed here does -- pass a mutable {@code List}/
-   * {@code ListMultimap} (not e.g. {@code List.of(...)}) if you intend to mutate a position's IDs, ALT bases,
-   * filters, format, or INFO after construction.
+   * {@link #getInfo()} return these same objects (or an equivalent list/multimap produced by normalization); the
+   * returned list/multimap may be immutable if one was passed to this constructor and did not need normalizing --
+   * pass a mutable {@code List}/{@code ListMultimap} (not e.g. {@code List.of(...)}) if you intend to mutate a
+   * position's IDs, ALT bases, filters, format, or INFO after construction.
    */
   public VcfPosition(String chr, long pos,
       @Nullable List<String> ids,
@@ -345,9 +345,9 @@ public class VcfPosition {
    * The constructors validate their arguments, but {@link #setChromosome}, {@link #setRef}, {@link #setPosition}, and
    * mutations made through {@link #getIds}, {@link #getAltBases}, {@link #getFilters}, {@link #getFormat}, and
    * {@link #getInfo()} do <em>not</em> validate their input, to support transformation pipelines (e.g.
-   * {@link org.pharmgkb.parser.vcf.VcfTransformation}) that mutate a position in place. Each of those accessors
-   * returns a mutable list/multimap only if the primary constructor was given one -- see its Javadoc. Call this
-   * method after such mutations if you need to confirm the position is still valid.
+   * {@link org.pharmgkb.parser.vcf.VcfTransformation}) that mutate a position in place. Each of those accessors may
+   * return an immutable list/multimap if one was passed to the primary constructor and did not need normalizing --
+   * see its Javadoc. Call this method after such mutations if you need to confirm the position is still valid.
    */
   public void validate() {
     checkChromosome(m_chromosome);

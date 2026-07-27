@@ -64,8 +64,8 @@ invalid:
   construction; a file parsed by `VcfParser` with a malformed declaration is handled per the lenient section below,
   not rejected outright.
 
-These checks run when a `VcfPosition` is constructed (including by the parser). Its setters and the mutable lists
-returned by its accessors (e.g. `getAltBases()`, `getFilters()`) do *not* re-run them, to support transformation
+These checks run when a `VcfPosition` is constructed (including by the parser). Its setters and mutations made
+through its accessors (e.g. `getAltBases()`, `getFilters()`) do *not* re-run them, to support transformation
 pipelines that mutate a position in place; call `VcfPosition.validate()` after such mutations to re-check validity —
 this also re-normalizes a lone `PASS` or `.` `FILTER` value left by such a mutation, matching construction.
 
