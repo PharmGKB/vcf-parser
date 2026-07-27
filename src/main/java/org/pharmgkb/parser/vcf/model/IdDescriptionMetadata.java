@@ -23,48 +23,39 @@ public class IdDescriptionMetadata extends IdMetadata {
 
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-  private final boolean m_isBaseType;
-
   public static final String ID = "ID";
   public static final String DESCRIPTION = "Description";
 
   public IdDescriptionMetadata(String id, String description) {
-    this(id, description, true);
-  }
-
-  public IdDescriptionMetadata(Map<String, String> properties, boolean isBaseType) {
-    super(properties, false);
-    m_isBaseType = isBaseType;
-    init(isBaseType);
-    checkAttributeOrder(sf_logger);
-  }
-
-  protected IdDescriptionMetadata(String id, String description, boolean isBaseType) {
     super(id, false);
-    m_isBaseType = isBaseType;
     putAndQuoteProperty(DESCRIPTION, description);
-    init(isBaseType);
+    init();
+  }
+
+  public IdDescriptionMetadata(Map<String, String> properties) {
+    super(properties, false);
+    init();
+    checkAttributeOrder(sf_logger);
   }
 
   /**
    * For subclasses (InfoMetadata, FormatMetadata) whose own typed constructor must insert additional properties
    * between ID and Description to match their own canonical attribute order (see
-   * BaseMetadata#checkAttributeOrder) -- unlike the (id, description, isBaseType) constructor above, this does
+   * BaseMetadata#checkAttributeOrder) -- unlike the (id, description) constructor above, this does
    * not insert Description; the caller must add it itself afterward, via putAndQuoteProperty, in whatever
    * position is canonical for its own subtype.
    */
-  protected IdDescriptionMetadata(String id, boolean isBaseType) {
+  protected IdDescriptionMetadata(String id) {
     super(id, false);
-    m_isBaseType = isBaseType;
   }
 
   @Override
   public void validate() {
     super.validate();
-    init(m_isBaseType);
+    init();
   }
 
-  private void init(boolean isBaseType) {
+  private void init() {
     String description = getPropertyRaw(DESCRIPTION);
     warnIfMissing(sf_logger, DESCRIPTION, description);
     if (description != null && (!description.startsWith("\"") || !description.endsWith("\""))) {

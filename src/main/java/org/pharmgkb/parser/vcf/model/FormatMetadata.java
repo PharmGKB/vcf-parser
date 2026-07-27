@@ -30,7 +30,7 @@ public class FormatMetadata extends IdDescriptionMetadata {
   private @Nullable FormatType m_type;
 
   public FormatMetadata(String id, String description, String number, FormatType type) {
-    super(id, false);
+    super(id);
     putPropertyRaw(NUMBER, number);
     putPropertyRaw(TYPE, type.name());
     // Description inserted last -- see InfoMetadata's identical constructor for why (matches canonical
@@ -40,7 +40,7 @@ public class FormatMetadata extends IdDescriptionMetadata {
   }
 
   public FormatMetadata(Map<String, String> properties) {
-    super(properties, false);
+    super(properties);
     init();
   }
 

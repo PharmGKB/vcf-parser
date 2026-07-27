@@ -41,16 +41,13 @@ public class InfoMetadata extends IdDescriptionMetadata {
 
   public InfoMetadata(String id, String description, InfoType type, String number,
       @Nullable String source, @Nullable String version) {
-    // isBaseType=false: InfoMetadata has more fields than just ID/Description (unlike super(id, description)'s
-    // default of true, which would make IdDescriptionMetadata.validate() later warn that Number/Type/Source/Version
-    // -- InfoMetadata's own core fields -- are "unexpected" once they've been added below)
-    super(id, false);
+    super(id);
     putPropertyRaw(NUMBER, number);
     putPropertyRaw(TYPE, type.name());
     // Description is inserted here, before Source/Version and not immediately after ID, so this constructor's
     // property-insertion order matches the canonical ID, Number, Type, Description, Source, Version order that
-    // BaseMetadata.checkAttributeOrder() checks (VCFv4.2.tex line 69) -- inserting it via the (id, description,
-    // isBaseType) super constructor instead would produce ID, Description, Number, Type, ..., which fails that
+    // BaseMetadata.checkAttributeOrder() checks (VCFv4.2.tex line 69) -- inserting it via the (id, description)
+    // super constructor instead would produce ID, Description, Number, Type, ..., which fails that
     // check on any parse of this constructor's own written-out output.
     putAndQuoteProperty(DESCRIPTION, description);
     if (source != null) {
@@ -63,7 +60,7 @@ public class InfoMetadata extends IdDescriptionMetadata {
   }
 
   public InfoMetadata(Map<String, String> properties) {
-    super(properties, false);
+    super(properties);
     init();
   }
 

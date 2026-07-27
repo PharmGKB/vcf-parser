@@ -20,7 +20,7 @@ public class IdDescriptionMetadataTest {
     // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included
     // after the default fields" -- an unrecognized property is compliant, not just tolerated, and must be preserved
     IdDescriptionMetadata md = new IdDescriptionMetadata(
-        VcfUtils.extractProperties("ID=X", "Description=\"d\"", "Custom=extra"), true);
+        VcfUtils.extractProperties("ID=X", "Description=\"d\"", "Custom=extra"));
     assertEquals("extra", md.getPropertyRaw("Custom"));
   }
 
@@ -35,7 +35,7 @@ public class IdDescriptionMetadataTest {
     root.addAppender(appender);
     try {
       new IdDescriptionMetadata(VcfUtils.extractProperties(
-          "ID=DEL", "Type=String", "Number=1", "Description=\"Deletion\""), true);
+          "ID=DEL", "Type=String", "Number=1", "Description=\"Deletion\""));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -53,7 +53,7 @@ public class IdDescriptionMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new IdDescriptionMetadata(VcfUtils.extractProperties("ID=DEL", "Description=\"Deletion\""), true);
+      new IdDescriptionMetadata(VcfUtils.extractProperties("ID=DEL", "Description=\"Deletion\""));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);

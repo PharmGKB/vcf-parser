@@ -321,7 +321,7 @@ public class VcfMetadataTest {
     try {
       metadata.addAlt(new IdDescriptionMetadata(
           org.pharmgkb.parser.vcf.VcfUtils.extractProperties("ID=DEL", "Number=B", "Type=String",
-              "Description=\"Deletion\""), true));
+              "Description=\"Deletion\"")));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -342,7 +342,7 @@ public class VcfMetadataTest {
     try {
       metadata.addAlt(new IdDescriptionMetadata(
           org.pharmgkb.parser.vcf.VcfUtils.extractProperties("ID=DEL", "Number=1", "Type=Text",
-              "Description=\"Deletion\""), true));
+              "Description=\"Deletion\"")));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -362,7 +362,7 @@ public class VcfMetadataTest {
     try {
       metadata.addAlt(new IdDescriptionMetadata(
           org.pharmgkb.parser.vcf.VcfUtils.extractProperties("ID=DEL", "Number=1", "Type=String",
-              "Description=\"Deletion\""), true));
+              "Description=\"Deletion\"")));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -767,9 +767,9 @@ public class VcfMetadataTest {
     VcfMetadata metadata;
     try {
       metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-          .addAlt(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\""), true))
-          .addAlt(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("ID=", "Description=\"empty\""), true))
-          .addAlt(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("ID=   ", "Description=\"blank\""), true))
+          .addAlt(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\"")))
+          .addAlt(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("ID=", "Description=\"empty\"")))
+          .addAlt(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("ID=   ", "Description=\"blank\"")))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -821,7 +821,7 @@ public class VcfMetadataTest {
     VcfMetadata metadata;
     try {
       metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-          .addFilter(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\""), true))
+          .addFilter(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\"")))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -884,7 +884,7 @@ public class VcfMetadataTest {
     VcfMetadata metadata;
     try {
       metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-          .addSample(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\""), true))
+          .addSample(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\"")))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -904,7 +904,7 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\""), true));
+      metadata.addAlt(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\"")));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -980,7 +980,7 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     try {
-      metadata.addFilter(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\""), true));
+      metadata.addFilter(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\"")));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);

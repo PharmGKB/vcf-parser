@@ -375,10 +375,10 @@ public class VcfParser implements Closeable {
     Map<String, String> props = VcfUtils.extractPropertiesFromLine(value);
     switch (propName.toLowerCase()) {
       case "alt":
-        mdBuilder.addAlt(new IdDescriptionMetadata(props, true));
+        mdBuilder.addAlt(new IdDescriptionMetadata(props));
         break;
       case "filter":
-        mdBuilder.addFilter(new IdDescriptionMetadata(props, true));
+        mdBuilder.addFilter(new IdDescriptionMetadata(props));
         break;
       case "info":
         mdBuilder.addInfo(new InfoMetadata(props));
@@ -390,7 +390,7 @@ public class VcfParser implements Closeable {
         mdBuilder.addContig(new ContigMetadata(props));
         break;
       case "sample":
-        mdBuilder.addSample(new IdDescriptionMetadata(props, true));
+        mdBuilder.addSample(new IdDescriptionMetadata(props));
         break;
       case "pedigree":
         mdBuilder.addPedigree(new BaseMetadata(props));
