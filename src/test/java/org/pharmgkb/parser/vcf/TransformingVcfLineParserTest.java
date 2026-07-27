@@ -10,7 +10,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.List;
-import org.apache.commons.io.IOUtils;
+import com.google.common.io.CharStreams;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
 import org.pharmgkb.parser.vcf.model.InfoMetadata;
@@ -74,7 +74,7 @@ public class TransformingVcfLineParserTest {
     Path expected = Paths.get(VcfParserTest.class.getResource("/transformed.vcf").toURI());
     String expectedResult;
     try (BufferedReader br = new BufferedReader(new FileReader(expected.toFile()))) {
-      expectedResult = IOUtils.toString(br);
+      expectedResult = CharStreams.toString(br);
     }
     assertEquals(expectedResult, actualResult);
   }
@@ -95,7 +95,7 @@ public class TransformingVcfLineParserTest {
 
     String input;
     try (BufferedReader br = new BufferedReader(new FileReader(dataFile.toFile()))) {
-      input = IOUtils.toString(br);
+      input = CharStreams.toString(br);
     }
     assertEquals(input, sw.toString());
   }

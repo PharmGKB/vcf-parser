@@ -19,7 +19,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.apache.commons.io.IOUtils;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.model.BaseMetadata;
 import org.pharmgkb.parser.vcf.model.FormatMetadata;
@@ -299,7 +298,7 @@ public class VcfWriter implements Closeable {
     // catches a failure from the underlying stream's own close() (e.g. an fsync-on-close error) -- safe to call
     // again here because a closed PrintWriter's checkError() no longer attempts to flush.
     boolean hadError = m_writer.checkError();
-    IOUtils.closeQuietly(m_writer);
+    m_writer.close();
     if (hadError || m_writer.checkError()) {
       UncheckedIOException e = writeError();
       m_valid = false;
