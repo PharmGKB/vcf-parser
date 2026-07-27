@@ -821,6 +821,23 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testWriteHeaderDetectsMalformedEncodingWhenWritingToFile() throws Exception {
+    // regression test: writing an unpaired surrogate (invalid as UTF-8) through the toFile(Path) path must now
+    // be detected as a write failure, not silently replaced with '?' -- matches VcfParser's own read-side
+    // strictness (Files.newBufferedReader already throws MalformedInputException on malformed input)
+    java.nio.file.Path file = java.nio.file.Files.createTempFile("vcf-writer-encoding-test", ".vcf");
+    try {
+      VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+      metadata.getRawProperties().put("BadEncoding", "bad\uD800surrogate"); // lone high surrogate: invalid UTF-8
+      VcfWriter writer = new VcfWriter.Builder().toFile(file).build();
+      assertThrows(UncheckedIOException.class, () -> writer.writeHeader(metadata));
+      assertFalse(writer.isValid());
+    } finally {
+      java.nio.file.Files.deleteIfExists(file);
+    }
+  }
+
+  @Test
   public void testWriteHeaderDetectsWriteFailure() throws Exception {
     // PrintWriter swallows an IOException from its underlying Writer internally (setting only its own error
     // flag) rather than propagating it -- checkForWriteError() is what surfaces this as an actual exception

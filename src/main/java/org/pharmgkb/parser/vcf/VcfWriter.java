@@ -7,6 +7,8 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.UncheckedIOException;
 import java.lang.invoke.MethodHandles;
+import java.nio.charset.CharsetEncoder;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -867,15 +869,20 @@ public class VcfWriter implements Closeable {
 
     public VcfWriter build() throws IOException {
       if (m_file != null) {
-        // explicit UTF-8 encoding is stricter than the old FileWriter's platform-default REPLACE behavior: an
-        // unpaired surrogate in metadata now triggers an encoding failure in the underlying encoder instead of
-        // being silently replaced with "?", matching VcfParser's Files.newBufferedReader decoder on the read
-        // side. That failure does NOT throw here or propagate up through print()/write() -- PrintWriter catches
-        // any IOException from its underlying writer internally and only sets its own error flag. It's
-        // checkForWriteError() (called from printLine()'s periodic check, writeHeader(), and close()) that
-        // actually turns this into a visible UncheckedIOException.
+        // a plain Charset-based OutputStreamWriter silently replaces malformed input (e.g. an unpaired surrogate)
+        // with "?" instead of failing -- verified empirically; it does NOT use CharsetEncoder's own REPORT
+        // defaults. Building the encoder explicitly with REPORT actions makes a malformed-input encoding failure
+        // set PrintWriter's error flag instead, matching VcfParser's Files.newBufferedReader decoder on the read
+        // side (which already throws MalformedInputException on malformed input). That failure does NOT throw
+        // here or propagate up through print()/write() -- PrintWriter catches any IOException from its
+        // underlying writer internally and only sets its own error flag. It's checkForWriteError() (called from
+        // printLine()'s periodic check, writeHeader(), and close()) that actually turns this into a visible
+        // UncheckedIOException.
+        CharsetEncoder encoder = StandardCharsets.UTF_8.newEncoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT);
         m_writer = new PrintWriter(new BufferedWriter(
-            new OutputStreamWriter(Files.newOutputStream(m_file), StandardCharsets.UTF_8), 65536));
+            new OutputStreamWriter(Files.newOutputStream(m_file), encoder), 65536));
       }
       if (m_writer == null) {
         throw new IllegalStateException("Must specify either file or writer");
