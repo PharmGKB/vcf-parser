@@ -291,7 +291,9 @@ public class VcfPosition {
             "it as-is, but it cannot be looked up in metadata");
         continue;
       }
-      if (!VcfUtils.FORMAT_PATTERN.matcher(f).matches() || f.contains(":")) {
+      // f.contains(":") is not checked separately: FORMAT_PATTERN's character class ([0-9A-Za-z_.]) never
+      // includes ':', so matches() alone already rejects any f containing one.
+      if (!VcfUtils.FORMAT_PATTERN.matcher(f).matches()) {
         throw new VcfFormatException("FORMAT ID does not match VCF spec");
       }
       if (!seenKeys.add(f)) {
