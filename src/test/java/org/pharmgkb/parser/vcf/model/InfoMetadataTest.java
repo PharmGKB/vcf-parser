@@ -263,4 +263,25 @@ public class InfoMetadataTest {
     assertThrows(VcfFormatException.class, () -> new InfoMetadata("", "d", InfoType.String, "1", null, null));
     assertThrows(VcfFormatException.class, () -> new InfoMetadata("   ", "d", InfoType.String, "1", null, null));
   }
+
+  @Test
+  public void testUnquotedDescriptionWarningAttributedToInfoMetadataNotIdDescriptionMetadata() {
+    // regression test: IdDescriptionMetadata.init()'s warn calls must use the runtime class's own logger, not
+    // its own static sf_logger -- otherwise an InfoMetadata's Description warning is misattributed to
+    // IdDescriptionMetadata's logger category instead of InfoMetadata's
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new InfoMetadata(VcfUtils.extractProperties("ID=AA", "Number=1", "Type=String", "Description=unquoted"));
+      assertTrue(appender.hasWarnOrHigher());
+      assertTrue(appender.anyEventLoggerNameEquals(InfoMetadata.class.getName()));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
 }

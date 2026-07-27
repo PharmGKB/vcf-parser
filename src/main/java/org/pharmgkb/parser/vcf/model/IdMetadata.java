@@ -1,6 +1,5 @@
 package org.pharmgkb.parser.vcf.model;
 
-import java.lang.invoke.MethodHandles;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -13,8 +12,6 @@ import org.slf4j.LoggerFactory;
  * A VCF metadata element with an Id (called "ID").
  */
 public class IdMetadata extends BaseMetadata {
-
-  private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private final boolean m_isBaseType;
 
@@ -53,9 +50,10 @@ public class IdMetadata extends BaseMetadata {
   }
 
   private void init(boolean isBaseType) {
-    warnIfMissing(sf_logger, ID, getPropertyRaw(ID));
+    Logger logger = LoggerFactory.getLogger(getClass());
+    warnIfMissing(logger, ID, getPropertyRaw(ID));
     if (isBaseType) {
-      ensureNoExtras(ID);
+      ensureNoExtras(logger, ID);
     }
   }
 

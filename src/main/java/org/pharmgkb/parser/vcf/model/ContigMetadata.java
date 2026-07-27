@@ -114,7 +114,7 @@ public class ContigMetadata extends IdMetadata {
         sf_logger.warn("Length is not a number", e);
       }
     }
-    ensureNoExtras(ID, LENGTH, ASSEMBLY, MD5, SPECIES, TAXONOMY, URL);
+    ensureNoExtras(sf_logger, ID, LENGTH, ASSEMBLY, MD5, SPECIES, TAXONOMY, URL);
   }
 
   @Override

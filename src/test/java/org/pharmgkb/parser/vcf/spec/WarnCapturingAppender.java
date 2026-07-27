@@ -32,4 +32,13 @@ public class WarnCapturingAppender extends AppenderBase<ILoggingEvent> {
   public boolean anyMessageContains(String substring) {
     return m_events.stream().anyMatch(event -> event.getFormattedMessage().contains(substring));
   }
+
+  /**
+   * @return true if any captured event was logged under a logger named exactly {@code loggerName} (e.g.
+   * {@code SomeClass.class.getName()}) -- use this to verify a warning is attributed to the class that actually
+   * triggered it, not a superclass whose static logger field happened to run the warning code
+   */
+  public boolean anyEventLoggerNameEquals(String loggerName) {
+    return m_events.stream().anyMatch(event -> event.getLoggerName().equals(loggerName));
+  }
 }

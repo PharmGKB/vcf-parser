@@ -19,7 +19,8 @@ public class ContigMetadataTest {
 
   @Test
   public void testNoId() {
-    // IdMetadata.init()'s warnIfMissing() should warn when ID is absent
+    // IdMetadata.init()'s warnIfMissing() should warn when ID is absent, and (regression) attribute the
+    // warning to the actual runtime class (ContigMetadata), not IdMetadata's own static logger
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -31,23 +32,36 @@ public class ContigMetadataTest {
       map.put(ContigMetadata.URL, "one");
       new ContigMetadata(map);
       assertTrue(appender.hasWarnOrHigher());
+      assertTrue(appender.anyEventLoggerNameEquals(ContigMetadata.class.getName()));
     } finally {
       root.detachAppender(appender);
       appender.stop();
     }
   }
 
-  /**
-   * Just makes sure it doesn't throw an exception. However, should probably warn.
-   */
   @Test
   public void testExtraProperty() {
-    Map<String, String> map = new HashMap<>();
-    map.put(ContigMetadata.ID, "id");
-    map.put(ContigMetadata.ASSEMBLY, "assembly");
-    map.put(ContigMetadata.LENGTH, "23");
-    map.put("test", "one");
-    new ContigMetadata(map);
+    // BaseMetadata.ensureNoExtras() should warn on an unrecognized property, attributed to the actual runtime
+    // class (ContigMetadata), not BaseMetadata's own static logger
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      Map<String, String> map = new HashMap<>();
+      map.put(ContigMetadata.ID, "id");
+      map.put(ContigMetadata.ASSEMBLY, "assembly");
+      map.put(ContigMetadata.LENGTH, "23");
+      map.put("test", "one");
+      new ContigMetadata(map);
+      assertTrue(appender.hasWarnOrHigher());
+      assertTrue(appender.anyEventLoggerNameEquals(ContigMetadata.class.getName()));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
   }
 
   @Test

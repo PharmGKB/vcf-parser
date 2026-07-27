@@ -1,6 +1,5 @@
 package org.pharmgkb.parser.vcf.model;
 
-import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -12,7 +11,6 @@ import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 
 /**
@@ -21,8 +19,6 @@ import org.slf4j.LoggerFactory;
  * @author Douglas Myers-Turnbull
  */
 public class BaseMetadata {
-
-  private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private final Map<String, String> m_properties;
 
@@ -97,14 +93,16 @@ public class BaseMetadata {
 
   /**
    * Should be used only for base classes.
-   * Logs a warning if this metadata contains a property key not in the array passed.
+   * Logs a warning (using the caller's own logger, so the warning is attributed to the caller's class) if this
+   * metadata contains a property key not in the array passed.
+   * @param logger The calling class's own logger
    * @param names An array of permitted property keys
    */
-  protected void ensureNoExtras(String... names) {
+  protected void ensureNoExtras(Logger logger, String... names) {
     Set<String> set = new HashSet<>();
     Collections.addAll(set, names);
     m_properties.keySet().stream().filter(property -> !set.contains(property)).forEach(property -> {
-      sf_logger.warn("Metadata line contains unexpected property {}", property);
+      logger.warn("Metadata line contains unexpected property {}", property);
     });
   }
 
