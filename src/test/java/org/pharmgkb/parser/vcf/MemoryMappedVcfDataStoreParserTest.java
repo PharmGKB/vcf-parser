@@ -176,4 +176,47 @@ public class MemoryMappedVcfDataStoreParserTest {
     // the returned list must itself be immutable
     assertThrows(UnsupportedOperationException.class, () -> genotype.getAlleles().add("G"));
   }
+
+  @Test
+  public void testHeaderOnlyVcfPopulatesMetadata() throws IOException {
+    // a VCF with metadata but zero data lines must still populate the data store's metadata -- parseMetadata()
+    // must be called, not just parseLine() as a side effect
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf))) {
+      MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+      new VcfParser.Builder()
+          .fromReader(reader)
+          .parseWith(lineParser)
+          .build().parse();
+      MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
+      assertNotNull(dataStore.getMetadata());
+      assertEquals("VCFv4.2", dataStore.getMetadata().getFileFormat());
+    }
+  }
+
+  @Test
+  public void testDuplicateIdRejectionIsAtomicForWholeRecord() throws IOException {
+    // a record with two IDs where the second is a pre-existing duplicate must be rejected as a whole: the first
+    // (non-duplicate) ID must not end up linked, and the record must not appear in locus-based lookup either
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\t.\t.\n" +
+        "chr1\t2\trs2;rs1\tA\tC\t.\t.\t.\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf))) {
+      MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+      // DuplicateHandler.FAIL is the default
+      assertThrows(VcfFormatException.class, () ->
+          new VcfParser.Builder().fromReader(reader).parseWith(lineParser).build().parse());
+
+      MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
+
+      // rs2 must not be linked -- it was rejected together with (the already-registered) rs1 in the same record,
+      // atomically; getIdToPosition() is package-protected, accessible here since this test is in the same package
+      assertFalse(dataStore.getIdToPosition().containsKey("rs2"));
+
+      // the rejected record's own locus (chr1:2) must never have been populated either
+      assertNull(dataStore.getPositionsAtLocus("chr1", 2));
+    }
+  }
 }

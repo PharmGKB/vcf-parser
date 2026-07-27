@@ -42,9 +42,23 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
 
 
   @Override
+  public void parseMetadata(VcfMetadata metadata) {
+    m_dataStore.setMetadata(metadata);
+  }
+
+
+  @Override
   public void parseLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
 
-    m_dataStore.setMetadata(metadata);
+    // check every ID for a FAIL-mode collision before mutating anything, so a rejected record is never partially
+    // committed -- neither its locus entry nor any of its (possibly several) IDs
+    if (m_duplicateIdHandler == DuplicateHandler.FAIL) {
+      for (String id : position.getIds()) {
+        if (m_dataStore.getIdToPosition().containsKey(id)) {
+          throw new VcfFormatException("Duplicate VCF record for ID " + id);
+        }
+      }
+    }
 
     // link by locus: VCF permits more than one record at the same locus, so every record is kept
     MemoryMappedVcfDataStore.Locus locus = new MemoryMappedVcfDataStore.Locus(position.getChromosome(), position.getPosition());
@@ -54,9 +68,6 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
     // link by ID
     for (String id : position.getIds()) {
       boolean containsId = m_dataStore.getIdToPosition().containsKey(id);
-      if (containsId && m_duplicateIdHandler == DuplicateHandler.FAIL) {
-        throw new VcfFormatException("Duplicate VCF record for ID " + id);
-      }
       if (!containsId || m_duplicateIdHandler == DuplicateHandler.KEEP_LAST) {
         m_dataStore.getIdToPosition().put(id, position);
         m_dataStore.getIdToSamples().put(id, sampleData);
