@@ -36,14 +36,14 @@ invalid:
 
 - A missing, duplicate, or non-first `##fileformat`; a file format outside VCF 4.x; any line other than a `##`
   metadata line before the `#CHROM` header; or a `#`-prefixed line after it (VCF has no comment syntax).
-- A missing `#CHROM` header, wrong fixed column names, a missing `FORMAT` column when samples are present, or duplicate
-  sample names.
+- A missing `#CHROM` header, wrong fixed column names, a missing `FORMAT` column when samples are present, a
+  `FORMAT` column with no sample columns following it, an empty sample name, or a duplicate sample name.
 - A data line with the wrong number of tab-separated columns.
 - An empty mandatory fixed field (the missing value must be `.`), an empty `CHROM`, or a negative `POS`.
 - Invalid `REF`/`ALT` bases; whitespace where the spec forbids it (`CHROM`, `ID`, `FILTER`, `INFO`); a duplicate
-  identifier within a single `ID` field; a `FILTER` of `0` or `PASS` combined with other filters; an `INFO` missing
-  value (`.`) combined with a real property; or a `FORMAT` in which `GT` is present but not the first sub-field or
-  a (non-empty) key is duplicated.
+  identifier within a single `ID` field; a `FILTER` of `0`; an `INFO` missing value (`.`) combined with a real
+  property; or a `FORMAT` in which `GT` is present but not the first sub-field or a (non-empty) key is
+  duplicated.
 - A sample with more sub-fields than its `FORMAT` declares (trailing sub-fields may be dropped, but not added).
 - A malformed or out-of-range `GT` allele index looked up through `MemoryMappedVcfDataStore`, or a failed
   conversion when a typed value is requested.
@@ -110,6 +110,10 @@ still stored as-is, with this exception:
   value that isn't a non-negative 32-bit integer: both constraints go beyond what `FT`'s/`PS`'s declared `Type` can
   express, so they're checked separately, both when a typed value is requested and by
   `VcfWriter.Builder.validateBeforeWrite()`.
+- A `FILTER` value combining `PASS` with another code (e.g. `STD_FILTER;PASS`): VCFv4.2 only implies `PASS` is
+  exclusive, without stating it as a hard rule, and hts-specs' own `complexfile_passed_000.vcf` fixture combines
+  them and is expected to parse; confirmed accepted silently by bcftools 1.23.1 and valid per vcf_validator
+  0.10.2.
 - An INFO value containing `=` (e.g. `DP=1=2`), or a duplicate top-level INFO key (e.g. `DP=1;DP=2`): VCFv4.2's INFO
   grammar note technically disallows the former, and VCFv4.3 explicitly disallows the latter, but bcftools 1.23.1
   accepts both silently — splitting an `=`-containing value on the first `=` only (same as this parser), and
