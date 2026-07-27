@@ -3,7 +3,6 @@ package org.pharmgkb.parser.vcf;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -16,15 +15,12 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
  * Applies a {@link VcfTransformation} to a VCF file.
  * This is a streaming {@link VcfLineParser} that applies a single transformation and writes the transformed VCF.
  * <p>
- * A write failure -- an {@link java.io.UncheckedIOException} from the underlying {@link VcfWriter}, as opposed to
- * a {@link VcfFormatException} it throws for ordinary per-record content rejections (e.g. a sample-count mismatch),
- * or any exception thrown by the {@link VcfTransformation} itself -- permanently invalidates this instance: the
- * underlying writer may be left in a partially-written or otherwise inconsistent state, so no further work is
- * attempted. Call {@link #isValid()} to check without triggering an exception; once invalid, {@link #parseMetadata}
- * and {@link #parseLine} both throw {@link IllegalStateException} (with the original write failure as the cause)
+ * {@link #isValid()} delegates directly to the underlying {@link VcfWriter}'s own {@link VcfWriter#isValid()} --
+ * once a write failure permanently invalidates the writer (see {@link VcfWriter}'s class Javadoc), it invalidates
+ * this instance too: {@link #parseMetadata} and {@link #parseLine} both throw {@link IllegalStateException}
  * instead of doing anything further. A {@link VcfTransformation} exception or a {@link VcfWriter}
- * {@link VcfFormatException} rejection, by contrast, does not invalidate this instance -- nothing corrupting was
- * written, so {@link #parseMetadata}/{@link #parseLine} can be called again (for a {@link VcfTransformation}
+ * {@link VcfFormatException} content rejection, by contrast, does not invalidate the writer -- nothing corrupting
+ * was written, so {@link #parseMetadata}/{@link #parseLine} can be called again (for a {@link VcfTransformation}
  * failure) or simply continue processing the next record (for a rejected record) without issue.
  * <p>
  * Example:
@@ -51,8 +47,6 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
 public class TransformingVcfLineParser implements VcfLineParser, Closeable {
 
   private boolean m_headerWritten;
-  private boolean m_valid = true;
-  private @Nullable Exception m_invalidatingCause;
   private final VcfTransformation m_transformation;
   private final VcfWriter m_writer;
 
@@ -62,11 +56,12 @@ public class TransformingVcfLineParser implements VcfLineParser, Closeable {
   }
 
   /**
-   * @return {@code false} once a write failure has permanently invalidated this instance (see the class Javadoc);
-   * {@code true} otherwise, including while a retryable {@link VcfTransformation} failure is being retried.
+   * @return {@code false} once a write failure has permanently invalidated the underlying {@link VcfWriter} (see
+   * its class Javadoc); {@code true} otherwise, including while a retryable {@link VcfTransformation} failure is
+   * being retried.
    */
   public boolean isValid() {
-    return m_valid;
+    return m_writer.isValid();
   }
 
   @Override
@@ -83,41 +78,29 @@ public class TransformingVcfLineParser implements VcfLineParser, Closeable {
     writeHeader(metadata);
     boolean keep = m_transformation.transformDataLine(metadata, position, sampleData);
     if (keep) {
-      try {
-        m_writer.writeLine(metadata, position, sampleData);
-      } catch (UncheckedIOException e) {
-        m_valid = false;
-        m_invalidatingCause = e;
-        throw e;
-      }
+      m_writer.writeLine(metadata, position, sampleData);
     }
   }
 
   private void checkValid() {
-    if (!m_valid) {
-      throw new IllegalStateException(
-          "This TransformingVcfLineParser is no longer usable after a write failure", m_invalidatingCause);
+    if (!m_writer.isValid()) {
+      throw new IllegalStateException("This TransformingVcfLineParser is no longer usable after a write failure");
     }
   }
 
   /**
-   * Applies the transformation's metadata step and writes the header, exactly once. A {@link VcfTransformation}
-   * failure here propagates without setting {@link #m_headerWritten} -- nothing was written yet, so a later call
-   * retries the whole attempt. A {@link VcfWriter} failure invalidates this instance (see the class Javadoc).
+   * Applies the transformation's metadata step and writes the header, exactly once. Either step throwing
+   * propagates directly, with {@link #m_headerWritten} left {@code false} -- nothing about this attempt
+   * succeeded, so a later call retries the whole thing from scratch. If {@link VcfWriter#writeHeader} throws
+   * because it's now invalid, {@link #checkValid()} will block all future calls anyway.
    */
   private void writeHeader(VcfMetadata metadata) {
     if (m_headerWritten) {
       return;
     }
     m_transformation.transformMetadata(metadata);
+    m_writer.writeHeader(metadata);
     m_headerWritten = true;
-    try {
-      m_writer.writeHeader(metadata);
-    } catch (UncheckedIOException e) {
-      m_valid = false;
-      m_invalidatingCause = e;
-      throw e;
-    }
   }
 
   @Override

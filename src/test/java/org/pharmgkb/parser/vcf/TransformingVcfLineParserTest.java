@@ -249,4 +249,40 @@ public class TransformingVcfLineParserTest {
     assertTrue(lineParser.isValid());
   }
 
+  @Test
+  public void testHeaderContentRejectionDoesNotPermanentlyBlockRetry() throws Exception {
+    // regression test for the bug this batch fixed: a validateBeforeWrite() content rejection during
+    // m_writer.writeHeader() must not leave m_headerWritten stuck true -- a corrected retry must succeed
+    int[] callCount = {0};
+    VcfTransformation transformation = new VcfTransformation() {
+      @Override
+      public void transformMetadata(VcfMetadata metadata) {
+        callCount[0]++;
+        if (callCount[0] == 1) {
+          // makes VcfWriter.writeHeader() throw VcfFormatException via validateBeforeWrite()'s content checks:
+          // an INFO entry whose own ID no longer matches the map key it's stored under
+          metadata.addInfo(new InfoMetadata("AF", "d", InfoType.String, "1", null, null));
+          metadata.getInfo().get("AF").putPropertyRaw("ID", "MISMATCHED");
+        } else {
+          // On retry, fix the mismatch: remove and re-add with correct ID
+          metadata.getInfo().remove("AF");
+          metadata.addInfo(new InfoMetadata("AF", "d", InfoType.String, "1", null, null));
+        }
+      }
+    };
+    StringWriter sw = new StringWriter();
+    VcfWriter vcfWriter = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    TransformingVcfLineParser lineParser = new TransformingVcfLineParser.Builder()
+        .transformation(transformation, vcfWriter).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+
+    assertThrows(VcfFormatException.class, () -> lineParser.parseMetadata(metadata));
+    assertTrue(lineParser.isValid());
+
+    lineParser.parseMetadata(metadata); // retried: transformMetadata() runs again (callCount now 2), no mismatch this time, succeeds
+    assertEquals(2, callCount[0]);
+    assertTrue(lineParser.isValid());
+    assertTrue(sw.toString().contains("##INFO=<ID=AF"));
+  }
+
 }
