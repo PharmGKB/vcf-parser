@@ -16,8 +16,9 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
  * This is a streaming {@link VcfLineParser} that applies a single transformation and writes the transformed VCF.
  * <p>
  * {@link #isValid()} delegates directly to the underlying {@link VcfWriter}'s own {@link VcfWriter#isValid()} --
- * once a write failure permanently invalidates the writer (see {@link VcfWriter}'s class Javadoc), it invalidates
- * this instance too: {@link #parseMetadata} and {@link #parseLine} both throw {@link IllegalStateException}
+ * once a write failure or a {@link VcfWriter#close()} call permanently invalidates the writer (see
+ * {@link VcfWriter}'s class Javadoc), it invalidates this instance too: {@link #parseMetadata} and
+ * {@link #parseLine} both throw {@link IllegalStateException}
  * instead of doing anything further. A {@link VcfTransformation} exception or a {@link VcfWriter}
  * {@link VcfFormatException} content rejection, by contrast, does not invalidate the writer -- nothing corrupting
  * was written, so {@link #parseMetadata}/{@link #parseLine} can be called again (for a {@link VcfTransformation}
@@ -66,9 +67,9 @@ public class TransformingVcfLineParser implements VcfLineParser, Closeable {
   }
 
   /**
-   * @return {@code false} once a write failure has permanently invalidated the underlying {@link VcfWriter} (see
-   * its class Javadoc); {@code true} otherwise, including while a retryable {@link VcfTransformation} failure is
-   * being retried.
+   * @return {@code false} once a write failure has permanently invalidated the underlying {@link VcfWriter}, or
+   * once it has been closed (see its class Javadoc); {@code true} otherwise, including while a retryable
+   * {@link VcfTransformation} failure is being retried.
    */
   public boolean isValid() {
     return m_writer.isValid();
@@ -94,7 +95,8 @@ public class TransformingVcfLineParser implements VcfLineParser, Closeable {
 
   private void checkValid() {
     if (!m_writer.isValid()) {
-      throw new IllegalStateException("This TransformingVcfLineParser is no longer usable after a write failure");
+      throw new IllegalStateException(
+          "This TransformingVcfLineParser is no longer usable (the underlying VcfWriter is no longer valid)");
     }
   }
 
