@@ -795,7 +795,9 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    assertThrows(RuntimeException.class, () -> writer.writeHeader(metadata));
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+    // a line-terminator content rejection is not a write/IO failure -- it must not poison the writer
+    assertTrue(writer.isValid());
   }
 
   @Test
