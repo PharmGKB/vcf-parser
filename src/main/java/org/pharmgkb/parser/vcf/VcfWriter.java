@@ -39,7 +39,14 @@ import org.slf4j.LoggerFactory;
  * <p>
  * {@link #close} must always be called to guarantee output is completely flushed and any write failure (disk
  * full, broken pipe, or an encoding failure) is reported -- such a failure surfaces as an unchecked
- * {@link java.io.UncheckedIOException} from {@link #writeHeader}, {@link #writeLine}, or {@link #close} itself.
+ * {@link java.io.UncheckedIOException} from {@link #writeHeader}, {@link #writeLine}, or {@link #close} itself,
+ * and permanently invalidates this instance: the underlying writer may be left in a partially-written or
+ * otherwise inconsistent state, so retrying is never safe and no further work is attempted. Call
+ * {@link #isValid()} to check without triggering an exception; once invalid, {@link #writeHeader} and
+ * {@link #writeLine} both throw {@link IllegalStateException} (with the original write failure as the cause)
+ * instead of doing anything further. A {@link VcfFormatException} thrown for ordinary content rejection (e.g. a
+ * sample-count mismatch, or invalid metadata in {@link Builder#validateBeforeWrite()} mode), by contrast, does
+ * not invalidate this instance -- nothing was corrupted, so a corrected call can succeed normally afterward.
  *
  * @author Douglas Myers-Turnbull
  * @see TransformingVcfLineParser TransformingVcfLineParser - a read-transform-write streamer that is publicly accessible
@@ -59,6 +66,9 @@ public class VcfWriter implements Closeable {
   // addInfo()/removeInfo()), which "metadata != m_headerMetadata" alone can't catch
   private @Nullable String m_headerText;
 
+  private boolean m_valid = true;
+  private @Nullable Exception m_invalidatingCause;
+
   private VcfWriter(@Nullable Path file, PrintWriter writer, boolean validateBeforeWrite) {
     m_file = file;
     m_writer = writer;
@@ -66,14 +76,30 @@ public class VcfWriter implements Closeable {
   }
 
   /**
+   * @return {@code false} once a write failure has permanently invalidated this instance (see the class Javadoc);
+   * {@code true} otherwise.
+   */
+  public boolean isValid() {
+    return m_valid;
+  }
+
+  private void checkValid() {
+    if (!m_valid) {
+      throw new IllegalStateException("This VcfWriter is no longer usable after a write failure", m_invalidatingCause);
+    }
+  }
+
+  /**
    * Writes the VCF header.
    *
-   * @throws UncheckedIOException if a write failure is detected. The header lines have already been sent to the
-   * underlying writer by the time this can throw, and the internal "header written" state is updated before this
-   * check runs -- a caller that catches this and retries {@link #writeHeader} (rather than abandoning the writer)
-   * will not emit a duplicate header.
+   * @throws IllegalStateException if {@link #isValid()} is already {@code false} -- this instance must be
+   * abandoned after any prior write failure, not reused.
+   * @throws UncheckedIOException if a write failure is detected here. This permanently invalidates the instance
+   * (see the class Javadoc) -- retrying is never safe, since some header lines may have already reached the
+   * underlying writer.
    */
   public void writeHeader(VcfMetadata metadata) {
+    checkValid();
 
     if (m_validateBeforeWrite) {
       if (m_headerWritten) {
@@ -87,12 +113,16 @@ public class VcfWriter implements Closeable {
       printLine(line);
     }
 
+    // header-state fields are set only after checkForWriteError() confirms the write actually succeeded, not
+    // before it -- setting them earlier and relying on "it's moot, checkValid() blocks everything after a
+    // failure anyway" is exactly the reasoning that let a premature-flag bug slip into a sibling class; this
+    // way each field's own timing is correct on its own terms
+    checkForWriteError();
     m_headerWritten = true;
     m_headerMetadata = metadata;
     if (m_validateBeforeWrite) {
       m_headerText = String.join("\n", lines);
     }
-    checkForWriteError();
     sf_logger.debug("Wrote {} lines of header{}", m_lineNumber, (m_file == null ? "" : " to " + m_file));
   }
 
@@ -153,6 +183,7 @@ public class VcfWriter implements Closeable {
    */
   public void writeLine(VcfMetadata metadata, VcfPosition position,
       List<VcfSample> samples) {
+    checkValid();
 
     if (m_validateBeforeWrite) {
       if (!m_headerWritten) {
@@ -253,7 +284,10 @@ public class VcfWriter implements Closeable {
     boolean hadError = m_writer.checkError();
     IOUtils.closeQuietly(m_writer);
     if (hadError || m_writer.checkError()) {
-      throw writeError();
+      UncheckedIOException e = writeError();
+      m_valid = false;
+      m_invalidatingCause = e;
+      throw e;
     }
   }
 
@@ -853,7 +887,10 @@ public class VcfWriter implements Closeable {
 
   private void checkForWriteError() {
     if (m_writer.checkError()) {
-      throw writeError();
+      UncheckedIOException e = writeError();
+      m_valid = false;
+      m_invalidatingCause = e;
+      throw e;
     }
   }
 

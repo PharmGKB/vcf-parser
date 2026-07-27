@@ -830,6 +830,53 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testWriteHeaderInvalidatesWriterAndBlocksFurtherUse() throws Exception {
+    FailingWriter failingWriter = new FailingWriter();
+    failingWriter.startFailing();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(failingWriter)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+
+    assertThrows(UncheckedIOException.class, () -> writer.writeHeader(metadata));
+    assertFalse(writer.isValid());
+    assertThrows(IllegalStateException.class, () -> writer.writeHeader(metadata));
+  }
+
+  @Test
+  public void testWriteLineContentRejectionDoesNotInvalidateWriter() throws Exception {
+    // a VcfFormatException content rejection (not a write/IO failure) must not invalidate the writer -- a
+    // corrected call afterward must succeed normally
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    position.getAltBases().add("T");
+    VcfSample badSample = new VcfSample(new java.util.ArrayList<>(), new java.util.ArrayList<>());
+    assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.singletonList(badSample)));
+    assertTrue(writer.isValid());
+  }
+
+  @Test
+  public void testHeaderContentRejectionDoesNotPermanentlyBlockRetry() throws Exception {
+    // regression test for the premature-flag bug found in a sibling class: a validateBeforeWrite() content
+    // rejection during writeHeader() must NOT leave m_headerWritten stuck true -- a corrected call afterward
+    // must succeed and actually write the header
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata("AF", "d", InfoType.String, "1", null, null))
+        .build();
+    metadata.getInfo().get("AF").putPropertyRaw("ID", "MISMATCHED"); // now stored under key "AF" but own ID differs
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+    assertTrue(writer.isValid()); // content rejection, not a write failure -- must not invalidate
+
+    metadata.getInfo().get("AF").putPropertyRaw("ID", "AF"); // fix the mismatch
+    writer.writeHeader(metadata); // must succeed now, not silently no-op or throw "already called"
+    assertTrue(sw.toString().contains("##INFO=<ID=AF"));
+  }
+
+  @Test
   public void testCloseDetectsErrorAndStillReleasesTheWriter() throws Exception {
     // close() must check for a write failure that happened after the last periodic check (or after
     // writeHeader(), if no data lines were written at all) AND still release the underlying resource even
