@@ -27,13 +27,17 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
  * property to a multi-valued key, which appends rather than replaces) must account for being invoked more than
  * once on the same object. A transformation that instead corrects its own prior mutation on each call (e.g.
  * removing then re-adding a declaration) is a safe pattern for this, and is exactly how this class's own test
- * suite exercises a retried, self-correcting transformation.
+ * suite exercises a retried, self-correcting transformation. The same hazard applies to
+ * {@link VcfTransformation#transformDataLine}: if {@code m_writer.writeLine()} rejects a record and the caller
+ * retries that same record, {@code transformDataLine} runs again on the same {@link VcfPosition}/sample objects,
+ * so a non-idempotent mutation there (e.g. {@code position.getFilters().add(...)}, which would append) has the
+ * same risk.
  * <p>
  * Example:
  * <pre>{@code
  *   VcfTransformation transformation = new VcfTransformation() {
  *       public void transformMetadata(VcfMetadata metadata) {
- *           metadata.getRawProperties().put("Test", "123"); // adds ##Test=123
+ *           metadata.getRawProperties().replaceValues("Test", List.of("123")); // sets ##Test=123 (replaces any prior value(s) for "Test", so a retry doesn't duplicate it)
  *       }
  *       public boolean transformDataLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
  *           position.setQuality(new BigDecimal("0"));
