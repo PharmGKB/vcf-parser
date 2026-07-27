@@ -324,9 +324,10 @@ public class VcfPosition {
   }
 
   /**
-   * Normalizes a lone {@code "PASS"} or {@code "."} in {@link #m_filter} to an empty list (setting
-   * {@link #m_filtersApplied} for {@code "."}), exactly as the constructor does. Assumes {@link #checkFilters} has
-   * already validated {@link #m_filter}. Idempotent: a no-op once {@link #m_filter} no longer has exactly one element.
+   * Normalizes a lone {@code "PASS"} or {@code "."} in {@link #m_filter} to an empty list, setting
+   * {@link #m_filtersApplied} to {@code true} for {@code "PASS"} and {@code false} for {@code "."}, exactly as the
+   * constructor does. Assumes {@link #checkFilters} has already validated {@link #m_filter}. Idempotent: a no-op
+   * once {@link #m_filter} no longer has exactly one element.
    */
   private void normalizeFilters() {
     if (m_filter.size() == 1) {

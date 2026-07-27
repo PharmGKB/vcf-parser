@@ -164,6 +164,44 @@ public class ContigMetadataTest {
   }
 
   @Test
+  public void testUrlWithInvalidUriSyntaxWarns() {
+    // regression test: URI.create(url) is stricter than the old new URL(url) -- a pipe character is invalid URI
+    // syntax and now throws IllegalArgumentException (previously silently accepted with no warning)
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new ContigMetadata("chr1", 100L, "GRCh38", null, null, null, "http://example.com/a|b");
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testUrlMissingSchemeWarns() {
+    // a syntactically valid URI with no scheme is not a valid URL -- URI.create(url).toURL() throws
+    // MalformedURLException here, exercising the other half of ContigMetadata's multi-catch
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new ContigMetadata("chr1", 100L, "GRCh38", null, null, null, "foo://bar");
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testTypedConstructorRejectsNullOrBlankId() {
     assertThrows(VcfFormatException.class, () -> new ContigMetadata(null, 100L, "GRCh38", null, null, null, null));
     assertThrows(VcfFormatException.class, () -> new ContigMetadata("", 100L, "GRCh38", null, null, null, null));
