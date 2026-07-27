@@ -801,6 +801,30 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testWriteHeaderIsAtomicWhenALaterLineContainsALineTerminator() throws Exception {
+    // regression test: the pre-fix code checked each header line for a terminator inside the same loop that
+    // printed it, so lines before the bad one (including ##fileformat, always line 1) were already written to the
+    // underlying writer by the time the exception was thrown. That silently broke the documented-safe "catch
+    // VcfFormatException, fix the content, retry writeHeader()" pattern, since a retry would then duplicate the
+    // already-written clean lines (e.g. a second ##fileformat=VCFv4.2). writeHeader() must scan every line for a
+    // terminator before printing any of them, so a rejection leaves nothing written at all.
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addRawProperty("source", "myProgram")
+        .build();
+    // bypass addRawProperty's own checkNoLineTerminator to inject a bad second raw property, the same raw-view
+    // bypass exercised by testWriteHeaderRejectsLoneCarriageReturnInjectedThroughRawView above
+    metadata.getRawProperties().put("Bad", "bad\rvalue");
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+    // nothing should have been written at all -- not even the clean ##fileformat/##source lines that precede the
+    // bad one -- proving the check now runs before any printing, not interleaved with it
+    assertEquals("", sw.toString());
+    // a line-terminator content rejection is not a write/IO failure -- it must not poison the writer
+    assertTrue(writer.isValid());
+  }
+
+  @Test
   public void testToFileWritesUtf8() throws Exception {
     // VcfParser.Builder.build() reads files with Files.newBufferedReader (UTF-8 by default); toFile() must
     // write with the same encoding or non-ASCII content can be corrupted on a JVM whose platform-default

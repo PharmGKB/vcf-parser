@@ -111,6 +111,15 @@ public class VcfWriter implements Closeable {
     }
 
     List<String> lines = buildHeaderLines(metadata);
+    // check every line for a line terminator BEFORE printing any of them, so this rejection is atomic relative to
+    // the underlying writer -- otherwise a rejection on a later line would leave earlier lines (including
+    // ##fileformat, always line 1) already written, and a caller's documented-safe retry of writeHeader() would
+    // then duplicate them.
+    for (String line : lines) {
+      if (line.contains("\n") || line.contains("\r")) {
+        throw new VcfFormatException("Header line contains a line terminator: [[[" + line + "]]]");
+      }
+    }
     for (String line : lines) {
       printLine(line);
     }
