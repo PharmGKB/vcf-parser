@@ -850,13 +850,22 @@ public class VcfWriterTest {
     // be detected as a write failure, not silently replaced with '?' -- matches VcfParser's own read-side
     // strictness (Files.newBufferedReader already throws MalformedInputException on malformed input)
     java.nio.file.Path file = java.nio.file.Files.createTempFile("vcf-writer-encoding-test", ".vcf");
+    VcfWriter writer = null;
     try {
       VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
       metadata.getRawProperties().put("BadEncoding", "bad\uD800surrogate"); // lone high surrogate: invalid UTF-8
-      VcfWriter writer = new VcfWriter.Builder().toFile(file).build();
-      assertThrows(UncheckedIOException.class, () -> writer.writeHeader(metadata));
+      writer = new VcfWriter.Builder().toFile(file).build();
+      final VcfWriter finalWriter = writer;
+      assertThrows(UncheckedIOException.class, () -> finalWriter.writeHeader(metadata));
       assertFalse(writer.isValid());
     } finally {
+      if (writer != null) {
+        try {
+          writer.close();
+        } catch (UncheckedIOException expected) {
+          // already-detected failure; close() re-detects it, which is expected and not the point of this test
+        }
+      }
       java.nio.file.Files.deleteIfExists(file);
     }
   }
