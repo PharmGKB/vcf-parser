@@ -809,4 +809,183 @@ public class VcfMetadataTest {
     }
     assertTrue(metadata.getInfo().isEmpty());
   }
+
+  @Test
+  public void testAddFilterWarnsAndDropsMissingId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+          .addFilter(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\""), true))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getFilters().isEmpty());
+  }
+
+  @Test
+  public void testAddFormatWarnsAndDropsMissingId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+          .addFormat(new FormatMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Number=1", "Type=String", "Description=\"missing\"")))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getFormats().isEmpty());
+  }
+
+  @Test
+  public void testAddContigWarnsAndDropsMissingId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+          .addContig(new ContigMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("length=100", "assembly=\"GRCh38\"")))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getContigs().isEmpty());
+  }
+
+  @Test
+  public void testAddSampleWarnsAndDropsMissingId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+          .addSample(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\""), true))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getSamples().isEmpty());
+  }
+
+  @Test
+  public void testInstanceAddAltWarnsAndDropsMissingId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addAlt(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\""), true));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getAlts().isEmpty());
+  }
+
+  @Test
+  public void testInstanceAddInfoWarnsAndDropsMissingId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addInfo(new InfoMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Number=1", "Type=String", "Description=\"missing\"")));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getInfo().isEmpty());
+  }
+
+  @Test
+  public void testInstanceAddFormatWarnsAndDropsMissingId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addFormat(new FormatMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Number=1", "Type=String", "Description=\"missing\"")));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getFormats().isEmpty());
+  }
+
+  @Test
+  public void testInstanceAddContigWarnsAndDropsMissingId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addContig(new ContigMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("length=100", "assembly=\"GRCh38\"")));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getContigs().isEmpty());
+  }
+
+  @Test
+  public void testInstanceAddFilterWarnsAndDropsMissingId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addFilter(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\""), true));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getFilters().isEmpty());
+  }
 }

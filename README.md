@@ -58,6 +58,11 @@ invalid:
 - `VcfWriter.writeLine` is given a number of samples that disagrees with the header's declared sample count, any
   FORMAT/sample data at all when the header declares no samples, or an empty `REF` (which has no missing-value
   sentinel in the spec, unlike `ALT`/`ID`/`FILTER`): in every case the output would not be valid, re-parseable VCF.
+- A typed metadata constructor given directly (e.g. `new InfoMetadata(id, ...)`, `new ContigMetadata(id, ...)`,
+  `new IdDescriptionMetadata(id, description)`) with a missing, empty, or whitespace-only `ID` — every VCF
+  structured metadata line requires an ID (VCFv4.3.tex line 121). This only applies to direct/programmatic
+  construction; a file parsed by `VcfParser` with a malformed declaration is handled per the lenient section below,
+  not rejected outright.
 
 These checks run when a `VcfPosition` is constructed (including by the parser). Its setters and the mutable lists
 returned by its accessors (e.g. `getAltBases()`, `getFilters()`) do *not* re-run them, to support transformation
@@ -83,9 +88,13 @@ that any pending failure is reported.
 
 **Lenient — warns when encountered or accessed and preserves usable data.** Non-structural content may be accepted
 initially and validated only when the relevant getter or typed conversion is used. Malformed metadata declarations
-(`##INFO`, `##FORMAT`, `##contig`, `##FILTER`, `##ALT`, ...) warn rather than throw, and the declaration is still
-stored:
+(`##INFO`, `##FORMAT`, `##contig`, `##FILTER`, `##ALT`, ...) parsed from a file warn rather than throw; most are
+still stored as-is, with this exception:
 
+- A declaration missing its `ID`, or with an empty/whitespace-only `ID=` — every VCF structured metadata line
+  requires an ID (VCFv4.3.tex line 121); the parser warns and drops the whole declaration rather than storing it.
+  See [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md) for the full per-type
+  bcftools/vcf_validator comparison and the empty-vs-missing rationale.
 - A missing or invalid `Number`, `Type`, or `Description`; an unquoted `Description`; or `Type=Flag` with a `Number`
   other than `0`. An unparseable `Type` leaves the metadata's type `null`.
 - A header/metadata sample-count mismatch, or a sample named in the header but absent from the metadata.

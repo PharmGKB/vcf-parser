@@ -30,6 +30,8 @@ public class IdMetadata extends BaseMetadata {
 
   protected IdMetadata(String id, boolean isBaseType) {
     super(new LinkedHashMap<>());
+    // VCFv4.3.tex line 121: "All structured lines require an ID..." -- VCFv4.2 doesn't use the word "required" but
+    // its own templates for all six keyed types show ID unconditionally first; see DUPLICATE_METADATA_ID_HANDLING.md
     if (id == null || id.trim().isEmpty()) {
       throw new VcfFormatException("ID is required and must not be blank");
     }

@@ -222,7 +222,9 @@ public class VcfMetadata {
    * the same duplicate-ID rule.
    * Every caller already guards against a null or blank {@code id} before calling this method (a missing/blank ID
    * means the declaration has no ID to dedupe on at all, and is dropped entirely before reaching here -- see each
-   * {@code addXxx} method) -- {@code id} is therefore guaranteed non-null and non-blank on every call.
+   * {@code addXxx} method) -- {@code id} is therefore guaranteed non-null and non-blank on every call. VCFv4.3.tex
+   * line 121 requires an ID for every structured metadata line; see DUPLICATE_METADATA_ID_HANDLING.md's "Missing or
+   * empty ID" section for the full citation and the bcftools/vcf_validator comparison this is grounded in.
    * <p>
    * Neither VCFv4.2.tex nor VCFv4.3.tex states that a repeated declaration ID is an error for CONTIG/INFO/FORMAT/
    * FILTER/ALT/SAMPLE (contrast with duplicate #CHROM sample-column names, which remain a structural error --

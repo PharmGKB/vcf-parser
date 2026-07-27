@@ -45,6 +45,24 @@ declaration type, each declaring the same ID twice with different attributes.
 | `##ALT` | Silent | Valid | Keeps first, drops duplicate, no warning | Warn + keep first |
 | `##SAMPLE` | Silent | Valid | Keeps first, drops duplicate, no warning | Warn + keep first |
 
+Contrast with a duplicate `#CHROM` sample-column name, which remains a structural error in `vcf-parser`. This is a
+different *kind* of duplication, not merely a stricter policy choice: `#CHROM`'s sample columns are *positional* —
+every data line's per-sample values are aligned to them by index, and `VcfMetadata.getSampleIndex(id)` resolves a
+name via `m_columns.indexOf(id)`. A duplicate name makes the *second* column's data permanently unreachable by
+name (only reachable positionally), silently misdirecting any name-based lookup to the first column's data instead
+— a real data-integrity hazard none of the six declaration types above have, since a declaration merely describes
+something; nothing else in the file indexes into it by position.
+
+Both reference tools independently draw this same line:
+
+| Case | vcf_validator 0.10.2 | bcftools 1.23.1 |
+|---|---|---|
+| Duplicate `##contig`/`##INFO`/etc. ID | Valid | Keeps first, drops duplicate, no warning |
+| Duplicate `#CHROM` sample-column name | **Invalid** | **Hard error — refuses to parse the file at all** |
+
+(Verified directly: `bcftools view` on a file with two `S1` sample columns emits `[E::bcf_hdr_add_sample_len]
+Duplicated sample name 'S1'` and fails to parse; `vcf_validator` reports the file invalid.)
+
 ## Missing or empty ID
 
 Unlike a duplicate ID (above), a metadata declaration whose `ID` is **absent, empty, or whitespace-only** is a
@@ -98,24 +116,6 @@ with this project's existing precedent of being stricter than bcftools for other
 missing-ID case -- matching this project's established more-vocal-than-bcftools convention (see this file's
 "Why this warns instead of throwing" section above, applied the same way here).
 
-Contrast with a duplicate `#CHROM` sample-column name, which remains a structural error in `vcf-parser`. This is a
-different *kind* of duplication, not merely a stricter policy choice: `#CHROM`'s sample columns are *positional* —
-every data line's per-sample values are aligned to them by index, and `VcfMetadata.getSampleIndex(id)` resolves a
-name via `m_columns.indexOf(id)`. A duplicate name makes the *second* column's data permanently unreachable by
-name (only reachable positionally), silently misdirecting any name-based lookup to the first column's data instead
-— a real data-integrity hazard none of the six declaration types above have, since a declaration merely describes
-something; nothing else in the file indexes into it by position.
-
-Both reference tools independently draw this same line:
-
-| Case | vcf_validator 0.10.2 | bcftools 1.23.1 |
-|---|---|---|
-| Duplicate `##contig`/`##INFO`/etc. ID | Valid | Keeps first, drops duplicate, no warning |
-| Duplicate `#CHROM` sample-column name | **Invalid** | **Hard error — refuses to parse the file at all** |
-
-(Verified directly: `bcftools view` on a file with two `S1` sample columns emits `[E::bcf_hdr_add_sample_len]
-Duplicated sample name 'S1'` and fails to parse; `vcf_validator` reports the file invalid.)
-
 ## Why "keep first," not "keep last"
 
 `vcf-parser` keeps the *first* declaration and discards each subsequent duplicate, matching bcftools' confirmed
@@ -138,6 +138,14 @@ surfaces any complaint about a dropped duplicate's content either.
   found; always adds when no `ID` property is present.
 - `VcfWriter.validateMetadata()`'s PEDIGREE loop — the same check, but warn-only (never drops), since it runs
   post-construction on content the caller already holds a reference to.
+- `IdMetadata`'s shared `protected IdMetadata(String id, boolean isBaseType)` constructor -- used by every typed,
+  named-parameter constructor across `IdMetadata`/`IdDescriptionMetadata`/`InfoMetadata`/`FormatMetadata`/
+  `ContigMetadata` -- throws `VcfFormatException` immediately for a missing or blank `ID`. The separate
+  `Map<String,String>`-based constructors `VcfParser` uses are unaffected and remain warn-only.
+- `VcfMetadata`'s 5 instance `addXxx` methods and `VcfMetadata.Builder`'s 6 `addXxx` methods each check for a
+  missing or blank `ID` before calling `warnIfDuplicate()`, warning and dropping the declaration entirely (never
+  storing it) if so -- this is what actually catches a malformed declaration built via the parser's lenient
+  `Map`-based construction path.
 
 ## `##PEDIGREE`: a conditional case
 
