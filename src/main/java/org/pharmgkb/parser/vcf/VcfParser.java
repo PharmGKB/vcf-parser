@@ -112,11 +112,12 @@ public class VcfParser implements Closeable {
             m_lineNumber);
       }
     }
-    m_vcfMetadata = mdBuilder.build();
+    VcfMetadata metadata = mdBuilder.build();
     if (!foundHeader) {
       throw new VcfFormatException("No column header line (starting with #CHROM) was found before the end of the file",
           m_lineNumber);
     }
+    m_vcfMetadata = metadata;
 
     // check sample lists
     if (m_vcfMetadata.getNumSamples() == m_vcfMetadata.getSamples().size()) {

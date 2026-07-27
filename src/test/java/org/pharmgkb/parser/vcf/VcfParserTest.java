@@ -281,6 +281,27 @@ public class VcfParserTest {
   }
 
   @Test
+  void testMissingHeaderLeavesMetadataNullAndAllowsRetry() throws IOException {
+    // a file that runs out of lines entirely right after ##fileformat (not even a stray non-metadata line)
+    // reaches VcfParser.parseMetadata()'s "m_vcfMetadata = mdBuilder.build()" line before the "!foundHeader"
+    // check fires. getMetadata() must stay null after the throw (not a structurally-broken non-null object with
+    // getNumColumns() == 0), and a retry must not be blocked by the "already parsed" guard.
+    String vcf = "##fileformat=VCFv4.2\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, position, sampleData) -> { })
+             .build()) {
+      assertThrows(VcfFormatException.class, parser::parseMetadata);
+      assertNull(parser.getMetadata());
+      // retry must not throw IllegalStateException("Metadata has already been parsed.") -- it throws a
+      // VcfFormatException instead, since the underlying reader is already exhausted, but must not be blocked
+      // by the false "already parsed" state
+      assertThrows(VcfFormatException.class, parser::parseMetadata);
+    }
+  }
+
+  @Test
   void testBadColumnNameThrows() throws IOException {
     // the 8 fixed columns must have their exact spec names in order
     String vcf = "##fileformat=VCFv4.2\n" +
