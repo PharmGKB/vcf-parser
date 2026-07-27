@@ -102,7 +102,7 @@ public class VcfUtils {
   // FORMAT field informally as a "colon-separated alphanumeric String" (VCFv4.2.tex, Genotype fields
   // subsection). VCFv4.3.tex gives this exact regex verbatim, unchanged in VCFv4.4/4.5: "colon-separated FORMAT
   // keys matching the regular expression ^[A-Za-z_][0-9A-Za-z_.]*$, duplicate keys are not allowed"
-  // (VCFv4.3.tex:429; repeated in the grammar appendix at VCFv4.3.tex:2150). Used here as VCFv4.2-silent
+  // (VCFv4.3.tex:429; repeated in the VCFv4.2→4.3 changelog at VCFv4.3.tex:2150). Used here as VCFv4.2-silent
   // clarifying guidance per AGENTS.md. Not reused for INFO keys, which VCFv4.3.tex:368 gives a different regex
   // with a "1000G" legacy exception -- INFO keys are intentionally left unvalidated against any ID pattern here,
   // per this project's parser leniency policy for INFO.
