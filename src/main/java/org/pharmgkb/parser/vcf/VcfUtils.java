@@ -160,6 +160,18 @@ public class VcfUtils {
         throw new VcfFormatException("Error parsing property \"" + prop + "\"", e);
       }
       if (map.containsKey(pair.getKey())) {
+        // Keeping the LAST value here is deliberate and differs from every other duplicate-key case in this
+        // codebase (which keep the first) -- this handles a duplicate ATTRIBUTE within one metadata declaration's
+        // own <ID=...,Number=...,...> structure, a different scenario from a duplicate declaration ID across
+        // separate lines or a duplicate INFO/FORMAT key within a data record. hts-specs' test/vcf/{4.1,4.2,4.3}
+        // conformance suite has no fixture for a repeated attribute within one declaration. Confirmed live against
+        // bcftools 1.23.1: declaring Type twice (e.g. Type=Integer,...,Type=String) with a value only valid under
+        // one of the two, then forcing conversion to binary BCF (which enforces the declared type, unlike
+        // plain-text VCF), shows bcftools always resolves to the LAST-declared value regardless of which type came
+        // first -- e.g. Type=String declared last preserves a non-numeric value as-is; Type=Integer declared last
+        // silently coerces the same non-numeric value to the missing sentinel. vcf_validator 0.10.2 rejects this
+        // case outright, but per this project's tie-breaker hierarchy its stricter structural-field behavior is
+        // non-authoritative when it disagrees with bcftools.
         sf_logger.warn("Metadata declaration contains duplicate attribute \"{}\"; keeping the last value", pair.getKey());
       }
       map.put(pair.getKey(), pair.getValue());
