@@ -38,17 +38,16 @@ import org.slf4j.LoggerFactory;
  * The default write path stays fast by performing little validation of its own; build with
  * {@link Builder#validateBeforeWrite()} for full structural validation and semantic-compliance diagnostics.
  * <p>
- * {@link #close} must always be called to guarantee output is completely flushed and any write failure (disk
- * full, broken pipe, or an encoding failure) is reported -- such a failure surfaces as an unchecked
+ * {@link #close} must always be called to guarantee output is completely flushed and any write failure
+ * (disk full, broken pipe, or an encoding failure) is reported -- such a failure surfaces as an unchecked
  * {@link java.io.UncheckedIOException} from {@link #writeHeader}, {@link #writeLine}, or {@link #close} itself,
- * and permanently invalidates this instance: the underlying writer may be left in a partially-written or
- * otherwise inconsistent state, so retrying is never safe and no further work is attempted. Call
- * {@link #isValid()} to check without triggering an exception; once invalid, {@link #writeHeader} and
- * {@link #writeLine} both throw {@link IllegalStateException} (with the exception that first signaled the
- * failure as the cause) instead of doing anything further. A {@link VcfFormatException} thrown for ordinary
- * content rejection (e.g. a
- * sample-count mismatch, or invalid metadata in {@link Builder#validateBeforeWrite()} mode), by contrast, does
- * not invalidate this instance -- nothing was corrupted, so a corrected call can succeed normally afterward.
+ * and permanently invalidates this instance: the underlying writer may be left in a partially-written or otherwise
+ * inconsistent state, so retrying is never safe and no further work is attempted. Call {@link #isValid()} to
+ * check without triggering an exception; once invalid, {@link #writeHeader} and {@link #writeLine} both throw
+ * {@link IllegalStateException} (with the exception that first signaled the failure as the cause) instead
+ * of doing anything further. A {@link VcfFormatException} thrown for ordinary content rejection (e.g. a
+ * sample-count mismatch, or invalid metadata in {@link Builder#validateBeforeWrite()} mode), by contrast,
+ * does not invalidate this instance -- nothing was corrupted, so a corrected call can succeed normally afterward.
  *
  * @author Douglas Myers-Turnbull
  * @see TransformingVcfLineParser TransformingVcfLineParser - a read-transform-write streamer that is publicly accessible
@@ -293,8 +292,8 @@ public class VcfWriter implements Closeable {
   @Override
   public void close() {
     // checkError() flushes before checking (see its own Javadoc), so this first call catches anything still
-    // buffered from writeLine()/writeHeader(). IOUtils.closeQuietly() always runs next regardless, so the
-    // resource is never leaked even when we're about to throw. The second checkError() (after closeQuietly())
+    // buffered from writeLine()/writeHeader(). m_writer.close() always runs next regardless, so the
+    // resource is never leaked even when we're about to throw. The second checkError() (after m_writer.close())
     // catches a failure from the underlying stream's own close() (e.g. an fsync-on-close error) -- safe to call
     // again here because a closed PrintWriter's checkError() no longer attempts to flush.
     boolean hadError = m_writer.checkError();

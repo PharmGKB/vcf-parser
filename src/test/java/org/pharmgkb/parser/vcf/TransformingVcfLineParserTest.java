@@ -70,7 +70,7 @@ public class TransformingVcfLineParserTest {
     }
     String actualResult = sw.toString();
 
-    // avoid using IOUtils.contentEquals so that we can see the difference if the tests fails
+    // avoid a whole-file content comparison so we can see the difference if the test fails
     Path expected = Paths.get(VcfParserTest.class.getResource("/transformed.vcf").toURI());
     String expectedResult;
     try (BufferedReader br = new BufferedReader(new FileReader(expected.toFile()))) {
