@@ -130,7 +130,15 @@ public class VcfSample {
       List<String> values = m_values;
       assert keys != null && values != null;
       for (int x = 0; x < keys.size(); x++) {
-        map.put(keys.get(x), values.get(x));
+        String key = keys.get(x);
+        if (map.containsKey(key)) {
+          // matches getProperty()'s already-correct first-wins behavior, and this project's established
+          // "warn and keep first" convention for every other recoverable duplicate-key case (see
+          // DUPLICATE_METADATA_ID_HANDLING.md and VcfPosition's duplicate top-level INFO key)
+          sf_logger.warn("Sample contains duplicate FORMAT key \"{}\"; keeping only the first occurrence", key);
+          continue;
+        }
+        map.put(key, values.get(x));
       }
       m_properties = map;
       m_keys = null;

@@ -5,11 +5,14 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import ch.qos.logback.classic.Logger;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.VcfFormatException;
+import org.pharmgkb.parser.vcf.spec.WarnCapturingAppender;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 /**
@@ -175,5 +178,44 @@ class VcfSampleTest {
     assertThrows(VcfFormatException.class, () -> sample.putProperty("GLE:bad", "value"));
     // a tab in GLE's value is still rejected (tab always means a spurious sample column, regardless of key)
     assertThrows(VcfFormatException.class, () -> sample.putProperty("GLE", "a\tb"));
+  }
+
+  @Test
+  void testPropertiesMaterializationKeepsFirstOccurrenceOnDuplicateKey() {
+    // properties() (the materialization path triggered by getPropertyKeys()/propertyEntrySet()/putProperty()/etc.)
+    // previously let the LAST occurrence of a duplicate key silently overwrite the first, while getProperty()
+    // (the un-materialized linear-scan path) already returned the FIRST occurrence -- the same VcfSample answered
+    // a lookup differently depending purely on which path ran first. This constructs a VcfSample directly (the
+    // list-based constructor never checks for duplicate keys itself; VcfPosition.checkFormat is what rejects a
+    // duplicate FORMAT key during normal parsing, before a VcfSample would ever be built from that data line).
+    List<String> keys = Arrays.asList("GT", "GT");
+    List<String> values = Arrays.asList("0/1", "1/1");
+    VcfSample sample = new VcfSample(keys, values);
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      // getPropertyKeys() forces materialization
+      assertEquals(Collections.singletonList("GT"), new ArrayList<>(sample.getPropertyKeys()));
+      assertTrue(appender.hasWarnOrHigher());
+      assertTrue(appender.anyMessageContains("GT"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    // materialization must have kept the FIRST value ("0/1"), not the last ("1/1")
+    assertEquals("0/1", sample.getProperty("GT"));
+  }
+
+  @Test
+  void testGetPropertyReturnsFirstOccurrenceBeforeMaterialization() {
+    // regression guard: getProperty() called BEFORE any materialization-triggering call must already return the
+    // first occurrence -- this existing correct behavior must not change
+    List<String> keys = Arrays.asList("GT", "GT");
+    List<String> values = Arrays.asList("0/1", "1/1");
+    VcfSample sample = new VcfSample(keys, values);
+    assertEquals("0/1", sample.getProperty("GT"));
   }
 }
