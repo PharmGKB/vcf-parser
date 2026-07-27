@@ -61,6 +61,16 @@ public class VcfPosition {
   private List<String> m_format = new ArrayList<>();
 
 
+  /**
+   * Takes ownership of {@code ids}, {@code altBases}, {@code filter}, {@code format}, and {@code info}: this
+   * constructor does not defensively copy any of them when no normalization is needed, to avoid an unnecessary
+   * allocation on this library's hot parse path (mirroring {@link VcfSample}'s own no-copy ownership contract).
+   * {@link #getIds()}, {@link #getAltBases()}, {@link #getFilters()}, {@link #getFormat()}, and
+   * {@link #getInfo()} return these same objects (or an equivalent list/multimap produced by normalization) and
+   * support in-place mutation only if the object passed here does -- pass a mutable {@code List}/
+   * {@code ListMultimap} (not e.g. {@code List.of(...)}) if you intend to mutate a position's IDs, ALT bases,
+   * filters, format, or INFO after construction.
+   */
   public VcfPosition(String chr, long pos,
       @Nullable List<String> ids,
       String ref,
@@ -329,10 +339,11 @@ public class VcfPosition {
    * mutation so that {@link #getFilterStatus()} continues to report correctly.
    * <p>
    * The constructors validate their arguments, but {@link #setChromosome}, {@link #setRef}, {@link #setPosition}, and
-   * the mutable lists returned by {@link #getIds}, {@link #getAltBases}, {@link #getFilters}, {@link #getFormat}, and
+   * mutations made through {@link #getIds}, {@link #getAltBases}, {@link #getFilters}, {@link #getFormat}, and
    * {@link #getInfo()} do <em>not</em> validate their input, to support transformation pipelines (e.g.
-   * {@link org.pharmgkb.parser.vcf.VcfTransformation}) that mutate a position in place. Call this method after such
-   * mutations if you need to confirm the position is still valid.
+   * {@link org.pharmgkb.parser.vcf.VcfTransformation}) that mutate a position in place. Each of those accessors
+   * returns a mutable list/multimap only if the primary constructor was given one -- see its Javadoc. Call this
+   * method after such mutations if you need to confirm the position is still valid.
    */
   public void validate() {
     checkChromosome(m_chromosome);
