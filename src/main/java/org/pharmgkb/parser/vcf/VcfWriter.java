@@ -42,12 +42,20 @@ import org.slf4j.LoggerFactory;
  * (disk full, broken pipe, or an encoding failure) is reported -- such a failure surfaces as an unchecked
  * {@link java.io.UncheckedIOException} from {@link #writeHeader}, {@link #writeLine}, or {@link #close} itself,
  * and permanently invalidates this instance: the underlying writer may be left in a partially-written or otherwise
- * inconsistent state, so retrying is never safe and no further work is attempted. Call {@link #isValid()} to
+ * inconsistent state, so retrying is never safe and no further work is attempted. A write failure detected
+ * mid-stream (not just at {@link #close}) also releases the underlying resource immediately, as part of the same
+ * failure, rather than leaving it open until some later {@link #close} call. Call {@link #isValid()} to
  * check without triggering an exception; once invalid, {@link #writeHeader} and {@link #writeLine} both throw
  * {@link IllegalStateException} (with the exception that first signaled the failure as the cause) instead
  * of doing anything further. A {@link VcfFormatException} thrown for ordinary content rejection (e.g. a
  * sample-count mismatch, or invalid metadata in {@link Builder#validateBeforeWrite()} mode), by contrast,
  * does not invalidate this instance -- nothing was corrupted, so a corrected call can succeed normally afterward.
+ * <p>
+ * Closing this instance, even cleanly with no error, also permanently invalidates it the same way -- a
+ * {@link #writeHeader}/{@link #writeLine} call made afterward throws {@link IllegalStateException} instead of
+ * silently being ignored by the now-closed underlying writer. {@link #close} itself is idempotent: a second
+ * call has no effect, matching {@link java.io.Closeable#close()}'s own documented contract, regardless of
+ * whether the first call threw.
  *
  * @author Douglas Myers-Turnbull
  * @see TransformingVcfLineParser TransformingVcfLineParser - a read-transform-write streamer that is publicly accessible
@@ -67,7 +75,7 @@ public class VcfWriter implements Closeable {
   // addInfo()/removeInfo()), which "metadata != m_headerMetadata" alone can't catch
   private @Nullable String m_headerText;
 
-  private boolean m_valid = true;
+  private boolean m_closed;
   private @Nullable Exception m_invalidatingCause;
 
   private VcfWriter(@Nullable Path file, PrintWriter writer, boolean validateBeforeWrite) {
@@ -77,16 +85,19 @@ public class VcfWriter implements Closeable {
   }
 
   /**
-   * @return {@code false} once a write failure has permanently invalidated this instance (see the class Javadoc);
-   * {@code true} otherwise.
+   * @return {@code false} once a write failure has permanently invalidated this instance, or once this instance
+   * has been closed (see the class Javadoc); {@code true} otherwise.
    */
   public boolean isValid() {
-    return m_valid;
+    return !m_closed;
   }
 
   private void checkValid() {
-    if (!m_valid) {
-      throw new IllegalStateException("This VcfWriter is no longer usable after a write failure", m_invalidatingCause);
+    if (m_closed) {
+      if (m_invalidatingCause != null) {
+        throw new IllegalStateException("This VcfWriter is no longer usable after a write failure", m_invalidatingCause);
+      }
+      throw new IllegalStateException("This VcfWriter is no longer usable after being closed");
     }
   }
 
@@ -96,8 +107,8 @@ public class VcfWriter implements Closeable {
    * @throws IllegalStateException if {@link #isValid()} is already {@code false} -- this instance must be
    * abandoned after any prior write failure, not reused.
    * @throws UncheckedIOException if a write failure is detected here. This permanently invalidates the instance
-   * (see the class Javadoc) -- retrying is never safe, since some header lines may have already reached the
-   * underlying writer.
+   * and releases the underlying writer immediately (see the class Javadoc) -- retrying is never safe, since some
+   * header lines may have already reached the underlying writer.
    */
   public void writeHeader(VcfMetadata metadata) {
     checkValid();
@@ -191,9 +202,9 @@ public class VcfWriter implements Closeable {
    * @throws IllegalStateException if {@link #isValid()} is already {@code false} -- this instance must be
    * abandoned after any prior write failure, not reused.
    * @throws UncheckedIOException if a write failure is detected (only possible on a call that lands on the
-   * periodic 1000-line checkpoint; most calls cannot throw this). This permanently invalidates the instance
-   * (see the class Javadoc) -- retrying is never safe, since some data may have already reached the underlying
-   * writer.
+   * periodic 1000-line checkpoint; most calls cannot throw this). This permanently invalidates the instance and
+   * releases the underlying writer immediately (see the class Javadoc) -- retrying is never safe, since some data
+   * may have already reached the underlying writer.
    */
   public void writeLine(VcfMetadata metadata, VcfPosition position,
       List<VcfSample> samples) {
@@ -282,7 +293,9 @@ public class VcfWriter implements Closeable {
 
   /**
    * Closes the underlying writer. This must be called to guarantee complete, correctly-flushed output and that
-   * any pending write failure is reported -- see the class Javadoc.
+   * any pending write failure is reported -- see the class Javadoc. Idempotent: a second call after the first has
+   * no effect, matching {@link Closeable#close()}'s own documented contract, regardless of whether the first call
+   * threw.
    *
    * @throws UncheckedIOException if a write failure is detected (this call's own, e.g. from the underlying
    * stream's own {@code close()}, or one from an earlier periodic check that hadn't yet surfaced). The underlying
@@ -291,6 +304,9 @@ public class VcfWriter implements Closeable {
    */
   @Override
   public void close() {
+    if (m_closed) {
+      return; // idempotent: a second close() has no effect, regardless of whether the first one threw
+    }
     // checkError() flushes before checking (see its own Javadoc), so this first call catches anything still
     // buffered from writeLine()/writeHeader(). m_writer.close() always runs next regardless, so the
     // resource is never leaked even when we're about to throw. The second checkError() (after m_writer.close())
@@ -298,11 +314,9 @@ public class VcfWriter implements Closeable {
     // again here because a closed PrintWriter's checkError() no longer attempts to flush.
     boolean hadError = m_writer.checkError();
     m_writer.close();
+    m_closed = true;
     if (hadError || m_writer.checkError()) {
-      UncheckedIOException e = writeError();
-      m_valid = false;
-      m_invalidatingCause = e;
-      throw e;
+      throw recordWriteError();
     }
   }
 
@@ -905,11 +919,20 @@ public class VcfWriter implements Closeable {
         "Error writing VCF output after line " + m_lineNumber + " (disk full, broken pipe, or encoding failure)"));
   }
 
+  // shared by close() and checkForWriteError(): builds the write-failure exception and stashes it as the cause.
+  // Each call site still owns its own m_closed handling, since the two sites differ there -- checkForWriteError()
+  // must close the resource itself here, while close() already did, just above, before ever reaching this point.
+  private UncheckedIOException recordWriteError() {
+    UncheckedIOException e = writeError();
+    m_invalidatingCause = e;
+    return e;
+  }
+
   private void checkForWriteError() {
     if (m_writer.checkError()) {
-      UncheckedIOException e = writeError();
-      m_valid = false;
-      m_invalidatingCause = e;
+      UncheckedIOException e = recordWriteError();
+      m_writer.close();
+      m_closed = true;
       throw e;
     }
   }

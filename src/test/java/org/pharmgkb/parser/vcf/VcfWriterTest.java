@@ -894,6 +894,22 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testWriteAfterCleanCloseThrowsWithClosedMessage() throws Exception {
+    // regression test: a clean (no-error) close() must still permanently invalidate the writer -- writing
+    // afterward must throw, not silently no-op through the now-closed underlying PrintWriter
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    writer.close();
+
+    assertFalse(writer.isValid());
+    IllegalStateException e = assertThrows(IllegalStateException.class, () -> writer.writeHeader(metadata));
+    assertTrue(e.getMessage().contains("closed"));
+    assertNull(e.getCause());
+  }
+
+  @Test
   public void testWriteLineContentRejectionDoesNotInvalidateWriter() throws Exception {
     // a VcfFormatException content rejection (not a write/IO failure) must not invalidate the writer -- a
     // corrected call afterward must succeed normally
@@ -946,10 +962,24 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testCloseIsIdempotentAfterFailure() throws Exception {
+    // regression test: Closeable.close()'s own documented contract says a second call on an already-closed
+    // stream has no effect -- today, a second close() after a failure re-throws a fresh exception each time
+    FailingWriter failingWriter = new FailingWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(failingWriter)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata); // succeeds: failingWriter isn't failing yet
+    failingWriter.startFailing();
+    assertThrows(UncheckedIOException.class, writer::close);
+    writer.close(); // second call: must be a no-op, not throw again
+  }
+
+  @Test
   public void testPeriodicCheckDetectsErrorDuringWriteLineWithoutClose() throws Exception {
     // writeLine() no longer flushes/checks on every call (Task 1 removes that); this proves the periodic
     // (every-1000-line) check inside printLine() still catches a failure introduced mid-stream, rather than
-    // only close() ever detecting it
+    // only close() ever detecting it -- and (regression) that this also releases the underlying resource
+    // immediately, without the caller ever calling close() themselves
     FailingWriter failingWriter = new FailingWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(failingWriter)).build();
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
@@ -962,6 +992,7 @@ public class VcfWriterTest {
         writer.writeLine(metadata, position, Collections.emptyList());
       }
     });
+    assertTrue(failingWriter.wasClosed());
   }
 
 }
