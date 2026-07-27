@@ -391,11 +391,10 @@ public class VcfUtils {
       return null;
     }
     if (!isList) {
-      try {
-        return (T) convertElement(clas, value);
-      } catch (ClassCastException e) {
-        throw new VcfFormatException("Wrong type specified", e);
-      }
+      // an unchecked cast to this method's own unbounded generic type parameter T is erased to a no-op by javac
+      // (no checkcast bytecode is emitted), so it can never throw ClassCastException here -- a real type mismatch
+      // only surfaces later, in the caller's own stack frame when the value is used as the wrong type
+      return (T) convertElement(clas, value);
     }
     List<Object> list = new ArrayList<>();
     // limit -1 preserves an empty entry (e.g. a trailing ','), handled below rather than silently dropped; VCF does
@@ -409,11 +408,7 @@ public class VcfUtils {
         list.add(convertElement(clas, part));
       }
     }
-    try {
-      return (T) list;
-    } catch (ClassCastException e) {
-      throw new VcfFormatException("Wrong type specified", e);
-    }
+    return (T) list;
   }
 
   public static Class<?> toJavaType(FormatType type) {
