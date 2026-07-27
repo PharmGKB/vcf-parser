@@ -149,4 +149,11 @@ public class ContigMetadataTest {
     }
   }
 
+  @Test
+  public void testTypedConstructorRejectsNullOrBlankId() {
+    assertThrows(VcfFormatException.class, () -> new ContigMetadata(null, 100L, "GRCh38", null, null, null, null));
+    assertThrows(VcfFormatException.class, () -> new ContigMetadata("", 100L, "GRCh38", null, null, null, null));
+    assertThrows(VcfFormatException.class, () -> new ContigMetadata("   ", 100L, "GRCh38", null, null, null, null));
+  }
+
 }

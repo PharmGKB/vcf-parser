@@ -4,6 +4,7 @@ import java.lang.invoke.MethodHandles;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
+import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,6 +30,9 @@ public class IdMetadata extends BaseMetadata {
 
   protected IdMetadata(String id, boolean isBaseType) {
     super(new LinkedHashMap<>());
+    if (id == null || id.trim().isEmpty()) {
+      throw new VcfFormatException("ID is required and must not be blank");
+    }
     m_isBaseType = isBaseType;
     putPropertyRaw(ID, id);
     init(isBaseType);

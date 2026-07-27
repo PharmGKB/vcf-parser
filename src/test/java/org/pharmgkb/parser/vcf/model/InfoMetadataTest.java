@@ -256,4 +256,11 @@ public class InfoMetadataTest {
       appender.stop();
     }
   }
+
+  @Test
+  public void testTypedConstructorRejectsNullOrBlankId() {
+    assertThrows(VcfFormatException.class, () -> new InfoMetadata(null, "d", InfoType.String, "1", null, null));
+    assertThrows(VcfFormatException.class, () -> new InfoMetadata("", "d", InfoType.String, "1", null, null));
+    assertThrows(VcfFormatException.class, () -> new InfoMetadata("   ", "d", InfoType.String, "1", null, null));
+  }
 }

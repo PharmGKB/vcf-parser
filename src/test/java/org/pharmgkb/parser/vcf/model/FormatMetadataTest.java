@@ -1,10 +1,12 @@
 package org.pharmgkb.parser.vcf.model;
 
 import org.junit.jupiter.api.Test;
+import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -183,5 +185,12 @@ public class FormatMetadataTest {
       root.detachAppender(appender);
       appender.stop();
     }
+  }
+
+  @Test
+  public void testTypedConstructorRejectsNullOrBlankId() {
+    assertThrows(VcfFormatException.class, () -> new FormatMetadata(null, "d", "1", FormatType.String));
+    assertThrows(VcfFormatException.class, () -> new FormatMetadata("", "d", "1", FormatType.String));
+    assertThrows(VcfFormatException.class, () -> new FormatMetadata("   ", "d", "1", FormatType.String));
   }
 }
