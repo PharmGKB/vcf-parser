@@ -48,12 +48,17 @@ public class VcfUtils {
   // Given no source can confirm or deny the broader forms, and a previous attempt to narrow this regex incorrectly
   // broke the one form that IS confirmed valid, this is intentionally left as-is rather than risked again.
   private static final String sf_simpleAltPattern =
-      "(?:"                   + // wrap the whole expression
-        "(?:"                 + // allow nucleotides, symbolic IDs, or both
-          "(?:[AaCcGgTtNn]+)" + // nucleotides
-          "|(?:<[^\\s,<>]+>)" + // symbolic IDs (no whitespace, commas, or angle brackets inside)
-          ")+"                + // see the note above for why this repeats
-        "|\\*"                + // indicates that the position doesn't exist due to an upstream deletion
+      "(?:"                    + // wrap the whole expression
+        "(?:"                  + // allow nucleotides, symbolic IDs, or both
+          "(?:[AaCcGgTtNn]++)" + // nucleotides -- possessive quantifier: without it, this is nested inside the
+                                 // outer "+" below, the classic (x+)+ catastrophic-backtracking shape (verified:
+                                 // O(N^2) blowup on a long nucleotide run followed by one invalid trailing
+                                 // character). Safe to make possessive because a run of [AaCcGgTtNn] never needs
+                                 // to backtrack into the sibling alternative below (symbolic IDs always start
+                                 // with '<', which is never a nucleotide character)
+          "|(?:<[^\\s,<>]+>)"  + // symbolic IDs (no whitespace, commas, or angle brackets inside)
+          ")+"                 + // see the note above for why this repeats
+        "|\\*"                 + // indicates that the position doesn't exist due to an upstream deletion
       ")";
 
   // the mate breakend location "chr:pos" (VCF 4.2: "a string of the form `chr:pos'"): chr and pos are both always

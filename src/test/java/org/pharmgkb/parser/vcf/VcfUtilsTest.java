@@ -133,6 +133,18 @@ public class VcfUtilsTest {
   }
 
   @Test
+  public void testAltBasePatternDoesNotCatastrophicallyBacktrackOnLongMalformedInput() {
+    // regression test: sf_simpleAltPattern's inner nucleotide quantifier must be possessive. Without it, a long
+    // nucleotide run followed by one invalid character triggers the classic (x+)+ backtracking blowup --
+    // verified directly against this exact pattern before the fix: ~150ms at N=5,000, ~585ms at N=10,000, ~2.2s
+    // at N=20,000 (clean O(N^2) scaling). 3 seconds is a wide margin above the fixed pattern's ~1ms at this size,
+    // so this won't be flaky on a slower CI machine, while still catching a regression back to greedy matching.
+    String malformed = "A".repeat(20_000) + "!";
+    assertTimeoutPreemptively(java.time.Duration.ofSeconds(3), () ->
+        assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher(malformed).matches()));
+  }
+
+  @Test
   public void testExtractPropertiesWithEscapes() {
     // an escaped backslash (\\) and an escaped double-quote (\") inside a quoted Description must not crash and must be
     // preserved (the split must not treat the escaped quote as a real quote)
