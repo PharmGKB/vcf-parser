@@ -2,7 +2,7 @@ package org.pharmgkb.parser.vcf.model;
 
 import java.lang.invoke.MethodHandles;
 import java.net.MalformedURLException;
-import java.net.URL;
+import java.net.URI;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfFormatException;
@@ -42,8 +42,8 @@ public class ContigMetadata extends IdMetadata {
     }
     if (url != null) {
       try {
-        new URL(url);
-      } catch (MalformedURLException e) {
+        URI.create(url).toURL();
+      } catch (IllegalArgumentException | MalformedURLException e) {
         sf_logger.warn("URL {} is malformed", url, e);
       }
       putPropertyRaw(URL, url);

@@ -266,7 +266,7 @@ public class MemoryMappedVcfDataStore {
         return false;
       }
       Genotype genotype = (Genotype) o;
-      return Objects.equals(m_isPhased, genotype.isPhased()) &&
+      return m_isPhased == genotype.isPhased() &&
           Objects.equals(m_alleles, genotype.getAlleles());
     }
 
@@ -303,7 +303,7 @@ public class MemoryMappedVcfDataStore {
         return false;
       }
       final Locus locus = (Locus)o;
-      return Objects.equals(m_position, locus.getPosition()) &&
+      return m_position == locus.getPosition() &&
           Objects.equals(m_chromosome, locus.getChromosome());
     }
 
