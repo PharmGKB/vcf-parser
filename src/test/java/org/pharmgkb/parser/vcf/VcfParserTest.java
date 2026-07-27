@@ -220,6 +220,15 @@ public class VcfParserTest {
   }
 
   @Test
+  void testMetadataLineMissingEqualsThrowsClearMessage() throws IOException {
+    // a "##" line with no "=" previously threw a raw StringIndexOutOfBoundsException-derived message (from
+    // line.substring(2, -1)) instead of one naming the actual problem
+    String vcf = "##fileformat=VCFv4.2\n##justsometext\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    VcfFormatException e = assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
+    assertThat(e.getMessage(), containsString("missing '='"));
+  }
+
+  @Test
   void testDuplicateSampleNameThrows() throws IOException {
     String vcf = "##fileformat=VCFv4.2\n" +
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\ts1\n";

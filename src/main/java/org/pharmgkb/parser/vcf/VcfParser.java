@@ -331,6 +331,9 @@ public class VcfParser implements Closeable {
   private void parseMetadata(VcfMetadata.Builder mdBuilder, String line) {
 
     int idx = line.indexOf("=");
+    if (idx < 0) {
+      throw new VcfFormatException("Metadata line is missing '=': " + line);
+    }
     String propName = line.substring(2, idx).trim();
     String propValue = line.substring(idx + 1).trim();
 
