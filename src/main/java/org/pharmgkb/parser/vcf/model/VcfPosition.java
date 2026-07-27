@@ -333,6 +333,7 @@ public class VcfPosition {
       if (m_filter.get(0).equals("PASS")) { // a user is likely to pass "PASS" instead of an empty list or null
         sf_logger.warn("FILTER is PASS, but should have been passed as null. Converting to null");
         m_filter = new ArrayList<>();
+        m_filtersApplied = true;
       } else if (m_filter.get(0).equals(".")) { // "." is the missing value: filters were not applied (FilterStatus.NONE)
         m_filtersApplied = false;
         m_filter = new ArrayList<>();

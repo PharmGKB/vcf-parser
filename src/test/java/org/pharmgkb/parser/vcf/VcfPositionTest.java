@@ -467,6 +467,21 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testValidateResetsFilterStatusAfterDotThenPass() {
+    // regression test: normalizeFilters() must reset m_filtersApplied back to true in the "PASS" branch, not
+    // just clear it to false in the "." branch -- otherwise a position that was ever normalized from "." can
+    // never report PASSED again
+    VcfPosition position = new VcfPosition("chr1", 1, null, "C", null, null, null, null, null);
+    position.getFilters().add(".");
+    position.validate();
+    assertEquals(VcfPosition.FilterStatus.NONE, position.getFilterStatus());
+
+    position.getFilters().add("PASS");
+    position.validate();
+    assertEquals(VcfPosition.FilterStatus.PASSED, position.getFilterStatus());
+  }
+
+  @Test
   public void testTelomericPositions() {
     new VcfPosition("chr1", 0, null, "C", null, null, null, null, null); // telomere at start is valid
     assertThrows(VcfFormatException.class, () -> // a negative POS is invalid
