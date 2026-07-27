@@ -192,8 +192,8 @@ public class VcfPosition {
   }
 
   /**
-   * @return a new list derived from {@code altBases}, with any empty entry substituted with {@code "."} (with a
-   * warning); see {@code EMPTY_FIELD_HANDLING.md}
+   * @return {@code altBases} unchanged, or a new list derived from it with any empty entry substituted with
+   * {@code "."} (with a warning); see {@code EMPTY_FIELD_HANDLING.md}
    */
   private static List<String> checkAltBases(List<String> altBases) {
     // ALT is position-dependent: GT genotype values index into it positionally (VCFv4.2.tex line 217: "1 for the
@@ -202,11 +202,15 @@ public class VcfPosition {
     // misdirecting a GT value referencing a position after the dropped entry to the wrong allele. Substituting
     // '.' instead preserves every index, matching bcftools 1.23.1 exactly (confirmed empirically: "T,,C" becomes
     // "T,.,C", with no warning, and genotype indices before/at/after the dot still resolve correctly).
-    // Copy first: fillEmptyEntriesWithDot mutates its argument in place, but altBases may be an immutable or
-    // caller-owned list (e.g. List.of(...), Arrays.asList(...)) -- mutating it directly would throw
-    // UnsupportedOperationException or silently alias-mutate a list the caller still holds a reference to.
-    altBases = new ArrayList<>(altBases);
-    VcfUtils.fillEmptyEntriesWithDot(sf_logger, "ALT", altBases);
+    if (altBases.contains("")) {
+      // Copy first: fillEmptyEntriesWithDot mutates its argument in place, but altBases may be an immutable or
+      // caller-owned list (e.g. List.of(...), Arrays.asList(...)) -- mutating it directly would throw
+      // UnsupportedOperationException or silently alias-mutate a list the caller still holds a reference to. Only
+      // copying when an empty entry actually needs substituting avoids an allocation on the common case (no
+      // empty ALT entry), matching checkIds()/checkFilters()'s existing lazy-copy style.
+      altBases = new ArrayList<>(altBases);
+      VcfUtils.fillEmptyEntriesWithDot(sf_logger, "ALT", altBases);
+    }
     for (String base : altBases) {
       if (!VcfUtils.ALT_BASE_PATTERN.matcher(base).matches()) {
         throw new VcfFormatException("Invalid alternate base '" + base + "' (must match " + VcfUtils.ALT_BASE_PATTERN + ")");

@@ -603,4 +603,16 @@ public class VcfPositionTest {
     assertEquals(Arrays.asList("T", ""), immutable);
   }
 
+  @Test
+  public void testCheckAltBasesDoesNotCopyWhenNoEmptyEntry() {
+    // optimization: when altBases has no empty entry to normalize, checkAltBases must NOT copy it -- the
+    // returned list's mutability then depends on what was passed in, exactly like getIds()/getFilters()/
+    // getFormat()/getInfo() already do (see the primary constructor's Javadoc). An immutable list with no empty
+    // entry therefore stays immutable, and add() on the result throws.
+    List<String> immutable = List.of("T", "C");
+    VcfPosition position = new VcfPosition("chr1", 1, null, "C", immutable, null, null, null, null);
+    assertEquals(Arrays.asList("T", "C"), position.getAltBases());
+    assertThrows(UnsupportedOperationException.class, () -> position.getAltBases().add("G"));
+  }
+
 }
