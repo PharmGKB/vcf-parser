@@ -993,6 +993,9 @@ public class VcfWriterTest {
       }
     });
     assertTrue(failingWriter.wasClosed());
+    // regression test: a caller's own follow-up close() call, after the mid-stream failure already auto-closed
+    // the writer, must be a true no-op -- not a second, distinct exception for the same underlying problem
+    writer.close();
   }
 
 }

@@ -297,10 +297,11 @@ public class VcfWriter implements Closeable {
    * no effect, matching {@link Closeable#close()}'s own documented contract, regardless of whether the first call
    * threw.
    *
-   * @throws UncheckedIOException if a write failure is detected (this call's own, e.g. from the underlying
-   * stream's own {@code close()}, or one from an earlier periodic check that hadn't yet surfaced). The underlying
-   * writer is always released first, even when this is thrown. This also permanently invalidates the instance,
-   * the same as a failure detected by {@link #writeHeader} or {@link #writeLine}.
+   * @throws UncheckedIOException if a write failure is detected here (this call's own, e.g. from the underlying
+   * stream's own {@code close()}, or one that hadn't yet been caught by a periodic check because fewer than 1000
+   * lines were written since the last one). The underlying writer is always released first, even when this is
+   * thrown. This also permanently invalidates the instance, the same as a failure detected by {@link #writeHeader}
+   * or {@link #writeLine}.
    */
   @Override
   public void close() {
@@ -313,8 +314,11 @@ public class VcfWriter implements Closeable {
     // catches a failure from the underlying stream's own close() (e.g. an fsync-on-close error) -- safe to call
     // again here because a closed PrintWriter's checkError() no longer attempts to flush.
     boolean hadError = m_writer.checkError();
-    m_writer.close();
-    m_closed = true;
+    try {
+      m_writer.close();
+    } finally {
+      m_closed = true;
+    }
     if (hadError || m_writer.checkError()) {
       throw recordWriteError();
     }
@@ -931,8 +935,11 @@ public class VcfWriter implements Closeable {
   private void checkForWriteError() {
     if (m_writer.checkError()) {
       UncheckedIOException e = recordWriteError();
-      m_writer.close();
-      m_closed = true;
+      try {
+        m_writer.close();
+      } finally {
+        m_closed = true;
+      }
       throw e;
     }
   }
