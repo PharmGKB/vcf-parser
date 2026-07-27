@@ -21,7 +21,13 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
  * instead of doing anything further. A {@link VcfTransformation} exception or a {@link VcfWriter}
  * {@link VcfFormatException} content rejection, by contrast, does not invalidate the writer -- nothing corrupting
  * was written, so {@link #parseMetadata}/{@link #parseLine} can be called again (for a {@link VcfTransformation}
- * failure) or simply continue processing the next record (for a rejected record) without issue.
+ * failure) or simply continue processing the next record (for a rejected record) without issue. A retry made
+ * this way, before the header has actually been written, re-invokes {@link VcfTransformation#transformMetadata}
+ * on the same metadata object -- implementations that mutate metadata non-idempotently (e.g. adding a raw
+ * property to a multi-valued key, which appends rather than replaces) must account for being invoked more than
+ * once on the same object. A transformation that instead corrects its own prior mutation on each call (e.g.
+ * removing then re-adding a declaration) is a safe pattern for this, and is exactly how this class's own test
+ * suite exercises a retried, self-correcting transformation.
  * <p>
  * Example:
  * <pre>{@code
