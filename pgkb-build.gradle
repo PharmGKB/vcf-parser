@@ -52,7 +52,7 @@ jar {
   }
   bundle {
     bnd(
-      'Export-Package': 'org.pharmgkb.parser.vcf,org.pharmgkb.parser.vcf.model,org.pharmgkb.parser.vcf.model.genotype'
+      'Export-Package': 'org.pharmgkb.parser.vcf,org.pharmgkb.parser.vcf.model'
     )
   }
 }

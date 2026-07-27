@@ -202,8 +202,7 @@ public class MemoryMappedVcfDataStore {
 
   /**
    * Parses a GT allele index, converting a malformed or out-of-range value into {@link VcfFormatException} rather than
-   * letting {@link NumberFormatException} or {@link IndexOutOfBoundsException} leak out of {@link #doGetGenotype},
-   * consistent with {@code VcfGenotype.getAlleleFromIndex}.
+   * letting {@link NumberFormatException} or {@link IndexOutOfBoundsException} leak out of {@link #doGetGenotype}.
    */
   private static int parseAlleleIndex(String base, VcfPosition position) {
     int index;

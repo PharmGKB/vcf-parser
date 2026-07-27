@@ -45,8 +45,8 @@ invalid:
   value (`.`) combined with a real property; or a `FORMAT` in which `GT` is present but not the first sub-field or
   a (non-empty) key is duplicated.
 - A sample with more sub-fields than its `FORMAT` declares (trailing sub-fields may be dropped, but not added).
-- An invalid genotype passed to `VcfGenotype`, a malformed or out-of-range `GT` allele index looked up through
-  `MemoryMappedVcfDataStore`, or a failed conversion when a typed value is requested.
+- A malformed or out-of-range `GT` allele index looked up through `MemoryMappedVcfDataStore`, or a failed
+  conversion when a typed value is requested.
 - A key or value set through `BaseMetadata`'s, `VcfSample`'s, or `VcfMetadata`'s mutators (e.g. a `Description`, a
   sample's `GT` value, or an `##assembly` line) containing a line terminator.
 - A `VcfSample` key or value set through its constructors or `putProperty` containing a colon or tab, which would
