@@ -858,10 +858,13 @@ public class VcfWriterTest {
   }
 
   @Test
-  public void testHeaderContentRejectionDoesNotPermanentlyBlockRetry() throws Exception {
-    // regression test for the premature-flag bug found in a sibling class: a validateBeforeWrite() content
-    // rejection during writeHeader() must NOT leave m_headerWritten stuck true -- a corrected call afterward
-    // must succeed and actually write the header
+  public void testHeaderContentRejectionAllowsCorrectedRetry() throws Exception {
+    // a validateBeforeWrite() content rejection during writeHeader() must not invalidate the writer or
+    // permanently block retrying -- a corrected call afterward must succeed and actually write the header.
+    // (Note: the checkForWriteError()/field-assignment reordering fix in writeHeader() has no test-observable
+    // effect through the public API on its own, since checkValid() already blocks any retry after a genuine
+    // write failure regardless of m_headerWritten's value -- this test covers the content-rejection-then-retry
+    // behavior itself, not that specific internal reordering.)
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")

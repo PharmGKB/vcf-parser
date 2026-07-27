@@ -272,7 +272,8 @@ public class VcfWriter implements Closeable {
    *
    * @throws UncheckedIOException if a write failure is detected (this call's own, e.g. from the underlying
    * stream's own {@code close()}, or one from an earlier periodic check that hadn't yet surfaced). The underlying
-   * writer is always released first, even when this is thrown.
+   * writer is always released first, even when this is thrown. This also permanently invalidates the instance,
+   * the same as a failure detected by {@link #writeHeader} or {@link #writeLine}.
    */
   @Override
   public void close() {
