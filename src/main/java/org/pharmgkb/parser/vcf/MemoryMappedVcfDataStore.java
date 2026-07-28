@@ -188,20 +188,25 @@ public class MemoryMappedVcfDataStore {
     // preserves a trailing empty allele (e.g. a trailing '/', which should have been '.') the same way split's -1
     // limit did, rather than silently dropping it -- dropping it would silently change the call's ploidy. VCF does
     // not allow zero-length fields. See EMPTY_FIELD_HANDLING.md.
-    List<String> bases = new ArrayList<>();
-    List<Boolean> phasedBoundaries = new ArrayList<>();
-    StringBuilder current = new StringBuilder();
+    int separatorCount = 0;
     for (int i = 0; i < genotype.length(); i++) {
       char c = genotype.charAt(i);
       if (c == '|' || c == '/') {
-        bases.add(current.toString());
-        phasedBoundaries.add(c == '|');
-        current.setLength(0);
-      } else {
-        current.append(c);
+        separatorCount++;
       }
     }
-    bases.add(current.toString());
+    List<String> bases = new ArrayList<>(separatorCount + 1);
+    List<Boolean> phasedBoundaries = new ArrayList<>(separatorCount);
+    int start = 0;
+    for (int i = 0; i < genotype.length(); i++) {
+      char c = genotype.charAt(i);
+      if (c == '|' || c == '/') {
+        bases.add(genotype.substring(start, i));
+        phasedBoundaries.add(c == '|');
+        start = i + 1;
+      }
+    }
+    bases.add(genotype.substring(start));
 
     List<String> alleles = new ArrayList<>(bases.size());
     boolean allMissing = true;

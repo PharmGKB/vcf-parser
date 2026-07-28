@@ -250,6 +250,27 @@ public class MemoryMappedVcfDataStoreParserTest {
   }
 
   @Test
+  public void testGenotypeWithMoreThanTwoAllelesParsesCorrectly() throws IOException {
+    // regression test for the doGetGenotype scan refactor (substring-based, pre-sized lists) -- a genotype with
+    // more than the common diploid 2 alleles exercises the separator-counting pre-sizing path with a non-trivial
+    // count
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n" +
+        "chr1\t1\trsx\tA\tT,C,G\t.\tPASS\t.\tGT\t0|1|2|3\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf))) {
+      MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+      new VcfParser.Builder()
+          .fromReader(reader)
+          .parseWith(lineParser)
+          .build().parse();
+      MemoryMappedVcfDataStore.Genotype genotype = lineParser.getDataStore().getGenotypeForId("rsx", "sample1");
+      assertNotNull(genotype);
+      assertEquals(List.of("A", "T", "C", "G"), genotype.getAlleles());
+      assertEquals(List.of(true, true, true), genotype.getPhasedBoundaries());
+    }
+  }
+
+  @Test
   public void testHeaderOnlyVcfPopulatesMetadata() throws IOException {
     // a VCF with metadata but zero data lines must still populate the data store's metadata -- parseMetadata()
     // must be called, not just parseLine() as a side effect
