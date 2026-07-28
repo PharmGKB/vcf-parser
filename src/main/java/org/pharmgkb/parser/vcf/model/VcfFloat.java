@@ -100,6 +100,12 @@ public final class VcfFloat {
     return m_value.toString();
   }
 
+  /**
+   * For two non-special values, this delegates to {@link BigDecimal#equals}, which is scale-sensitive:
+   * {@code VcfFloat.parse("1.5")} and {@code VcfFloat.parse("1.50")} are numerically equal but not
+   * {@code equals()} to each other. Use {@code getValue().compareTo(...)} for scale-insensitive numeric
+   * comparison of the non-special case.
+   */
   @Override
   public boolean equals(@Nullable Object o) {
     if (this == o) {
@@ -112,6 +118,9 @@ public final class VcfFloat {
         (m_special != null || Objects.equals(m_value, vcfFloat.m_value));
   }
 
+  /**
+   * Scale-sensitive, matching {@link #equals}; see its Javadoc.
+   */
   @Override
   public int hashCode() {
     return m_special != null ? Objects.hash(m_special) : Objects.hashCode(m_value);
