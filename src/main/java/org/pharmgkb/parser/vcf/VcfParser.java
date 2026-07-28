@@ -278,7 +278,7 @@ public class VcfParser implements Closeable {
           values = new ArrayList<>();
         } else {
           values = toSampleValues(format, data.get(x));
-          VcfUtils.fillEmptyEntriesWithDot(sf_logger, "sample value", values);
+          VcfUtils.fillEmptyEntriesWithDot("sample value", values);
           // per the VCF spec, trailing FORMAT sub-fields may be dropped from a sample; pad any missing ones with the
           // missing value so the sample's value count matches the FORMAT key count
           if (format != null) {

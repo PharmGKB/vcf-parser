@@ -1,6 +1,5 @@
 package org.pharmgkb.parser.vcf;
 
-import java.lang.invoke.MethodHandles;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -16,8 +15,6 @@ import org.pharmgkb.parser.vcf.model.InfoType;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
 import org.pharmgkb.parser.vcf.model.ReservedProperty;
 import org.pharmgkb.parser.vcf.model.VcfFloat;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 
 /**
@@ -25,8 +22,6 @@ import org.slf4j.LoggerFactory;
  * @author Douglas Myers-Turnbull
  */
 public class VcfUtils {
-
-  private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   // The "+" below deliberately allows repeating/concatenating the nucleotides-or-symbolic-ID alternative (e.g.
   // "C<ctg1>"), not just one instance of either. This is confirmed necessary for VCFv4.2's own "Large Insertions"
@@ -127,7 +122,7 @@ public class VcfUtils {
       // an unescaped quote can make splitTopLevel itself mis-split at the wrong comma (its open/close toggle
       // flips on every unescaped '"', so a stray one can make a comma meant to stay inside a value look
       // top-level), so checking post-split could miss or misattribute the very problem being detected here.
-      sf_logger.warn("Metadata declaration attribute list \"{}\" contains an unescaped quote, making attribute " +
+      VcfWarnings.warn("Metadata declaration attribute list \"{}\" contains an unescaped quote, making attribute " +
           "boundaries ambiguous; parsing it best-effort", value);
     }
     // split on top-level commas (those not inside a double-quoted value); splitTopLevel preserves escaped characters
@@ -177,7 +172,7 @@ public class VcfUtils {
         // silently coerces the same non-numeric value to the missing sentinel. vcf_validator 0.10.2 rejects this
         // case outright, but per this project's tie-breaker hierarchy its stricter structural-field behavior is
         // non-authoritative when it disagrees with bcftools.
-        sf_logger.warn("Metadata declaration contains duplicate attribute \"{}\"; keeping the last value", pair.getKey());
+        VcfWarnings.warn("Metadata declaration contains duplicate attribute \"{}\"; keeping the last value", pair.getKey());
       }
       map.put(pair.getKey(), pair.getValue());
     }
@@ -296,14 +291,14 @@ public class VcfUtils {
    *
    * @return {@code list} unchanged if it contained no empty entries, or a new list with them removed
    */
-  public static List<String> dropEmptyEntries(Logger logger, String fieldName, List<String> list) {
+  public static List<String> dropEmptyEntries(String fieldName, List<String> list) {
     List<String> result = list;
     for (int i = 0; i < result.size(); i++) {
       if (result.get(i).isEmpty()) {
         if (result == list) {
           result = new ArrayList<>(list);
         }
-        logger.warn("{} contains an empty entry (VCF does not allow zero-length fields); dropping it", fieldName);
+        VcfWarnings.warn("{} contains an empty entry (VCF does not allow zero-length fields); dropping it", fieldName);
         result.remove(i);
         i--;
       }
@@ -316,10 +311,10 @@ public class VcfUtils {
    * sentinel), for a position-dependent delimited field (e.g. a sample's FORMAT-keyed values) where dropping an
    * entry would misalign it with its corresponding key. See {@code EMPTY_FIELD_HANDLING.md} for the rationale.
    */
-  public static void fillEmptyEntriesWithDot(Logger logger, String fieldName, List<String> list) {
+  public static void fillEmptyEntriesWithDot(String fieldName, List<String> list) {
     for (int i = 0; i < list.size(); i++) {
       if (list.get(i).isEmpty()) {
-        logger.warn("{} contains an empty entry (VCF does not allow zero-length fields); treating it as the " +
+        VcfWarnings.warn("{} contains an empty entry (VCF does not allow zero-length fields); treating it as the " +
             "missing value '.'", fieldName);
         list.set(i, ".");
       }
@@ -376,12 +371,12 @@ public class VcfUtils {
     boolean hasPassOrMissing = false;
     for (String code : codes) {
       if (code.isEmpty()) {
-        sf_logger.warn("FORMAT {} value \"{}\" contains an empty filter code (VCF does not allow zero-length " +
+        VcfWarnings.warn("FORMAT {} value \"{}\" contains an empty filter code (VCF does not allow zero-length " +
             "fields); dropping it", key, value);
         continue;
       }
       if (sf_whitespacePattern.matcher(code).find()) {
-        sf_logger.warn("FORMAT {} value \"{}\" contains whitespace in filter code \"{}\"", key, value, code);
+        VcfWarnings.warn("FORMAT {} value \"{}\" contains whitespace in filter code \"{}\"", key, value, code);
       }
       if (code.equals("PASS") || code.equals(".")) {
         hasPassOrMissing = true;
@@ -389,7 +384,7 @@ public class VcfUtils {
       kept.add(code);
     }
     if (kept.size() > 1 && hasPassOrMissing) {
-      sf_logger.warn("FORMAT {} value \"{}\" combines PASS or '.' with other filter codes", key, value);
+      VcfWarnings.warn("FORMAT {} value \"{}\" combines PASS or '.' with other filter codes", key, value);
     }
     return String.join(";", kept);
   }
@@ -403,7 +398,7 @@ public class VcfUtils {
       return;
     }
     if (parsed < 0 || parsed > Integer.MAX_VALUE) {
-      sf_logger.warn("FORMAT {} value \"{}\" is not a non-negative 32-bit integer", key, value);
+      VcfWarnings.warn("FORMAT {} value \"{}\" is not a non-negative 32-bit integer", key, value);
     }
   }
 
@@ -426,7 +421,7 @@ public class VcfUtils {
     // not allow zero-length fields. See EMPTY_FIELD_HANDLING.md.
     for (String part : value.split(",", -1)) {
       if (part.isEmpty()) {
-        sf_logger.warn("List value \"{}\" contains an empty entry (VCF does not allow zero-length fields); " +
+        VcfWarnings.warn("List value \"{}\" contains an empty entry (VCF does not allow zero-length fields); " +
             "treating it as the missing value '.'", value);
         list.add(null);
       } else {

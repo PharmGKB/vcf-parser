@@ -178,7 +178,7 @@ public class VcfPosition {
    * {@code EMPTY_FIELD_HANDLING.md}
    */
   private static List<String> checkIds(List<String> ids) {
-    ids = VcfUtils.dropEmptyEntries(sf_logger, "ID", ids);
+    ids = VcfUtils.dropEmptyEntries("ID", ids);
     Set<String> seenIds = new HashSet<>();
     for (String id : ids) {
       if (sf_whitespace.matcher(id).find() || id.contains(";")) {
@@ -209,7 +209,7 @@ public class VcfPosition {
       // copying when an empty entry actually needs substituting avoids an allocation on the common case (no
       // empty ALT entry), matching checkIds()/checkFilters()'s existing lazy-copy style.
       altBases = new ArrayList<>(altBases);
-      VcfUtils.fillEmptyEntriesWithDot(sf_logger, "ALT", altBases);
+      VcfUtils.fillEmptyEntriesWithDot("ALT", altBases);
     }
     for (String base : altBases) {
       if (!VcfUtils.ALT_BASE_PATTERN.matcher(base).matches()) {
@@ -227,7 +227,7 @@ public class VcfPosition {
    * {@code EMPTY_FIELD_HANDLING.md}
    */
   private static List<String> checkFilters(List<String> filters) {
-    filters = VcfUtils.dropEmptyEntries(sf_logger, "FILTER", filters);
+    filters = VcfUtils.dropEmptyEntries("FILTER", filters);
     for (String f : filters) {
       if (sf_whitespace.matcher(f).find()) {
         throw new VcfFormatException("FILTER column entry \"" + f + "\" contains whitespace");
