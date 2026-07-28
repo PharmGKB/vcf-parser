@@ -289,4 +289,32 @@ public class MemoryMappedVcfDataStoreParserTest {
       assertNull(dataStore.getPositionsAtLocus("chr1", 2));
     }
   }
+
+  @Test
+  public void testIntIndexOverloadsReturnNullForOutOfRangeSampleIndexInsteadOfThrowing() throws IOException {
+    // the String-id overloads already return null for an unresolved sample name; the int overloads previously let
+    // List.get throw IndexOutOfBoundsException for an out-of-range index instead -- this brings them in line
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n" +
+        "chr1\t1\trsx\tA\tT\t.\tPASS\t.\tGT\t0/1\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf))) {
+      MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+      new VcfParser.Builder()
+          .fromReader(reader)
+          .parseWith(lineParser)
+          .build().parse();
+      MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
+
+      assertNull(dataStore.getSampleForId("rsx", 99));
+      assertNull(dataStore.getGenotypeForId("rsx", 99));
+      assertNull(dataStore.getSampleAtLocus("chr1", 1, 0, 99));
+      assertNull(dataStore.getGenotypeAtLocus("chr1", 1, 0, 99));
+
+      // a negative index is equally out-of-range
+      assertNull(dataStore.getSampleForId("rsx", -1));
+
+      // sanity: the valid index still works
+      assertNotNull(dataStore.getSampleForId("rsx", 0));
+    }
+  }
 }

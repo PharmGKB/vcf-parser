@@ -108,7 +108,10 @@ public class MemoryMappedVcfDataStore {
 
   public @Nullable VcfSample getSampleForId(String positionId, int sampleIndex) {
     List<VcfSample> samples = m_idToSamples.get(positionId);
-    return samples == null ? null : samples.get(sampleIndex);
+    if (samples == null || sampleIndex < 0 || sampleIndex >= samples.size()) {
+      return null;
+    }
+    return samples.get(sampleIndex);
   }
 
   public @Nullable VcfSample getSampleAtLocus(String chromosome, long position, int recordIndex, String sampleId) {
@@ -122,7 +125,11 @@ public class MemoryMappedVcfDataStore {
 
   public @Nullable VcfSample getSampleAtLocus(String chromosome, long position, int recordIndex, int sampleIndex) {
     List<List<VcfSample>> samplesList = m_locusToSamplesList.get(new Locus(chromosome, position));
-    return samplesList == null ? null : samplesList.get(recordIndex).get(sampleIndex);
+    if (samplesList == null) {
+      return null;
+    }
+    List<VcfSample> samples = samplesList.get(recordIndex);
+    return sampleIndex < 0 || sampleIndex >= samples.size() ? null : samples.get(sampleIndex);
   }
 
   public @Nullable Genotype getGenotypeForId(String positionId, String sampleId) {
@@ -155,7 +162,7 @@ public class MemoryMappedVcfDataStore {
   public @Nullable Genotype getGenotypeForId(String positionId, int sampleIndex) {
     VcfPosition position = m_idToPosition.get(positionId);
     List<VcfSample> samples = m_idToSamples.get(positionId);
-    if (position == null || samples == null) {
+    if (position == null || samples == null || sampleIndex < 0 || sampleIndex >= samples.size()) {
       return null;
     }
     return doGetGenotype(position, samples.get(sampleIndex));
@@ -168,7 +175,11 @@ public class MemoryMappedVcfDataStore {
     if (positions == null || samplesList == null) {
       return null;
     }
-    return doGetGenotype(positions.get(recordIndex), samplesList.get(recordIndex).get(sampleIndex));
+    List<VcfSample> samples = samplesList.get(recordIndex);
+    if (sampleIndex < 0 || sampleIndex >= samples.size()) {
+      return null;
+    }
+    return doGetGenotype(positions.get(recordIndex), samples.get(sampleIndex));
   }
 
   private @Nullable Genotype doGetGenotype(VcfPosition position, VcfSample sample) {
