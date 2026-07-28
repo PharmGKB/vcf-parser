@@ -190,6 +190,14 @@ public class MemoryMappedVcfDataStoreParserTest {
   }
 
   @Test
+  public void testGenotypeToStringHandlesEmptyAllelesList() {
+    // toString() must not throw for an empty alleles list -- the old Joiner-based implementation returned "" here;
+    // a naive rewrite that special-cases the first element (m_alleles.get(0)) would throw IndexOutOfBoundsException
+    MemoryMappedVcfDataStore.Genotype genotype = new MemoryMappedVcfDataStore.Genotype(List.of(), List.of());
+    assertEquals("", genotype.toString());
+  }
+
+  @Test
   public void testGenotypePhasedBoundariesArityValidation() {
     assertThrows(IllegalArgumentException.class, () ->
         new MemoryMappedVcfDataStore.Genotype(List.of("0", "1", "2"), List.of(true)));

@@ -309,9 +309,12 @@ public class MemoryMappedVcfDataStore {
 
     @Override
     public String toString() {
-      StringBuilder sb = new StringBuilder(m_alleles.get(0));
-      for (int i = 1; i < m_alleles.size(); i++) {
-        sb.append(m_phasedBoundaries.get(i - 1) ? '|' : '/').append(m_alleles.get(i));
+      StringBuilder sb = new StringBuilder();
+      for (int i = 0; i < m_alleles.size(); i++) {
+        if (i > 0) {
+          sb.append(m_phasedBoundaries.get(i - 1) ? '|' : '/');
+        }
+        sb.append(m_alleles.get(i));
       }
       return sb.toString();
     }
