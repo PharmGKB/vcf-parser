@@ -1,15 +1,18 @@
 package org.pharmgkb.parser.vcf;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.io.UncheckedIOException;
 import java.math.BigDecimal;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.model.BaseMetadata;
@@ -996,6 +999,69 @@ public class VcfWriterTest {
     // regression test: a caller's own follow-up close() call, after the mid-stream failure already auto-closed
     // the writer, must be a true no-op -- not a second, distinct exception for the same underlying problem
     writer.close();
+  }
+
+  @Test
+  public void testWarningsToFileDefaultNameDerivedFromTargetPath(@org.junit.jupiter.api.io.TempDir Path tempDir)
+      throws IOException {
+    VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder();
+    mdBuilder.setFileFormat("VCFv4.2");
+    mdBuilder.setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"));
+    VcfMetadata metadata = mdBuilder.build();
+    VcfPosition position = new VcfPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null);
+
+    Path vcfFile = tempDir.resolve("out.vcf");
+    VcfWriter writer = new VcfWriter.Builder()
+        .toFile(vcfFile)
+        .validateBeforeWrite()
+        .warningsToFile()
+        .build();
+    writer.writeHeader(metadata);
+    // an INFO key with no matching metadata declaration triggers a warning in validateBeforeWrite() mode
+    position.getInfo().put("UNDECLARED", "1");
+    writer.writeLine(metadata, position, List.of());
+    writer.close();
+
+    Path expectedWarningsFile = tempDir.resolve("out.vcf.warn.log");
+    assertTrue(java.nio.file.Files.exists(expectedWarningsFile));
+    assertTrue(java.nio.file.Files.readString(expectedWarningsFile).contains("UNDECLARED"));
+  }
+
+  @Test
+  public void testWarningsToFileWithNoArgAndToWriterThrowsIllegalState() {
+    assertThrows(IllegalStateException.class, () ->
+        new VcfWriter.Builder()
+            .toWriter(new PrintWriter(new StringWriter()))
+            .warningsToFile()
+            .build());
+  }
+
+  @Test
+  public void testWarningsToFileAccumulatesAcrossMultipleWriteLineCalls(@org.junit.jupiter.api.io.TempDir Path tempDir)
+      throws IOException {
+    VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder();
+    mdBuilder.setFileFormat("VCFv4.2");
+    mdBuilder.setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"));
+    VcfMetadata metadata = mdBuilder.build();
+
+    Path vcfFile = tempDir.resolve("out.vcf");
+    VcfWriter writer = new VcfWriter.Builder()
+        .toFile(vcfFile)
+        .validateBeforeWrite()
+        .warningsToFile()
+        .build();
+    writer.writeHeader(metadata);
+    for (int i = 1; i <= 3; i++) {
+      VcfPosition position = new VcfPosition("chr1", i, null, "A", List.of("T"), null, null, null, null);
+      position.getInfo().put("UNDECLARED" + i, "1");
+      writer.writeLine(metadata, position, List.of());
+    }
+    writer.close();
+
+    String warnings = java.nio.file.Files.readString(tempDir.resolve("out.vcf.warn.log"));
+    assertTrue(warnings.contains("UNDECLARED1"));
+    assertTrue(warnings.contains("UNDECLARED2"));
+    assertTrue(warnings.contains("UNDECLARED3"));
   }
 
 }

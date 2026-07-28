@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.UncheckedIOException;
+import java.io.Writer;
 import java.lang.invoke.MethodHandles;
 import java.nio.charset.CharsetEncoder;
 import java.nio.charset.CodingErrorAction;
@@ -77,11 +78,20 @@ public class VcfWriter implements Closeable {
 
   private boolean m_closed;
   private @Nullable Exception m_invalidatingCause;
+  private final @Nullable Writer m_warningsWriter;
 
-  private VcfWriter(@Nullable Path file, PrintWriter writer, boolean validateBeforeWrite) {
+  private static final VcfWarnings.Deactivator NO_OP_DEACTIVATOR = () -> {};
+
+  private VcfWriter(@Nullable Path file, PrintWriter writer, boolean validateBeforeWrite,
+      @Nullable Writer warningsWriter) {
     m_file = file;
     m_writer = writer;
     m_validateBeforeWrite = validateBeforeWrite;
+    m_warningsWriter = warningsWriter;
+  }
+
+  private VcfWarnings.Deactivator activateWarningsIfConfigured() {
+    return m_warningsWriter != null ? VcfWarnings.activate(m_warningsWriter) : NO_OP_DEACTIVATOR;
   }
 
   /**
@@ -112,39 +122,40 @@ public class VcfWriter implements Closeable {
    */
   public void writeHeader(VcfMetadata metadata) {
     checkValid();
-
-    if (m_validateBeforeWrite) {
-      if (m_headerWritten) {
-        throw new VcfFormatException("writeHeader() was already called; a VCF file must have exactly one header");
+    try (VcfWarnings.Deactivator ignored = activateWarningsIfConfigured()) {
+      if (m_validateBeforeWrite) {
+        if (m_headerWritten) {
+          throw new VcfFormatException("writeHeader() was already called; a VCF file must have exactly one header");
+        }
+        validateMetadata(metadata);
       }
-      validateMetadata(metadata);
-    }
 
-    List<String> lines = buildHeaderLines(metadata);
-    // check every line for a line terminator BEFORE printing any of them, so this rejection is atomic relative to
-    // the underlying writer -- otherwise a rejection on a later line would leave earlier lines (including
-    // ##fileformat, always line 1) already written, and a caller's documented-safe retry of writeHeader() would
-    // then duplicate them.
-    for (String line : lines) {
-      if (line.contains("\n") || line.contains("\r")) {
-        throw new VcfFormatException("Header line contains a line terminator: [[[" + line + "]]]");
+      List<String> lines = buildHeaderLines(metadata);
+      // check every line for a line terminator BEFORE printing any of them, so this rejection is atomic relative to
+      // the underlying writer -- otherwise a rejection on a later line would leave earlier lines (including
+      // ##fileformat, always line 1) already written, and a caller's documented-safe retry of writeHeader() would
+      // then duplicate them.
+      for (String line : lines) {
+        if (line.contains("\n") || line.contains("\r")) {
+          throw new VcfFormatException("Header line contains a line terminator: [[[" + line + "]]]");
+        }
       }
-    }
-    for (String line : lines) {
-      printLine(line);
-    }
+      for (String line : lines) {
+        printLine(line);
+      }
 
-    // header-state fields are set only after checkForWriteError() confirms the write actually succeeded, not
-    // before it -- setting them earlier and relying on "it's moot, checkValid() blocks everything after a
-    // failure anyway" is exactly the reasoning that let a premature-flag bug slip into a sibling class; this
-    // way each field's own timing is correct on its own terms
-    checkForWriteError();
-    m_headerWritten = true;
-    m_headerMetadata = metadata;
-    if (m_validateBeforeWrite) {
-      m_headerText = String.join("\n", lines);
+      // header-state fields are set only after checkForWriteError() confirms the write actually succeeded, not
+      // before it -- setting them earlier and relying on "it's moot, checkValid() blocks everything after a
+      // failure anyway" is exactly the reasoning that let a premature-flag bug slip into a sibling class; this
+      // way each field's own timing is correct on its own terms
+      checkForWriteError();
+      m_headerWritten = true;
+      m_headerMetadata = metadata;
+      if (m_validateBeforeWrite) {
+        m_headerText = String.join("\n", lines);
+      }
+      sf_logger.debug("Wrote {} lines of header{}", m_lineNumber, (m_file == null ? "" : " to " + m_file));
     }
-    sf_logger.debug("Wrote {} lines of header{}", m_lineNumber, (m_file == null ? "" : " to " + m_file));
   }
 
   /**
@@ -209,86 +220,87 @@ public class VcfWriter implements Closeable {
   public void writeLine(VcfMetadata metadata, VcfPosition position,
       List<VcfSample> samples) {
     checkValid();
+    try (VcfWarnings.Deactivator ignored = activateWarningsIfConfigured()) {
+      if (m_validateBeforeWrite) {
+        if (!m_headerWritten) {
+          throw new VcfFormatException("writeLine() was called before writeHeader(); every VCF file must have a " +
+              "header before any data line");
+        }
+        if (metadata != m_headerMetadata) {
+          throw new VcfFormatException("writeLine() was given different metadata than writeHeader() used; the " +
+              "emitted header and this record would be inconsistent");
+        }
+        // metadata == m_headerMetadata only proves it's the same object, not that it's unchanged: a caller can
+        // mutate it in place (e.g. addInfo()/removeInfo()) after writeHeader() already flushed the header text, so
+        // the header actually on disk/in the stream can still disagree with what this same object would now
+        // produce. Compare the header text metadata would produce right now against the snapshot taken when it was
+        // actually written.
+        if (!String.join("\n", buildHeaderLines(metadata)).equals(m_headerText)) {
+          throw new VcfFormatException("The metadata object given to writeLine() has changed since writeHeader() " +
+              "was called (e.g. via addInfo()/removeInfo()); the already-emitted header no longer matches what this " +
+              "metadata would produce");
+        }
+        position.validate();
+        validateMetadata(metadata);
+        validateInfo(metadata, position);
+        validateSamples(metadata, position, samples);
+      }
 
-    if (m_validateBeforeWrite) {
-      if (!m_headerWritten) {
-        throw new VcfFormatException("writeLine() was called before writeHeader(); every VCF file must have a " +
-            "header before any data line");
-      }
-      if (metadata != m_headerMetadata) {
-        throw new VcfFormatException("writeLine() was given different metadata than writeHeader() used; the " +
-            "emitted header and this record would be inconsistent");
-      }
-      // metadata == m_headerMetadata only proves it's the same object, not that it's unchanged: a caller can
-      // mutate it in place (e.g. addInfo()/removeInfo()) after writeHeader() already flushed the header text, so
-      // the header actually on disk/in the stream can still disagree with what this same object would now
-      // produce. Compare the header text metadata would produce right now against the snapshot taken when it was
-      // actually written.
-      if (!String.join("\n", buildHeaderLines(metadata)).equals(m_headerText)) {
-        throw new VcfFormatException("The metadata object given to writeLine() has changed since writeHeader() " +
-            "was called (e.g. via addInfo()/removeInfo()); the already-emitted header no longer matches what this " +
-            "metadata would produce");
-      }
-      position.validate();
-      validateMetadata(metadata);
-      validateInfo(metadata, position);
-      validateSamples(metadata, position, samples);
-    }
-
-    int numSamples = metadata.getNumSamples();
-    if (numSamples == 0) {
-      if (!samples.isEmpty() || !position.getFormat().isEmpty()) {
+      int numSamples = metadata.getNumSamples();
+      if (numSamples == 0) {
+        if (!samples.isEmpty() || !position.getFormat().isEmpty()) {
+          throw new VcfFormatException("Position " + position.getChromosome() + ":" + position.getPosition() +
+              " has FORMAT or sample data, but the header declares no samples");
+        }
+      } else if (samples.size() != numSamples) {
         throw new VcfFormatException("Position " + position.getChromosome() + ":" + position.getPosition() +
-            " has FORMAT or sample data, but the header declares no samples");
+            " has " + samples.size() + " sample(s), but the header declares " + numSamples);
       }
-    } else if (samples.size() != numSamples) {
-      throw new VcfFormatException("Position " + position.getChromosome() + ":" + position.getPosition() +
-          " has " + samples.size() + " sample(s), but the header declares " + numSamples);
+      if (position.getRef().isEmpty()) {
+        // REF has no missing-value sentinel in the spec ("." means something else entirely for other columns); writing
+        // "." here would not actually be valid VCF, just a placeholder that avoids crashing on a mutated position
+        throw new VcfFormatException("Position " + position.getChromosome() + ":" + position.getPosition() +
+            " has an empty REF, which the VCF spec does not allow (REF has no missing-value sentinel)");
+      }
+
+      StringBuilder sb = new StringBuilder();
+
+      sb.append(position.getChromosome()).append("\t");
+      sb.append(position.getPosition()).append("\t");
+      addListOrElse(position.getIds(), ";", ".", sb);
+      sb.append(position.getRef()).append("\t");
+      addListOrElse(position.getAltBases(), ",", ".", sb);
+      addStringOrElse(position.getQuality(), ".", sb);
+      if (position.getFilterStatus() == VcfPosition.FilterStatus.NONE) {
+        sb.append(".\t"); // filters not applied: write the missing value rather than PASS
+      } else {
+        addListOrElse(position.getFilters(), ";", "PASS", sb);
+      }
+      addInfoOrDot(metadata, position, sb);
+
+      // "PASS" is VCF's reserved "all filters passed" keyword (VCFv4.2.tex line 185: "PASS if this position has
+      // passed all filters"), never expected to have its own ##FILTER=<ID=PASS,...> declaration. This filter must
+      // exclude it explicitly: since VcfPosition.checkFilters() now warns instead of throwing when FILTER combines
+      // PASS with another code, position.getFilters() can legitimately contain a literal "PASS" entry alongside
+      // other codes -- a case this check could never previously see, because that combination used to be rejected
+      // during parsing before reaching the writer.
+      position.getFilters().stream()
+          .filter(key -> !key.equals("PASS") && !metadata.getFilters().containsKey(key)).forEach(key ->
+          VcfWarnings.warn("Position {}:{} has FILTER {}, but there is no FILTER metadata with that name (on line {})",
+              position.getChromosome(), position.getPosition(), key, m_lineNumber));
+
+      // these columns can be skipped completely
+      addFormatConditionally(position, numSamples, sb);
+      int sampleIndex = 0;
+      for (VcfSample sample : samples) {
+        addSampleConditionally(metadata, sampleIndex, position, sample, sb);
+        sampleIndex++;
+      }
+
+      String line = sb.toString();
+      if (line.endsWith("\t")) line = line.substring(0, line.length() - 1);
+      printLine(line);
     }
-    if (position.getRef().isEmpty()) {
-      // REF has no missing-value sentinel in the spec ("." means something else entirely for other columns); writing
-      // "." here would not actually be valid VCF, just a placeholder that avoids crashing on a mutated position
-      throw new VcfFormatException("Position " + position.getChromosome() + ":" + position.getPosition() +
-          " has an empty REF, which the VCF spec does not allow (REF has no missing-value sentinel)");
-    }
-
-    StringBuilder sb = new StringBuilder();
-
-    sb.append(position.getChromosome()).append("\t");
-    sb.append(position.getPosition()).append("\t");
-    addListOrElse(position.getIds(), ";", ".", sb);
-    sb.append(position.getRef()).append("\t");
-    addListOrElse(position.getAltBases(), ",", ".", sb);
-    addStringOrElse(position.getQuality(), ".", sb);
-    if (position.getFilterStatus() == VcfPosition.FilterStatus.NONE) {
-      sb.append(".\t"); // filters not applied: write the missing value rather than PASS
-    } else {
-      addListOrElse(position.getFilters(), ";", "PASS", sb);
-    }
-    addInfoOrDot(metadata, position, sb);
-
-    // "PASS" is VCF's reserved "all filters passed" keyword (VCFv4.2.tex line 185: "PASS if this position has
-    // passed all filters"), never expected to have its own ##FILTER=<ID=PASS,...> declaration. This filter must
-    // exclude it explicitly: since VcfPosition.checkFilters() now warns instead of throwing when FILTER combines
-    // PASS with another code, position.getFilters() can legitimately contain a literal "PASS" entry alongside
-    // other codes -- a case this check could never previously see, because that combination used to be rejected
-    // during parsing before reaching the writer.
-    position.getFilters().stream()
-        .filter(key -> !key.equals("PASS") && !metadata.getFilters().containsKey(key)).forEach(key ->
-        sf_logger.warn("Position {}:{} has FILTER {}, but there is no FILTER metadata with that name (on line {})",
-            position.getChromosome(), position.getPosition(), key, m_lineNumber));
-
-    // these columns can be skipped completely
-    addFormatConditionally(position, numSamples, sb);
-    int sampleIndex = 0;
-    for (VcfSample sample : samples) {
-      addSampleConditionally(metadata, sampleIndex, position, sample, sb);
-      sampleIndex++;
-    }
-
-    String line = sb.toString();
-    if (line.endsWith("\t")) line = line.substring(0, line.length() - 1);
-    printLine(line);
   }
 
   /**
@@ -318,6 +330,7 @@ public class VcfWriter implements Closeable {
       m_writer.close();
     } finally {
       m_closed = true;
+      closeWarningsWriterQuietly();
     }
     if (hadError || m_writer.checkError()) {
       throw recordWriteError();
@@ -369,7 +382,7 @@ public class VcfWriter implements Closeable {
         // writeLine() call in validateBeforeWrite() mode, so this warning repeats for every data record written
         // while the duplicate remains -- the same repeat-per-record behavior already accepted for the
         // empty-metadata-value warning above, not a new tradeoff introduced here.
-        sf_logger.warn("Duplicate ID \"{}\" for PEDIGREE metadata", id);
+        VcfWarnings.warn("Duplicate ID \"{}\" for PEDIGREE metadata", id);
       }
     }
     Set<String> sampleNames = new HashSet<>();
@@ -404,7 +417,7 @@ public class VcfWriter implements Closeable {
           // value at insertion time), this only warns -- silently removing content the caller is already holding
           // a reference to, right before serializing it, is a bigger behavioral surprise than dropping it before
           // the caller ever sees the parsed object.
-          sf_logger.warn("Metadata property \"{}\" has an empty value: {}", key, value);
+          VcfWarnings.warn("Metadata property \"{}\" has an empty value: {}", key, value);
         }
       }
     }
@@ -507,7 +520,7 @@ public class VcfWriter implements Closeable {
       List<String> values = position.getInfo(key);
       InfoMetadata info = metadata.getInfo().get(key);
       if (info == null) {
-        sf_logger.warn("Position {}:{} contains INFO {}, but there is no INFO metadata with that name",
+        VcfWarnings.warn("Position {}:{} contains INFO {}, but there is no INFO metadata with that name",
             position.getChromosome(), position.getPosition(), key);
       } else {
         validateInfoValue(info, values, key, position.getAltBases().size());
@@ -531,9 +544,9 @@ public class VcfWriter implements Closeable {
         String value = sample.getProperty(key);
         FormatMetadata format = metadata.getFormats().get(key);
         if (value == null) {
-          sf_logger.warn("Sample #{} is missing property {}", sampleIndex, key);
+          VcfWarnings.warn("Sample #{} is missing property {}", sampleIndex, key);
         } else if (format == null) {
-          sf_logger.warn("Sample #{} contains FORMAT {}, but there is no FORMAT metadata with that name", sampleIndex, key);
+          VcfWarnings.warn("Sample #{} contains FORMAT {}, but there is no FORMAT metadata with that name", sampleIndex, key);
         } else {
           validateFormatValue(format, value, key, sampleIndex, position.getAltBases().size(), ploidy);
         }
@@ -545,7 +558,7 @@ public class VcfWriter implements Closeable {
     InfoType type = info.getType();
     if (type == InfoType.Flag) {
       if (values.size() != 1 || !values.get(0).isEmpty()) {
-        sf_logger.warn("INFO {} has Type=Flag but has a value", key);
+        VcfWarnings.warn("INFO {} has Type=Flag but has a value", key);
       }
       return;
     }
@@ -557,7 +570,7 @@ public class VcfWriter implements Closeable {
       return;
     }
     if (values.stream().anyMatch(String::isEmpty)) {
-      sf_logger.warn("INFO {} contains an empty value", key);
+      VcfWarnings.warn("INFO {} contains an empty value", key);
     }
     String number = info.getNumber();
     // unlike a FORMAT value, an INFO value isn't tied to any one sample, so there's no single ploidy to compute
@@ -572,7 +585,7 @@ public class VcfWriter implements Closeable {
       try {
         VcfUtils.convertProperty(type, value);
       } catch (VcfFormatException e) {
-        sf_logger.warn("INFO {} value {} is not of type {}", key, value, type);
+        VcfWarnings.warn("INFO {} value {} is not of type {}", key, value, type);
       }
     }
   }
@@ -592,7 +605,7 @@ public class VcfWriter implements Closeable {
     String[] values = key.equals("GLE") ? new String[] { value } : value.split(",", -1);
     for (String element : values) {
       if (element.isEmpty()) {
-        sf_logger.warn("FORMAT {} for sample #{} contains an empty value", key, sampleIndex);
+        VcfWarnings.warn("FORMAT {} for sample #{} contains an empty value", key, sampleIndex);
       }
     }
     String number = format.getNumber();
@@ -606,7 +619,7 @@ public class VcfWriter implements Closeable {
       try {
         VcfUtils.convertProperty(type, element);
       } catch (VcfFormatException e) {
-        sf_logger.warn("FORMAT {} for sample #{} value {} is not of type {}", key, sampleIndex, element, type);
+        VcfWarnings.warn("FORMAT {} for sample #{} value {} is not of type {}", key, sampleIndex, element, type);
       }
     }
   }
@@ -615,7 +628,7 @@ public class VcfWriter implements Closeable {
       @Nullable Integer ploidy) {
     Long expected = getExpectedCardinality(number, numAltAlleles, ploidy);
     if (expected != null && expected != actual) {
-      sf_logger.warn("{} has {} value(s), but Number={} requires {}", field, actual, number, expected);
+      VcfWarnings.warn("{} has {} value(s), but Number={} requires {}", field, actual, number, expected);
     }
   }
 
@@ -637,7 +650,7 @@ public class VcfWriter implements Closeable {
       }
       Long combinations = combinationsWithRepetition(numAltAlleles + 1, ploidy);
       if (combinations == null) {
-        sf_logger.warn("Number=G cardinality for {} allele(s) and ploidy {} is too large to validate", numAltAlleles + 1,
+        VcfWarnings.warn("Number=G cardinality for {} allele(s) and ploidy {} is too large to validate", numAltAlleles + 1,
             ploidy);
       }
       return combinations;
@@ -645,7 +658,7 @@ public class VcfWriter implements Closeable {
     try {
       return Long.parseLong(number);
     } catch (NumberFormatException e) {
-      sf_logger.warn("Number={} is too large to validate cardinality", number);
+      VcfWarnings.warn("Number={} is too large to validate cardinality", number);
       return null;
     }
   }
@@ -693,7 +706,7 @@ public class VcfWriter implements Closeable {
       }
     }
     if (!valid) {
-      sf_logger.warn("Sample #{} has invalid GT {}", sampleIndex, gt);
+      VcfWarnings.warn("Sample #{} has invalid GT {}", sampleIndex, gt);
     }
     return Math.max(1, alleles.length);
   }
@@ -708,7 +721,7 @@ public class VcfWriter implements Closeable {
       // written as "." regardless of any properties a caller may have set on this VcfSample, since there is no
       // FORMAT key left for them to correspond to.
       if (!sample.getPropertyKeys().isEmpty()) {
-        sf_logger.warn("Sample #{} has propert(y/ies) set, but FORMAT is empty ('.'); they will not be written " +
+        VcfWarnings.warn("Sample #{} has propert(y/ies) set, but FORMAT is empty ('.'); they will not be written " +
             "(on line {})", sampleIndex, m_lineNumber);
       }
       sb.append(".\t");
@@ -719,7 +732,7 @@ public class VcfWriter implements Closeable {
       String key = formatKeys.get(i);
 
       if (!m_validateBeforeWrite && !metadata.getFormats().containsKey(key)) {
-        sf_logger.warn("Sample #{} for {}:{} contains FORMAT {}, but there is no FORMAT metadata with that name " +
+        VcfWarnings.warn("Sample #{} for {}:{} contains FORMAT {}, but there is no FORMAT metadata with that name " +
                 "(on line {})",
             sampleIndex, position.getChromosome(), position.getPosition(), key, m_lineNumber);
       }
@@ -727,7 +740,7 @@ public class VcfWriter implements Closeable {
       String value = sample.getProperty(key);
       if (value == null) {
         if (!m_validateBeforeWrite) {
-          sf_logger.warn("Sample #{} is missing property {}" +
+          VcfWarnings.warn("Sample #{} is missing property {}" +
               " (on line {})", sampleIndex, key, m_lineNumber);
         }
         value = ".";
@@ -743,7 +756,7 @@ public class VcfWriter implements Closeable {
           try {
             VcfUtils.convertProperty(format.getType(), value);
           } catch (VcfFormatException e) {
-            sf_logger.warn("Property {} for sample #{} is not of type {}" +
+            VcfWarnings.warn("Property {} for sample #{} is not of type {}" +
                 " (on line {})", key, sampleIndex, format.getType(), m_lineNumber);
           }
         }
@@ -758,7 +771,7 @@ public class VcfWriter implements Closeable {
     // now make sure the sample doesn't contain extra keys
     if (!m_validateBeforeWrite) {
       sample.getPropertyKeys().stream().filter(key -> !position.getFormat().contains(key)).forEach(key -> {
-        sf_logger.warn("Sample #{} contains extra property {} " +
+        VcfWarnings.warn("Sample #{} contains extra property {} " +
             "(on line {})", sampleIndex, key, m_lineNumber);
       });
     }
@@ -779,7 +792,7 @@ public class VcfWriter implements Closeable {
       assert values != null;
 
       if (!m_validateBeforeWrite && !metadata.getInfo().containsKey(key)) {
-        sf_logger.warn("Position {}:{} contains INFO {}, but there is no INFO metadata with that name (on line {})",
+        VcfWarnings.warn("Position {}:{} contains INFO {}, but there is no INFO metadata with that name (on line {})",
             position.getChromosome(), position.getPosition(), key, m_lineNumber);
       } else if (!m_validateBeforeWrite) {
         InfoMetadata info = metadata.getInfo().get(key);
@@ -794,7 +807,7 @@ public class VcfWriter implements Closeable {
             try {
               VcfUtils.convertProperty(info.getType(), value); // just test
             } catch (VcfFormatException e) {
-              sf_logger.warn("Property {} is not of type {} (on line {})", key, info.getType(), m_lineNumber);
+              VcfWarnings.warn("Property {} is not of type {} (on line {})", key, info.getType(), m_lineNumber);
             }
           }
         }
@@ -869,6 +882,8 @@ public class VcfWriter implements Closeable {
     private @Nullable Path m_file;
     private @Nullable PrintWriter m_writer;
     private boolean m_validateBeforeWrite;
+    private boolean m_warningsToFile;
+    private @Nullable Path m_warningsFile;
 
     /**
      * Files are written as UTF-8, matching {@link org.pharmgkb.parser.vcf.VcfParser.Builder#fromFile}.
@@ -893,6 +908,27 @@ public class VcfWriter implements Closeable {
       return this;
     }
 
+    /**
+     * Redirects VCF-content warnings from writing to a file named after the target VCF file's own full name (kept,
+     * including its extension) plus {@code .warn.log}, in the same directory. Requires the writer to have been
+     * built via {@link #toFile(Path)}, not {@link #toWriter(PrintWriter)} -- there is no path to derive a default
+     * name from otherwise; use {@link #warningsToFile(Path)} instead in that case.
+     */
+    public Builder warningsToFile() {
+      m_warningsToFile = true;
+      m_warningsFile = null;
+      return this;
+    }
+
+    /**
+     * Redirects VCF-content warnings from writing to {@code customFile} instead of the default derived name.
+     */
+    public Builder warningsToFile(Path customFile) {
+      m_warningsToFile = true;
+      m_warningsFile = customFile;
+      return this;
+    }
+
     public VcfWriter build() throws IOException {
       if (m_file != null) {
         // a plain Charset-based OutputStreamWriter silently replaces malformed input (e.g. an unpaired surrogate)
@@ -913,7 +949,20 @@ public class VcfWriter implements Closeable {
       if (m_writer == null) {
         throw new IllegalStateException("Must specify either file or writer");
       }
-      return new VcfWriter(m_file, m_writer, m_validateBeforeWrite);
+      Writer warningsWriter = null;
+      if (m_warningsToFile) {
+        Path resolvedWarningsFile;
+        if (m_warningsFile != null) {
+          resolvedWarningsFile = m_warningsFile;
+        } else if (m_file != null) {
+          resolvedWarningsFile = m_file.resolveSibling(m_file.getFileName().toString() + ".warn.log");
+        } else {
+          throw new IllegalStateException("warningsToFile() requires either an explicit file or a target file " +
+              "obtained via toFile(Path) -- toWriter(PrintWriter) provides no path to derive a default name from");
+        }
+        warningsWriter = Files.newBufferedWriter(resolvedWarningsFile);
+      }
+      return new VcfWriter(m_file, m_writer, m_validateBeforeWrite, warningsWriter);
     }
 
   }
@@ -939,8 +988,21 @@ public class VcfWriter implements Closeable {
         m_writer.close();
       } finally {
         m_closed = true;
+        closeWarningsWriterQuietly();
       }
       throw e;
+    }
+  }
+
+  private void closeWarningsWriterQuietly() {
+    if (m_warningsWriter != null) {
+      try {
+        m_warningsWriter.close();
+      } catch (IOException e) {
+        // I/O housekeeping, not a VCF-content warning -- stays on sf_logger directly, matching VcfParser.close()'s
+        // identical treatment of its own suppressed close-time IOException
+        sf_logger.info("Error closing warnings file", e);
+      }
     }
   }
 
