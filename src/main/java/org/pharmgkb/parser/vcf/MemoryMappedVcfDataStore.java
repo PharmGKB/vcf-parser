@@ -1,6 +1,5 @@
 package org.pharmgkb.parser.vcf;
 
-import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -14,8 +13,6 @@ import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 
 /**
@@ -23,8 +20,6 @@ import org.slf4j.LoggerFactory;
  * @author Douglas Myers-Turnbull
  */
 public class MemoryMappedVcfDataStore {
-
-  private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private @Nullable VcfMetadata m_metadata;
   private final Map<String, VcfPosition> m_idToPosition = new HashMap<>();
@@ -212,7 +207,7 @@ public class MemoryMappedVcfDataStore {
     boolean allMissing = true;
     for (String base : bases) {
       if (base.isEmpty()) {
-        sf_logger.warn("GT \"{}\" contains an empty allele (VCF does not allow zero-length fields); treating it " +
+        VcfWarnings.warn("GT \"{}\" contains an empty allele (VCF does not allow zero-length fields); treating it " +
             "as the missing value '.'", genotype);
       }
       if (base.isEmpty() || base.equals(".")) {
