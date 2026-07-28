@@ -32,7 +32,7 @@ import org.slf4j.helpers.MessageFormatter;
 public final class VcfWarnings {
 
   private static final Logger sf_logger = LoggerFactory.getLogger(VcfWarnings.class);
-  private static final ThreadLocal<Deque<Writer>> sf_activeWriters = ThreadLocal.withInitial(ArrayDeque::new);
+  private static final ThreadLocal<Deque<Writer>> sf_activeWriters = new ThreadLocal<>();
 
   private VcfWarnings() {}
 
@@ -56,6 +56,10 @@ public final class VcfWarnings {
    */
   public static Deactivator activate(Writer sink) {
     Deque<Writer> stack = sf_activeWriters.get();
+    if (stack == null) {
+      stack = new ArrayDeque<>();
+      sf_activeWriters.set(stack);
+    }
     stack.push(sink);
     return () -> sf_activeWriters.get().pop();
   }
@@ -79,7 +83,8 @@ public final class VcfWarnings {
    * warnings sink if one exists, or forwards to the shared SLF4J logger otherwise.
    */
   public static void warn(String message, Object... args) {
-    Writer active = sf_activeWriters.get().peek();
+    Deque<Writer> stack = sf_activeWriters.get();
+    Writer active = stack == null ? null : stack.peek();
     if (active == null) {
       sf_logger.warn(message, args);
       return;

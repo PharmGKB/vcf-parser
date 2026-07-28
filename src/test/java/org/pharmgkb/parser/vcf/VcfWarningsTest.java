@@ -3,7 +3,6 @@ package org.pharmgkb.parser.vcf;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.StringWriter;
-import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
@@ -34,7 +33,7 @@ public class VcfWarningsTest {
   }
 
   @Test
-  public void testActivateRedirectsToWriterInsteadOfSlf4j() throws IOException {
+  public void testActivateRedirectsToWriterInsteadOfSlf4j() {
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
@@ -54,7 +53,7 @@ public class VcfWarningsTest {
   }
 
   @Test
-  public void testFileLineFormatIsMessageOnly() throws IOException {
+  public void testFileLineFormatIsMessageOnly() {
     StringWriter sink = new StringWriter();
     try (VcfWarnings.Deactivator ignored = VcfWarnings.activate(sink)) {
       VcfWarnings.warn("exact message with no decoration");
@@ -63,7 +62,7 @@ public class VcfWarningsTest {
   }
 
   @Test
-  public void testDeactivateRestoresPriorSinkNotSilence() throws IOException {
+  public void testDeactivateRestoresPriorSinkNotSilence() {
     StringWriter outer = new StringWriter();
     StringWriter inner = new StringWriter();
     try (VcfWarnings.Deactivator outerHandle = VcfWarnings.activate(outer)) {
