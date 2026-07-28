@@ -48,6 +48,12 @@ public final class VcfWarnings {
    * returned for, so closing them out of order silently deactivates the wrong sink. {@link VcfParser}/
    * {@link VcfWriter}'s own internal usage is always correctly nested via try-with-resources; this only matters
    * for a caller using {@link #activate(Writer)} directly.
+   * <p>
+   * Two adjacent misuse modes, both reachable only through direct {@link #activate(Writer)} use (never through
+   * {@link VcfParser}/{@link VcfWriter}'s own internal, correctly-nested usage): closing the same handle twice
+   * throws {@link java.util.NoSuchElementException} (popping an already-empty stack), and closing from a thread
+   * other than the one that called {@link #activate(Writer)} throws {@link NullPointerException} (the
+   * calling thread's stack, being thread-local, does not exist there).
    */
   @FunctionalInterface
   public interface Deactivator extends AutoCloseable {

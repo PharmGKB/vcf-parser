@@ -618,7 +618,12 @@ public class VcfParser implements Closeable {
      * {@link VcfWriter} also writes to -- including via a matching default-derived name, e.g. an in-place
      * parse-then-write to the same file -- whichever side opens its warnings file second silently truncates the
      * first side's content. Both open via {@code Files.newBufferedWriter}, which defaults to overwrite, not
-     * append.
+     * append. This "truncates" description is exact only when the two sides' warnings-file lifetimes are
+     * sequential (one fully written and closed before the other opens the same path). If the two lifetimes
+     * instead overlap -- e.g. a {@link VcfWriter} built before {@link VcfParser#parse()} runs, its own warnings
+     * file still open -- each side holds an independent file position from its own {@code open()} call, so the
+     * result is a byte-level overwrite/interleave (potentially leaving a zero-filled gap) rather than a clean,
+     * complete truncation of one side's content.
      */
     public Builder warningsToFile(Path customFile) {
       Preconditions.checkNotNull(customFile);
