@@ -109,7 +109,11 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
     FAIL,
 
     /**
-     * Always keep the record that was previously read. That is, don't process duplicate records.
+     * Keeps the ID-based lookup ({@link MemoryMappedVcfDataStore#getSampleForId} and
+     * {@link MemoryMappedVcfDataStore#getGenotypeForId}) pointing at the record that was previously read for a
+     * given ID. The record itself is still added to the locus-based lookup
+     * ({@link MemoryMappedVcfDataStore#getSampleAtLocus} and {@link MemoryMappedVcfDataStore#getGenotypeAtLocus})
+     * like any other record; only the specific colliding ID's entry in the ID-based maps is left unchanged.
      */
     KEEP_FIRST,
 
