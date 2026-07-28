@@ -55,16 +55,19 @@ public class VcfParser implements Closeable {
   private final BufferedReader m_reader;
   private @Nullable VcfMetadata m_vcfMetadata;
   private final VcfLineParser m_vcfLineParser;
+  private final @Nullable Path m_warningsFile;
 
   private int m_lineNumber;
   private boolean m_alreadyFinished;
 
 
 
-  private VcfParser(BufferedReader reader, boolean rsidsOnly, VcfLineParser lineParser) {
+  private VcfParser(BufferedReader reader, boolean rsidsOnly, VcfLineParser lineParser,
+      @Nullable Path warningsFile) {
     m_reader = reader;
     m_rsidsOnly = rsidsOnly;
     m_vcfLineParser = lineParser;
+    m_warningsFile = warningsFile;
   }
 
 
@@ -124,11 +127,11 @@ public class VcfParser implements Closeable {
       for (int i = 0; i < m_vcfMetadata.getNumSamples(); i++) {
         String sampleName = m_vcfMetadata.getSampleName(i);
         if (!m_vcfMetadata.getSamples().containsKey(sampleName)) {
-          sf_logger.warn("Sample {} is missing in the metadata", sampleName);
+          VcfWarnings.warn("Sample {} is missing in the metadata", sampleName);
         }
       }
     } else {
-      sf_logger.warn("There are {} samples in the header but {} in the metadata", m_vcfMetadata.getNumSamples(),
+      VcfWarnings.warn("There are {} samples in the header but {} in the metadata", m_vcfMetadata.getNumSamples(),
           m_vcfMetadata.getSamples().size());
     }
 
@@ -153,6 +156,16 @@ public class VcfParser implements Closeable {
    * This is the preferred way to read a VCF file.
    */
   public void parse() throws IOException {
+    if (m_warningsFile == null) {
+      doParse();
+      return;
+    }
+    try (Closeable ignored = VcfWarnings.openFile(m_warningsFile)) {
+      doParse();
+    }
+  }
+
+  private void doParse() throws IOException {
     boolean hasNext = true;
     while (hasNext) {
       hasNext = parseNextLine();
@@ -272,7 +285,7 @@ public class VcfParser implements Closeable {
         List<String> values;
         if (noFormatFields) {
           if (!data.get(x).equals(".")) {
-            sf_logger.warn("Sample column \"{}\" has content, but FORMAT is '.' (no format fields declared); " +
+            VcfWarnings.warn("Sample column \"{}\" has content, but FORMAT is '.' (no format fields declared); " +
                 "ignoring it, matching bcftools 1.23.1 behavior", data.get(x));
           }
           values = new ArrayList<>();
@@ -519,6 +532,8 @@ public class VcfParser implements Closeable {
     private Path m_vcfFile;
     private boolean m_rsidsOnly;
     private VcfLineParser m_vcfLineParser;
+    private boolean m_warningsToFile;
+    private @Nullable Path m_warningsFile;
 
 
     /**
@@ -571,6 +586,29 @@ public class VcfParser implements Closeable {
       return this;
     }
 
+    /**
+     * Redirects VCF-content warnings from parsing to a file named after the source VCF file's own full name (kept,
+     * including its extension) plus {@code .warn.log}, in the same directory -- e.g. parsing {@code sample.vcf}
+     * writes warnings to {@code sample.vcf.warn.log} alongside it. Requires the parser to have been built via
+     * {@link #fromFile(Path)}, not {@link #fromReader(BufferedReader)} -- there is no path to derive a default
+     * name from otherwise; use {@link #warningsToFile(Path)} instead in that case.
+     */
+    public Builder warningsToFile() {
+      m_warningsToFile = true;
+      m_warningsFile = null;
+      return this;
+    }
+
+    /**
+     * Redirects VCF-content warnings from parsing to {@code customFile} instead of the default derived name.
+     */
+    public Builder warningsToFile(Path customFile) {
+      Preconditions.checkNotNull(customFile);
+      m_warningsToFile = true;
+      m_warningsFile = customFile;
+      return this;
+    }
+
 
     public VcfParser build() throws IOException {
       if (m_vcfLineParser == null) {
@@ -582,7 +620,19 @@ public class VcfParser implements Closeable {
       if (m_reader == null) {
         throw new IllegalStateException("Must specify either file or reader to parse");
       }
-      return new VcfParser(m_reader, m_rsidsOnly, m_vcfLineParser);
+      Path resolvedWarningsFile = null;
+      if (m_warningsToFile) {
+        if (m_warningsFile != null) {
+          resolvedWarningsFile = m_warningsFile;
+        } else if (m_vcfFile != null) {
+          resolvedWarningsFile = m_vcfFile.resolveSibling(m_vcfFile.getFileName().toString() + ".warn.log");
+        } else {
+          throw new IllegalStateException("warningsToFile() requires either an explicit file or a source file " +
+              "obtained via fromFile(Path) -- fromReader(BufferedReader) provides no path to derive a default " +
+              "name from");
+        }
+      }
+      return new VcfParser(m_reader, m_rsidsOnly, m_vcfLineParser, resolvedWarningsFile);
     }
   }
 }

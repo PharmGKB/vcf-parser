@@ -691,4 +691,88 @@ public class VcfParserTest {
       appender.stop();
     }
   }
+
+  @Test
+  public void testWarningsToFileDefaultNameDerivedFromSourcePath(@org.junit.jupiter.api.io.TempDir Path tempDir)
+      throws IOException {
+    // a metadata line with no ID triggers a warning during parseMetadata() -- see VcfMetadata.addInfo
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##INFO=<Number=1,Type=String,Description=\"d\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    Path vcfFile = tempDir.resolve("sample.vcf");
+    java.nio.file.Files.writeString(vcfFile, vcf);
+
+    VcfParser parser = new VcfParser.Builder()
+        .fromFile(vcfFile)
+        .warningsToFile()
+        .parseWith(new MemoryMappedVcfLineParser.Builder().build())
+        .build();
+    parser.parse();
+    parser.close();
+
+    Path expectedWarningsFile = tempDir.resolve("sample.vcf.warn.log");
+    assertTrue(java.nio.file.Files.exists(expectedWarningsFile));
+    assertTrue(java.nio.file.Files.readString(expectedWarningsFile).contains("no ID"));
+  }
+
+  @Test
+  public void testWarningsToFileCustomPath(@org.junit.jupiter.api.io.TempDir Path tempDir) throws IOException {
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##INFO=<Number=1,Type=String,Description=\"d\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    Path vcfFile = tempDir.resolve("sample.vcf");
+    java.nio.file.Files.writeString(vcfFile, vcf);
+    Path customFile = tempDir.resolve("custom-name.log");
+
+    VcfParser parser = new VcfParser.Builder()
+        .fromFile(vcfFile)
+        .warningsToFile(customFile)
+        .parseWith(new MemoryMappedVcfLineParser.Builder().build())
+        .build();
+    parser.parse();
+    parser.close();
+
+    assertTrue(java.nio.file.Files.exists(customFile));
+    assertFalse(java.nio.file.Files.exists(tempDir.resolve("sample.vcf.warn.log")));
+  }
+
+  @Test
+  public void testWarningsToFileWithNoArgAndFromReaderThrowsIllegalState() {
+    assertThrows(IllegalStateException.class, () ->
+        new VcfParser.Builder()
+            .fromReader(new java.io.BufferedReader(new java.io.StringReader("##fileformat=VCFv4.2\n")))
+            .warningsToFile()
+            .parseWith(new MemoryMappedVcfLineParser.Builder().build())
+            .build());
+  }
+
+  @Test
+  public void testWarningsToFileSuppressesSlf4jOutput(@org.junit.jupiter.api.io.TempDir Path tempDir)
+      throws IOException {
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##INFO=<Number=1,Type=String,Description=\"d\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    Path vcfFile = tempDir.resolve("sample.vcf");
+    java.nio.file.Files.writeString(vcfFile, vcf);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      VcfParser parser = new VcfParser.Builder()
+          .fromFile(vcfFile)
+          .warningsToFile()
+          .parseWith(new MemoryMappedVcfLineParser.Builder().build())
+          .build();
+      parser.parse();
+      parser.close();
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
 }
