@@ -1,6 +1,5 @@
 package org.pharmgkb.parser.vcf.model;
 
-import java.lang.invoke.MethodHandles;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -14,8 +13,7 @@ import com.google.common.collect.ListMultimap;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.pharmgkb.parser.vcf.VcfWarnings;
 
 
 /**
@@ -35,8 +33,6 @@ import org.slf4j.LoggerFactory;
  * @author Mark Woon
  */
 public class VcfPosition {
-
-  private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private static final Joiner sf_commaJoiner = Joiner.on(",");
   // matched with find(), not matches(): a wrapping ".*\s.*" pattern would fail to detect whitespace in a string
@@ -244,7 +240,7 @@ public class VcfPosition {
         // hard rule. hts-specs' own test/vcf/{4.1,4.2,4.3}/passed/complexfile_passed_000.vcf fixture combines PASS
         // with another code (line 61: "STD_FILTER;PASS") and is expected to parse. Confirmed valid by
         // vcf_validator 0.10.2 and accepted silently by bcftools 1.23.1 (htslib 1.23.1).
-        sf_logger.warn("FILTER contains PASS along with other filters: {}", filters);
+        VcfWarnings.warn("FILTER contains PASS along with other filters: {}", filters);
       }
       if (f.equals(".") && filters.size() > 1) {
         throw new VcfFormatException("FILTER contains '.' (missing value) along with other filters!");
@@ -276,7 +272,7 @@ public class VcfPosition {
       // with this project's policy of not being stricter than bcftools on input it demonstrably tolerates (see
       // EMPTY_FIELD_HANDLING.md).
       if (value.contains("=")) {
-        sf_logger.warn("INFO value \"{}\" for key \"{}\" contains '='; VCFv4.2's grammar doesn't permit this, but " +
+        VcfWarnings.warn("INFO value \"{}\" for key \"{}\" contains '='; VCFv4.2's grammar doesn't permit this, but " +
             "bcftools 1.23.1 accepts it silently, so it is preserved as-is", value, key);
       }
     }
@@ -304,7 +300,7 @@ public class VcfPosition {
       // FORMAT keys by index, and dropping this key would misalign every sample's values with the wrong key. See
       // EMPTY_FIELD_HANDLING.md.
       if (f.isEmpty()) {
-        sf_logger.warn("FORMAT contains an empty sub-field name (VCF does not allow zero-length fields); keeping " +
+        VcfWarnings.warn("FORMAT contains an empty sub-field name (VCF does not allow zero-length fields); keeping " +
             "it as-is, but it cannot be looked up in metadata");
         continue;
       }
@@ -332,7 +328,7 @@ public class VcfPosition {
   private void normalizeFilters() {
     if (m_filter.size() == 1) {
       if (m_filter.get(0).equals("PASS")) { // a user is likely to pass "PASS" instead of an empty list or null
-        sf_logger.warn("FILTER is PASS, but should have been passed as null. Converting to null");
+        VcfWarnings.warn("FILTER is PASS, but should have been passed as null. Converting to null");
         m_filter = new ArrayList<>();
         m_filtersApplied = true;
       } else if (m_filter.get(0).equals(".")) { // "." is the missing value: filters were not applied (FilterStatus.NONE)
@@ -439,7 +435,7 @@ public class VcfPosition {
           // a non-numeric QUAL is a value-quality issue, not a structural one (the column itself is well-formed);
           // warn and recover as the missing value, consistent with how other non-structural content issues are
           // handled, rather than throwing
-          sf_logger.warn("QUAL '{}' is not a number; treating it as the missing value", raw);
+          VcfWarnings.warn("QUAL '{}' is not a number; treating it as the missing value", raw);
         }
       }
     }
@@ -516,7 +512,7 @@ public class VcfPosition {
         List<String> props = new ArrayList<>();
         for (String prop : raw.split(";", -1)) {
           if (prop.isEmpty()) {
-            sf_logger.warn("INFO contains an empty entry between ';'s (VCF does not allow zero-length fields); " +
+            VcfWarnings.warn("INFO contains an empty entry between ';'s (VCF does not allow zero-length fields); " +
                 "dropping it");
             continue;
           }
@@ -547,12 +543,12 @@ public class VcfPosition {
           int idx = prop.indexOf('=');
           String key = idx == -1 ? prop : prop.substring(0, idx);
           if (idx != -1 && key.isEmpty()) {
-            sf_logger.warn("INFO entry \"{}\" has an empty key (VCF does not allow zero-length fields); " +
+            VcfWarnings.warn("INFO entry \"{}\" has an empty key (VCF does not allow zero-length fields); " +
                 "dropping it", prop);
             continue;
           }
           if (!seenKeys.add(key)) {
-            sf_logger.warn("INFO contains duplicate key \"{}\"; keeping only the first occurrence, matching " +
+            VcfWarnings.warn("INFO contains duplicate key \"{}\"; keeping only the first occurrence, matching " +
                 "bcftools 1.23.1 behavior", key);
             continue;
           }
@@ -561,7 +557,7 @@ public class VcfPosition {
           } else {
             for (String value : prop.substring(idx + 1).split(",", -1)) {
               if (value.isEmpty()) {
-                sf_logger.warn("INFO value for key \"{}\" contains an empty entry (VCF does not allow zero-length " +
+                VcfWarnings.warn("INFO value for key \"{}\" contains an empty entry (VCF does not allow zero-length " +
                     "fields); treating it as the missing value '.'", key);
                 value = ".";
               }

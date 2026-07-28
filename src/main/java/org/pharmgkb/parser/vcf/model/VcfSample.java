@@ -1,6 +1,5 @@
 package org.pharmgkb.parser.vcf.model;
 
-import java.lang.invoke.MethodHandles;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -9,8 +8,7 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.pharmgkb.parser.vcf.VcfWarnings;
 
 
 /**
@@ -23,8 +21,6 @@ import org.slf4j.LoggerFactory;
  * @author Mark Woon
  */
 public class VcfSample {
-
-  private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   // Lean representation used on the parse path; both null once m_properties has been materialized.
   private @Nullable List<String> m_keys;
@@ -113,7 +109,7 @@ public class VcfSample {
     for (Map.Entry<String, String> entry : properties().entrySet()) {
       checkNoStructuralDelimiter(entry.getKey(), entry.getValue());
       if (entry.getValue() != null && entry.getValue().isEmpty()) {
-        sf_logger.warn("Sample property {} has an empty value (VCF does not allow zero-length fields); treating " +
+        VcfWarnings.warn("Sample property {} has an empty value (VCF does not allow zero-length fields); treating " +
             "it as the missing value '.'", entry.getKey());
         entry.setValue(".");
       }
@@ -135,7 +131,7 @@ public class VcfSample {
           // matches getProperty()'s already-correct first-wins behavior, and this project's established
           // "warn and keep first" convention for every other recoverable duplicate-key case (see
           // DUPLICATE_METADATA_ID_HANDLING.md and VcfPosition's duplicate top-level INFO key)
-          sf_logger.warn("Sample contains duplicate FORMAT key \"{}\"; keeping only the first occurrence", key);
+          VcfWarnings.warn("Sample contains duplicate FORMAT key \"{}\"; keeping only the first occurrence", key);
           continue;
         }
         map.put(key, values.get(x));
