@@ -1,7 +1,9 @@
 package org.pharmgkb.parser.vcf;
 
+import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.StringReader;
 import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -135,6 +137,37 @@ public class VcfWarningsTest {
     } finally {
       Files.deleteIfExists(threadAFile);
       Files.deleteIfExists(threadBFile);
+    }
+  }
+
+  @Test
+  public void testWarningsAllPresentAfterParseCompletesWithoutPerWarningFlush() throws Exception {
+    // Regression test for findings19.md's per-warning-flush removal: VcfWarnings.warn() no longer flushes after
+    // every call, relying instead on the close-time flush guaranteed by warningsToFile()'s try-with-resources.
+    // This proves that guarantee actually holds -- every warning from a multi-warning parse is present in the
+    // file once parse() returns, not just some of them.
+    // FILTER combining PASS with another code is checked eagerly in VcfPosition's constructor (during parse(),
+    // not deferred to a getter -- unlike e.g. a duplicate INFO key, which is only checked on first getInfo()
+    // access), so this reliably produces one warning per data line without needing to touch any getter.
+    Path warningsFile = Files.createTempFile("warnings", ".log");
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\t.\tA\tT\t.\tSTD_FILTER;PASS\t.\n" +
+        "chr1\t2\t.\tA\tT\t.\tSTD_FILTER;PASS\t.\n" +
+        "chr1\t3\t.\tA\tT\t.\tSTD_FILTER;PASS\t.\n";
+    try {
+      VcfParser parser = new VcfParser.Builder()
+          .fromReader(new BufferedReader(new StringReader(vcf)))
+          .warningsToFile(warningsFile)
+          .parseWith(new MemoryMappedVcfLineParser.Builder().build())
+          .build();
+      parser.parse();
+      parser.close();
+      String content = Files.readString(warningsFile);
+      // three "PASS along with other filters" warnings expected, one per data line
+      assertEquals(3, content.lines().filter(line -> line.contains("PASS along with other filters")).count());
+    } finally {
+      Files.deleteIfExists(warningsFile);
     }
   }
 }

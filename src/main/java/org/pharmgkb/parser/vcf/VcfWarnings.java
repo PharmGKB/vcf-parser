@@ -87,7 +87,12 @@ public final class VcfWarnings {
   /**
    * Formats {@code message} with {@code args} (SLF4J {@code {}}-placeholder syntax) and either writes the
    * formatted message, alone with a trailing newline and no other decoration, to the calling thread's active
-   * warnings sink if one exists, or forwards to the shared SLF4J logger otherwise.
+   * warnings sink if one exists, or forwards to the shared SLF4J logger otherwise. Does not flush the sink after
+   * each call -- {@link VcfParser}/{@link VcfWriter}'s {@code warningsToFile()} both guarantee a flush when
+   * parsing/writing completes (via {@link #openFile}'s try-with-resources contract or {@link VcfWriter#close()}
+   * respectively), so a caller through either of those needs no extra step. A caller using {@link #activate}
+   * directly and wanting warnings visible before its sink is flushed or closed (e.g. to tail the file live during
+   * a long-running parse) must flush {@code sink} itself.
    */
   public static void warn(String message, Object... args) {
     Deque<Writer> stack = sf_activeWriters.get();
@@ -100,7 +105,6 @@ public final class VcfWarnings {
     try {
       active.write(formatted);
       active.write('\n');
-      active.flush();
     } catch (IOException e) {
       throw new UncheckedIOException("Error writing to the active VCF warnings file", e);
     }
