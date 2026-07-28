@@ -36,6 +36,8 @@ invalid:
 
 - A missing, duplicate, or non-first `##fileformat`; a file format outside VCF 4.x; any line other than a `##`
   metadata line before the `#CHROM` header; or a `#`-prefixed line after it (VCF has no comment syntax).
+- A structured metadata declaration (`##INFO`, `##FORMAT`, `##contig`, `##FILTER`, `##ALT`, `##SAMPLE`,
+  `##PEDIGREE`) whose value is not wrapped in angle brackets (`<...>`).
 - A missing `#CHROM` header, wrong fixed column names, a missing `FORMAT` column when samples are present, a
   `FORMAT` column with no sample columns following it, an empty sample name, or a duplicate sample name.
 - A data line with the wrong number of tab-separated columns.
@@ -95,9 +97,11 @@ simply already released. `close()` itself is idempotent: calling it again after 
 matching `java.io.Closeable#close()`'s own documented contract.
 
 **Lenient — warns when encountered or accessed and preserves usable data.** Non-structural content may be accepted
-initially and validated only when the relevant getter or typed conversion is used. Malformed metadata declarations
-(`##INFO`, `##FORMAT`, `##contig`, `##FILTER`, `##ALT`, ...) parsed from a file warn rather than throw; most are
-still stored as-is, with this exception:
+initially and validated only when the relevant getter or typed conversion is used. A metadata declaration
+(`##INFO`, `##FORMAT`, `##contig`, `##FILTER`, `##ALT`, ...) that is well-formed as a declaration -- wrapped in
+angle brackets -- but has malformed *attribute values* inside it warns rather than throws; most are still stored
+as-is, with this exception (a declaration missing its angle-bracket wrapper entirely is a structural failure and
+still throws -- see the strict section above):
 
 - A declaration missing its `ID`, or with an empty/whitespace-only `ID=` — every VCF structured metadata line
   requires an ID (VCFv4.3.tex line 121); the parser warns and drops the whole declaration rather than storing it.
