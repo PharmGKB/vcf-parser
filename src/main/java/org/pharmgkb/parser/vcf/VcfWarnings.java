@@ -94,11 +94,14 @@ public final class VcfWarnings {
    * Formats {@code message} with {@code args} (SLF4J {@code {}}-placeholder syntax) and either writes the
    * formatted message, alone with a trailing newline and no other decoration, to the calling thread's active
    * warnings sink if one exists, or forwards to the shared SLF4J logger otherwise. Does not flush the sink after
-   * each call -- {@link VcfParser}/{@link VcfWriter}'s {@code warningsToFile()} both guarantee a flush when
-   * parsing/writing completes (via {@link #openFile}'s try-with-resources contract or {@link VcfWriter#close()}
-   * respectively), so a caller through either of those needs no extra step. A caller using {@link #activate}
-   * directly and wanting warnings visible before its sink is flushed or closed (e.g. to tail the file live during
-   * a long-running parse) must flush {@code sink} itself.
+   * each call -- {@link VcfParser}/{@link VcfWriter}'s {@code warningsToFile()}, and {@link #openFile} used
+   * directly, all guarantee a flush at close time (closing the {@link Writer} {@link #openFile} opens flushes
+   * it, per {@link Writer}'s close-time flush contract, whether that close happens via {@link VcfWriter#close()}
+   * or {@link #openFile}'s own returned handle), so a caller through any of those needs no extra step. Only a
+   * caller using {@link #activate(Writer)} directly -- the one entry point that hands the caller the sink's
+   * {@link Writer} itself, rather than a handle that closes it for them -- and wanting warnings visible before
+   * its sink is flushed or closed (e.g. to tail the file live during a long-running parse) must flush
+   * {@code sink} itself.
    */
   public static void warn(String message, Object... args) {
     Deque<Writer> stack = sf_activeWriters.get();

@@ -1026,8 +1026,10 @@ public class VcfWriter implements Closeable {
         m_warningsWriter.close();
       } catch (IOException e) {
         // I/O housekeeping, not a VCF-content warning -- stays on sf_logger directly, matching VcfParser.close()'s
-        // identical treatment of its own suppressed close-time IOException
-        sf_logger.info("Error closing warnings file", e);
+        // identical treatment of its own suppressed close-time IOException. Logged at warn (not info): since
+        // warn()'s per-call flush was removed, this close-time failure can be the only sign that the warnings
+        // file ended up silently empty or missing.
+        sf_logger.warn("Error closing warnings file", e);
       }
     }
   }
