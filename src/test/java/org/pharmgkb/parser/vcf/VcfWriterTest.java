@@ -1064,4 +1064,49 @@ public class VcfWriterTest {
     assertTrue(warnings.contains("UNDECLARED3"));
   }
 
+  @Test
+  public void testBuildClosesPrimaryWriterWhenWarningsFileFailsToOpen(@org.junit.jupiter.api.io.TempDir Path tempDir)
+      throws IOException {
+    // regression test: build() opens the primary file-backed writer (via toFile()) before attempting to open the
+    // warnings file; if opening the warnings file fails, build() must close that already-open writer before
+    // propagating the exception -- otherwise no VcfWriter is ever returned for the caller to close(), leaking the
+    // file descriptor. A warnings path whose parent directory doesn't exist reliably fails
+    // Files.newBufferedWriter() with NoSuchFileException (a subclass of IOException).
+    Path vcfFile = tempDir.resolve("out.vcf");
+    Path invalidWarningsFile = tempDir.resolve("nonexistent-dir").resolve("warnings.log");
+
+    assertThrows(IOException.class, () ->
+        new VcfWriter.Builder()
+            .toFile(vcfFile)
+            .warningsToFile(invalidWarningsFile)
+            .build());
+
+    // the primary file was created (Files.newOutputStream() creates it as part of opening for write)
+    assertTrue(java.nio.file.Files.exists(vcfFile));
+
+    // Deleting/renaming an open file succeeds on POSIX regardless of whether a process still holds it open, so
+    // that alone can't prove the descriptor wasn't leaked here. Inspecting this process's own open-file table
+    // (/proc/self/fd on Linux, which is what this project's CI (build.yml: ubuntu-latest) and this dev
+    // environment both run on) can: if build()'s fix didn't close the primary writer, its file descriptor would
+    // still show up here, pointing at vcfFile, even though build() already returned (by throwing). Skipped where
+    // /proc isn't available (e.g. non-Linux) rather than failing the test on an unrelated platform.
+    Path procFd = Path.of("/proc/self/fd");
+    if (java.nio.file.Files.isDirectory(procFd)) {
+      Path absoluteVcfFile = vcfFile.toAbsolutePath().normalize();
+      long openFdCount;
+      try (var listing = java.nio.file.Files.list(procFd)) {
+        openFdCount = listing
+            .filter(fd -> {
+              try {
+                return java.nio.file.Files.readSymbolicLink(fd).equals(absoluteVcfFile);
+              } catch (IOException e) {
+                return false; // not a symlink we can resolve (e.g. this same fd being closed concurrently)
+              }
+            })
+            .count();
+      }
+      assertEquals(0, openFdCount, "primary writer's file descriptor leaked after the warnings file failed to open");
+    }
+  }
+
 }

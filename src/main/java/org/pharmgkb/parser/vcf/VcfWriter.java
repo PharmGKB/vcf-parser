@@ -930,6 +930,8 @@ public class VcfWriter implements Closeable {
     }
 
     public VcfWriter build() throws IOException {
+      PrintWriter writer = m_writer;
+      boolean weOpenedWriter = false;
       if (m_file != null) {
         // a plain Charset-based OutputStreamWriter silently replaces malformed input (e.g. an unpaired surrogate)
         // with "?" instead of failing -- verified empirically; it does NOT use CharsetEncoder's own REPORT
@@ -943,26 +945,38 @@ public class VcfWriter implements Closeable {
         CharsetEncoder encoder = StandardCharsets.UTF_8.newEncoder()
             .onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT);
-        m_writer = new PrintWriter(new BufferedWriter(
+        writer = new PrintWriter(new BufferedWriter(
             new OutputStreamWriter(Files.newOutputStream(m_file), encoder), 65536));
+        weOpenedWriter = true;
       }
-      if (m_writer == null) {
+      if (writer == null) {
         throw new IllegalStateException("Must specify either file or writer");
       }
       Writer warningsWriter = null;
       if (m_warningsToFile) {
-        Path resolvedWarningsFile;
-        if (m_warningsFile != null) {
-          resolvedWarningsFile = m_warningsFile;
-        } else if (m_file != null) {
-          resolvedWarningsFile = m_file.resolveSibling(m_file.getFileName().toString() + ".warn.log");
-        } else {
-          throw new IllegalStateException("warningsToFile() requires either an explicit file or a target file " +
-              "obtained via toFile(Path) -- toWriter(PrintWriter) provides no path to derive a default name from");
+        // if opening the warnings file fails, this method must not leak the writer it just opened above (via
+        // m_file/toFile(Path)) -- no VcfWriter is returned for the caller to close() in that case. A
+        // caller-supplied PrintWriter (via toWriter(PrintWriter)) is never closed here: build() doesn't own that
+        // resource's lifecycle.
+        try {
+          Path resolvedWarningsFile;
+          if (m_warningsFile != null) {
+            resolvedWarningsFile = m_warningsFile;
+          } else if (m_file != null) {
+            resolvedWarningsFile = m_file.resolveSibling(m_file.getFileName().toString() + ".warn.log");
+          } else {
+            throw new IllegalStateException("warningsToFile() requires either an explicit file or a target file " +
+                "obtained via toFile(Path) -- toWriter(PrintWriter) provides no path to derive a default name from");
+          }
+          warningsWriter = Files.newBufferedWriter(resolvedWarningsFile);
+        } catch (IOException | RuntimeException e) {
+          if (weOpenedWriter) {
+            writer.close();
+          }
+          throw e;
         }
-        warningsWriter = Files.newBufferedWriter(resolvedWarningsFile);
       }
-      return new VcfWriter(m_file, m_writer, m_validateBeforeWrite, warningsWriter);
+      return new VcfWriter(m_file, writer, m_validateBeforeWrite, warningsWriter);
     }
 
   }
