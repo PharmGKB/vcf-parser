@@ -20,6 +20,11 @@ public class ReservedInfoPropertyTest {
   }
 
   @Test
+  public void testFromIdReturnsNullForNullId() {
+    assertNull(ReservedInfoProperty.fromId(null));
+  }
+
+  @Test
   public void testGetExpectedNumberForStandardKeys() {
     // sourced from VCFv4.3's Reserved INFO Keys table (table:reserved-info); VCFv4.2 only describes these in prose
     assertEquals("A", ReservedInfoProperty.AlleleCount.getExpectedNumber());

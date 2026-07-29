@@ -304,4 +304,21 @@ public class InfoMetadataTest {
       appender.stop();
     }
   }
+
+  @Test
+  public void testGetReservedNumberReturnsReservedCode() {
+    InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(
+        "ID=X", "Number=A", "Type=String", "Description=\"d\""));
+    assertEquals(SpecialVcfNumber.ONE_PER_ALT, md.getReservedNumber());
+  }
+
+  @Test
+  public void testGetReservedNumberReturnsNullWhenNumberIsMissing() {
+    // regression test: getReservedNumber() used to throw NullPointerException here instead of returning null,
+    // because SpecialVcfNumber.fromId previously had no null guard; it now returns null for a null id.
+    InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(
+        "ID=X", "Type=String", "Description=\"d\""));
+    assertNull(md.getNumber());
+    assertNull(md.getReservedNumber());
+  }
 }

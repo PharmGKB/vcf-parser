@@ -1,6 +1,7 @@
 package org.pharmgkb.parser.vcf.model;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -97,10 +98,10 @@ public class AltStructuralVariant {
   }
 
   /**
-   * @return The list of codes in order from level 0 to level n; for example ("INS", "ME", "LINE")
+   * @return An unmodifiable view of the codes in order from level 0 to level n; for example ("INS", "ME", "LINE")
    */
   public List<String> getComponents() {
-    return m_components;
+    return Collections.unmodifiableList(m_components);
   }
 
   /**

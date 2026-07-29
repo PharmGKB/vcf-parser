@@ -100,8 +100,8 @@ public enum ReservedFormatProperty implements ReservedProperty {
       .collect(Collectors.toUnmodifiableMap(ReservedFormatProperty::getId, Function.identity()));
 
   @Nullable
-  public static ReservedFormatProperty fromId(String id) {
-    return BY_ID.get(id);
+  public static ReservedFormatProperty fromId(@Nullable String id) {
+    return id == null ? null : BY_ID.get(id);
   }
 
 }

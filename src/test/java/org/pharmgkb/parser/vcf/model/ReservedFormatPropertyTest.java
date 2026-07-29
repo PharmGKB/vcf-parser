@@ -20,6 +20,11 @@ public class ReservedFormatPropertyTest {
   }
 
   @Test
+  public void testFromIdReturnsNullForNullId() {
+    assertNull(ReservedFormatProperty.fromId(null));
+  }
+
+  @Test
   public void testGetExpectedNumberForStandardKeys() {
     // sourced from VCFv4.3's Reserved genotype keys table (table:reserved-genotypes)
     assertEquals("1", ReservedFormatProperty.Genotype.getExpectedNumber());

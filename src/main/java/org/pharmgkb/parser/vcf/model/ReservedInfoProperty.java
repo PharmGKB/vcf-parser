@@ -135,8 +135,8 @@ public enum ReservedInfoProperty implements ReservedProperty {
       .collect(Collectors.toUnmodifiableMap(ReservedInfoProperty::getId, Function.identity()));
 
   @Nullable
-  public static ReservedInfoProperty fromId(String id) {
-    return BY_ID.get(id);
+  public static ReservedInfoProperty fromId(@Nullable String id) {
+    return id == null ? null : BY_ID.get(id);
   }
 
 }

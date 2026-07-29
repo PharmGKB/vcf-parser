@@ -83,7 +83,7 @@ public class InfoMetadata extends IdDescriptionMetadata {
       }
     }
     String id = getId();
-    ReservedInfoProperty reserved = id == null ? null : ReservedInfoProperty.fromId(id);
+    ReservedInfoProperty reserved = ReservedInfoProperty.fromId(id);
     if (reserved != null) {
       if (number != null && !reserved.getExpectedNumber().equals(number)) {
         VcfWarnings.warn("{} {} has Number '{}' but the reserved definition expects '{}'", getLabel(), getId(),
@@ -115,9 +115,8 @@ public class InfoMetadata extends IdDescriptionMetadata {
 
   /**
    * @return A special (reserved) <em>Number</em> ("A", "G", "R", or "."), or null if the Number is not reserved
-   * (it is numerical).
+   * (it is numerical) or absent.
    */
-  @SuppressWarnings("ConstantConditions")
   @Nullable
   public SpecialVcfNumber getReservedNumber() {
     return SpecialVcfNumber.fromId(getPropertyRaw(NUMBER));

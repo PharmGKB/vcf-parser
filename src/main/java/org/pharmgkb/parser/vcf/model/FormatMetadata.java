@@ -54,7 +54,7 @@ public class FormatMetadata extends IdDescriptionMetadata {
       }
     }
     String id = getId();
-    ReservedFormatProperty reserved = id == null ? null : ReservedFormatProperty.fromId(id);
+    ReservedFormatProperty reserved = ReservedFormatProperty.fromId(id);
     if (reserved != null) {
       if (number != null && !reserved.getExpectedNumber().equals(number)) {
         VcfWarnings.warn("{} {} has Number '{}' but the reserved definition expects '{}'", getLabel(), getId(),
@@ -86,9 +86,8 @@ public class FormatMetadata extends IdDescriptionMetadata {
 
   /**
    * @return A special (reserved) <em>Number</em> ("A", "G", "R", or "."), or null if the Number is not reserved
-   * (it is numerical).
+   * (it is numerical) or absent.
    */
-  @SuppressWarnings("ConstantConditions")
   @Nullable
   public SpecialVcfNumber getReservedNumber() {
     return SpecialVcfNumber.fromId(getPropertyRaw(NUMBER));

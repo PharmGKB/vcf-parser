@@ -6,6 +6,7 @@ import org.pharmgkb.parser.vcf.VcfUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -211,5 +212,22 @@ public class FormatMetadataTest {
       root.detachAppender(appender);
       appender.stop();
     }
+  }
+
+  @Test
+  public void testGetReservedNumberReturnsReservedCode() {
+    FormatMetadata md = new FormatMetadata(VcfUtils.extractProperties(
+        "ID=X", "Number=G", "Type=String", "Description=\"d\""));
+    assertEquals(SpecialVcfNumber.ONE_PER_GENOTYPE, md.getReservedNumber());
+  }
+
+  @Test
+  public void testGetReservedNumberReturnsNullWhenNumberIsMissing() {
+    // regression test: getReservedNumber() used to throw NullPointerException here instead of returning null,
+    // because SpecialVcfNumber.fromId previously had no null guard; it now returns null for a null id.
+    FormatMetadata md = new FormatMetadata(VcfUtils.extractProperties(
+        "ID=X", "Type=String", "Description=\"d\""));
+    assertNull(md.getNumber());
+    assertNull(md.getReservedNumber());
   }
 }

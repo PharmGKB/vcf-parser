@@ -22,8 +22,8 @@ public enum SpecialVcfNumber {
       .collect(Collectors.toUnmodifiableMap(SpecialVcfNumber::getId, Function.identity()));
 
   @Nullable
-  public static SpecialVcfNumber fromId(String id) {
-    return BY_ID.get(id);
+  public static SpecialVcfNumber fromId(@Nullable String id) {
+    return id == null ? null : BY_ID.get(id);
   }
 
   private final String m_id;

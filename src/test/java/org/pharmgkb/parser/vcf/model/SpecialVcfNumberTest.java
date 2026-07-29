@@ -21,6 +21,11 @@ public class SpecialVcfNumberTest {
   }
 
   @Test
+  public void testFromIdReturnsNullForNullId() {
+    assertNull(SpecialVcfNumber.fromId(null));
+  }
+
+  @Test
   public void testGetId() {
     assertEquals("A", SpecialVcfNumber.ONE_PER_ALT.getId());
     assertEquals("R", SpecialVcfNumber.ONE_PER_ALT_OR_REF.getId());
