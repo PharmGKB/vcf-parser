@@ -84,8 +84,11 @@ public class VcfParser implements Closeable {
 
     // the first physical line must be the single ##fileformat declaration
     String first = m_reader.readLine();
+    if (first == null) {
+      throw new VcfFormatException("Not a VCF file: the first line must be ##fileformat", -1);
+    }
     m_lineNumber++;
-    if (first == null || !first.startsWith("##fileformat=")) {
+    if (!first.startsWith("##fileformat=")) {
       throw new VcfFormatException("Not a VCF file: the first line must be ##fileformat", m_lineNumber);
     }
     parseMetadataLine(mdBuilder, first);
@@ -480,6 +483,10 @@ public class VcfParser implements Closeable {
     return values;
   }
 
+  /**
+   * @return A running count of lines read from the input so far (both metadata and data lines), starting at
+   * {@code 0} before any line has been read and incrementing by one for each line read afterward.
+   */
   public int getLineNumber() {
     return m_lineNumber;
   }

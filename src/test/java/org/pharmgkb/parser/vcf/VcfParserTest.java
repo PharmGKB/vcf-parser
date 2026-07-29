@@ -737,6 +737,38 @@ public class VcfParserTest {
   }
 
   @Test
+  void testEmptyInputReportsNoLineNumber() throws IOException {
+    // regression test: a completely empty input previously reported "[Line #1]" even though no line was
+    // ever actually read -- m_lineNumber was incremented unconditionally before checking whether
+    // readLine() returned anything. Now uses -1 (the "no line number attached" sentinel).
+    try (BufferedReader reader = new BufferedReader(new StringReader(""));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, position, sampleData) -> {})
+             .build()) {
+      VcfFormatException ex = assertThrows(VcfFormatException.class, parser::parseMetadata);
+      assertEquals(-1, ex.getLineNumber());
+      assertFalse(ex.getMessage().contains("[Line #"));
+    }
+  }
+
+  @Test
+  void testGetLineNumberTracksLinesRead() throws IOException {
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\t.\tA\tT\t.\t.\t.\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, position, sampleData) -> {})
+             .build()) {
+      assertEquals(0, parser.getLineNumber());
+      parser.parse();
+      assertEquals(3, parser.getLineNumber());
+    }
+  }
+
+  @Test
   void testContigIdWithWhitespaceWarnsInsteadOfSilentlyAccepting() throws IOException {
     // reproduces test/vcf/{4.1,4.2,4.3}/failed/failed_meta_contig_001.vcf's
     // ##CauseOfFailure=contig ID contains a whitespace -- previously silently accepted with no warning at all
