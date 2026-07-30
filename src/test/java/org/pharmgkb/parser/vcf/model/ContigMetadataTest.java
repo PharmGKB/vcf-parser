@@ -272,6 +272,31 @@ public class ContigMetadataTest {
   }
 
   @Test
+  public void testDirectValidateCatchesOutOfCanonicalOrderAttributes() {
+    // regression test: IdMetadata.validate() now calls checkAttributeOrder() (previously only IdDescriptionMetadata
+    // did, so ContigMetadata -- which extends IdMetadata directly, not IdDescriptionMetadata -- was never covered
+    // by a direct .validate() call, only by VcfWriter's own explicit checkAttributeOrder() call). ContigMetadata
+    // doesn't model Number/Type/Description/Source/Version itself, but checkAttributeOrder() checks order among
+    // whichever of those well-known keys are present in the raw property map, regardless of whether this metadata
+    // kind's own getters use them -- so a raw "Number" property placed before "ID" still exercises the check.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    ContigMetadata contig = new ContigMetadata(
+        org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Number=1", "ID=chr1"));
+    appender.start();
+    root.addAppender(appender);
+    try {
+      contig.validate();
+      assertTrue(appender.anyMessageContains("declared out of canonical order"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testTypedConstructorRejectsNullOrBlankId() {
     assertThrows(VcfFormatException.class, () -> new ContigMetadata(null, 100L, "GRCh38", null, null, null, null));
     assertThrows(VcfFormatException.class, () -> new ContigMetadata("", 100L, "GRCh38", null, null, null, null));

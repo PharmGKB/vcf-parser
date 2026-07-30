@@ -35,6 +35,7 @@ public abstract class IdMetadata extends BaseMetadata {
   public void validate() {
     super.validate();
     init();
+    checkAttributeOrder();
   }
 
   private void init() {

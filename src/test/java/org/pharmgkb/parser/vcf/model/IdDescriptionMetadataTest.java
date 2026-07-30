@@ -62,6 +62,28 @@ public class IdDescriptionMetadataTest {
   }
 
   @Test
+  public void testDirectValidateDoesNotDoubleWarnAttributeOrder() {
+    // regression test: IdMetadata.validate() (this class's superclass) and IdDescriptionMetadata.validate() each
+    // used to call checkAttributeOrder() -- calling .validate() directly (e.g. after mutating properties via
+    // getPropertiesRaw(), as VcfWriter's validateKeyedMetadataEntries does) fired the attribute-order warning twice
+    IdDescriptionMetadata md = new IdDescriptionMetadata("TEST",
+        VcfUtils.extractProperties("ID=DEL", "Type=String", "Number=1", "Description=\"Deletion\""));
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      md.validate();
+      assertEquals(1, appender.countMessagesContaining("declared out of canonical order"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testTypedConstructorRejectsNullOrBlankId() {
     assertThrows(VcfFormatException.class, () -> new IdDescriptionMetadata("TEST", null, "d"));
     assertThrows(VcfFormatException.class, () -> new IdDescriptionMetadata("TEST", "", "d"));

@@ -33,4 +33,11 @@ public class WarnCapturingAppender extends AppenderBase<ILoggingEvent> {
     return m_events.stream().anyMatch(event -> event.getFormattedMessage().contains(substring));
   }
 
+  /**
+   * @return the number of captured events whose formatted message contains {@code substring}
+   */
+  public long countMessagesContaining(String substring) {
+    return m_events.stream().filter(event -> event.getFormattedMessage().contains(substring)).count();
+  }
+
 }

@@ -48,7 +48,6 @@ public class IdDescriptionMetadata extends IdMetadata {
   public void validate() {
     super.validate();
     init();
-    checkAttributeOrder();
   }
 
   private void init() {
