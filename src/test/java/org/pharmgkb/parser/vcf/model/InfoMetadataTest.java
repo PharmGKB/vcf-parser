@@ -266,9 +266,10 @@ public class InfoMetadataTest {
 
   @Test
   public void testUnquotedDescriptionWarningAttributedToInfoMetadataNotIdDescriptionMetadata() {
-    // regression test: IdDescriptionMetadata.init()'s warn calls must use the runtime class's own logger, not
-    // its own static sf_logger -- otherwise an InfoMetadata's Description warning is misattributed to
-    // IdDescriptionMetadata's logger category instead of InfoMetadata's
+    // regression test: IdDescriptionMetadata.init()'s warn calls must embed the runtime class's own
+    // getClass().getSimpleName() in the message text -- otherwise an InfoMetadata's Description warning is
+    // indistinguishable from an IdDescriptionMetadata one, since both now route through the same shared
+    // VcfWarnings logger
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =

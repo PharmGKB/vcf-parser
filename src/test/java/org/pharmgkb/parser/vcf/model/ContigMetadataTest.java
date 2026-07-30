@@ -20,7 +20,8 @@ public class ContigMetadataTest {
   @Test
   public void testNoId() {
     // IdMetadata.init()'s warnIfMissing() should warn when ID is absent, and (regression) attribute the
-    // warning to the actual runtime class (ContigMetadata), not IdMetadata's own static logger
+    // warning to the actual runtime class (ContigMetadata) by embedding getClass().getSimpleName() in the
+    // message text, since every warning now routes through the single shared VcfWarnings logger
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -42,7 +43,8 @@ public class ContigMetadataTest {
   @Test
   public void testExtraProperty() {
     // BaseMetadata.ensureNoExtras() should warn on an unrecognized property, attributed to the actual runtime
-    // class (ContigMetadata), not BaseMetadata's own static logger
+    // class (ContigMetadata) by embedding getClass().getSimpleName() in the message text, since every warning
+    // now routes through the single shared VcfWarnings logger
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =

@@ -592,6 +592,12 @@ public class VcfParser implements Closeable {
      * writes warnings to {@code sample.vcf.warn.log} alongside it. Requires the parser to have been built via
      * {@link #fromFile(Path)}, not {@link #fromReader(BufferedReader)} -- there is no path to derive a default
      * name from otherwise; use {@link #warningsToFile(Path)} instead in that case.
+     * <p>
+     * This redirection is scoped to the {@link VcfParser#parse()} call itself. A warning from a value whose
+     * validation this library defers until a getter is called (e.g. {@code VcfPosition.getQuality()}) is not
+     * redirected if that getter is called after {@link VcfParser#parse()} has already returned -- it goes to the
+     * default logger instead. Calling {@link VcfParser#parseMetadata()} or {@link VcfParser#parseNextLine()}
+     * directly, instead of {@link VcfParser#parse()}, is not redirected at all.
      */
     public Builder warningsToFile() {
       m_warningsToFile = true;
@@ -601,6 +607,12 @@ public class VcfParser implements Closeable {
 
     /**
      * Redirects VCF-content warnings from parsing to {@code customFile} instead of the default derived name.
+     * <p>
+     * This redirection is scoped to the {@link VcfParser#parse()} call itself. A warning from a value whose
+     * validation this library defers until a getter is called (e.g. {@code VcfPosition.getQuality()}) is not
+     * redirected if that getter is called after {@link VcfParser#parse()} has already returned -- it goes to the
+     * default logger instead. Calling {@link VcfParser#parseMetadata()} or {@link VcfParser#parseNextLine()}
+     * directly, instead of {@link VcfParser#parse()}, is not redirected at all.
      */
     public Builder warningsToFile(Path customFile) {
       Preconditions.checkNotNull(customFile);

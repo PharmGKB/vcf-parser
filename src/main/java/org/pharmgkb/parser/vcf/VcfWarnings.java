@@ -22,6 +22,12 @@ import org.slf4j.helpers.MessageFormatter;
  * <p>
  * Not for non-VCF-content log output (e.g. I/O housekeeping, progress logging) -- those stay on SLF4J directly,
  * unconditionally.
+ * <p>
+ * As of this class's introduction, every warning that isn't file-redirected logs under this one shared
+ * {@code org.pharmgkb.parser.vcf.VcfWarnings} category, replacing what were previously ~10 distinct per-class
+ * logger names (e.g. {@code org.pharmgkb.parser.vcf.model.VcfPosition}, {@code org.pharmgkb.parser.vcf.model.InfoMetadata}).
+ * Logging configuration scoped to one of those old per-class names no longer matches; scope it to this class,
+ * or to the {@code org.pharmgkb.parser.vcf} package as a whole, instead.
  */
 public final class VcfWarnings {
 
