@@ -50,9 +50,6 @@ public enum ReservedInfoProperty implements ReservedProperty {
   Novel("NOVEL", "Indicates a novel structural variation", Boolean.class, false, "0"),
   End("END", "End position of the variant described in this record", Long.class, false, "1"), // also standard
 
-  /**
-   * Note that the VCF 4.2 spec calls this "SYTYPE", which is clearly a typo.
-   */
   StructuralVariantType("SVTYPE", "Type of structural variant", String.class, false, "1"),
   // Number=. is genuinely multi-valued (one per ALT allele in a multi-allelic record, e.g. "SVLEN=-100,-110"),
   // per VCFv4.3's clarifying example; confirmed against VCFv4.2's own ##INFO declaration for this key.

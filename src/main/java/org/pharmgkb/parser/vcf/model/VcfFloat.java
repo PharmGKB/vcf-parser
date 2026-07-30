@@ -1,6 +1,7 @@
 package org.pharmgkb.parser.vcf.model;
 
 import java.math.BigDecimal;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.regex.Pattern;
 import com.google.errorprone.annotations.Immutable;
@@ -55,7 +56,7 @@ public final class VcfFloat {
    */
   public static VcfFloat parse(String value) {
     if (SPECIAL_PATTERN.matcher(value).matches()) {
-      if (value.toUpperCase().endsWith("NAN")) {
+      if (value.toUpperCase(Locale.ROOT).endsWith("NAN")) {
         return ofSpecial(Special.NAN);
       }
       return ofSpecial(value.startsWith("-") ? Special.NEGATIVE_INFINITY : Special.POSITIVE_INFINITY);

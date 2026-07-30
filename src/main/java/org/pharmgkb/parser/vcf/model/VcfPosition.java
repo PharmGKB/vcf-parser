@@ -377,8 +377,8 @@ public class VcfPosition {
     try {
       checkChromosome(m_chromosome);
       checkPosition(m_position);
-      checkRef(m_refBases);
       m_ids = checkIds(m_ids);
+      checkRef(m_refBases);
       m_altBases = checkAltBases(m_altBases);
       m_filter = checkFilters(m_filter);
       normalizeFilters();
@@ -499,8 +499,12 @@ public class VcfPosition {
    * existing {@code PASS} or a real failing code) to {@code "."} when clearing it, never to {@code "PASS"} --
    * verified live: a fixture with FILTER values {@code "."}, {@code "PASS"}, and a real filter code all become
    * {@code "."} after {@code bcftools annotate -x FILTER}. A literal empty FILTER string is likewise never
-   * silently promoted to {@code "PASS"} by bcftools -- it is instead treated as an undeclared filter name and
-   * warned about.
+   * silently promoted to {@code "PASS"} by bcftools -- confirmed only for an <em>interior</em> empty entry
+   * (e.g. {@code "q10;;q20"}), where bcftools warns it is an undeclared filter name; a <em>trailing</em> empty
+   * entry (e.g. {@code "q10;"}) is silently dropped by bcftools instead, per {@code EMPTY_FIELD_HANDLING.md}.
+   * This library's own FILTER handling does not distinguish the two: any empty entry, interior or trailing, is
+   * warned about and dropped uniformly, so a FILTER column that reduces to nothing after dropping always
+   * resolves to {@link FilterStatus#NONE} here, never a FAILED-like "undefined filter name" state.
    */
   public FilterStatus getFilterStatus() {
     if (m_filter.isEmpty()) {
