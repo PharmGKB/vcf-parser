@@ -111,7 +111,7 @@ public class MemoryMappedVcfDataStore {
 
   public @Nullable VcfSample getSampleAtLocus(String chromosome, long position, int recordIndex, String sampleId) {
     List<List<VcfSample>> samplesList = m_locusToSamplesList.get(new Locus(chromosome, position));
-    if (samplesList == null) {
+    if (samplesList == null || recordIndex < 0 || recordIndex >= samplesList.size()) {
       return null;
     }
     int idx = m_metadata.getSampleIndex(sampleId);
@@ -120,7 +120,7 @@ public class MemoryMappedVcfDataStore {
 
   public @Nullable VcfSample getSampleAtLocus(String chromosome, long position, int recordIndex, int sampleIndex) {
     List<List<VcfSample>> samplesList = m_locusToSamplesList.get(new Locus(chromosome, position));
-    if (samplesList == null) {
+    if (samplesList == null || recordIndex < 0 || recordIndex >= samplesList.size()) {
       return null;
     }
     List<VcfSample> samples = samplesList.get(recordIndex);
@@ -144,7 +144,10 @@ public class MemoryMappedVcfDataStore {
     Locus locus = new Locus(chromosome, position);
     List<VcfPosition> positions = m_locusToPositions.get(locus);
     List<List<VcfSample>> samplesList = m_locusToSamplesList.get(locus);
-    if (positions == null || samplesList == null) {
+    // bounds-checking recordIndex against samplesList.size() alone also guards positions.get(recordIndex) below:
+    // MemoryMappedVcfLineParser.parseLine() populates both maps in lockstep (one add() call each, same locus,
+    // every record), so positions.size() == samplesList.size() always holds for a given locus.
+    if (positions == null || samplesList == null || recordIndex < 0 || recordIndex >= samplesList.size()) {
       return null;
     }
     int idx = m_metadata.getSampleIndex(sampleId);
@@ -167,7 +170,9 @@ public class MemoryMappedVcfDataStore {
     Locus locus = new Locus(chromosome, position);
     List<VcfPosition> positions = m_locusToPositions.get(locus);
     List<List<VcfSample>> samplesList = m_locusToSamplesList.get(locus);
-    if (positions == null || samplesList == null) {
+    // bounds-checking recordIndex against samplesList.size() alone also guards positions.get(recordIndex) below --
+    // see the comment in the sibling getGenotypeAtLocus(String, long, int, String) overload for why.
+    if (positions == null || samplesList == null || recordIndex < 0 || recordIndex >= samplesList.size()) {
       return null;
     }
     List<VcfSample> samples = samplesList.get(recordIndex);

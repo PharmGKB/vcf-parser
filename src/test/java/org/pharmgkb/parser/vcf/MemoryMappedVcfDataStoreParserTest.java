@@ -334,7 +334,7 @@ public class MemoryMappedVcfDataStoreParserTest {
   }
 
   @Test
-  public void testIntIndexOverloadsReturnNullForOutOfRangeSampleIndexInsteadOfThrowing() throws IOException {
+  public void testAtLocusAndIndexOverloadsReturnNullForOutOfRangeIndicesInsteadOfThrowing() throws IOException {
     // the String-id overloads already return null for an unresolved sample name; the int overloads previously let
     // List.get throw IndexOutOfBoundsException for an out-of-range index instead -- this brings them in line
     String vcf = "##fileformat=VCFv4.2\n" +
@@ -358,6 +358,26 @@ public class MemoryMappedVcfDataStoreParserTest {
       assertNull(dataStore.getGenotypeForId("rsx", -1));
       assertNull(dataStore.getSampleAtLocus("chr1", 1, 0, -1));
       assertNull(dataStore.getGenotypeAtLocus("chr1", 1, 0, -1));
+
+      // an out-of-range recordIndex is equally out-of-range, for every *AtLocus overload -- not just
+      // sampleIndex/sampleId; this fixture has exactly 1 record at chr1:1, so recordIndex 1+ is out of range
+      assertNull(dataStore.getSampleAtLocus("chr1", 1, 99, "sample1"));
+      assertNull(dataStore.getSampleAtLocus("chr1", 1, 99, 0));
+      assertNull(dataStore.getGenotypeAtLocus("chr1", 1, 99, "sample1"));
+      assertNull(dataStore.getGenotypeAtLocus("chr1", 1, 99, 0));
+
+      // a negative recordIndex is equally out-of-range
+      assertNull(dataStore.getSampleAtLocus("chr1", 1, -1, "sample1"));
+      assertNull(dataStore.getSampleAtLocus("chr1", 1, -1, 0));
+      assertNull(dataStore.getGenotypeAtLocus("chr1", 1, -1, "sample1"));
+      assertNull(dataStore.getGenotypeAtLocus("chr1", 1, -1, 0));
+
+      // the exact boundary (recordIndex == the record count, i.e. one past the last valid index) must also be
+      // out-of-range -- pins ">=" rather than ">", which would otherwise let this one value slip through
+      assertNull(dataStore.getSampleAtLocus("chr1", 1, 1, "sample1"));
+      assertNull(dataStore.getSampleAtLocus("chr1", 1, 1, 0));
+      assertNull(dataStore.getGenotypeAtLocus("chr1", 1, 1, "sample1"));
+      assertNull(dataStore.getGenotypeAtLocus("chr1", 1, 1, 0));
 
       // sanity: the valid index still works for every int-overload
       assertNotNull(dataStore.getSampleForId("rsx", 0));
