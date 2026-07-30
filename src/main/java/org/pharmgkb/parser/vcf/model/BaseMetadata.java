@@ -77,16 +77,18 @@ public class BaseMetadata {
     return m_properties.keySet();
   }
 
-  public void putAndQuoteProperty(String key, @Nullable String value) {
+  public void putAndQuoteProperty(String key, String value) {
     if (value == null) {
-      m_properties.remove(key);
-    } else {
-      VcfUtils.checkNoLineTerminator(key, value);
-      m_properties.put(key, VcfUtils.quote(value));
+      throw new VcfFormatException("Metadata property \"" + key + "\" has a null value");
     }
+    VcfUtils.checkNoLineTerminator(key, value);
+    m_properties.put(key, VcfUtils.quote(value));
   }
 
-  public void putPropertyRaw(String key, @Nullable String value) {
+  public void putPropertyRaw(String key, String value) {
+    if (value == null) {
+      throw new VcfFormatException("Metadata property \"" + key + "\" has a null value");
+    }
     VcfUtils.checkNoLineTerminator(key, value);
     m_properties.put(key, value);
   }
