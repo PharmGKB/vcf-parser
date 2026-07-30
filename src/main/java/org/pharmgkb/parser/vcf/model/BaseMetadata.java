@@ -67,6 +67,10 @@ public class BaseMetadata {
     return m_properties.get(key);
   }
 
+  /**
+   * @return A new map of every property, unquoted -- the map-returning complement to
+   * {@link #getPropertyUnquoted(String)}.
+   */
   public Map<String, String> getPropertiesUnquoted() {
     Map<String, String> map = new HashMap<>();
     for (Map.Entry<String, String>  entry : m_properties.entrySet()) {

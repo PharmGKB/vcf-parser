@@ -27,6 +27,18 @@ public class BaseMetadataTest {
   }
 
   @Test
+  public void testGetPropertiesUnquoted() {
+    Map<String, String> map = new LinkedHashMap<>();
+    map.put("a", "\"quoted\"");
+    map.put("b", "unquoted");
+    BaseMetadata metadata = new BaseMetadata("TEST", map);
+    Map<String, String> unquoted = metadata.getPropertiesUnquoted();
+    assertEquals(2, unquoted.size());
+    assertEquals("quoted", unquoted.get("a"));
+    assertEquals("unquoted", unquoted.get("b"));
+  }
+
+  @Test
   public void testKeyNewline() throws Exception {
     assertThrows(VcfFormatException.class, () -> {
       Map<String, String> map = new HashMap<>();
