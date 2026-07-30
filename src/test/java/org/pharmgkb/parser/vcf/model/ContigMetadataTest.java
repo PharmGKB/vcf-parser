@@ -34,6 +34,7 @@ public class ContigMetadataTest {
       new ContigMetadata(map);
       assertTrue(appender.hasWarnOrHigher());
       assertTrue(appender.anyMessageContains("CONTIG"));
+      assertTrue(appender.anyMessageContains("required metadata property \"ID\" is missing"));
     } finally {
       root.detachAppender(appender);
       appender.stop();
@@ -104,6 +105,7 @@ public class ContigMetadataTest {
       map.put(ContigMetadata.URL, "url");
       new ContigMetadata(map);
       assertTrue(appender.hasWarnOrHigher());
+      assertTrue(appender.anyMessageContains("is not a number"));
     } finally {
       root.detachAppender(appender);
       appender.stop();
@@ -219,6 +221,50 @@ public class ContigMetadataTest {
     try {
       new ContigMetadata("chr1", 100L, "GRCh38", null, null, null, "foo://bar");
       assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testUrlWithInvalidUriSyntaxWarnsViaMapConstructor() {
+    // regression test: the Map-based constructor is the one VcfParser actually uses for real ##contig
+    // lines -- this must warn exactly like the typed constructor does (testUrlWithInvalidUriSyntaxWarns)
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      Map<String, String> map = new HashMap<>();
+      map.put(ContigMetadata.ID, "chr1");
+      map.put(ContigMetadata.URL, "http://example.com/a|b");
+      new ContigMetadata(map);
+      assertTrue(appender.anyMessageContains("is malformed"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testUrlWithUnregisteredProtocolWarnsViaMapConstructor() {
+    // regression test: the Map-based constructor is the one VcfParser actually uses for real ##contig
+    // lines -- this must warn exactly like the typed constructor does (testUrlWithUnregisteredProtocolWarns)
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      Map<String, String> map = new HashMap<>();
+      map.put(ContigMetadata.ID, "chr1");
+      map.put(ContigMetadata.URL, "foo://bar");
+      new ContigMetadata(map);
+      assertTrue(appender.anyMessageContains("is malformed"));
     } finally {
       root.detachAppender(appender);
       appender.stop();

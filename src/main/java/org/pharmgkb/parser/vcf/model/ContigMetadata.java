@@ -37,11 +37,6 @@ public class ContigMetadata extends IdMetadata {
       putPropertyRaw(TAXONOMY, taxonomy);
     }
     if (url != null) {
-      try {
-        URI.create(url).toURL();
-      } catch (IllegalArgumentException | MalformedURLException e) {
-        VcfWarnings.warn("{} URL {} is malformed: {}", getLabel(), url, e.getMessage());
-      }
       putPropertyRaw(URL, url);
     }
     init();
@@ -108,6 +103,18 @@ public class ContigMetadata extends IdMetadata {
         Long.parseLong(length);
       } catch (NumberFormatException e) {
         VcfWarnings.warn("{} length \"{}\" is not a number", getLabel(), length);
+      }
+    }
+    // HTS_SPECS_BASELINE_STATUS.md's "Non-valid URL fixtures" section: "Neither VCFv4.1, VCFv4.2, nor VCFv4.3
+    // defines a formal grammar for the url value in ##assembly=url / ##pedigreeDB=URL" -- the same is true of
+    // ##contig's url tag, so this check is a library-level well-formedness convenience with no spec mandate,
+    // unlike the ID/length checks above.
+    String url = getPropertyRaw(URL);
+    if (url != null) {
+      try {
+        URI.create(url).toURL();
+      } catch (IllegalArgumentException | MalformedURLException e) {
+        VcfWarnings.warn("{} URL {} is malformed: {}", getLabel(), url, e.getMessage());
       }
     }
     ensureNoExtras(ID, LENGTH, ASSEMBLY, MD5, SPECIES, TAXONOMY, URL);
