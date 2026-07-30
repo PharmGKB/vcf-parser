@@ -266,10 +266,10 @@ public class InfoMetadataTest {
 
   @Test
   public void testUnquotedDescriptionWarningAttributedToInfoMetadataNotIdDescriptionMetadata() {
-    // regression test: IdDescriptionMetadata.init()'s warn calls must embed the runtime class's own
-    // getClass().getSimpleName() in the message text -- otherwise an InfoMetadata's Description warning is
-    // indistinguishable from an IdDescriptionMetadata one, since both now route through the same shared
-    // VcfWarnings logger
+    // regression test: IdDescriptionMetadata.init()'s warn calls must embed InfoMetadata's own label ("INFO"),
+    // set via the required label constructor parameter, in the message text -- otherwise an InfoMetadata's
+    // Description warning is indistinguishable from an IdDescriptionMetadata one, since both now route through
+    // the same shared VcfWarnings logger
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -279,7 +279,7 @@ public class InfoMetadataTest {
     try {
       new InfoMetadata(VcfUtils.extractProperties("ID=AA", "Number=1", "Type=String", "Description=unquoted"));
       assertTrue(appender.hasWarnOrHigher());
-      assertTrue(appender.anyMessageContains("InfoMetadata"));
+      assertTrue(appender.anyMessageContains("INFO"));
     } finally {
       root.detachAppender(appender);
       appender.stop();

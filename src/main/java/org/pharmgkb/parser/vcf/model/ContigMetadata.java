@@ -24,7 +24,7 @@ public class ContigMetadata extends IdMetadata {
 
   public ContigMetadata(String id, long length, String assembly, @Nullable String md5,
       @Nullable String species, @Nullable String taxonomy, @Nullable String url) {
-    super(id);
+    super("CONTIG", id);
     putPropertyRaw(LENGTH, String.valueOf(length));
     putPropertyRaw(ASSEMBLY, assembly);
     if (md5 != null) {
@@ -40,7 +40,7 @@ public class ContigMetadata extends IdMetadata {
       try {
         URI.create(url).toURL();
       } catch (IllegalArgumentException | MalformedURLException e) {
-        VcfWarnings.warn("ContigMetadata URL {} is malformed: {}", url, e.getMessage());
+        VcfWarnings.warn("{} URL {} is malformed: {}", getLabel(), url, e.getMessage());
       }
       putPropertyRaw(URL, url);
     }
@@ -48,7 +48,7 @@ public class ContigMetadata extends IdMetadata {
   }
 
   public ContigMetadata(Map<String, String> properties) {
-    super(properties);
+    super("CONTIG", properties);
     init();
   }
 
@@ -107,7 +107,7 @@ public class ContigMetadata extends IdMetadata {
         //noinspection ResultOfMethodCallIgnored
         Long.parseLong(length);
       } catch (NumberFormatException e) {
-        VcfWarnings.warn("ContigMetadata length \"{}\" is not a number", length);
+        VcfWarnings.warn("{} length \"{}\" is not a number", getLabel(), length);
       }
     }
     ensureNoExtras(ID, LENGTH, ASSEMBLY, MD5, SPECIES, TAXONOMY, URL);

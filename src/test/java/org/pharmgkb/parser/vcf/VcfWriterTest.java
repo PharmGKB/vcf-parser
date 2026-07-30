@@ -78,7 +78,7 @@ public class VcfWriterTest {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-        .addFilter(new IdDescriptionMetadata("STD_FILTER", "Standard filter"))
+        .addFilter(new IdDescriptionMetadata("FILTER", "STD_FILTER", "Standard filter"))
         .build();
     VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
     position.getFilters().add("STD_FILTER");
@@ -230,7 +230,7 @@ public class VcfWriterTest {
     // getAlts() returns the backing map directly; mutating an already-valid entry's raw Number property after
     // construction bypasses addAlt()'s own validation (which only runs once, at add time), so
     // validateBeforeWrite() must re-check it at write time
-    IdDescriptionMetadata alt = new IdDescriptionMetadata("DEL", "Deletion");
+    IdDescriptionMetadata alt = new IdDescriptionMetadata("ALT", "DEL", "Deletion");
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addAlt(alt).build();
     metadata.getAlts().get("DEL").getPropertiesRaw().put("Number", "B");
     StringWriter sw = new StringWriter();
@@ -335,9 +335,9 @@ public class VcfWriterTest {
     duplicateProps.put("ID", "Child");
     duplicateProps.put("Mother", "Mom");
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-        .addPedigree(new BaseMetadata(childProps))
+        .addPedigree(new BaseMetadata("PEDIGREE", childProps))
         .build();
-    metadata.getPedigrees().add(new BaseMetadata(duplicateProps));
+    metadata.getPedigrees().add(new BaseMetadata("PEDIGREE", duplicateProps));
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
 

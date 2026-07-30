@@ -21,10 +21,20 @@ import org.pharmgkb.parser.vcf.VcfWarnings;
 public class BaseMetadata {
 
   private final Map<String, String> m_properties;
+  private final String m_label;
 
-  public BaseMetadata(Map<String, String> properties) {
+  public BaseMetadata(String label, Map<String, String> properties) {
+    m_label = label;
     m_properties = properties;
     validateProperties();
+  }
+
+  /**
+   * @return The label identifying this declaration's VCF keyword (e.g. "INFO", "FILTER") in warning messages.
+   * Set once at construction; see subclass constructors for how each declaration kind supplies it.
+   */
+  protected final String getLabel() {
+    return m_label;
   }
 
   /**
@@ -96,41 +106,41 @@ public class BaseMetadata {
   /**
    * Should be used only for base classes.
    * Warns (via {@link VcfWarnings#warn}) if this metadata contains a property key not in the array passed. The
-   * warning message embeds {@code getClass().getSimpleName()} so it is attributed to the calling subclass, since
-   * the warning is dispatched through the single shared {@link VcfWarnings} sink rather than a per-caller logger.
+   * warning message embeds this declaration's {@link #getLabel() label} so it is attributed to the correct VCF
+   * declaration kind -- necessary because some concrete classes (e.g. {@code IdDescriptionMetadata}) are shared
+   * by multiple declaration kinds with no other distinguishing field.
    * @param names An array of permitted property keys
    */
   protected void ensureNoExtras(String... names) {
     Set<String> set = new HashSet<>();
     Collections.addAll(set, names);
     m_properties.keySet().stream().filter(property -> !set.contains(property)).forEach(property -> {
-      VcfWarnings.warn("{} metadata line contains unexpected property {}", getClass().getSimpleName(), property);
+      VcfWarnings.warn("{} metadata line contains unexpected property {}", getLabel(), property);
     });
   }
 
   /**
    * Warns (via {@link VcfWarnings#warn}) if {@code value} is null, i.e. the required property
-   * {@code propertyName} is absent. The warning message embeds {@code getClass().getSimpleName()} so it is
-   * attributed to the calling subclass, since the warning is dispatched through the single shared
-   * {@link VcfWarnings} sink rather than a per-caller logger.
+   * {@code propertyName} is absent. The warning message embeds this declaration's {@link #getLabel() label} so
+   * it is attributed to the correct VCF declaration kind -- necessary because some concrete classes (e.g.
+   * {@code IdDescriptionMetadata}) are shared by multiple declaration kinds with no other distinguishing field.
    */
   protected void warnIfMissing(String propertyName, @Nullable String value) {
     if (value == null) {
-      VcfWarnings.warn("{} required metadata property \"{}\" is missing", getClass().getSimpleName(), propertyName);
+      VcfWarnings.warn("{} required metadata property \"{}\" is missing", getLabel(), propertyName);
     }
   }
 
   /**
    * Validates a VCF {@code Number} property value, warning (via {@link VcfWarnings#warn}) if it is missing or does
    * not match {@link VcfUtils#NUMBER_PATTERN}. Shared by the metadata types ({@code INFO}, {@code FORMAT}) that
-   * declare a {@code Number} field with identical semantics. The warning message embeds
-   * {@code getClass().getSimpleName()} so it is attributed to the calling subclass, since the warning is
-   * dispatched through the single shared {@link VcfWarnings} sink rather than a per-caller logger.
+   * declare a {@code Number} field with identical semantics. The warning message embeds this declaration's
+   * {@link #getLabel() label} so it is attributed to the correct VCF declaration kind.
    */
   protected void checkNumberProperty(@Nullable String number) {
     warnIfMissing("Number", number);
     if (number != null && !VcfUtils.NUMBER_PATTERN.matcher(number).matches()) {
-      VcfWarnings.warn("{} Number is not a valid VCF number: '{}'", getClass().getSimpleName(), number);
+      VcfWarnings.warn("{} Number is not a valid VCF number: '{}'", getLabel(), number);
     }
   }
 
@@ -142,9 +152,8 @@ public class BaseMetadata {
    * keys ID/Number/Type/Description/Source/Version, are not declared in that canonical relative order. A key this
    * declaration kind doesn't use, or any other extra/unrecognized key, is ignored -- order is checked only among
    * whichever of those six keys are actually present, so e.g. an ALT line's Description immediately after ID, with
-   * no Number/Type/Source/Version present at all, triggers no warning. The warning message embeds
-   * {@code getClass().getSimpleName()} so it is attributed to the calling subclass, since the warning is
-   * dispatched through the single shared {@link VcfWarnings} sink rather than a per-caller logger.
+   * no Number/Type/Source/Version present at all, triggers no warning. The warning message embeds this
+   * declaration's {@link #getLabel() label} so it is attributed to the correct VCF declaration kind.
    * VCFv4.2.tex line 69 (##INFO), line 94 (##FORMAT), line 103 (##ALT), line 87 (##FILTER): every canonical template
    * and worked example in the spec uses this relative order; test/vcf/{4.1,4.2}/failed/failed_meta_{info_003,
    * format_003}.vcf and failed_meta_alt_004.vcf (##CauseOfFailure=Incorrect order of ALT/INFO/FORMAT fields)
@@ -162,7 +171,7 @@ public class BaseMetadata {
     expected.retainAll(actual);
     if (!actual.equals(expected)) {
       VcfWarnings.warn("{} metadata attributes declared out of canonical order: {} (expected order: {})",
-          getClass().getSimpleName(), actual, expected);
+          getLabel(), actual, expected);
     }
   }
 

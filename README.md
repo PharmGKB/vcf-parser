@@ -64,7 +64,7 @@ invalid:
   FORMAT/sample data at all when the header declares no samples, or an empty `REF` (which has no missing-value
   sentinel in the spec, unlike `ALT`/`ID`/`FILTER`): in every case the output would not be valid, re-parseable VCF.
 - A typed metadata constructor given directly (e.g. `new InfoMetadata(id, ...)`, `new ContigMetadata(id, ...)`,
-  `new IdDescriptionMetadata(id, description)`) with a missing, empty, or whitespace-only `ID` — every VCF
+  `new IdDescriptionMetadata(label, id, description)`) with a missing, empty, or whitespace-only `ID` — every VCF
   structured metadata line requires an ID (VCFv4.3.tex line 121). This only applies to direct/programmatic
   construction; a file parsed by `VcfParser` with a malformed declaration is handled per the lenient section below,
   not rejected outright.

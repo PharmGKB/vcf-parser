@@ -37,7 +37,7 @@ public class InfoMetadata extends IdDescriptionMetadata {
 
   public InfoMetadata(String id, String description, InfoType type, String number,
       @Nullable String source, @Nullable String version) {
-    super(id);
+    super("INFO", id);
     putPropertyRaw(NUMBER, number);
     putPropertyRaw(TYPE, type.name());
     // Description is inserted here, before Source/Version and not immediately after ID, so this constructor's
@@ -56,7 +56,7 @@ public class InfoMetadata extends IdDescriptionMetadata {
   }
 
   public InfoMetadata(Map<String, String> properties) {
-    super(properties);
+    super("INFO", properties);
     init();
   }
 
@@ -70,28 +70,28 @@ public class InfoMetadata extends IdDescriptionMetadata {
       try {
         m_type = InfoType.valueOf(type);
       } catch (IllegalArgumentException e) {
-        VcfWarnings.warn("INFO {} '{}' is not a valid INFO type", TYPE, type);
+        VcfWarnings.warn("{} {} '{}' is not a valid {} type", getLabel(), TYPE, type, getLabel());
       }
     }
     if (m_type == InfoType.Flag && !"0".equals(number)) {
-      VcfWarnings.warn("INFO {} has Type=Flag but Number is '{}' (should be 0)", getId(), number);
+      VcfWarnings.warn("{} {} has Type=Flag but Number is '{}' (should be 0)", getLabel(), getId(), number);
     }
     for (String optional : new String[] { SOURCE, VERSION }) {
       String value = getPropertyRaw(optional);
       if (value != null && (!value.startsWith("\"") || !value.endsWith("\""))) {
-        VcfWarnings.warn("INFO metadata property \"{}\" should be quoted but was: {}", optional, value);
+        VcfWarnings.warn("{} metadata property \"{}\" should be quoted but was: {}", getLabel(), optional, value);
       }
     }
     String id = getId();
     ReservedInfoProperty reserved = id == null ? null : ReservedInfoProperty.fromId(id);
     if (reserved != null) {
       if (number != null && !reserved.getExpectedNumber().equals(number)) {
-        VcfWarnings.warn("INFO {} has Number '{}' but the reserved definition expects '{}'", getId(), number,
-            reserved.getExpectedNumber());
+        VcfWarnings.warn("{} {} has Number '{}' but the reserved definition expects '{}'", getLabel(), getId(),
+            number, reserved.getExpectedNumber());
       }
       if (m_type != null && !VcfUtils.toJavaType(m_type).equals(reserved.getType())) {
-        VcfWarnings.warn("INFO {} has Type '{}' but the reserved definition expects '{}'", getId(), m_type,
-            reserved.getType().getSimpleName());
+        VcfWarnings.warn("{} {} has Type '{}' but the reserved definition expects '{}'", getLabel(), getId(),
+            m_type, reserved.getType().getSimpleName());
       }
     }
     // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included

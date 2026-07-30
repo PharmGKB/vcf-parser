@@ -22,14 +22,14 @@ public class IdDescriptionMetadata extends IdMetadata {
   public static final String ID = "ID";
   public static final String DESCRIPTION = "Description";
 
-  public IdDescriptionMetadata(String id, String description) {
-    super(id);
+  public IdDescriptionMetadata(String label, String id, String description) {
+    super(label, id);
     putAndQuoteProperty(DESCRIPTION, description);
     init();
   }
 
-  public IdDescriptionMetadata(Map<String, String> properties) {
-    super(properties);
+  public IdDescriptionMetadata(String label, Map<String, String> properties) {
+    super(label, properties);
     init();
     checkAttributeOrder();
   }
@@ -37,12 +37,12 @@ public class IdDescriptionMetadata extends IdMetadata {
   /**
    * For subclasses (InfoMetadata, FormatMetadata) whose own typed constructor must insert additional properties
    * between ID and Description to match their own canonical attribute order (see
-   * BaseMetadata#checkAttributeOrder) -- unlike the (id, description) constructor above, this does
+   * BaseMetadata#checkAttributeOrder) -- unlike the (label, id, description) constructor above, this does
    * not insert Description; the caller must add it itself afterward, via putAndQuoteProperty, in whatever
    * position is canonical for its own subtype.
    */
-  protected IdDescriptionMetadata(String id) {
-    super(id);
+  protected IdDescriptionMetadata(String label, String id) {
+    super(label, id);
   }
 
   @Override
@@ -55,7 +55,7 @@ public class IdDescriptionMetadata extends IdMetadata {
     String description = getPropertyRaw(DESCRIPTION);
     warnIfMissing(DESCRIPTION, description);
     if (description != null && (!description.startsWith("\"") || !description.endsWith("\""))) {
-      VcfWarnings.warn("{} metadata property \"{}\" should be quoted but was: {}", getClass().getSimpleName(),
+      VcfWarnings.warn("{} metadata property \"{}\" should be quoted but was: {}", getLabel(),
           DESCRIPTION, description);
     }
     // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included

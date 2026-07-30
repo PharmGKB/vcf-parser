@@ -14,8 +14,8 @@ public abstract class IdMetadata extends BaseMetadata {
 
   public static final String ID = "ID";
 
-  protected IdMetadata(String id) {
-    super(new LinkedHashMap<>());
+  protected IdMetadata(String label, String id) {
+    super(label, new LinkedHashMap<>());
     // VCFv4.3.tex line 121: "All structured lines require an ID..." -- VCFv4.2 doesn't use the word "required" but
     // its own templates for all six keyed types show ID unconditionally first; see DUPLICATE_METADATA_ID_HANDLING.md
     if (id == null || id.trim().isEmpty()) {
@@ -25,8 +25,8 @@ public abstract class IdMetadata extends BaseMetadata {
     init();
   }
 
-  protected IdMetadata(Map<String, String> properties) {
-    super(properties);
+  protected IdMetadata(String label, Map<String, String> properties) {
+    super(label, properties);
     init();
   }
 
@@ -49,7 +49,7 @@ public abstract class IdMetadata extends BaseMetadata {
     // treated as a bcftools coverage gap rather than a considered position, so the hts-specs fixture and
     // vcf_validator's uniform treatment govern instead, per this project's decision hierarchy.
     if (id != null && id.chars().anyMatch(Character::isWhitespace)) {
-      VcfWarnings.warn("{} metadata ID \"{}\" must not contain whitespace", getClass().getSimpleName(), id);
+      VcfWarnings.warn("{} metadata ID \"{}\" must not contain whitespace", getLabel(), id);
     }
   }
 

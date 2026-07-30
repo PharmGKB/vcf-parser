@@ -26,7 +26,7 @@ public class FormatMetadata extends IdDescriptionMetadata {
   private @Nullable FormatType m_type;
 
   public FormatMetadata(String id, String description, String number, FormatType type) {
-    super(id);
+    super("FORMAT", id);
     putPropertyRaw(NUMBER, number);
     putPropertyRaw(TYPE, type.name());
     // Description inserted last -- see InfoMetadata's identical constructor for why (matches canonical
@@ -36,7 +36,7 @@ public class FormatMetadata extends IdDescriptionMetadata {
   }
 
   public FormatMetadata(Map<String, String> properties) {
-    super(properties);
+    super("FORMAT", properties);
     init();
   }
 
@@ -50,19 +50,19 @@ public class FormatMetadata extends IdDescriptionMetadata {
       try {
         m_type = FormatType.valueOf(type);
       } catch (IllegalArgumentException e) {
-        VcfWarnings.warn("FORMAT {} '{}' is not a valid FORMAT type", TYPE, type);
+        VcfWarnings.warn("{} {} '{}' is not a valid {} type", getLabel(), TYPE, type, getLabel());
       }
     }
     String id = getId();
     ReservedFormatProperty reserved = id == null ? null : ReservedFormatProperty.fromId(id);
     if (reserved != null) {
       if (number != null && !reserved.getExpectedNumber().equals(number)) {
-        VcfWarnings.warn("FORMAT {} has Number '{}' but the reserved definition expects '{}'", getId(), number,
-            reserved.getExpectedNumber());
+        VcfWarnings.warn("{} {} has Number '{}' but the reserved definition expects '{}'", getLabel(), getId(),
+            number, reserved.getExpectedNumber());
       }
       if (m_type != null && !VcfUtils.toJavaType(m_type).equals(reserved.getType())) {
-        VcfWarnings.warn("FORMAT {} has Type '{}' but the reserved definition expects '{}'", getId(), m_type,
-            reserved.getType().getSimpleName());
+        VcfWarnings.warn("{} {} has Type '{}' but the reserved definition expects '{}'", getLabel(), getId(),
+            m_type, reserved.getType().getSimpleName());
       }
     }
     // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included

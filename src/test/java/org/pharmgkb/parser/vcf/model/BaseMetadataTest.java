@@ -22,7 +22,7 @@ public class BaseMetadataTest {
   public void testGetProperty() throws Exception {
     Map<String, String> map = new HashMap<>();
     map.put("test", "one");
-    BaseMetadata metadata = new BaseMetadata(map);
+    BaseMetadata metadata = new BaseMetadata("TEST", map);
     assertEquals("one", metadata.getPropertyRaw("test"));
   }
 
@@ -31,7 +31,7 @@ public class BaseMetadataTest {
     assertThrows(VcfFormatException.class, () -> {
       Map<String, String> map = new HashMap<>();
       map.put("test", "two\nlines");
-      new BaseMetadata(map);
+      new BaseMetadata("TEST", map);
     });
   }
 
@@ -40,13 +40,13 @@ public class BaseMetadataTest {
     assertThrows(VcfFormatException.class, () -> {
       Map<String, String> map = new HashMap<>();
       map.put("second\ntest", "one");
-      new BaseMetadata(map);
+      new BaseMetadata("TEST", map);
     });
   }
 
   @Test
   public void testPutPropertyRawRejectsLineTerminator() {
-    BaseMetadata metadata = new BaseMetadata(new HashMap<>());
+    BaseMetadata metadata = new BaseMetadata("TEST", new HashMap<>());
     assertThrows(VcfFormatException.class, () -> metadata.putPropertyRaw("key", "bad\nvalue"));
     assertThrows(VcfFormatException.class, () -> metadata.putPropertyRaw("key", "bad\rvalue"));
     assertThrows(VcfFormatException.class, () -> metadata.putPropertyRaw("bad\nkey", "value"));
@@ -54,20 +54,20 @@ public class BaseMetadataTest {
 
   @Test
   public void testPutPropertyRawRejectsNull() {
-    BaseMetadata metadata = new BaseMetadata(new HashMap<>());
+    BaseMetadata metadata = new BaseMetadata("TEST", new HashMap<>());
     assertThrows(VcfFormatException.class, () -> metadata.putPropertyRaw("key", null));
   }
 
   @Test
   public void testPutAndQuotePropertyRejectsLineTerminator() {
-    BaseMetadata metadata = new BaseMetadata(new HashMap<>());
+    BaseMetadata metadata = new BaseMetadata("TEST", new HashMap<>());
     assertThrows(VcfFormatException.class, () -> metadata.putAndQuoteProperty("key", "bad\nvalue"));
     assertThrows(VcfFormatException.class, () -> metadata.putAndQuoteProperty("key", "bad\rvalue"));
   }
 
   @Test
   public void testPutAndQuotePropertyRejectsNull() {
-    BaseMetadata metadata = new BaseMetadata(new HashMap<>());
+    BaseMetadata metadata = new BaseMetadata("TEST", new HashMap<>());
     assertThrows(VcfFormatException.class, () -> metadata.putAndQuoteProperty("key", null));
   }
 
@@ -80,7 +80,7 @@ public class BaseMetadataTest {
     map.put("Type", "Integer");
     map.put("Description", "d");
     map.put("ID", "DP");
-    BaseMetadata metadata = new BaseMetadata(map);
+    BaseMetadata metadata = new BaseMetadata("TEST", map);
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -103,7 +103,7 @@ public class BaseMetadataTest {
     map.put("Number", "1");
     map.put("Type", "Integer");
     map.put("Description", "d");
-    BaseMetadata metadata = new BaseMetadata(map);
+    BaseMetadata metadata = new BaseMetadata("TEST", map);
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -127,7 +127,7 @@ public class BaseMetadataTest {
     map.put("Custom", "z");
     map.put("ID", "DP");
     map.put("Description", "d");
-    BaseMetadata metadata = new BaseMetadata(map);
+    BaseMetadata metadata = new BaseMetadata("TEST", map);
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =

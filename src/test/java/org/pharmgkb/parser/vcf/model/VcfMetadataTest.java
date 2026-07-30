@@ -262,7 +262,7 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata("THIS:IS-NOT-VALID", "Not a real code"));
+      metadata.addAlt(new IdDescriptionMetadata("ALT", "THIS:IS-NOT-VALID", "Not a real code"));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -282,7 +282,7 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     try {
       new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-          .addAlt(new IdDescriptionMetadata("THIS:IS-NOT-VALID", "Not a real code"));
+          .addAlt(new IdDescriptionMetadata("ALT", "THIS:IS-NOT-VALID", "Not a real code"));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -300,7 +300,7 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata("DEL", "Deletion"));
+      metadata.addAlt(new IdDescriptionMetadata("ALT", "DEL", "Deletion"));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -319,7 +319,7 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata(
+      metadata.addAlt(new IdDescriptionMetadata("ALT",
           org.pharmgkb.parser.vcf.VcfUtils.extractProperties("ID=DEL", "Number=B", "Type=String",
               "Description=\"Deletion\"")));
       assertTrue(appender.hasWarnOrHigher());
@@ -340,7 +340,7 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata(
+      metadata.addAlt(new IdDescriptionMetadata("ALT",
           org.pharmgkb.parser.vcf.VcfUtils.extractProperties("ID=DEL", "Number=1", "Type=Text",
               "Description=\"Deletion\"")));
       assertTrue(appender.hasWarnOrHigher());
@@ -360,7 +360,7 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata(
+      metadata.addAlt(new IdDescriptionMetadata("ALT",
           org.pharmgkb.parser.vcf.VcfUtils.extractProperties("ID=DEL", "Number=1", "Type=String",
               "Description=\"Deletion\"")));
       assertFalse(appender.hasWarnOrHigher());
@@ -383,7 +383,7 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.1").build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata("CN0", "Copy number allele: 0 copies"));
+      metadata.addAlt(new IdDescriptionMetadata("ALT", "CN0", "Copy number allele: 0 copies"));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -404,7 +404,7 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata("AB CD", "d"));
+      metadata.addAlt(new IdDescriptionMetadata("ALT", "AB CD", "d"));
       assertTrue(appender.anyMessageContains("must not contain whitespace"));
     } finally {
       root.detachAppender(appender);
@@ -425,7 +425,7 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata("AB<CD", "d"));
+      metadata.addAlt(new IdDescriptionMetadata("ALT", "AB<CD", "d"));
       assertTrue(appender.anyMessageContains("must not contain angle brackets"));
     } finally {
       root.detachAppender(appender);
@@ -448,7 +448,7 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata("DEL:A B", "d"));
+      metadata.addAlt(new IdDescriptionMetadata("ALT", "DEL:A B", "d"));
       assertTrue(appender.anyMessageContains("must not contain whitespace"));
       assertTrue(appender.anyMessageContains("not a valid structural variant code"));
     } finally {
@@ -468,8 +468,8 @@ public class VcfMetadataTest {
     VcfMetadata metadata;
     try {
       metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-          .addAlt(new IdDescriptionMetadata("DEL", "First"))
-          .addAlt(new IdDescriptionMetadata("DEL", "Second"))
+          .addAlt(new IdDescriptionMetadata("ALT", "DEL", "First"))
+          .addAlt(new IdDescriptionMetadata("ALT", "DEL", "Second"))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -534,8 +534,8 @@ public class VcfMetadataTest {
     VcfMetadata metadata;
     try {
       metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-          .addFilter(new IdDescriptionMetadata("q10", "First"))
-          .addFilter(new IdDescriptionMetadata("q10", "Second"))
+          .addFilter(new IdDescriptionMetadata("FILTER", "q10", "First"))
+          .addFilter(new IdDescriptionMetadata("FILTER", "q10", "Second"))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -579,8 +579,8 @@ public class VcfMetadataTest {
     VcfMetadata metadata;
     try {
       metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-          .addSample(new IdDescriptionMetadata("S1", "First"))
-          .addSample(new IdDescriptionMetadata("S1", "Second"))
+          .addSample(new IdDescriptionMetadata("SAMPLE", "S1", "First"))
+          .addSample(new IdDescriptionMetadata("SAMPLE", "S1", "Second"))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -607,8 +607,8 @@ public class VcfMetadataTest {
     VcfMetadata metadata;
     try {
       metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-          .addPedigree(new BaseMetadata(childProps))
-          .addPedigree(new BaseMetadata(duplicateProps))
+          .addPedigree(new BaseMetadata("PEDIGREE", childProps))
+          .addPedigree(new BaseMetadata("PEDIGREE", duplicateProps))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -639,8 +639,8 @@ public class VcfMetadataTest {
     VcfMetadata metadata;
     try {
       metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-          .addPedigree(new BaseMetadata(props1))
-          .addPedigree(new BaseMetadata(props2))
+          .addPedigree(new BaseMetadata("PEDIGREE", props1))
+          .addPedigree(new BaseMetadata("PEDIGREE", props2))
           .build();
       assertFalse(appender.hasWarnOrHigher());
     } finally {
@@ -660,8 +660,8 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata("DEL", "First"));
-      metadata.addAlt(new IdDescriptionMetadata("DEL", "Second"));
+      metadata.addAlt(new IdDescriptionMetadata("ALT", "DEL", "First"));
+      metadata.addAlt(new IdDescriptionMetadata("ALT", "DEL", "Second"));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -740,8 +740,8 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     try {
-      metadata.addFilter(new IdDescriptionMetadata("q10", "First"));
-      metadata.addFilter(new IdDescriptionMetadata("q10", "Second"));
+      metadata.addFilter(new IdDescriptionMetadata("FILTER", "q10", "First"));
+      metadata.addFilter(new IdDescriptionMetadata("FILTER", "q10", "Second"));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -760,8 +760,8 @@ public class VcfMetadataTest {
     idProps.put("ID", "Child");
     idProps.put("Father", "Dad");
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-        .addPedigree(new BaseMetadata(idLessProps))
-        .addPedigree(new BaseMetadata(idProps))
+        .addPedigree(new BaseMetadata("PEDIGREE", idLessProps))
+        .addPedigree(new BaseMetadata("PEDIGREE", idProps))
         .build();
     assertEquals(2, metadata.getPedigrees().size());
   }
@@ -814,9 +814,9 @@ public class VcfMetadataTest {
     VcfMetadata metadata;
     try {
       metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-          .addAlt(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\"")))
-          .addAlt(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("ID=", "Description=\"empty\"")))
-          .addAlt(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("ID=   ", "Description=\"blank\"")))
+          .addAlt(new IdDescriptionMetadata("ALT", org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\"")))
+          .addAlt(new IdDescriptionMetadata("ALT", org.pharmgkb.parser.vcf.VcfUtils.extractProperties("ID=", "Description=\"empty\"")))
+          .addAlt(new IdDescriptionMetadata("ALT", org.pharmgkb.parser.vcf.VcfUtils.extractProperties("ID=   ", "Description=\"blank\"")))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -868,7 +868,7 @@ public class VcfMetadataTest {
     VcfMetadata metadata;
     try {
       metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-          .addFilter(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\"")))
+          .addFilter(new IdDescriptionMetadata("FILTER", org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\"")))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -931,7 +931,7 @@ public class VcfMetadataTest {
     VcfMetadata metadata;
     try {
       metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-          .addSample(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\"")))
+          .addSample(new IdDescriptionMetadata("SAMPLE", org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\"")))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -951,7 +951,7 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\"")));
+      metadata.addAlt(new IdDescriptionMetadata("ALT", org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\"")));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -1027,7 +1027,7 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     try {
-      metadata.addFilter(new IdDescriptionMetadata(org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\"")));
+      metadata.addFilter(new IdDescriptionMetadata("FILTER", org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\"")));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);

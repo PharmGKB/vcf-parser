@@ -713,6 +713,39 @@ public class VcfParserTest {
   }
 
   @Test
+  void testMetadataLabelsMatchDeclarationKindAtEachParserCallSite() throws IOException {
+    // Regression test for findings19.md Important #1: VcfParser.parseMetadataProperty passes a literal label
+    // ("ALT", "FILTER", "SAMPLE") at each of its IdDescriptionMetadata call sites. IdDescriptionMetadataTest's
+    // testWarningEmbedsCallerSuppliedLabelNotSharedClassName only unit-constructs IdDescriptionMetadata directly
+    // and confirms whatever label it's given comes through correctly -- it does not verify VcfParser itself
+    // supplies the *correct* label at each call site. This test parses a real VCF header through VcfParser so a
+    // future accidental swap of one of those literals (e.g. "SAMPLE" for "FILTER") would be caught.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      // an ID containing whitespace triggers IdMetadata.init()'s "{} metadata ID \"{}\" must not contain
+      // whitespace" warning for each of ALT/FILTER/SAMPLE, embedding whichever label VcfParser supplied
+      String vcf = "##fileformat=VCFv4.2\n" +
+          "##ALT=<ID=A B,Description=\"d\">\n" +
+          "##FILTER=<ID=A B,Description=\"d\">\n" +
+          "##SAMPLE=<ID=A B,Description=\"d\">\n" +
+          "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+      parseMetadataOf(vcf);
+      assertTrue(appender.anyMessageContains("ALT metadata ID"));
+      assertTrue(appender.anyMessageContains("FILTER metadata ID"));
+      assertTrue(appender.anyMessageContains("SAMPLE metadata ID"));
+      assertFalse(appender.anyMessageContains("IdDescriptionMetadata"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testWarningsToFileDefaultNameDerivedFromSourcePath(@org.junit.jupiter.api.io.TempDir Path tempDir)
       throws IOException {
     // a metadata line with no ID triggers a warning during parseMetadata() -- see VcfMetadata.addInfo
