@@ -15,6 +15,8 @@ hts-specs also publishes an official VCF conformance fixture suite (`test/vcf/{v
 
 Before treating a baseline entry as a new problem to fix, check `HTS_SPECS_BASELINE_STATUS.md` -- it catalogs every current baseline entry's status (permanently accepted / filed upstream / candidate for filing) and is bound to a specific `htsSpecsPinnedSha`; treat it as stale if that pin has changed since.
 
+Before treating any other code-quality observation as a new finding, check `WONT_FIX.md` -- it catalogs known issues deliberately left unaddressed, with the reasoning, so they aren't rediscovered and re-proposed.
+
 If still in doubt, consult bcftools behavior.  Decisions made this way should be documented and have a regression fixture demonstrating the behavior.  If bcftools was consulted, include bcftools version.
 
 When hts-specs itself is silent (no fixture covers the exact case), running vcf_validator (the EBI reference validator; the tool hts-specs itself uses to generate its `passed`/`failed` corpus) directly against a hand-built input is informative but is *not* equivalent to a documented hts-specs fixture -- cite it as a direct tool run ("vcf_validator `<version>`"), not as "the suite says." vcf_validator tends to be stricter than bcftools on zero-length-field cases in structural fields (ID/FILTER/ALT/INFO) but does not apply the same rigor to sample-column sub-structure (GT, reserved FORMAT values) -- don't treat a vcf_validator "invalid" verdict there as load-bearing. When bcftools and vcf_validator disagree, bcftools remains the tie-breaker per the hierarchy above, but document the disagreement rather than silently picking a side.
@@ -60,7 +62,7 @@ A record accepted by the parser must be writable without losing fields or produc
 
 - Use the checked-in Gradle wrapper. The Node/Yarn files support semantic-release; they are not the application build.
 - **Keep parser changes streaming-friendly**. Do not load an entire VCF into memory unless the affected class explicitly provides an in-memory data store.
-- Commit messages use conventional-commits style (`type(scope): summary`). `scope` is drawn from `parser`, `writer`, and `memoryMappedImpl` -- never a class name. A commit touching more than one of these areas may list multiple, comma-separated (e.g. `type(parser,writer): summary`), rather than picking one to cover the rest.
+- Commit messages use conventional-commits style (`type(scope): summary`). `scope` is drawn from `parser`, `writer`, and `memoryMappedImpl` -- never a class name. `org.pharmgkb.parser.vcf.model` classes use `parser` (there is no separate `model` scope); `VcfWriter.java` and its `Builder` use `writer`; `MemoryMappedVcfDataStore.java`/`MemoryMappedVcfLineParser.java` use `memoryMappedImpl`, including doc-only changes to either. A commit touching more than one of these areas may list multiple, comma-separated (e.g. `type(parser,writer): summary`), rather than picking one to cover the rest.
 
 ### Repository Layout
 
@@ -86,7 +88,7 @@ Run a focused test while iterating:
 
 On Unix-like systems, use `./gradlew` instead. The full `test` task is the required verification for code changes and also generates the JaCoCo report used by CI.
 
-#### Code Conventions
+### Code Conventions
 
 - Match the existing Java style: two-space indentation, four-space continuation indentation, braces on control-flow statements, and two blank lines after imports.
 - Preserve the established field prefixes (`m_` for instance fields and `s_`/`sf_` for static fields) in classes that use them.
@@ -94,6 +96,8 @@ On Unix-like systems, use `./gradlew` instead. The full `test` task is the requi
 - Keep changes narrow. This is a published library, so avoid changing public behavior or signatures unless the task requires it.
 - Preserve lazy parsing and allocation-conscious code in hot per-record paths unless tests and measurements justify a change.
 - Helpers that normalize a `List` in place (e.g. `VcfUtils.fillEmptyEntriesWithDot`) mutate their argument directly and require a mutable list. Callers must never pass a constructor/method parameter straight through to such a helper -- defensively copy first (`new ArrayList<>(list)`), since external callers may supply an immutable list (`List.of(...)`) or one they don't expect to be mutated (`Arrays.asList(...)`).
+- JDK immutable collections (`List.of(...)`, `Set.of(...)`, `Map.copyOf(...)`, `Collectors.toUnmodifiableMap(...)`) null-check lookup arguments and throw `NullPointerException` from `.contains(null)`/`.get(null)`/`.indexOf(null)`, unlike `HashMap`/`ArrayList`, which tolerate `null` there. For a lookup over a fixed, known domain where `null` trivially isn't a match (e.g. `isReservedMetadataKey`, `getColumnIndex`), guard the lookup explicitly rather than letting this throw. Prefer `Collections.unmodifiableList(Arrays.asList(...))` over `List.of(...)` only when wrapping data provably owned by no one else (e.g. a varargs parameter's freshly-allocated array) -- it is zero-copy and null-tolerant, but does not defensively copy, so it is unsafe for data a caller might still hold a mutable reference to.
+- String case-folding used for parsing or dispatch logic (`toUpperCase()`/`toLowerCase()`) must use `Locale.ROOT` explicitly (`value.toUpperCase(Locale.ROOT)`), never the default-locale overload -- under a Turkish/Azeri locale, default-locale case-folding on `I`/`i` produces different code points than ASCII expects, which can silently break `String.equals`-based dispatch or comparison.
 
 ### Tests and Fixtures
 
