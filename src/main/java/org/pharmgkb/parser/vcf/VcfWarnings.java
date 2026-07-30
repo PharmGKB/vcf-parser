@@ -41,6 +41,13 @@ public final class VcfWarnings {
    * retains ownership of the sink's own lifecycle. Narrows {@link AutoCloseable#close()} to declare no checked
    * exception (deactivation is only a thread-local stack pop), so a try-with-resources using this type imposes
    * no exception-handling burden on the caller.
+   * <p>
+   * If multiple {@code Deactivator}s are active on the same thread at once, they must be closed in strict LIFO
+   * order, mirroring try-with-resources' own nesting discipline: {@link #close()} always pops whatever is
+   * currently on top of the calling thread's stack, not necessarily the entry this particular handle was
+   * returned for, so closing them out of order silently deactivates the wrong sink. {@link VcfParser}/
+   * {@link VcfWriter}'s own internal usage is always correctly nested via try-with-resources; this only matters
+   * for a caller using {@link #activate(Writer)} directly.
    */
   @FunctionalInterface
   public interface Deactivator extends AutoCloseable {

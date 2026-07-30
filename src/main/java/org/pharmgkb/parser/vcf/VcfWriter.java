@@ -912,7 +912,10 @@ public class VcfWriter implements Closeable {
      * Redirects VCF-content warnings from writing to a file named after the target VCF file's own full name (kept,
      * including its extension) plus {@code .warn.log}, in the same directory. Requires the writer to have been
      * built via {@link #toFile(Path)}, not {@link #toWriter(PrintWriter)} -- there is no path to derive a default
-     * name from otherwise; use {@link #warningsToFile(Path)} instead in that case.
+     * name from otherwise; use {@link #warningsToFile(Path)} instead in that case. See
+     * {@link #warningsToFile(Path)}'s Javadoc for a same-path truncation risk that also applies here if this
+     * default-derived name happens to collide with another {@code warningsToFile()}-configured
+     * {@link VcfWriter}/{@link VcfParser}'s own default-derived name (e.g. an in-place parse-then-write).
      */
     public Builder warningsToFile() {
       m_warningsToFile = true;
@@ -922,6 +925,12 @@ public class VcfWriter implements Closeable {
 
     /**
      * Redirects VCF-content warnings from writing to {@code customFile} instead of the default derived name.
+     * <p>
+     * If {@code customFile} is the same path another {@code warningsToFile()}-configured {@link VcfWriter} or
+     * {@link VcfParser} also writes to -- including via a matching default-derived name, e.g. an in-place
+     * parse-then-write to the same file -- whichever side opens its warnings file second silently truncates the
+     * first side's content. Both open via {@code Files.newBufferedWriter}, which defaults to overwrite, not
+     * append.
      */
     public Builder warningsToFile(Path customFile) {
       m_warningsToFile = true;

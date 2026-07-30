@@ -38,6 +38,9 @@ invalid:
   metadata line before the `#CHROM` header; or a `#`-prefixed line after it (VCF has no comment syntax).
 - A structured metadata declaration (`##INFO`, `##FORMAT`, `##contig`, `##FILTER`, `##ALT`, `##SAMPLE`,
   `##PEDIGREE`) whose value is not wrapped in angle brackets (`<...>`).
+- A `##` metadata line with no `=` at all (e.g. a bare `##sometext` or `##INFO` with no `=`) -- distinct from the
+  missing-angle-brackets case above, which requires a well-formed `key=value` structured declaration whose value
+  isn't wrapped in `<...>`.
 - A missing `#CHROM` header, wrong fixed column names, a missing `FORMAT` column when samples are present, a
   `FORMAT` column with no sample columns following it, an empty sample name, or a duplicate sample name.
 - A data line with the wrong number of tab-separated columns.

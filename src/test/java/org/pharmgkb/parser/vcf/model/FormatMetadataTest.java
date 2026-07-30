@@ -206,7 +206,7 @@ public class FormatMetadataTest {
     root.addAppender(appender);
     try {
       new FormatMetadata(VcfUtils.extractProperties("ID=A B", "Number=1", "Type=String", "Description=\"d\""));
-      assertTrue(appender.hasWarnOrHigher());
+      assertTrue(appender.anyMessageContains("must not contain whitespace"));
     } finally {
       root.detachAppender(appender);
       appender.stop();

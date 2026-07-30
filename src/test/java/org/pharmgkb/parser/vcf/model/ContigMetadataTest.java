@@ -80,7 +80,7 @@ public class ContigMetadataTest {
       Map<String, String> map = new HashMap<>();
       map.put(ContigMetadata.ID, "1 A");
       new ContigMetadata(map);
-      assertTrue(appender.hasWarnOrHigher());
+      assertTrue(appender.anyMessageContains("must not contain whitespace"));
     } finally {
       root.detachAppender(appender);
       appender.stop();
@@ -206,9 +206,10 @@ public class ContigMetadataTest {
   }
 
   @Test
-  public void testUrlMissingSchemeWarns() {
-    // a syntactically valid URI with no scheme is not a valid URL -- URI.create(url).toURL() throws
-    // MalformedURLException here, exercising the other half of ContigMetadata's multi-catch
+  public void testUrlWithUnregisteredProtocolWarns() {
+    // "foo://bar" IS syntactically valid with a real scheme ("foo") -- URI.create(url).getScheme() returns "foo",
+    // not null. The failure is that "foo" is an unregistered/unknown protocol, which URI.create(url).toURL()
+    // rejects with MalformedURLException -- exercising the other half of ContigMetadata's multi-catch
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =

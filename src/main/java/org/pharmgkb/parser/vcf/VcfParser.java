@@ -591,7 +591,10 @@ public class VcfParser implements Closeable {
      * including its extension) plus {@code .warn.log}, in the same directory -- e.g. parsing {@code sample.vcf}
      * writes warnings to {@code sample.vcf.warn.log} alongside it. Requires the parser to have been built via
      * {@link #fromFile(Path)}, not {@link #fromReader(BufferedReader)} -- there is no path to derive a default
-     * name from otherwise; use {@link #warningsToFile(Path)} instead in that case.
+     * name from otherwise; use {@link #warningsToFile(Path)} instead in that case. See
+     * {@link #warningsToFile(Path)}'s Javadoc for a same-path truncation risk that also applies here if this
+     * default-derived name happens to collide with another {@code warningsToFile()}-configured
+     * {@link VcfParser}/{@link VcfWriter}'s own default-derived name (e.g. an in-place parse-then-write).
      * <p>
      * This redirection is scoped to the {@link VcfParser#parse()} call itself. A warning from a value whose
      * validation this library defers until a getter is called (e.g. {@code VcfPosition.getQuality()}) is not
@@ -613,6 +616,12 @@ public class VcfParser implements Closeable {
      * redirected if that getter is called after {@link VcfParser#parse()} has already returned -- it goes to the
      * default logger instead. Calling {@link VcfParser#parseMetadata()} or {@link VcfParser#parseNextLine()}
      * directly, instead of {@link VcfParser#parse()}, is not redirected at all.
+     * <p>
+     * If {@code customFile} is the same path another {@code warningsToFile()}-configured {@link VcfParser} or
+     * {@link VcfWriter} also writes to -- including via a matching default-derived name, e.g. an in-place
+     * parse-then-write to the same file -- whichever side opens its warnings file second silently truncates the
+     * first side's content. Both open via {@code Files.newBufferedWriter}, which defaults to overwrite, not
+     * append.
      */
     public Builder warningsToFile(Path customFile) {
       Preconditions.checkNotNull(customFile);

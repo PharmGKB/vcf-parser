@@ -115,6 +115,11 @@ public class TransformingVcfLineParser implements VcfLineParser, Closeable {
     m_headerWritten = true;
   }
 
+  /**
+   * Delegates to the underlying {@link VcfWriter}'s {@link VcfWriter#close()}, which permanently invalidates
+   * this instance too (see this class's own Javadoc): {@link #isValid()} becomes {@code false} afterward, and
+   * further {@link #parseMetadata}/{@link #parseLine} calls throw {@link IllegalStateException}.
+   */
   @Override
   public void close() {
     m_writer.close();

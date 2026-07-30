@@ -81,7 +81,7 @@ public class IdDescriptionMetadataTest {
     root.addAppender(appender);
     try {
       new IdDescriptionMetadata(VcfUtils.extractProperties("ID=A B", "Description=\"d\""));
-      assertTrue(appender.hasWarnOrHigher());
+      assertTrue(appender.anyMessageContains("must not contain whitespace"));
     } finally {
       root.detachAppender(appender);
       appender.stop();

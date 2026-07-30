@@ -203,9 +203,9 @@ public class InfoMetadataTest {
 
   @Test
   public void testValidateWithExtraPropertyDoesNotAffectCoreFields() {
-    // the typed constructor previously passed isBaseType=true up the chain (see testValidateRefreshesTypeAfterRawMutation
-    // for the general validate() re-derivation this exercises); combined with an extra property, validate() must
-    // still correctly re-derive Type/Number and not treat Number/Type/Source/Version as unexpected
+    // combined with an extra raw property, validate() must still correctly re-derive Type/Number and not treat
+    // the typed constructor's own Number/Type/Source/Version properties as unexpected extras (see
+    // testValidateRefreshesTypeAfterRawMutation for the general validate() re-derivation this exercises)
     InfoMetadata md = new InfoMetadata("X", "d", InfoType.Integer, "1", "src", "1.0");
     md.getPropertiesRaw().put("Custom", "extra");
     md.validate();
@@ -298,7 +298,7 @@ public class InfoMetadataTest {
     root.addAppender(appender);
     try {
       new InfoMetadata(VcfUtils.extractProperties("ID=A B", "Number=1", "Type=String", "Description=\"d\""));
-      assertTrue(appender.hasWarnOrHigher());
+      assertTrue(appender.anyMessageContains("must not contain whitespace"));
     } finally {
       root.detachAppender(appender);
       appender.stop();
