@@ -115,6 +115,12 @@ public class VcfUtils {
 
   private static final Pattern sf_whitespacePattern = Pattern.compile("\\s");
 
+  /**
+   * Matched with {@code find()}, not {@code matches()}: a wrapping {@code ".*\s.*"} pattern would fail to
+   * detect whitespace in a string containing 2+ line-terminator characters, since {@code "."} does not match
+   * line terminators without {@code DOTALL}. ASCII-only ({@code \s}'s default meaning without
+   * {@code UNICODE_CHARACTER_CLASS}) -- does not detect non-ASCII Unicode whitespace.
+   */
   public static boolean containsWhitespace(String s) {
     return sf_whitespacePattern.matcher(s).find();
   }
@@ -382,7 +388,7 @@ public class VcfUtils {
             "fields); dropping it", key, value);
         continue;
       }
-      if (sf_whitespacePattern.matcher(code).find()) {
+      if (containsWhitespace(code)) {
         VcfWarnings.warn("FORMAT {} value \"{}\" contains whitespace in filter code \"{}\"", key, value, code);
       }
       if (code.equals("PASS") || code.equals(".")) {
