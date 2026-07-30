@@ -6,7 +6,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
 import com.google.common.base.Joiner;
 import com.google.common.collect.LinkedListMultimap;
 import com.google.common.collect.ListMultimap;
@@ -35,9 +34,6 @@ import org.pharmgkb.parser.vcf.VcfWarnings;
 public class VcfPosition {
 
   private static final Joiner sf_commaJoiner = Joiner.on(",");
-  // matched with find(), not matches(): a wrapping ".*\s.*" pattern would fail to detect whitespace in a string
-  // containing 2+ line-terminator characters, since "." does not match line terminators without DOTALL
-  private static final Pattern sf_whitespace = Pattern.compile("\\s");
   private String m_chromosome;
   private long m_position;
   private List<String> m_ids = new ArrayList<>();
@@ -163,7 +159,7 @@ public class VcfPosition {
 
   private static void checkChromosome(String chr) {
     // the VCF spec forbids whitespace in CHROM (but not other characters, e.g. colons)
-    if (chr.isEmpty() || sf_whitespace.matcher(chr).find()) {
+    if (chr.isEmpty() || VcfUtils.containsWhitespace(chr)) {
       throw new VcfFormatException("CHROM column \"" + chr + "\" is empty or contains whitespace");
     }
   }
@@ -190,7 +186,7 @@ public class VcfPosition {
     ids = VcfUtils.dropEmptyEntries("ID", ids);
     Set<String> seenIds = new HashSet<>();
     for (String id : ids) {
-      if (sf_whitespace.matcher(id).find() || id.contains(";")) {
+      if (VcfUtils.containsWhitespace(id) || id.contains(";")) {
         throw new VcfFormatException("ID \"" + id + "\" contains whitespace or semicolons");
       }
       if (!seenIds.add(id)) {
@@ -238,7 +234,7 @@ public class VcfPosition {
   private static List<String> checkFilters(List<String> filters) {
     filters = VcfUtils.dropEmptyEntries("FILTER", filters);
     for (String f : filters) {
-      if (sf_whitespace.matcher(f).find()) {
+      if (VcfUtils.containsWhitespace(f)) {
         throw new VcfFormatException("FILTER column entry \"" + f + "\" contains whitespace");
       }
       if (f.equals("0")) {
@@ -266,7 +262,7 @@ public class VcfPosition {
     for (Map.Entry<String, String> entry : entries) {
       String key = entry.getKey();
       String value = entry.getValue();
-      if (sf_whitespace.matcher(key).find() || sf_whitespace.matcher(value).find()) {
+      if (VcfUtils.containsWhitespace(key) || VcfUtils.containsWhitespace(value)) {
         throw new VcfFormatException("INFO column entry \"" + key + "=" + value + "\" contains whitespace");
       }
       // a parsed value can never contain these (they were already split on to arrive at this value), but a value set

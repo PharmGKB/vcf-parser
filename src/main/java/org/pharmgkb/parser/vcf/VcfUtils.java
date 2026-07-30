@@ -115,6 +115,10 @@ public class VcfUtils {
 
   private static final Pattern sf_whitespacePattern = Pattern.compile("\\s");
 
+  public static boolean containsWhitespace(String s) {
+    return sf_whitespacePattern.matcher(s).find();
+  }
+
   public static Map<String, String> extractPropertiesFromLine(String value) {
     if (hasUnbalancedQuotes(value)) {
       // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_001.vcf (##CauseOfFailure=Description contains
