@@ -143,6 +143,10 @@ public class TransformingVcfLineParser implements VcfLineParser, Closeable {
     }
 
     public Builder transformation(VcfTransformation transformation, VcfWriter writer) {
+      // this looks redundant with the Path/PrintWriter overloads' own checkNotAlreadySet() calls above, but
+      // isn't: this is the only guard for a caller invoking this overload directly, while the outer calls
+      // exist purely to fail before a Path/PrintWriter overload opens a file (see their own comment) --
+      // removing either one reopens a real gap the other doesn't cover
       checkNotAlreadySet();
       m_transformation = transformation;
       m_writer = writer;

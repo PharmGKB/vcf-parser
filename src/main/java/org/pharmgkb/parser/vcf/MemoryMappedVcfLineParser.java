@@ -18,6 +18,9 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
  * <em>This implementation is memory-intensive and should only be used for short VCF files where repeated arbitrary
  * (random) access to VCF records is required.</em>
  * <p>
+ * Not thread-safe: internal state is held in plain, unsynchronized collections. Confine an instance to a
+ * single thread, or provide external synchronization for concurrent use.
+ * <p>
  * VCF permits more than one record at the same locus (e.g. multi-allelic sites split across lines), so every locus
  * is stored as a list of records rather than a single one; every record seen at a locus is kept, and it's up to the
  * consumer to decide what, if anything, to do about duplicates. A repeated {@code ID}, by contrast, is not a normal

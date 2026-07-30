@@ -17,6 +17,10 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
 
 /**
  * See {@link MemoryMappedVcfLineParser}.
+ * <p>
+ * Not thread-safe: internal state is held in plain, unsynchronized collections. Confine an instance to a
+ * single thread, or provide external synchronization for concurrent use.
+ *
  * @author Douglas Myers-Turnbull
  */
 public class MemoryMappedVcfDataStore {
