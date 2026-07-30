@@ -11,6 +11,7 @@ import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.spec.WarnCapturingAppender;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -222,5 +223,28 @@ class VcfSampleTest {
     List<String> values = Arrays.asList("0/1", "1/1");
     VcfSample sample = new VcfSample(keys, values);
     assertEquals("0/1", sample.getProperty("GT"));
+  }
+
+  @Test
+  void testContainsPropertyReturnsFalseForNullKeyOnLeanListPath() {
+    // containsProperty(null) is null-tolerant, matching the other null-tolerant predicates
+    // VcfUtils.isReservedMetadataKey and VcfMetadata.getColumnIndex()/getSampleIndex() -- a property key can
+    // never actually be null in this class, so null trivially "isn't one of this sample's keys". Uses List.of
+    // (not Arrays.asList) so m_keys.contains(null) would throw NullPointerException without the guard.
+    List<String> keys = List.of("key1", "key2");
+    List<String> values = List.of("value1", "value2");
+    VcfSample sample = new VcfSample(keys, values);
+    assertFalse(sample.containsProperty((String) null));
+  }
+
+  @Test
+  void testContainsPropertyReturnsFalseForNullKeyAfterMaterialization() {
+    // pins that both internal-state paths (lean-list above, materialized-map here) converge on the same
+    // false answer for a null key
+    List<String> keys = Arrays.asList("key1", "key2");
+    List<String> values = Arrays.asList("value1", "value2");
+    VcfSample sample = new VcfSample(keys, values);
+    sample.putProperty("key3", "value3"); // forces materialization of m_properties
+    assertFalse(sample.containsProperty((String) null));
   }
 }

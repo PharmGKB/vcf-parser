@@ -172,7 +172,14 @@ public class VcfSample {
     return VcfUtils.convertProperty(key, getProperty(key.getId()));
   }
 
-  public boolean containsProperty(String key) {
+  public boolean containsProperty(@Nullable String key) {
+    // Property keys can never actually be null in this class (checkNoStructuralDelimiter rejects a null
+    // key in every constructor/mutation path), so a null argument is trivially "not present" -- the same
+    // null-tolerant-predicate shape as VcfUtils.isReservedMetadataKey and
+    // VcfMetadata.getColumnIndex()/getSampleIndex(), not a caller contract violation worth throwing over.
+    if (key == null) {
+      return false;
+    }
     if (m_properties != null) {
       return m_properties.containsKey(key);
     }
