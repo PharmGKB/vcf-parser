@@ -258,10 +258,7 @@ public class VcfParser implements Closeable {
       }
 
       // FILTER
-      List<String> filters = null;
-      if (!data.get(6).equals("PASS")) {
-        filters = toList(SEMICOLON, data.get(6));
-      }
+      List<String> filters = toList(SEMICOLON, data.get(6));
 
       // FORMAT
       List<String> format = null;

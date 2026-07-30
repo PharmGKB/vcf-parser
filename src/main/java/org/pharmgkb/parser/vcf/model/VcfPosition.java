@@ -48,8 +48,6 @@ public class VcfPosition {
   private @Nullable BigDecimal m_quality;
   private @Nullable String m_rawQuality;
   private List<String> m_filter = new ArrayList<>();
-  // false only when FILTER was the missing value "." (filters not applied); distinguishes NONE from PASSED.
-  private boolean m_filtersApplied = true;
   // INFO is stored either as a parsed multimap (eager constructor path) or as raw text parsed lazily on first access
   // (parser path via setRawInfo); at most one is non-null at a time.
   private @Nullable ListMultimap<String, String> m_info;
@@ -320,28 +318,28 @@ public class VcfPosition {
   }
 
   /**
-   * Normalizes a lone {@code "PASS"} or {@code "."} in {@link #m_filter} to an empty list, setting
-   * {@link #m_filtersApplied} to {@code true} for {@code "PASS"} and {@code false} for {@code "."}, exactly as the
-   * constructor does. Assumes {@link #checkFilters} has already validated {@link #m_filter}. Idempotent: a no-op
-   * once {@link #m_filter} no longer has exactly one element.
+   * Normalizes a lone {@code "PASS"} or {@code "."} in {@link #m_filter} into a fresh, independently-mutable list
+   * -- {@code "."} becomes an empty list ({@link FilterStatus#NONE}); {@code "PASS"} is copied into a new
+   * single-element list containing just {@code "PASS"} (still {@link FilterStatus#PASSED}), so a caller can mutate
+   * it afterward via {@link #getFilters()} (e.g. {@code clear()}) even if the list originally passed to the
+   * constructor was immutable. Neither case is a caller mistake to warn about -- {@code "PASS"} is itself the sole
+   * representation of {@link FilterStatus#PASSED}. Assumes {@link #checkFilters} has already validated
+   * {@link #m_filter}. Idempotent: a no-op once {@link #m_filter} no longer has exactly one such element.
    */
   private void normalizeFilters() {
     if (m_filter.size() == 1) {
-      if (m_filter.get(0).equals("PASS")) { // a user is likely to pass "PASS" instead of an empty list or null
-        VcfWarnings.warn("FILTER is PASS, but should have been passed as null. Converting to null");
+      if (m_filter.get(0).equals(".")) {
         m_filter = new ArrayList<>();
-        m_filtersApplied = true;
-      } else if (m_filter.get(0).equals(".")) { // "." is the missing value: filters were not applied (FilterStatus.NONE)
-        m_filtersApplied = false;
-        m_filter = new ArrayList<>();
+      } else if (m_filter.get(0).equals("PASS")) {
+        m_filter = new ArrayList<>(m_filter);
       }
     }
   }
 
   /**
    * Re-validates this position's current field values, throwing {@link VcfFormatException} if any are no longer valid.
-   * As a side effect (matching the constructor), normalizes a lone {@code "PASS"} or {@code "."} FILTER value left by a
-   * mutation so that {@link #getFilterStatus()} continues to report correctly.
+   * As a side effect (matching the constructor), normalizes a lone {@code "."} FILTER value left by a mutation so
+   * that {@link #getFilterStatus()} continues to report correctly.
    * <p>
    * The constructors validate their arguments, but {@link #setChromosome}, {@link #setRef}, {@link #setPosition}, and
    * mutations made through {@link #getIds}, {@link #getAltBases}, {@link #getFilters}, {@link #getFormat}, and
@@ -349,6 +347,12 @@ public class VcfPosition {
    * {@link org.pharmgkb.parser.vcf.VcfTransformation}) that mutate a position in place. Each of those accessors may
    * return an immutable list/multimap if one was passed to the primary constructor and did not need normalizing --
    * see its Javadoc. Call this method after such mutations if you need to confirm the position is still valid.
+   * <p>
+   * {@link #getFilterStatus()} is always derived directly from {@link #getFilters()}'s current contents (see its
+   * Javadoc), so emptying the FILTER list by any means -- including {@code clear()} -- always produces
+   * {@link FilterStatus#NONE}, regardless of what the list contained before. {@link FilterStatus#PASSED} is
+   * always an explicit opt-in: set {@link #getFilters()} to the single-element list {@code ["PASS"]} and call this
+   * method to reach it.
    */
   public void validate() {
     checkChromosome(m_chromosome);
@@ -457,19 +461,29 @@ public class VcfPosition {
   }
 
   /**
-   * Returns the FILTER status for this position:
+   * Returns the FILTER status for this position, derived purely from {@link #getFilters()}'s current contents:
    * <ul>
-   *   <li>{@link FilterStatus#NONE} if filters were not applied (FILTER was the missing value "{@code .}")</li>
-   *   <li>{@link FilterStatus#PASSED} if the position passed all filters (FILTER was "{@code PASS}", or no filters are
-   *       set)</li>
-   *   <li>{@link FilterStatus#FAILED} if the position failed one or more filters</li>
+   *   <li>{@link FilterStatus#NONE} if the list is empty -- no filter information was recorded (FILTER was the
+   *       missing value "{@code .}", or no FILTER argument was given at construction)</li>
+   *   <li>{@link FilterStatus#PASSED} if the list is exactly the single element {@code "PASS"}</li>
+   *   <li>{@link FilterStatus#FAILED} for any other non-empty list</li>
    * </ul>
+   * {@code PASSED} is always an explicit opt-in -- it is never the default for an empty or unspecified list. This
+   * matches {@code bcftools annotate -x FILTER} (bcftools 1.23.1), which converts every FILTER value (including an
+   * existing {@code PASS} or a real failing code) to {@code "."} when clearing it, never to {@code "PASS"} --
+   * verified live: a fixture with FILTER values {@code "."}, {@code "PASS"}, and a real filter code all become
+   * {@code "."} after {@code bcftools annotate -x FILTER}. A literal empty FILTER string is likewise never
+   * silently promoted to {@code "PASS"} by bcftools -- it is instead treated as an undeclared filter name and
+   * warned about.
    */
   public FilterStatus getFilterStatus() {
-    if (!m_filter.isEmpty()) {
-      return FilterStatus.FAILED;
+    if (m_filter.isEmpty()) {
+      return FilterStatus.NONE;
     }
-    return m_filtersApplied ? FilterStatus.PASSED : FilterStatus.NONE;
+    if (m_filter.size() == 1 && m_filter.get(0).equals("PASS")) {
+      return FilterStatus.PASSED;
+    }
+    return FilterStatus.FAILED;
   }
 
   /**
@@ -478,12 +492,13 @@ public class VcfPosition {
    * distinguish those two cases.
    */
   public boolean isPassingAllFilters() {
-    return m_filter.isEmpty();
+    return getFilterStatus() != FilterStatus.FAILED;
   }
 
   /**
-   * Returns a list of filters this position failed, if any. This is empty for both {@link FilterStatus#PASSED} and
-   * {@link FilterStatus#NONE}; use {@link #getFilterStatus()} to distinguish those cases.
+   * Returns this position's FILTER contents: empty for {@link FilterStatus#NONE}, the single-element list
+   * {@code ["PASS"]} for {@link FilterStatus#PASSED}, or the actual failing filter code(s) for
+   * {@link FilterStatus#FAILED}. Use {@link #getFilterStatus()} to interpret this without re-deriving it by hand.
    */
   public List<String> getFilters() {
     return m_filter;
@@ -643,7 +658,8 @@ public class VcfPosition {
    * The FILTER status of a position, per the VCF spec. See {@link VcfPosition#getFilterStatus()}.
    */
   public enum FilterStatus {
-    /** Filters were not applied (FILTER was the missing value "{@code .}"). */
+    /** No filter information was recorded -- FILTER was the missing value "{@code .}", was never specified at
+     * construction, or was cleared via mutation. */
     NONE,
     /** The position passed all filters (FILTER was "{@code PASS}"). */
     PASSED,

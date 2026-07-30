@@ -72,7 +72,8 @@ invalid:
 These checks run when a `VcfPosition` is constructed (including by the parser). Its setters and mutations made
 through its accessors (e.g. `getAltBases()`, `getFilters()`) do *not* re-run them, to support transformation
 pipelines that mutate a position in place; call `VcfPosition.validate()` after such mutations to re-check validity —
-this also re-normalizes a lone `PASS` or `.` `FILTER` value left by such a mutation, matching construction.
+this also re-normalizes a lone `.` `FILTER` value left by such a mutation, matching construction. `PASS` is never
+normalized away -- it is itself the sole representation of a passing FILTER (see `VcfPosition.getFilterStatus()`).
 
 The default writer path is optimized for data written directly after parsing. It preserves parser-normalized values and
 maintains record and sample-column structure without full revalidation. If data has been mutated and a full structural

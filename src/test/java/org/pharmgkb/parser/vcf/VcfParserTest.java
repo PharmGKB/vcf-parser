@@ -71,7 +71,7 @@ public class VcfParserTest {
                assertEquals("Aa", position.getRef());
                assertEquals(Arrays.asList("Tt", "Gg", "Cc"), position.getAltBases());
                assertEquals(new BigDecimal("5.2e-10"), position.getQuality());
-               assertTrue(position.getFilters().isEmpty());
+               assertEquals(Arrays.asList("PASS"), position.getFilters());
                assertTrue(position.getInfo().isEmpty());
              })
              .build()) {
@@ -129,7 +129,7 @@ public class VcfParserTest {
                assertEquals("Aa", position.getRef());
                assertEquals(Arrays.asList("Tt", "Gg", "Cc"), position.getAltBases());
                assertEquals(new BigDecimal("5.2e-10"), position.getQuality());
-               assertTrue(position.getFilters().isEmpty());
+               assertEquals(Arrays.asList("PASS"), position.getFilters());
                assertTrue(position.getInfo().isEmpty());
              })
              .build()) {
@@ -385,6 +385,26 @@ public class VcfParserTest {
     }
     assertEquals(1, captured[0].getInfo().size());
     assertTrue(captured[0].getInfo().containsKey("DP"));
+  }
+
+  @Test
+  void testFilterAllEmptyEntriesProducesNone() throws IOException {
+    // FILTER=";" splits into two empty entries, both dropped with a warning by VcfPosition.checkFilters (see
+    // EMPTY_FIELD_HANDLING.md), leaving an empty FILTER list. This must produce FilterStatus.NONE, not PASSED --
+    // an empty/no-information FILTER is never an implicit PASS (see VcfPosition.getFilterStatus()'s javadoc).
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t100\t.\tA\tT\t.\t;\t.\n";
+    List<VcfPosition> positions = new ArrayList<>();
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, position, sampleData) -> positions.add(position))
+             .build()) {
+      parser.parse();
+    }
+    assertEquals(1, positions.size());
+    assertEquals(VcfPosition.FilterStatus.NONE, positions.get(0).getFilterStatus());
   }
 
   @Test

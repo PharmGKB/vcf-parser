@@ -254,9 +254,13 @@ public class VcfPositionTest {
         null, null);
     assertEquals(VcfPosition.FilterStatus.PASSED, passed.getFilterStatus());
     assertTrue(passed.isPassingAllFilters());
+    assertEquals(Collections.singletonList("PASS"), passed.getFilters());
 
+    // regression test: an unspecified FILTER is NONE, not an implicit PASSED -- PASS must always be explicit,
+    // matching bcftools 1.23.1 (neither "bcftools annotate -x FILTER" nor a literal empty FILTER string ever
+    // produces PASS; see VcfPosition.getFilterStatus()'s Javadoc)
     VcfPosition noFilters = new VcfPosition("chr1", 1, null, "C", null, null, null, null, null);
-    assertEquals(VcfPosition.FilterStatus.PASSED, noFilters.getFilterStatus());
+    assertEquals(VcfPosition.FilterStatus.NONE, noFilters.getFilterStatus());
 
     VcfPosition failed = new VcfPosition("chr1", 1, null, "C", null, null, Collections.singletonList("q10"),
         null, null);
@@ -276,6 +280,7 @@ public class VcfPositionTest {
     VcfPosition position = new VcfPosition("chr", 1, null, "C", null, null, null, null, null);
     assertTrue(position.getFilters().isEmpty());
     assertTrue(position.isPassingAllFilters());
+    assertEquals(VcfPosition.FilterStatus.NONE, position.getFilterStatus());
   }
 
   @Test
@@ -291,7 +296,7 @@ public class VcfPositionTest {
   public void testBadFilter1() {
     VcfPosition position = new VcfPosition("chr", 1, null, "C", null, null, Collections.singletonList("PASS"),
         null, null);
-    assertTrue(position.getFilters().isEmpty());
+    assertEquals(Collections.singletonList("PASS"), position.getFilters());
     assertTrue(position.isPassingAllFilters());
   }
 
@@ -455,11 +460,13 @@ public class VcfPositionTest {
     assertEquals(VcfPosition.FilterStatus.NONE, dot.getFilterStatus());
     assertTrue(dot.getFilters().isEmpty());
 
+    // a lone "PASS" is left as-is by validate() -- it is not a sentinel to normalize away, it IS the
+    // representation of PASSED
     VcfPosition pass = new VcfPosition("chr1", 1, null, "C", null, null, null, null, null);
     pass.getFilters().add("PASS");
     pass.validate();
     assertEquals(VcfPosition.FilterStatus.PASSED, pass.getFilterStatus());
-    assertTrue(pass.getFilters().isEmpty());
+    assertEquals(Collections.singletonList("PASS"), pass.getFilters());
 
     // validate() is idempotent: calling it again after normalization is a no-op
     dot.validate();
@@ -468,9 +475,9 @@ public class VcfPositionTest {
 
   @Test
   public void testValidateResetsFilterStatusAfterDotThenPass() {
-    // regression test: normalizeFilters() must reset m_filtersApplied back to true in the "PASS" branch, not
-    // just clear it to false in the "." branch -- otherwise a position that was ever normalized from "." can
-    // never report PASSED again
+    // regression test: FilterStatus is derived fresh from getFilters()'s contents every time, so a position that
+    // was ever normalized from "." can still report PASSED once its list is explicitly set to ["PASS"] -- there is
+    // no separate persisted flag that could get stuck
     VcfPosition position = new VcfPosition("chr1", 1, null, "C", null, null, null, null, null);
     position.getFilters().add(".");
     position.validate();
@@ -479,6 +486,55 @@ public class VcfPositionTest {
     position.getFilters().add("PASS");
     position.validate();
     assertEquals(VcfPosition.FilterStatus.PASSED, position.getFilterStatus());
+  }
+
+  @Test
+  public void testClearingFiltersFromNoneStaysNoneNotPassed() {
+    // regression test: clearing FILTER always produces NONE, regardless of what state the position was in before
+    // -- FilterStatus is derived fresh from getFilters()'s contents, not a separate persisted flag. Verified this
+    // matches bcftools 1.23.1's own convention: "bcftools annotate -x FILTER" on a fixture with FILTER values ".",
+    // "PASS", and a real filter code converts ALL of them to "." (never to "PASS").
+    VcfPosition position = new VcfPosition("chr1", 1, null, "C", null, null, null, null, null);
+    position.getFilters().add(".");
+    position.validate();
+    assertEquals(VcfPosition.FilterStatus.NONE, position.getFilterStatus());
+
+    position.getFilters().clear(); // already empty; a genuine no-op on the list itself
+    position.validate();
+    assertEquals(VcfPosition.FilterStatus.NONE, position.getFilterStatus());
+
+    // the only way to reach PASSED from here is the documented "PASS" sentinel, not merely clearing
+    position.getFilters().add("PASS");
+    position.validate();
+    assertEquals(VcfPosition.FilterStatus.PASSED, position.getFilterStatus());
+  }
+
+  @Test
+  public void testClearingFiltersFromFailedProducesNoneNotPassed() {
+    // regression test: this is the original bug findings19.md item 1 investigated -- clearing a position that
+    // actually FAILED a filter (not one that started as NONE) previously left a stale "true" default behind and
+    // reported PASSED, which contradicts bcftools 1.23.1's "annotate -x FILTER" convention (a real filter code
+    // becomes "." when cleared, never "PASS"). Verified live against the compiled library before this fix:
+    // constructing with FILTER=q10 then clearing+validating produced PASSED, not NONE.
+    VcfPosition position = new VcfPosition("chr1", 1, null, "C", null, null,
+        new ArrayList<>(Collections.singletonList("q10")), null, null);
+    assertEquals(VcfPosition.FilterStatus.FAILED, position.getFilterStatus());
+
+    position.getFilters().clear();
+    position.validate();
+    assertEquals(VcfPosition.FilterStatus.NONE, position.getFilterStatus());
+  }
+
+  @Test
+  public void testPassFilterIsIndependentlyMutableRegardlessOfInputListMutability() {
+    // regression test: a lone "PASS" must be defensively copied into a fresh, mutable list, exactly like "." --
+    // otherwise passing an immutable list (e.g. List.of("PASS")) makes getFilters() permanently immutable,
+    // breaking the documented "clear() to change FilterStatus" pattern this same redesign introduced
+    VcfPosition position = new VcfPosition("chr1", 1, null, "C", null, null, List.of("PASS"), null, null);
+    assertEquals(VcfPosition.FilterStatus.PASSED, position.getFilterStatus());
+    position.getFilters().clear(); // must not throw UnsupportedOperationException
+    position.validate();
+    assertEquals(VcfPosition.FilterStatus.NONE, position.getFilterStatus());
   }
 
   @Test

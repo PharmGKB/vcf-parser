@@ -770,7 +770,7 @@ public class VcfWriterTest {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     writer.writeLine(metadata, position, Collections.singletonList(sample));
-    assertTrue(sw.toString().endsWith("\tPASS\t.\t.\t.\n"));
+    assertTrue(sw.toString().endsWith("\t.\t.\t.\t.\n"));
   }
 
   @Test
@@ -787,7 +787,7 @@ public class VcfWriterTest {
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     writer.writeHeader(metadata);
     writer.writeLine(metadata, position, Collections.singletonList(sample));
-    assertTrue(sw.toString().endsWith("\tPASS\t.\t.\t.\n"));
+    assertTrue(sw.toString().endsWith("\t.\t.\t.\t.\n"));
   }
 
   @Test

@@ -271,19 +271,17 @@ public class VcfWriter implements Closeable {
       sb.append(position.getRef()).append("\t");
       addListOrElse(position.getAltBases(), ",", ".", sb);
       addStringOrElse(position.getQuality(), ".", sb);
-      if (position.getFilterStatus() == VcfPosition.FilterStatus.NONE) {
-        sb.append(".\t"); // filters not applied: write the missing value rather than PASS
-      } else {
-        addListOrElse(position.getFilters(), ";", "PASS", sb);
-      }
+      addListOrElse(position.getFilters(), ";", ".", sb);
       addInfoOrDot(metadata, position, sb);
 
       // "PASS" is VCF's reserved "all filters passed" keyword (VCFv4.2.tex line 185: "PASS if this position has
       // passed all filters"), never expected to have its own ##FILTER=<ID=PASS,...> declaration. This filter must
-      // exclude it explicitly: since VcfPosition.checkFilters() now warns instead of throwing when FILTER combines
-      // PASS with another code, position.getFilters() can legitimately contain a literal "PASS" entry alongside
-      // other codes -- a case this check could never previously see, because that combination used to be rejected
-      // during parsing before reaching the writer.
+      // exclude it explicitly for two reasons: since VcfPosition.checkFilters() now warns instead of throwing when
+      // FILTER combines PASS with another code, position.getFilters() can legitimately contain a literal "PASS"
+      // entry alongside other codes -- a case this check could never previously see, because that combination used
+      // to be rejected during parsing before reaching the writer. More significantly, VcfPosition.getFilterStatus()
+      // now derives FilterStatus.PASSED from a literal ["PASS"] list, so this stream sees a literal "PASS" entry
+      // for every ordinary passing record now, not just the combined-with-another-code edge case.
       position.getFilters().stream()
           .filter(key -> !key.equals("PASS") && !metadata.getFilters().containsKey(key)).forEach(key ->
           VcfWarnings.warn("Position {}:{} has FILTER {}, but there is no FILTER metadata with that name (on line {})",
