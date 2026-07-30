@@ -285,6 +285,43 @@ public class TransformingVcfLineParserTest {
     assertTrue(sw.toString().contains("##INFO=<ID=AF"));
   }
 
+  /**
+   * Regression test for the FORMAT-list-aliasing fix: mutating {@code position.getFormat()} in a transformation
+   * without also updating the sample's own properties must not corrupt or misalign the written sample column --
+   * {@link VcfWriter}'s default-mode reconciliation (by FORMAT key name) must warn and drop the now-undeclared
+   * sample property, keeping the FORMAT and sample columns in sync.
+   */
+  @Test
+  public void testRemovingFormatKeyWithoutUpdatingSampleDropsItInWrittenOutput() throws Exception {
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE1\n" +
+        "1\t1\t.\tA\tT\t.\t.\t.\tGT:DP:FT\t0/1:5:PASS\n";
+    StringWriter sw = new StringWriter();
+    VcfTransformation transformation = new VcfTransformation() {
+      @Override
+      public boolean transformDataLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
+        // mutate VcfPosition's own FORMAT list without touching the sample's properties -- this used to corrupt
+        // the written sample column (values shifted to the wrong key, or silently dropped) before the fix that
+        // gives each VcfSample its own independent copy of the FORMAT list
+        position.getFormat().remove("DP");
+        return true;
+      }
+    };
+    TransformingVcfLineParser lineParser = new TransformingVcfLineParser.Builder()
+        .transformation(transformation, new PrintWriter(sw)).build();
+    try (VcfParser parser = new VcfParser.Builder()
+        .parseWith(lineParser)
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .build()) {
+      parser.parse();
+    }
+    String[] lines = sw.toString().split("\n");
+    String[] fields = lines[lines.length - 1].split("\t");
+    // FORMAT no longer declares DP; the sample's now-undeclared DP property is dropped, not misaligned
+    assertEquals("GT:FT", fields[8]);
+    assertEquals("0/1:PASS", fields[9]);
+  }
+
   @Test
   public void testIsValidReflectsWriterPoisonedByADirectExternalCall() throws Exception {
     // the whole point of delegating isValid() to m_writer.isValid() instead of tracking separately: a caller

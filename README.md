@@ -75,6 +75,12 @@ pipelines that mutate a position in place; call `VcfPosition.validate()` after s
 this also re-normalizes a lone `.` `FILTER` value left by such a mutation, matching construction. `PASS` is never
 normalized away -- it is itself the sole representation of a passing FILTER (see `VcfPosition.getFilterStatus()`).
 
+Mutating `position.getFormat()` (adding or removing a FORMAT key) does *not* automatically update that line's
+`VcfSample` properties -- the two must be kept in agreement by the caller. If they diverge, the default writer path
+warns and reconciles by key name: a FORMAT key with no corresponding sample value is substituted with `.`, and a
+sample property not declared in FORMAT is dropped. `VcfWriter.Builder.validateBeforeWrite()` still substitutes `.`
+for the first case, but rejects the second (a sample property not declared in FORMAT) with `VcfFormatException`.
+
 The default writer path is optimized for data written directly after parsing. It preserves parser-normalized values and
 maintains record and sample-column structure without full revalidation. If data has been mutated and a full structural
 validity and diagnostic check is required, build the writer with `VcfWriter.Builder.validateBeforeWrite()`. In that

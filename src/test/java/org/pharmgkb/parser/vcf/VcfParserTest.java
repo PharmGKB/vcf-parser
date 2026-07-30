@@ -609,6 +609,75 @@ public class VcfParserTest {
   }
 
   @Test
+  void testMutatingFormatDoesNotCorruptSampleProperties() throws IOException {
+    // regression test: VcfParser used to hand the identical FORMAT List<String> object to both VcfPosition and
+    // every VcfSample on the same line. VcfPosition.getFormat() is documented and tested as safe to mutate in
+    // place, but VcfSample's own parallel keys/values lists require keys.size() == values.size() -- mutating the
+    // shared list via getFormat() used to desync VcfSample's internal state and misdirect getProperty() lookups
+    // to the wrong value, or throw IndexOutOfBoundsException, with no warning.
+    List<VcfSample> rsbSamples = new ArrayList<>();
+    List<VcfPosition> rsbPositions = new ArrayList<>();
+    try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/vcfposition.vcf"));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, position, sampleData) -> {
+               if (position.getIds().contains("rsb")) {
+                 position.getFormat().remove("DP");
+                 rsbSamples.addAll(sampleData);
+                 rsbPositions.add(position);
+               }
+             })
+             .build()) {
+      parser.parse();
+    }
+    assertEquals(1, rsbSamples.size());
+    VcfSample sample = rsbSamples.get(0);
+    // FORMAT for the "rsb" line (before mutation) is GT:DP:FT:GL:GLE:PL:GP:GQ:HQ:PS:PQ:EC:MQ with values
+    // 0|1:5:ftstring:0.3,0.4:glestring:5,50:0.05,0.06:30:10,20:1:45:2,2:30 -- FT is the 3rd key/value, unaffected
+    // by removing the 2nd key (DP) from VcfPosition's own copy, if VcfSample's copy is properly independent.
+    assertEquals("ftstring", sample.getProperty("FT"));
+    assertEquals("0|1", sample.getProperty("GT"));
+    assertEquals("5", sample.getProperty("DP"));
+    // VcfPosition's own copy must actually reflect the mutation -- it's the independent VcfSample copy being
+    // unaffected by it that this test is about.
+    assertFalse(rsbPositions.get(0).getFormat().contains("DP"));
+  }
+
+  @Test
+  void testAddingFormatKeyDoesNotCorruptSampleProperties() throws IOException {
+    // companion to testMutatingFormatDoesNotCorruptSampleProperties: covers the other mutation direction
+    // (growing the list instead of shrinking it), which used to throw IndexOutOfBoundsException the first time
+    // VcfSample materializes its property map (getPropertyKeys()/getProperty()/containsProperty() all route
+    // through the same materialization once any of them is called).
+    List<VcfSample> rsbSamples = new ArrayList<>();
+    List<VcfPosition> rsbPositions = new ArrayList<>();
+    try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/vcfposition.vcf"));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, position, sampleData) -> {
+               if (position.getIds().contains("rsb")) {
+                 position.getFormat().add("NEWKEY");
+                 rsbSamples.addAll(sampleData);
+                 rsbPositions.add(position);
+               }
+             })
+             .build()) {
+      parser.parse();
+    }
+    assertEquals(1, rsbSamples.size());
+    VcfSample sample = rsbSamples.get(0);
+    // getPropertyKeys() is called first because it's the call that actually triggers materialization (and thus
+    // the crash, pre-fix) -- containsProperty()/getProperty() alone would not have reached the corrupted index.
+    assertEquals(13, sample.getPropertyKeys().size());
+    assertFalse(sample.containsProperty("NEWKEY"));
+    assertEquals("ftstring", sample.getProperty("FT"));
+    assertEquals("0|1", sample.getProperty("GT"));
+    // VcfPosition's own copy must actually reflect the mutation -- it's the independent VcfSample copy being
+    // unaffected by it that this test is about.
+    assertTrue(rsbPositions.get(0).getFormat().contains("NEWKEY"));
+  }
+
+  @Test
   void testNoSamples() throws IOException {
 
     try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/no_samples.vcf"));

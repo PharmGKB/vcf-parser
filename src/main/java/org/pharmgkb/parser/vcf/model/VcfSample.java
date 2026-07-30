@@ -22,7 +22,10 @@ import org.pharmgkb.parser.vcf.VcfWarnings;
  */
 public class VcfSample {
 
-  // Lean representation used on the parse path; both null once m_properties has been materialized.
+  // Lean representation used on the parse path; both null once m_properties has been materialized. VcfParser may
+  // pass the same List instance as m_keys to multiple VcfSample objects for the same data line (one independent
+  // copy per line, not per sample) -- safe only because no method in this class ever mutates m_keys in place; a
+  // future change that did so would silently corrupt every sample sharing that line's copy.
   private @Nullable List<String> m_keys;
   private @Nullable List<String> m_values;
   // Materialized on demand (mutation / key or entry iteration), or supplied directly via the map constructor.

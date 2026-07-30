@@ -281,6 +281,16 @@ public class VcfParser implements Closeable {
       pos.setRawQuality(data.get(5));
       pos.setRawInfo(data.get(7));
       List<VcfSample> samples = new ArrayList<>();
+      // VcfSample must never share the same List object as VcfPosition's own m_format: VcfPosition.getFormat() is
+      // documented and tested as safe to mutate in place (e.g. by a VcfTransformation), but VcfSample's own
+      // parallel keys/values lists require keys.size() == values.size() to hold, and are corrupted by an
+      // in-place mutation applied through a shared reference. One copy per line (not per sample) is sufficient:
+      // no VcfSample method ever mutates its own keys list in place.
+      // Only skipped when format itself is null (no FORMAT column at all); deliberately not guarded for the
+      // zero-sample-columns case (format non-null but the loop below never runs), since that copy's cost is
+      // negligible (proportional to a typically-single-digit FORMAT key count) and guarding it would add more
+      // complexity than the allocation it avoids is worth.
+      List<String> sampleFormat = format == null ? null : new ArrayList<>(format);
       for (int x = 9; x < data.size(); x++) {
         List<String> values;
         if (noFormatFields) {
@@ -300,7 +310,7 @@ public class VcfParser implements Closeable {
             }
           }
         }
-        samples.add(new VcfSample(format, values));
+        samples.add(new VcfSample(sampleFormat, values));
       }
 
       m_vcfLineParser.parseLine(m_vcfMetadata, pos, samples);
