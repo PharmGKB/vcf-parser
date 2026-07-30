@@ -1,11 +1,9 @@
 package org.pharmgkb.parser.vcf.model;
 
-import java.lang.invoke.MethodHandles;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.pharmgkb.parser.vcf.VcfWarnings;
 
 
 /**
@@ -19,8 +17,6 @@ import org.slf4j.LoggerFactory;
  * @author Mark Woon
  */
 public class FormatMetadata extends IdDescriptionMetadata {
-
-  private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   public static final String ID = "ID";
   public static final String DESCRIPTION = "Description";
@@ -47,25 +43,25 @@ public class FormatMetadata extends IdDescriptionMetadata {
   public void init() {
     m_type = null;
     String number = getPropertyRaw(NUMBER);
-    checkNumberProperty(sf_logger, number);
+    checkNumberProperty(number);
     String type = getPropertyRaw(TYPE);
-    warnIfMissing(sf_logger, TYPE, type);
+    warnIfMissing(TYPE, type);
     if (type != null) {
       try {
         m_type = FormatType.valueOf(type);
       } catch (IllegalArgumentException e) {
-        sf_logger.warn("{} '{}' is not a valid FORMAT type", TYPE, type);
+        VcfWarnings.warn("FORMAT {} '{}' is not a valid FORMAT type", TYPE, type);
       }
     }
     String id = getId();
     ReservedFormatProperty reserved = id == null ? null : ReservedFormatProperty.fromId(id);
     if (reserved != null) {
       if (number != null && !reserved.getExpectedNumber().equals(number)) {
-        sf_logger.warn("FORMAT {} has Number '{}' but the reserved definition expects '{}'", getId(), number,
+        VcfWarnings.warn("FORMAT {} has Number '{}' but the reserved definition expects '{}'", getId(), number,
             reserved.getExpectedNumber());
       }
       if (m_type != null && !VcfUtils.toJavaType(m_type).equals(reserved.getType())) {
-        sf_logger.warn("FORMAT {} has Type '{}' but the reserved definition expects '{}'", getId(), m_type,
+        VcfWarnings.warn("FORMAT {} has Type '{}' but the reserved definition expects '{}'", getId(), m_type,
             reserved.getType().getSimpleName());
       }
     }

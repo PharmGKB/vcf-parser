@@ -32,7 +32,7 @@ public class ContigMetadataTest {
       map.put(ContigMetadata.URL, "one");
       new ContigMetadata(map);
       assertTrue(appender.hasWarnOrHigher());
-      assertTrue(appender.anyEventLoggerNameEquals(ContigMetadata.class.getName()));
+      assertTrue(appender.anyMessageContains("ContigMetadata"));
     } finally {
       root.detachAppender(appender);
       appender.stop();
@@ -57,7 +57,7 @@ public class ContigMetadataTest {
       map.put("test", "one");
       new ContigMetadata(map);
       assertTrue(appender.hasWarnOrHigher());
-      assertTrue(appender.anyEventLoggerNameEquals(ContigMetadata.class.getName()));
+      assertTrue(appender.anyMessageContains("ContigMetadata"));
     } finally {
       root.detachAppender(appender);
       appender.stop();

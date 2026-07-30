@@ -10,7 +10,7 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
-import org.slf4j.Logger;
+import org.pharmgkb.parser.vcf.VcfWarnings;
 
 
 /**
@@ -95,38 +95,42 @@ public class BaseMetadata {
 
   /**
    * Should be used only for base classes.
-   * Logs a warning (using the caller's own logger, so the warning is attributed to the caller's class) if this
-   * metadata contains a property key not in the array passed.
-   * @param logger The calling class's own logger
+   * Warns (via {@link VcfWarnings#warn}) if this metadata contains a property key not in the array passed. The
+   * warning message embeds {@code getClass().getSimpleName()} so it is attributed to the calling subclass, since
+   * the warning is dispatched through the single shared {@link VcfWarnings} sink rather than a per-caller logger.
    * @param names An array of permitted property keys
    */
-  protected void ensureNoExtras(Logger logger, String... names) {
+  protected void ensureNoExtras(String... names) {
     Set<String> set = new HashSet<>();
     Collections.addAll(set, names);
     m_properties.keySet().stream().filter(property -> !set.contains(property)).forEach(property -> {
-      logger.warn("Metadata line contains unexpected property {}", property);
+      VcfWarnings.warn("{} metadata line contains unexpected property {}", getClass().getSimpleName(), property);
     });
   }
 
   /**
-   * Logs a warning (using the caller's own logger, so the warning is attributed to the caller's class) if
-   * {@code value} is null, i.e. the required property {@code propertyName} is absent.
+   * Warns (via {@link VcfWarnings#warn}) if {@code value} is null, i.e. the required property
+   * {@code propertyName} is absent. The warning message embeds {@code getClass().getSimpleName()} so it is
+   * attributed to the calling subclass, since the warning is dispatched through the single shared
+   * {@link VcfWarnings} sink rather than a per-caller logger.
    */
-  protected static void warnIfMissing(Logger logger, String propertyName, @Nullable String value) {
+  protected void warnIfMissing(String propertyName, @Nullable String value) {
     if (value == null) {
-      logger.warn("Required metadata property \"{}\" is missing", propertyName);
+      VcfWarnings.warn("{} required metadata property \"{}\" is missing", getClass().getSimpleName(), propertyName);
     }
   }
 
   /**
-   * Validates a VCF {@code Number} property value, warning (via the caller's own logger) if it is missing or does not
-   * match {@link VcfUtils#NUMBER_PATTERN}. Shared by the metadata types ({@code INFO}, {@code FORMAT}) that declare a
-   * {@code Number} field with identical semantics.
+   * Validates a VCF {@code Number} property value, warning (via {@link VcfWarnings#warn}) if it is missing or does
+   * not match {@link VcfUtils#NUMBER_PATTERN}. Shared by the metadata types ({@code INFO}, {@code FORMAT}) that
+   * declare a {@code Number} field with identical semantics. The warning message embeds
+   * {@code getClass().getSimpleName()} so it is attributed to the calling subclass, since the warning is
+   * dispatched through the single shared {@link VcfWarnings} sink rather than a per-caller logger.
    */
-  protected static void checkNumberProperty(Logger logger, @Nullable String number) {
-    warnIfMissing(logger, "Number", number);
+  protected void checkNumberProperty(@Nullable String number) {
+    warnIfMissing("Number", number);
     if (number != null && !VcfUtils.NUMBER_PATTERN.matcher(number).matches()) {
-      logger.warn("Number is not a valid VCF number: '{}'", number);
+      VcfWarnings.warn("{} Number is not a valid VCF number: '{}'", getClass().getSimpleName(), number);
     }
   }
 
@@ -134,18 +138,20 @@ public class BaseMetadata {
       List.of("ID", "Number", "Type", "Description", "Source", "Version");
 
   /**
-   * Warns (via the caller's own logger) if this declaration's attributes, restricted to the well-known VCF metadata
+   * Warns (via {@link VcfWarnings#warn}) if this declaration's attributes, restricted to the well-known VCF metadata
    * keys ID/Number/Type/Description/Source/Version, are not declared in that canonical relative order. A key this
    * declaration kind doesn't use, or any other extra/unrecognized key, is ignored -- order is checked only among
    * whichever of those six keys are actually present, so e.g. an ALT line's Description immediately after ID, with
-   * no Number/Type/Source/Version present at all, triggers no warning.
+   * no Number/Type/Source/Version present at all, triggers no warning. The warning message embeds
+   * {@code getClass().getSimpleName()} so it is attributed to the calling subclass, since the warning is
+   * dispatched through the single shared {@link VcfWarnings} sink rather than a per-caller logger.
    * VCFv4.2.tex line 69 (##INFO), line 94 (##FORMAT), line 103 (##ALT), line 87 (##FILTER): every canonical template
    * and worked example in the spec uses this relative order; test/vcf/{4.1,4.2}/failed/failed_meta_{info_003,
    * format_003}.vcf and failed_meta_alt_004.vcf (##CauseOfFailure=Incorrect order of ALT/INFO/FORMAT fields)
    * establish that a declaration violating it is invalid, resolving the spec text's own silence on whether the
    * order shown is required.
    */
-  public void checkAttributeOrder(Logger logger) {
+  public void checkAttributeOrder() {
     List<String> actual = new ArrayList<>();
     for (String key : getPropertyKeys()) {
       if (CANONICAL_ATTRIBUTE_ORDER.contains(key)) {
@@ -155,7 +161,8 @@ public class BaseMetadata {
     List<String> expected = new ArrayList<>(CANONICAL_ATTRIBUTE_ORDER);
     expected.retainAll(actual);
     if (!actual.equals(expected)) {
-      logger.warn("Metadata attributes declared out of canonical order: {} (expected order: {})", actual, expected);
+      VcfWarnings.warn("{} metadata attributes declared out of canonical order: {} (expected order: {})",
+          getClass().getSimpleName(), actual, expected);
     }
   }
 

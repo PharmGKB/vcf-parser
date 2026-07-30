@@ -4,8 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfFormatException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.pharmgkb.parser.vcf.VcfWarnings;
 
 
 /**
@@ -38,9 +37,8 @@ public abstract class IdMetadata extends BaseMetadata {
   }
 
   private void init() {
-    Logger logger = LoggerFactory.getLogger(getClass());
     String id = getPropertyRaw(ID);
-    warnIfMissing(logger, ID, id);
+    warnIfMissing(ID, id);
     // VCFv4.2.tex/VCFv4.3.tex line 105/200 only states this rule for ##ALT's own ID explicitly, but hts-specs'
     // own conformance fixtures (test/vcf/{4.1,4.2,4.3}/failed/failed_meta_contig_001.vcf,
     // test/vcf/4.3/failed/failed_meta_sample_001.vcf) extend it to ##contig and ##SAMPLE, bcftools 1.23.1
@@ -51,7 +49,7 @@ public abstract class IdMetadata extends BaseMetadata {
     // treated as a bcftools coverage gap rather than a considered position, so the hts-specs fixture and
     // vcf_validator's uniform treatment govern instead, per this project's decision hierarchy.
     if (id != null && id.chars().anyMatch(Character::isWhitespace)) {
-      logger.warn("Metadata ID \"{}\" must not contain whitespace", id);
+      VcfWarnings.warn("{} metadata ID \"{}\" must not contain whitespace", getClass().getSimpleName(), id);
     }
   }
 

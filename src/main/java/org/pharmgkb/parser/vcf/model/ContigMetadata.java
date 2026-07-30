@@ -1,13 +1,11 @@
 package org.pharmgkb.parser.vcf.model;
 
-import java.lang.invoke.MethodHandles;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfFormatException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.pharmgkb.parser.vcf.VcfWarnings;
 
 
 /**
@@ -15,8 +13,6 @@ import org.slf4j.LoggerFactory;
  * @author Douglas Myers-Turnbull
  */
 public class ContigMetadata extends IdMetadata {
-
-  private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   public static final String ID = "ID";
   public static final String LENGTH = "length";
@@ -44,7 +40,7 @@ public class ContigMetadata extends IdMetadata {
       try {
         URI.create(url).toURL();
       } catch (IllegalArgumentException | MalformedURLException e) {
-        sf_logger.warn("URL {} is malformed", url, e);
+        VcfWarnings.warn("ContigMetadata URL {} is malformed: {}", url, e.getMessage());
       }
       putPropertyRaw(URL, url);
     }
@@ -111,10 +107,10 @@ public class ContigMetadata extends IdMetadata {
         //noinspection ResultOfMethodCallIgnored
         Long.parseLong(length);
       } catch (NumberFormatException e) {
-        sf_logger.warn("Length is not a number", e);
+        VcfWarnings.warn("ContigMetadata length \"{}\" is not a number", length);
       }
     }
-    ensureNoExtras(sf_logger, ID, LENGTH, ASSEMBLY, MD5, SPECIES, TAXONOMY, URL);
+    ensureNoExtras(ID, LENGTH, ASSEMBLY, MD5, SPECIES, TAXONOMY, URL);
   }
 
   @Override

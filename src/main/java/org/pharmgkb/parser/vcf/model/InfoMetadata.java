@@ -1,11 +1,9 @@
 package org.pharmgkb.parser.vcf.model;
 
-import java.lang.invoke.MethodHandles;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.pharmgkb.parser.vcf.VcfWarnings;
 
 
 /**
@@ -26,8 +24,6 @@ import org.slf4j.LoggerFactory;
  * @author Mark Woon
  */
 public class InfoMetadata extends IdDescriptionMetadata {
-
-  private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   public static final String ID = "ID";
   public static final String DESCRIPTION = "Description"; // should be quoted
@@ -67,34 +63,34 @@ public class InfoMetadata extends IdDescriptionMetadata {
   private void init() {
     m_type = null;
     String number = getPropertyRaw(NUMBER);
-    checkNumberProperty(sf_logger, number);
+    checkNumberProperty(number);
     String type = getPropertyRaw(TYPE);
-    warnIfMissing(sf_logger, TYPE, type);
+    warnIfMissing(TYPE, type);
     if (type != null) {
       try {
         m_type = InfoType.valueOf(type);
       } catch (IllegalArgumentException e) {
-        sf_logger.warn("{} '{}' is not a valid INFO type", TYPE, type);
+        VcfWarnings.warn("INFO {} '{}' is not a valid INFO type", TYPE, type);
       }
     }
     if (m_type == InfoType.Flag && !"0".equals(number)) {
-      sf_logger.warn("INFO {} has Type=Flag but Number is '{}' (should be 0)", getId(), number);
+      VcfWarnings.warn("INFO {} has Type=Flag but Number is '{}' (should be 0)", getId(), number);
     }
     for (String optional : new String[] { SOURCE, VERSION }) {
       String value = getPropertyRaw(optional);
       if (value != null && (!value.startsWith("\"") || !value.endsWith("\""))) {
-        sf_logger.warn("Metadata property \"{}\" should be quoted but was: {}", optional, value);
+        VcfWarnings.warn("INFO metadata property \"{}\" should be quoted but was: {}", optional, value);
       }
     }
     String id = getId();
     ReservedInfoProperty reserved = id == null ? null : ReservedInfoProperty.fromId(id);
     if (reserved != null) {
       if (number != null && !reserved.getExpectedNumber().equals(number)) {
-        sf_logger.warn("INFO {} has Number '{}' but the reserved definition expects '{}'", getId(), number,
+        VcfWarnings.warn("INFO {} has Number '{}' but the reserved definition expects '{}'", getId(), number,
             reserved.getExpectedNumber());
       }
       if (m_type != null && !VcfUtils.toJavaType(m_type).equals(reserved.getType())) {
-        sf_logger.warn("INFO {} has Type '{}' but the reserved definition expects '{}'", getId(), m_type,
+        VcfWarnings.warn("INFO {} has Type '{}' but the reserved definition expects '{}'", getId(), m_type,
             reserved.getType().getSimpleName());
       }
     }

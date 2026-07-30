@@ -88,7 +88,7 @@ public class BaseMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      metadata.checkAttributeOrder(org.slf4j.LoggerFactory.getLogger(BaseMetadataTest.class));
+      metadata.checkAttributeOrder();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -111,7 +111,7 @@ public class BaseMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      metadata.checkAttributeOrder(org.slf4j.LoggerFactory.getLogger(BaseMetadataTest.class));
+      metadata.checkAttributeOrder();
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -135,7 +135,7 @@ public class BaseMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      metadata.checkAttributeOrder(org.slf4j.LoggerFactory.getLogger(BaseMetadataTest.class));
+      metadata.checkAttributeOrder();
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);

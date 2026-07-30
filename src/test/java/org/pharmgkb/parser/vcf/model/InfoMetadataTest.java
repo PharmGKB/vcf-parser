@@ -249,7 +249,7 @@ public class InfoMetadataTest {
     root.addAppender(appender);
     try {
       InfoMetadata info = new InfoMetadata("DP", "Raw read depth", InfoType.Integer, "1", "src", "1.0");
-      info.checkAttributeOrder(org.slf4j.LoggerFactory.getLogger(InfoMetadataTest.class));
+      info.checkAttributeOrder();
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -278,7 +278,7 @@ public class InfoMetadataTest {
     try {
       new InfoMetadata(VcfUtils.extractProperties("ID=AA", "Number=1", "Type=String", "Description=unquoted"));
       assertTrue(appender.hasWarnOrHigher());
-      assertTrue(appender.anyEventLoggerNameEquals(InfoMetadata.class.getName()));
+      assertTrue(appender.anyMessageContains("InfoMetadata"));
     } finally {
       root.detachAppender(appender);
       appender.stop();

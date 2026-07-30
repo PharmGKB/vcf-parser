@@ -424,7 +424,7 @@ public class VcfWriter implements Closeable {
       String mapKey = mapEntry.getKey();
       BaseMetadata entry = mapEntry.getValue();
       entry.validate();
-      entry.checkAttributeOrder(LoggerFactory.getLogger(entry.getClass()));
+      entry.checkAttributeOrder();
       if ("ALT".equals(kind) && entry instanceof IdDescriptionMetadata idDescriptionMetadata) {
         VcfMetadata.validateAlt(idDescriptionMetadata);
       }

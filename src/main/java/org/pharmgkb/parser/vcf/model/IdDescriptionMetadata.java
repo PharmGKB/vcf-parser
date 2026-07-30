@@ -2,8 +2,7 @@ package org.pharmgkb.parser.vcf.model;
 
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.pharmgkb.parser.vcf.VcfWarnings;
 
 
 /**
@@ -32,7 +31,7 @@ public class IdDescriptionMetadata extends IdMetadata {
   public IdDescriptionMetadata(Map<String, String> properties) {
     super(properties);
     init();
-    checkAttributeOrder(LoggerFactory.getLogger(getClass()));
+    checkAttributeOrder();
   }
 
   /**
@@ -53,11 +52,11 @@ public class IdDescriptionMetadata extends IdMetadata {
   }
 
   private void init() {
-    Logger logger = LoggerFactory.getLogger(getClass());
     String description = getPropertyRaw(DESCRIPTION);
-    warnIfMissing(logger, DESCRIPTION, description);
+    warnIfMissing(DESCRIPTION, description);
     if (description != null && (!description.startsWith("\"") || !description.endsWith("\""))) {
-      logger.warn("Metadata property \"{}\" should be quoted but was: {}", DESCRIPTION, description);
+      VcfWarnings.warn("{} metadata property \"{}\" should be quoted but was: {}", getClass().getSimpleName(),
+          DESCRIPTION, description);
     }
     // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included
     // after the default fields" -- so an unrecognized property here is not itself non-compliant and must not warn.
