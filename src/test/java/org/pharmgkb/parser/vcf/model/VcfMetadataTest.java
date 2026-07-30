@@ -913,6 +913,31 @@ public class VcfMetadataTest {
   }
 
   @Test
+  public void testGetSampleNameThrowsForNegativeIndex() {
+    // regression test: getSampleName(-1) previously silently returned "FORMAT" (the fixed column at
+    // index 9 + (-1) = 8) instead of signaling an invalid index -- the unguarded inverse of
+    // getSampleIndex(), which correctly guards idx < 9 on the way out
+    VcfMetadata metadata = new VcfMetadata.Builder()
+        .setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
+            "sample1"))
+        .build();
+    assertThrows(IndexOutOfBoundsException.class, () -> metadata.getSampleName(-1));
+  }
+
+  @Test
+  public void testGetSampleNameThrowsForIndexAtOrBeyondNumSamples() {
+    // pins the upper-bound behavior too (already correctly thrown by the underlying List.get(), but
+    // previously unpinned by any test) -- there is 1 sample (index 0), so index 1 is out of range
+    VcfMetadata metadata = new VcfMetadata.Builder()
+        .setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
+            "sample1"))
+        .build();
+    assertThrows(IndexOutOfBoundsException.class, () -> metadata.getSampleName(1));
+  }
+
+  @Test
   public void testBuilderDoesNotShareStateAcrossTwoBuildCalls() {
     VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
         .addInfo(new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null));

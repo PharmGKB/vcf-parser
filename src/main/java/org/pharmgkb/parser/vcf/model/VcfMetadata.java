@@ -518,9 +518,12 @@ public class VcfMetadata {
    *
    * @param idx sample index, first sample is at index 0
    *
-   * @throws ArrayIndexOutOfBoundsException If the sample doesn't exist
+   * @throws IndexOutOfBoundsException If the sample doesn't exist
    */
   public String getSampleName(int idx) {
+    if (idx < 0) {
+      throw new IndexOutOfBoundsException("Sample index " + idx + " is negative");
+    }
     return m_columns.get(9 + idx);
   }
 
