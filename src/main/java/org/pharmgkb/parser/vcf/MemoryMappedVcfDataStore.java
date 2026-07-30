@@ -3,11 +3,11 @@ package org.pharmgkb.parser.vcf;
 import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import com.google.common.base.Joiner;
 import com.google.errorprone.annotations.Immutable;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
@@ -176,12 +176,28 @@ public class MemoryMappedVcfDataStore {
     if (genotype == null || genotype.isEmpty()) {
       return null;
     }
-    boolean isPhased = genotype.contains("|");
-    // limit -1 preserves an empty allele (e.g. a trailing '/', which should have been '.'), handled below rather
-    // than silently dropped -- dropping it would silently change the call's ploidy. VCF does not allow zero-length
-    // fields. See EMPTY_FIELD_HANDLING.md.
-    String[] bases = genotype.split("[\\|/]", -1);
-    List<String> alleles = new ArrayList<>(bases.length);
+    // Scanned manually (not String.split("[\\|/]", -1)) so each separator's identity ('|' vs '/') is captured per
+    // allele boundary -- split() discards which delimiter matched, which previously collapsed mixed phasing (e.g.
+    // "0|1/2") into one whole-genotype boolean and silently corrupted it on toString(). The manual scan still
+    // preserves a trailing empty allele (e.g. a trailing '/', which should have been '.') the same way split's -1
+    // limit did, rather than silently dropping it -- dropping it would silently change the call's ploidy. VCF does
+    // not allow zero-length fields. See EMPTY_FIELD_HANDLING.md.
+    List<String> bases = new ArrayList<>();
+    List<Boolean> phasedBoundaries = new ArrayList<>();
+    StringBuilder current = new StringBuilder();
+    for (int i = 0; i < genotype.length(); i++) {
+      char c = genotype.charAt(i);
+      if (c == '|' || c == '/') {
+        bases.add(current.toString());
+        phasedBoundaries.add(c == '|');
+        current.setLength(0);
+      } else {
+        current.append(c);
+      }
+    }
+    bases.add(current.toString());
+
+    List<String> alleles = new ArrayList<>(bases.size());
     boolean allMissing = true;
     for (String base : bases) {
       if (base.isEmpty()) {
@@ -197,7 +213,7 @@ public class MemoryMappedVcfDataStore {
       }
     }
     // a fully missing call (e.g. "." or "./.") has no genotype
-    return allMissing ? null : new Genotype(alleles, isPhased);
+    return allMissing ? null : new Genotype(alleles, phasedBoundaries);
   }
 
   /**
@@ -237,24 +253,56 @@ public class MemoryMappedVcfDataStore {
   @Immutable
   public static class Genotype {
     private final List<String> m_alleles;
+    private final List<Boolean> m_phasedBoundaries;
     private final boolean m_isPhased;
 
     public Genotype(List<String> alleles, boolean isPhased) {
+      this(alleles, Collections.nCopies(Math.max(0, alleles.size() - 1), isPhased));
+    }
+
+    /**
+     * @param phasedBoundaries one entry per allele boundary (size {@code alleles.size() - 1}); {@code true} if
+     * that boundary is phased ({@code |}), {@code false} if unphased ({@code /})
+     * @throws IllegalArgumentException if {@code phasedBoundaries}'s size does not match {@code alleles}'s
+     */
+    public Genotype(List<String> alleles, List<Boolean> phasedBoundaries) {
+      int expected = Math.max(0, alleles.size() - 1);
+      if (phasedBoundaries.size() != expected) {
+        throw new IllegalArgumentException("phasedBoundaries must have " + expected + " element(s) for " +
+            alleles.size() + " allele(s), got " + phasedBoundaries.size());
+      }
       m_alleles = List.copyOf(alleles);
-      m_isPhased = isPhased;
+      m_phasedBoundaries = List.copyOf(phasedBoundaries);
+      m_isPhased = !m_phasedBoundaries.isEmpty() && m_phasedBoundaries.stream().allMatch(Boolean::booleanValue);
     }
 
     public List<String> getAlleles() {
       return m_alleles;
     }
 
+    /**
+     * @return one entry per allele boundary (size {@code getAlleles().size() - 1}); {@code true} if that boundary
+     * is phased ({@code |}), {@code false} if unphased ({@code /})
+     */
+    public List<Boolean> getPhasedBoundaries() {
+      return m_phasedBoundaries;
+    }
+
+    /**
+     * @return {@code true} only if every allele boundary is phased; {@code false} if any boundary is unphased, or
+     * there are no boundaries at all (a single-allele genotype)
+     */
     public boolean isPhased() {
       return m_isPhased;
     }
 
     @Override
     public String toString() {
-      return Joiner.on(m_isPhased ? "|" : "/").join(m_alleles);
+      StringBuilder sb = new StringBuilder(m_alleles.get(0));
+      for (int i = 1; i < m_alleles.size(); i++) {
+        sb.append(m_phasedBoundaries.get(i - 1) ? '|' : '/').append(m_alleles.get(i));
+      }
+      return sb.toString();
     }
 
     @Override
@@ -266,13 +314,13 @@ public class MemoryMappedVcfDataStore {
         return false;
       }
       Genotype genotype = (Genotype) o;
-      return m_isPhased == genotype.isPhased() &&
-          Objects.equals(m_alleles, genotype.getAlleles());
+      return Objects.equals(m_alleles, genotype.getAlleles()) &&
+          Objects.equals(m_phasedBoundaries, genotype.getPhasedBoundaries());
     }
 
     @Override
     public int hashCode() {
-      return Objects.hash(m_alleles, m_isPhased);
+      return Objects.hash(m_alleles, m_phasedBoundaries);
     }
   }
 

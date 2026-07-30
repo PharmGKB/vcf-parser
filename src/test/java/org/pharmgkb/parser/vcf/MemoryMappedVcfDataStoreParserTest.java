@@ -178,6 +178,56 @@ public class MemoryMappedVcfDataStoreParserTest {
   }
 
   @Test
+  public void testGenotypeToStringPreservesMixedPhasing() {
+    // "0|1/2" -- boundary 0-1 is phased, boundary 1-2 is unphased; a single whole-genotype boolean cannot
+    // represent this, so toString() must reconstruct using the actual per-boundary separator, not one uniform one
+    MemoryMappedVcfDataStore.Genotype genotype =
+        new MemoryMappedVcfDataStore.Genotype(List.of("0", "1", "2"), List.of(true, false));
+    assertEquals("0|1/2", genotype.toString());
+    assertEquals(List.of(true, false), genotype.getPhasedBoundaries());
+    // isPhased() reports "fully phased" -- false here, since the second boundary is unphased
+    assertFalse(genotype.isPhased());
+  }
+
+  @Test
+  public void testGenotypePhasedBoundariesArityValidation() {
+    assertThrows(IllegalArgumentException.class, () ->
+        new MemoryMappedVcfDataStore.Genotype(List.of("0", "1", "2"), List.of(true)));
+  }
+
+  @Test
+  public void testGenotypeLegacyConstructorSingleAlleleIsNeverPhased() {
+    // a single-allele genotype has zero boundaries, so isPhased() is now always false regardless of the flag
+    // passed to the legacy constructor -- matches what doGetGenotype's real parsing already produced for a
+    // haploid GT (no separator to be "|"), so this only affects direct construction, not parsing
+    MemoryMappedVcfDataStore.Genotype genotype = new MemoryMappedVcfDataStore.Genotype(List.of("1"), true);
+    assertFalse(genotype.isPhased());
+    assertTrue(genotype.getPhasedBoundaries().isEmpty());
+  }
+
+  @Test
+  public void testMixedPhasingGenotypeRoundTripsThroughParser() throws IOException {
+    // "0|1/2" (3 alleles, REF=A ALT=T,C) -- previously isPhased=true (since the whole string "contains |") caused
+    // toString() to reconstruct "A|T|C" instead of the actual "A|T/C"; the fix tracks each boundary's separator
+    // independently instead of collapsing the whole call into one boolean
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n" +
+        "chr1\t1\trsx\tA\tT,C\t.\tPASS\t.\tGT\t0|1/2\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf))) {
+      MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+      new VcfParser.Builder()
+          .fromReader(reader)
+          .parseWith(lineParser)
+          .build().parse();
+      MemoryMappedVcfDataStore.Genotype genotype = lineParser.getDataStore().getGenotypeForId("rsx", "sample1");
+      assertNotNull(genotype);
+      assertEquals(List.of("A", "T", "C"), genotype.getAlleles());
+      assertEquals(List.of(true, false), genotype.getPhasedBoundaries());
+      assertEquals("A|T/C", genotype.toString());
+    }
+  }
+
+  @Test
   public void testHeaderOnlyVcfPopulatesMetadata() throws IOException {
     // a VCF with metadata but zero data lines must still populate the data store's metadata -- parseMetadata()
     // must be called, not just parseLine() as a side effect
