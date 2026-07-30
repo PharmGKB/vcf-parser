@@ -65,6 +65,27 @@ public class ContigMetadataTest {
   }
 
   @Test
+  public void testIdWithWhitespaceWarns() {
+    // regression test: a contig ID containing whitespace was previously silently accepted -- reproduces
+    // test/vcf/{4.1,4.2,4.3}/failed/failed_meta_contig_001.vcf's ##CauseOfFailure=contig ID contains a whitespace
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      Map<String, String> map = new HashMap<>();
+      map.put(ContigMetadata.ID, "1 A");
+      new ContigMetadata(map);
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testBadLength() {
     // ContigMetadata.init()'s catch (NumberFormatException) block should warn on a non-numeric length
     ch.qos.logback.classic.Logger root =

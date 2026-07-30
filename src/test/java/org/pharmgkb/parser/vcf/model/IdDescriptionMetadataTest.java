@@ -68,4 +68,24 @@ public class IdDescriptionMetadataTest {
     assertThrows(VcfFormatException.class, () -> new IdDescriptionMetadata("   ", "d"));
   }
 
+  @Test
+  public void testIdWithWhitespaceWarns() {
+    // regression test: an ID containing whitespace was previously silently accepted for this class (shared by
+    // ##ALT, ##FILTER, and ##SAMPLE -- the underlying code path is identical regardless of which of the three
+    // this instance ends up representing, so one test covers all three)
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new IdDescriptionMetadata(VcfUtils.extractProperties("ID=A B", "Description=\"d\""));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
 }

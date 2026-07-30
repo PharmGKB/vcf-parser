@@ -28,7 +28,7 @@ public class ContigMetadata extends IdMetadata {
 
   public ContigMetadata(String id, long length, String assembly, @Nullable String md5,
       @Nullable String species, @Nullable String taxonomy, @Nullable String url) {
-    super(id, false);
+    super(id);
     putPropertyRaw(LENGTH, String.valueOf(length));
     putPropertyRaw(ASSEMBLY, assembly);
     if (md5 != null) {
@@ -52,7 +52,7 @@ public class ContigMetadata extends IdMetadata {
   }
 
   public ContigMetadata(Map<String, String> properties) {
-    super(properties, false);
+    super(properties);
     init();
   }
 

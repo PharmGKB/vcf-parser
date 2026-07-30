@@ -393,7 +393,9 @@ public class VcfMetadataTest {
 
   @Test
   public void testAddAltWarnsOnWhitespaceEvenWithoutColon() {
-    // the character-set check is not SV-specific -- it applies to every ALT ID regardless of colon
+    // the whitespace check is not SV-specific -- it applies to every ALT ID regardless of colon. It now comes
+    // from IdMetadata.init() at construction time (shared across all ID-based metadata types), not from
+    // VcfMetadata.validateAlt() itself, which was narrowed to angle-brackets-only -- see IdMetadata.java.
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -403,7 +405,52 @@ public class VcfMetadataTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     try {
       metadata.addAlt(new IdDescriptionMetadata("AB CD", "d"));
-      assertTrue(appender.hasWarnOrHigher());
+      assertTrue(appender.anyMessageContains("must not contain whitespace"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testAddAltWarnsOnAngleBracketEvenWithoutColon() {
+    // VcfMetadata.validateAlt()'s own angle-bracket check remains ALT-specific (no other type's ID grammar
+    // restricts angle brackets); this proves it still fires correctly after being narrowed from its old combined
+    // whitespace-or-angle-bracket condition to angle-brackets-only
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addAlt(new IdDescriptionMetadata("AB<CD", "d"));
+      assertTrue(appender.anyMessageContains("must not contain angle brackets"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testAddAltWarnsOnBothWhitespaceAndInvalidStructuralVariantCodeWhenBothPresent() {
+    // "DEL:A B" combines a colon (invoking the structural-variant-code grammar) with an embedded space --
+    // regression test: after narrowing validateAlt()'s own check to angle-brackets only, both the generic
+    // whitespace warning (from IdMetadata.init(), at construction) and validateAlt()'s own "not a valid
+    // structural variant code" warning (since AltStructuralVariant("DEL:A B") itself rejects the embedded space,
+    // per AltStructuralVariantTest#testWhitespaceInComponentRejected) must fire, not just one
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addAlt(new IdDescriptionMetadata("DEL:A B", "d"));
+      assertTrue(appender.anyMessageContains("must not contain whitespace"));
+      assertTrue(appender.anyMessageContains("not a valid structural variant code"));
     } finally {
       root.detachAppender(appender);
       appender.stop();

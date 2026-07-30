@@ -24,13 +24,13 @@ public class IdDescriptionMetadata extends IdMetadata {
   public static final String DESCRIPTION = "Description";
 
   public IdDescriptionMetadata(String id, String description) {
-    super(id, false);
+    super(id);
     putAndQuoteProperty(DESCRIPTION, description);
     init();
   }
 
   public IdDescriptionMetadata(Map<String, String> properties) {
-    super(properties, false);
+    super(properties);
     init();
     checkAttributeOrder(LoggerFactory.getLogger(getClass()));
   }
@@ -43,7 +43,7 @@ public class IdDescriptionMetadata extends IdMetadata {
    * position is canonical for its own subtype.
    */
   protected IdDescriptionMetadata(String id) {
-    super(id, false);
+    super(id);
   }
 
   @Override

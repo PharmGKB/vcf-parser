@@ -138,10 +138,10 @@ surfaces any complaint about a dropped duplicate's content either.
   found; always adds when no `ID` property is present.
 - `VcfWriter.validateMetadata()`'s PEDIGREE loop — the same check, but warn-only (never drops), since it runs
   post-construction on content the caller already holds a reference to.
-- `IdMetadata`'s shared `protected IdMetadata(String id, boolean isBaseType)` constructor -- used by every typed,
-  named-parameter constructor across `IdMetadata`/`IdDescriptionMetadata`/`InfoMetadata`/`FormatMetadata`/
-  `ContigMetadata` -- throws `VcfFormatException` immediately for a missing or blank `ID`. The separate
-  `Map<String,String>`-based constructors `VcfParser` uses are unaffected and remain warn-only.
+- `IdMetadata`'s shared `protected IdMetadata(String id)` constructor -- used by every typed, named-parameter
+  constructor across `IdDescriptionMetadata`/`InfoMetadata`/`FormatMetadata`/`ContigMetadata` (`IdMetadata` itself
+  is abstract and has no public constructor) -- throws `VcfFormatException` immediately for a missing or blank
+  `ID`. The separate `Map<String,String>`-based constructors `VcfParser` uses are unaffected and remain warn-only.
 - `VcfMetadata`'s 5 instance `addXxx` methods and `VcfMetadata.Builder`'s 6 `addXxx` methods each check for a
   missing or blank `ID` before calling `warnIfDuplicate()`, warning and dropping the declaration entirely (never
   storing it) if so -- this is what actually catches a malformed declaration built via the parser's lenient

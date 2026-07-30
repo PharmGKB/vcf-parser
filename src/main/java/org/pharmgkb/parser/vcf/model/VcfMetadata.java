@@ -161,10 +161,11 @@ public class VcfMetadata {
   public static void validateAlt(IdDescriptionMetadata value) {
     String id = value.getId();
     if (id != null) {
-      // VCFv4.2.tex line 105: "ID values are case sensitive strings and may not contain whitespace or angle
-      // brackets" -- this applies to every ALT ID, structural-variant or not, so it is checked unconditionally.
-      if (id.chars().anyMatch(c -> Character.isWhitespace(c) || c == '<' || c == '>')) {
-        sf_logger.warn("ALT {} must not contain whitespace or angle brackets", id);
+      // whitespace is already checked generically by IdMetadata.init() for every ID-based metadata type; angle
+      // brackets are checked here since VCFv4.2.tex line 105's "or angle brackets" clause has only ever been
+      // evidenced for ALT specifically, not extended to ##contig/##INFO/##FORMAT/##FILTER/##SAMPLE.
+      if (id.chars().anyMatch(c -> c == '<' || c == '>')) {
+        sf_logger.warn("ALT {} must not contain angle brackets", id);
       } else if (id.contains(":")) {
         // Only an ID containing ':' unambiguously invokes the structural-variant-code grammar (VCFv4.2.tex lines
         // 100-117: DEL/INS/DUP/INV/CNV and their colon-delimited subtypes, e.g. DEL:ME). A bare single-token ID

@@ -193,4 +193,23 @@ public class FormatMetadataTest {
     assertThrows(VcfFormatException.class, () -> new FormatMetadata("", "d", "1", FormatType.String));
     assertThrows(VcfFormatException.class, () -> new FormatMetadata("   ", "d", "1", FormatType.String));
   }
+
+  @Test
+  public void testIdWithWhitespaceWarns() {
+    // regression test: a FORMAT ID containing whitespace was previously silently accepted -- bcftools 1.23.1
+    // warns "Invalid tag name" for this exact case
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new FormatMetadata(VcfUtils.extractProperties("ID=A B", "Number=1", "Type=String", "Description=\"d\""));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
 }

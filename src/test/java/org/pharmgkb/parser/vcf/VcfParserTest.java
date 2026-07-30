@@ -670,4 +670,25 @@ public class VcfParserTest {
       assertTrue(ex.getMessage().contains("Not a VCF file"));
     }
   }
+
+  @Test
+  void testContigIdWithWhitespaceWarnsInsteadOfSilentlyAccepting() throws IOException {
+    // reproduces test/vcf/{4.1,4.2,4.3}/failed/failed_meta_contig_001.vcf's
+    // ##CauseOfFailure=contig ID contains a whitespace -- previously silently accepted with no warning at all
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      String vcf = "##fileformat=VCFv4.2\n##contig=<ID=1 A>\n" +
+          "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+      parseMetadataOf(vcf);
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
 }

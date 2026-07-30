@@ -132,6 +132,17 @@ still stored as-is, with this exception:
   ID (e.g. an IUPAC ambiguity code, or a `CN0`-through-`CN124`-style copy-number allele used by 1000 Genomes) is not
   checked against that hierarchy at all, since colon-less custom codes have other spec-sanctioned, non-structural-
   variant uses this parser must not reject.
+- A `##contig`/`##INFO`/`##FORMAT`/`##FILTER`/`##SAMPLE`/`##ALT` declaration's `ID` containing whitespace (as
+  opposed to being entirely blank/missing, handled separately above): warns. VCFv4.2/4.3 state this explicitly
+  only for `##ALT` (VCFv4.2.tex line 105); hts-specs' own `failed_meta_contig_001.vcf` (4.1/4.2/4.3) and
+  `failed_meta_sample_001.vcf` (4.3 only) fixtures extend it to `##contig`/`##SAMPLE`, bcftools 1.23.1 warns
+  (`Invalid tag name`/`Invalid contig name`) for `##INFO`/`##FORMAT`/`##contig` specifically, and vcf_validator
+  0.10.2 rejects all five uniformly. For `##FILTER`/`##SAMPLE` specifically, bcftools 1.23.1 accepts whitespace
+  silently (no dedicated header check exists for either), directly contradicting hts-specs' own
+  `failed_meta_sample_001.vcf` fixture — treated as a bcftools coverage gap rather than a considered position, so
+  the hts-specs fixture and vcf_validator's uniform treatment govern instead. `##ALT` IDs also separately warn on
+  angle brackets (`<`/`>`), per the same VCFv4.2.tex line 105 sentence — an `##ALT`-specific restriction not
+  extended to the other five types, since no fixture or spec passage evidences it for them.
 
 An empty ("zero-length") entry in a delimited record field — e.g. `ID=rs1;;rs2`, `ALT=T,`, `FILTER=q10;`,
 `FORMAT=GT:DP:`, a sample value like `0/1:`, or `INFO=AD=1,,2` — is also lenient rather than strict when it can be
