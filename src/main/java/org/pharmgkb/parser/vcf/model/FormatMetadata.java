@@ -40,7 +40,7 @@ public class FormatMetadata extends IdDescriptionMetadata {
     init();
   }
 
-  public void init() {
+  private void init() {
     m_type = null;
     String number = getPropertyRaw(NUMBER);
     checkNumberProperty(number);
