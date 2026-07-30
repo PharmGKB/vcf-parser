@@ -431,17 +431,20 @@ public class VcfMetadata {
     return new LinkedHashSet<>(m_properties.keySet());
   }
 
-  public int getColumnIndex(String column) {
-    return m_columns.indexOf(column);
+  /**
+   * @return the column's index, or {@code -1} if {@code column} is {@code null} or not a column
+   */
+  public int getColumnIndex(@Nullable String column) {
+    return column == null ? -1 : m_columns.indexOf(column);
   }
 
   /**
    * Sample numbering starts at 0.
    *
-   * @return the sample's index, or {@code -1} if {@code sampleId} is not a sample column
+   * @return the sample's index, or {@code -1} if {@code sampleId} is {@code null} or not a sample column
    */
-  public int getSampleIndex(String sampleId) {
-    int idx = m_columns.indexOf(sampleId);
+  public int getSampleIndex(@Nullable String sampleId) {
+    int idx = sampleId == null ? -1 : m_columns.indexOf(sampleId);
     return idx < 9 ? -1 : idx - 9;
   }
 

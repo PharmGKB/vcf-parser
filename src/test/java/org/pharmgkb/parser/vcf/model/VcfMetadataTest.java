@@ -26,6 +26,19 @@ public class VcfMetadataTest {
     // an unknown sample name, and a name that collides with a fixed column, both return -1 (not -10)
     assertEquals(-1, metadata.getSampleIndex("nosuchsample"));
     assertEquals(-1, metadata.getSampleIndex("INFO"));
+    assertEquals(-1, metadata.getSampleIndex(null));
+  }
+
+  @Test
+  public void testGetColumnIndex() {
+    VcfMetadata metadata = new VcfMetadata.Builder()
+        .setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
+            "sample1", "sample2"))
+        .build();
+    assertEquals(3, metadata.getColumnIndex("REF"));
+    assertEquals(-1, metadata.getColumnIndex("nosuchcolumn"));
+    assertEquals(-1, metadata.getColumnIndex(null));
   }
 
   @Test
