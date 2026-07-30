@@ -53,11 +53,11 @@ public class VcfPosition {
   private @Nullable ListMultimap<String, String> m_info;
   private @Nullable String m_rawInfo;
   private List<String> m_format = new ArrayList<>();
-  // originating line number in the source VCF file, or 0 if this position wasn't produced by parsing a real
+  // originating line number in the source VCF file, or -1 if this position wasn't produced by parsing a real
   // file (e.g. constructed directly by a caller/test) -- used to attach line-number context to any
-  // VcfFormatException this instance's own validation throws, guarded so a lineNumber of 0 (not produced by
+  // VcfFormatException this instance's own validation throws, guarded so a lineNumber of -1 (not produced by
   // parsing) leaves exception behavior unchanged.
-  private int m_lineNumber;
+  private int m_lineNumber = -1;
 
 
   /**
@@ -70,7 +70,7 @@ public class VcfPosition {
    * pass a mutable {@code List}/{@code ListMultimap} (not e.g. {@code List.of(...)}) if you intend to mutate a
    * position's IDs, ALT bases, filters, format, or INFO after construction.
    *
-   * @param lineNumber the originating line number in the source VCF file, or {@code 0} if this position was not
+   * @param lineNumber the originating line number in the source VCF file, or {@code -1} if this position was not
    * produced by parsing a real file (e.g. constructed directly by a caller or test)
    */
   public VcfPosition(String chr, long pos,
@@ -113,7 +113,7 @@ public class VcfPosition {
     // not resolving ID string
     m_chromosome = chr; // required
     m_position = pos; // required
-    m_lineNumber = lineNumber; // required (0 if not produced by parsing a real line)
+    m_lineNumber = lineNumber; // required (-1 if not produced by parsing a real line)
 
     if (ids != null) {
       m_ids = ids;
@@ -147,7 +147,7 @@ public class VcfPosition {
   }
 
   /**
-   * @param lineNumber the originating line number in the source VCF file, or {@code 0} if this position was not
+   * @param lineNumber the originating line number in the source VCF file, or {@code -1} if this position was not
    * produced by parsing a real file (e.g. constructed directly by a caller or test)
    */
   public VcfPosition(String chromosome, long position, String refBases, BigDecimal quality, int lineNumber) {
@@ -158,7 +158,7 @@ public class VcfPosition {
     m_position = position;
     m_refBases = refBases;
     m_quality = quality;
-    m_lineNumber = lineNumber; // required (0 if not produced by parsing a real line)
+    m_lineNumber = lineNumber; // required (-1 if not produced by parsing a real line)
   }
 
   private static void checkChromosome(String chr) {
@@ -385,7 +385,7 @@ public class VcfPosition {
       checkInfoEntries(info().entries());
       m_format = checkFormat(m_format);
     } catch (VcfFormatException ex) {
-      if (m_lineNumber > 0) {
+      if (m_lineNumber >= 0) {
         ex.addMetadata(m_lineNumber, "data");
       }
       throw ex;
@@ -565,7 +565,7 @@ public class VcfPosition {
         if (props.contains(".") && props.size() > 1) {
           VcfFormatException ex = new VcfFormatException(
               "INFO contains '.' (missing value) along with other properties");
-          if (m_lineNumber > 0) {
+          if (m_lineNumber >= 0) {
             ex.addMetadata(m_lineNumber, "data");
           }
           throw ex;
@@ -614,7 +614,7 @@ public class VcfPosition {
         try {
           checkInfoEntries(info.entries());
         } catch (VcfFormatException ex) {
-          if (m_lineNumber > 0) {
+          if (m_lineNumber >= 0) {
             ex.addMetadata(m_lineNumber, "data");
           }
           throw ex;
@@ -670,7 +670,7 @@ public class VcfPosition {
     try {
       return VcfUtils.convertProperty(key, sf_commaJoiner.join(list));
     } catch (VcfFormatException ex) {
-      if (m_lineNumber > 0) {
+      if (m_lineNumber >= 0) {
         ex.addMetadata(m_lineNumber, "data");
       }
       throw ex;

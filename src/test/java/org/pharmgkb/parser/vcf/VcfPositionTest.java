@@ -123,13 +123,13 @@ public class VcfPositionTest {
 
   @Test
   public void testLazyInfoExceptionHasNoLineNumberWhenNotConstructedByParser() {
-    // regression test: a VcfPosition NOT produced by parsing a real file (lineNumber=0, the newPosition() helper's
+    // regression test: a VcfPosition NOT produced by parsing a real file (lineNumber=-1, the newPosition() helper's
     // default) must keep today's existing bare-message exception shape -- proving this feature is purely additive
     // for every non-parser-constructed VcfPosition, existing or future
     VcfPosition combined = newPosition();
     combined.setRawInfo(".;DP=1");
     VcfFormatException ex = assertThrows(VcfFormatException.class, combined::getInfo);
-    assertEquals(0, ex.getLineNumber());
+    assertEquals(-1, ex.getLineNumber());
     assertFalse(ex.getMessage().contains("[Line #"));
   }
 
@@ -226,13 +226,13 @@ public class VcfPositionTest {
   }
 
   private static VcfPosition newPosition() {
-    return new VcfPosition("chr", 1, null, "C", null, null, null, null, null, 0);
+    return new VcfPosition("chr", 1, null, "C", null, null, null, null, null, -1);
   }
 
   @Test
   public void testGetAllele() {
     VcfPosition position = new VcfPosition("chr1", 1, null, "C", new ArrayList<>(Arrays.asList("A", "T")), null, null,
-        null, null, 0);
+        null, null, -1);
     assertEquals("C", position.getAllele(0));
     assertEquals("A", position.getAllele(1));
     assertEquals("T", position.getAllele(2));
@@ -249,7 +249,7 @@ public class VcfPositionTest {
 
   @Test
   public void testGetAlleleShortConstructor() {
-    VcfPosition position = new VcfPosition("chr1", 1, "C", new BigDecimal("0.0"), 0);
+    VcfPosition position = new VcfPosition("chr1", 1, "C", new BigDecimal("0.0"), -1);
     assertEquals("C", position.getAllele(0));
     assertThrows(IndexOutOfBoundsException.class, () -> position.getAllele(1));
   }
@@ -257,13 +257,13 @@ public class VcfPositionTest {
   @Test
   public void testFilterStatus() {
     VcfPosition none = new VcfPosition("chr1", 1, null, "C", null, null, Collections.singletonList("."),
-        null, null, 0);
+        null, null, -1);
     assertEquals(VcfPosition.FilterStatus.NONE, none.getFilterStatus());
     assertTrue(none.isPassingAllFilters()); // no filters applied is treated as passing
     assertTrue(none.getFilters().isEmpty());
 
     VcfPosition passed = new VcfPosition("chr1", 1, null, "C", null, null, Collections.singletonList("PASS"),
-        null, null, 0);
+        null, null, -1);
     assertEquals(VcfPosition.FilterStatus.PASSED, passed.getFilterStatus());
     assertTrue(passed.isPassingAllFilters());
     assertEquals(Collections.singletonList("PASS"), passed.getFilters());
@@ -271,11 +271,11 @@ public class VcfPositionTest {
     // regression test: an unspecified FILTER is NONE, not an implicit PASSED -- PASS must always be explicit,
     // matching bcftools 1.23.1 (neither "bcftools annotate -x FILTER" nor a literal empty FILTER string ever
     // produces PASS; see VcfPosition.getFilterStatus()'s Javadoc)
-    VcfPosition noFilters = new VcfPosition("chr1", 1, null, "C", null, null, null, null, null, 0);
+    VcfPosition noFilters = new VcfPosition("chr1", 1, null, "C", null, null, null, null, null, -1);
     assertEquals(VcfPosition.FilterStatus.NONE, noFilters.getFilterStatus());
 
     VcfPosition failed = new VcfPosition("chr1", 1, null, "C", null, null, Collections.singletonList("q10"),
-        null, null, 0);
+        null, null, -1);
     assertEquals(VcfPosition.FilterStatus.FAILED, failed.getFilterStatus());
     assertFalse(failed.isPassingAllFilters());
     assertEquals(Collections.singletonList("q10"), failed.getFilters());
@@ -284,12 +284,12 @@ public class VcfPositionTest {
   @Test
   public void testBadFilterDotWithOthers() {
     assertThrows(VcfFormatException.class, () ->
-        new VcfPosition("chr1", 1, null, "C", null, null, Arrays.asList("q10", "."), null, null, 0));
+        new VcfPosition("chr1", 1, null, "C", null, null, Arrays.asList("q10", "."), null, null, -1));
   }
 
   @Test
   public void testNoFilters() {
-    VcfPosition position = new VcfPosition("chr", 1, null, "C", null, null, null, null, null, 0);
+    VcfPosition position = new VcfPosition("chr", 1, null, "C", null, null, null, null, null, -1);
     assertTrue(position.getFilters().isEmpty());
     assertTrue(position.isPassingAllFilters());
     assertEquals(VcfPosition.FilterStatus.NONE, position.getFilterStatus());
@@ -298,7 +298,7 @@ public class VcfPositionTest {
   @Test
   public void testHasFilters() {
     VcfPosition position = new VcfPosition("chr", 1, null, "C", null, null, Collections.singletonList("bad"),
-        null, null, 0);
+        null, null, -1);
     assertEquals(1, position.getFilters().size());
     assertEquals("bad", position.getFilters().get(0));
     assertFalse(position.isPassingAllFilters());
@@ -307,7 +307,7 @@ public class VcfPositionTest {
   @Test
   public void testBadFilter1() {
     VcfPosition position = new VcfPosition("chr", 1, null, "C", null, null, Collections.singletonList("PASS"),
-        null, null, 0);
+        null, null, -1);
     assertEquals(Collections.singletonList("PASS"), position.getFilters());
     assertTrue(position.isPassingAllFilters());
   }
@@ -325,7 +325,7 @@ public class VcfPositionTest {
     VcfPosition position;
     try {
       position = new VcfPosition("chr", 1, null, "C", null, null, Arrays.asList("bad", "PASS"),
-          null, null, 0);
+          null, null, -1);
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -339,22 +339,22 @@ public class VcfPositionTest {
     // VCF does not allow zero-length fields; ID is a position-independent list, so an empty entry is dropped rather
     // than throwing (see EMPTY_FIELD_HANDLING.md)
     VcfPosition interior = new VcfPosition("chr", 1, new ArrayList<>(Arrays.asList("rs1", "", "rs2")), "C", null, null,
-        null, null, null, 0);
+        null, null, null, -1);
     assertEquals(Arrays.asList("rs1", "rs2"), interior.getIds());
 
     VcfPosition trailing = new VcfPosition("chr", 1, new ArrayList<>(Arrays.asList("rs3", "")), "C", null, null,
-        null, null, null, 0);
+        null, null, null, -1);
     assertEquals(Collections.singletonList("rs3"), trailing.getIds());
   }
 
   @Test
   public void testEmptyFilterEntriesDropped() {
     VcfPosition interior = new VcfPosition("chr", 1, null, "C", null, null,
-        new ArrayList<>(Arrays.asList("q10", "", "q20")), null, null, 0);
+        new ArrayList<>(Arrays.asList("q10", "", "q20")), null, null, -1);
     assertEquals(Arrays.asList("q10", "q20"), interior.getFilters());
 
     VcfPosition trailing = new VcfPosition("chr", 1, null, "C", null, null,
-        new ArrayList<>(Arrays.asList("q10", "")), null, null, 0);
+        new ArrayList<>(Arrays.asList("q10", "")), null, null, -1);
     assertEquals(Collections.singletonList("q10"), trailing.getFilters());
   }
 
@@ -363,11 +363,11 @@ public class VcfPositionTest {
     // ALT is position-dependent (GT indexes into it -- see testGetAlleleAfterAltDotSubstitutionPreservesIndex),
     // so an empty entry is substituted with '.', not dropped, unlike ID/FILTER above
     VcfPosition interior = new VcfPosition("chr", 1, null, "C",
-        new ArrayList<>(Arrays.asList("T", "", "G")), null, null, null, null, 0);
+        new ArrayList<>(Arrays.asList("T", "", "G")), null, null, null, null, -1);
     assertEquals(Arrays.asList("T", ".", "G"), interior.getAltBases());
 
     VcfPosition trailing = new VcfPosition("chr", 1, null, "C",
-        new ArrayList<>(Arrays.asList("T", "")), null, null, null, null, 0);
+        new ArrayList<>(Arrays.asList("T", "")), null, null, null, null, -1);
     assertEquals(Arrays.asList("T", "."), trailing.getAltBases());
   }
 
@@ -378,7 +378,7 @@ public class VcfPositionTest {
     // normalization instead of throwing or staying correct. Substituting '.' instead preserves every index --
     // confirmed against bcftools 1.23.1, which does the same thing (see EMPTY_FIELD_HANDLING.md)
     VcfPosition position = new VcfPosition("chr1", 1, null, "C",
-        new ArrayList<>(Arrays.asList("T", "C", "", "G")), null, null, null, null, 0);
+        new ArrayList<>(Arrays.asList("T", "C", "", "G")), null, null, null, null, -1);
     assertEquals(Arrays.asList("T", "C", ".", "G"), position.getAltBases());
     assertEquals("C", position.getAllele(0));
     assertEquals("T", position.getAllele(1));
@@ -392,7 +392,7 @@ public class VcfPositionTest {
     // unlike ID/FILTER/ALT, an empty FORMAT key is kept (not dropped): every sample's colon-split values are matched
     // to FORMAT keys by index, and dropping this key would misalign every sample's values with the wrong key
     VcfPosition position = new VcfPosition("chr", 1, null, "C", null, null, null, null,
-        new ArrayList<>(Arrays.asList("GT", "", "GQ")), 0);
+        new ArrayList<>(Arrays.asList("GT", "", "GQ")), -1);
     assertEquals(Arrays.asList("GT", "", "GQ"), position.getFormat());
   }
 
@@ -400,7 +400,7 @@ public class VcfPositionTest {
   public void testDuplicateFormatKeyRejected() {
     // VCFv4.3+ states outright that duplicate FORMAT keys are not allowed
     assertThrows(VcfFormatException.class, () -> new VcfPosition("chr", 1, null, "C", null, null, null, null,
-        new ArrayList<>(Arrays.asList("GT", "DP", "DP")), 0));
+        new ArrayList<>(Arrays.asList("GT", "DP", "DP")), -1));
   }
 
   @Test
@@ -408,7 +408,7 @@ public class VcfPositionTest {
     // an empty FORMAT key is already handled (kept as-is, warned about) separately; two of them are not a "duplicate"
     // in the sense the spec means
     VcfPosition position = new VcfPosition("chr", 1, null, "C", null, null, null, null,
-        new ArrayList<>(Arrays.asList("GT", "", "")), 0);
+        new ArrayList<>(Arrays.asList("GT", "", "")), -1);
     assertEquals(Arrays.asList("GT", "", ""), position.getFormat());
   }
 
@@ -418,34 +418,34 @@ public class VcfPositionTest {
     // 4.5 are all silent on this exact case, but bcftools 1.23.1 accepts and correctly interprets it; see
     // VcfPosition.checkFormat's javadoc for the full rationale
     VcfPosition position = new VcfPosition("chr", 1, null, "C", null, null, null, null,
-        new ArrayList<>(Collections.singletonList(".")), 0);
+        new ArrayList<>(Collections.singletonList(".")), -1);
     assertTrue(position.getFormat().isEmpty());
   }
 
   @Test
   public void testBadChromosome() {
     assertThrows(VcfFormatException.class, () -> {
-      new VcfPosition("chr 1", 1, null, "C", null, null, null, null, null, 0); // whitespace is not allowed
+      new VcfPosition("chr 1", 1, null, "C", null, null, null, null, null, -1); // whitespace is not allowed
     });
   }
 
   @Test
   public void testColonInChromosomeAllowed() {
     // the VCF spec forbids only whitespace in CHROM; a colon is allowed
-    new VcfPosition("chr:1", 1, null, "C", null, null, null, null, null, 0);
+    new VcfPosition("chr:1", 1, null, "C", null, null, null, null, null, -1);
   }
 
   @Test
   public void testShortConstructorValidates() {
-    assertThrows(VcfFormatException.class, () -> new VcfPosition("", 1, "C", new BigDecimal("0"), 0));      // empty CHROM
-    assertThrows(VcfFormatException.class, () -> new VcfPosition("chr1", -1, "C", new BigDecimal("0"), 0)); // negative POS
-    assertThrows(VcfFormatException.class, () -> new VcfPosition("chr1", 1, "X", new BigDecimal("0"), 0));  // invalid REF
+    assertThrows(VcfFormatException.class, () -> new VcfPosition("", 1, "C", new BigDecimal("0"), -1));      // empty CHROM
+    assertThrows(VcfFormatException.class, () -> new VcfPosition("chr1", -1, "C", new BigDecimal("0"), -1)); // negative POS
+    assertThrows(VcfFormatException.class, () -> new VcfPosition("chr1", 1, "X", new BigDecimal("0"), -1));  // invalid REF
   }
 
   @Test
   public void testValidateCatchesUnvalidatedMutation() {
     VcfPosition position = new VcfPosition("chr1", 1, null, "C", new ArrayList<>(Arrays.asList("A", "T")), null, null,
-        null, null, 0);
+        null, null, -1);
     position.validate(); // valid as constructed
 
     // setters and the mutable lists returned by accessors do not validate on their own...
@@ -481,7 +481,7 @@ public class VcfPositionTest {
 
   @Test
   public void testValidateNormalizesLoneFilterSentinel() {
-    VcfPosition dot = new VcfPosition("chr1", 1, null, "C", null, null, null, null, null, 0);
+    VcfPosition dot = new VcfPosition("chr1", 1, null, "C", null, null, null, null, null, -1);
     dot.getFilters().add(".");
     dot.validate();
     assertEquals(VcfPosition.FilterStatus.NONE, dot.getFilterStatus());
@@ -489,7 +489,7 @@ public class VcfPositionTest {
 
     // a lone "PASS" is left as-is by validate() -- it is not a sentinel to normalize away, it IS the
     // representation of PASSED
-    VcfPosition pass = new VcfPosition("chr1", 1, null, "C", null, null, null, null, null, 0);
+    VcfPosition pass = new VcfPosition("chr1", 1, null, "C", null, null, null, null, null, -1);
     pass.getFilters().add("PASS");
     pass.validate();
     assertEquals(VcfPosition.FilterStatus.PASSED, pass.getFilterStatus());
@@ -505,7 +505,7 @@ public class VcfPositionTest {
     // regression test: FilterStatus is derived fresh from getFilters()'s contents every time, so a position that
     // was ever normalized from "." can still report PASSED once its list is explicitly set to ["PASS"] -- there is
     // no separate persisted flag that could get stuck
-    VcfPosition position = new VcfPosition("chr1", 1, null, "C", null, null, null, null, null, 0);
+    VcfPosition position = new VcfPosition("chr1", 1, null, "C", null, null, null, null, null, -1);
     position.getFilters().add(".");
     position.validate();
     assertEquals(VcfPosition.FilterStatus.NONE, position.getFilterStatus());
@@ -521,7 +521,7 @@ public class VcfPositionTest {
     // -- FilterStatus is derived fresh from getFilters()'s contents, not a separate persisted flag. Verified this
     // matches bcftools 1.23.1's own convention: "bcftools annotate -x FILTER" on a fixture with FILTER values ".",
     // "PASS", and a real filter code converts ALL of them to "." (never to "PASS").
-    VcfPosition position = new VcfPosition("chr1", 1, null, "C", null, null, null, null, null, 0);
+    VcfPosition position = new VcfPosition("chr1", 1, null, "C", null, null, null, null, null, -1);
     position.getFilters().add(".");
     position.validate();
     assertEquals(VcfPosition.FilterStatus.NONE, position.getFilterStatus());
@@ -544,7 +544,7 @@ public class VcfPositionTest {
     // becomes "." when cleared, never "PASS"). Verified live against the compiled library before this fix:
     // constructing with FILTER=q10 then clearing+validating produced PASSED, not NONE.
     VcfPosition position = new VcfPosition("chr1", 1, null, "C", null, null,
-        new ArrayList<>(Collections.singletonList("q10")), null, null, 0);
+        new ArrayList<>(Collections.singletonList("q10")), null, null, -1);
     assertEquals(VcfPosition.FilterStatus.FAILED, position.getFilterStatus());
 
     position.getFilters().clear();
@@ -557,7 +557,7 @@ public class VcfPositionTest {
     // regression test: a lone "PASS" must be defensively copied into a fresh, mutable list, exactly like "." --
     // otherwise passing an immutable list (e.g. List.of("PASS")) makes getFilters() permanently immutable,
     // breaking the documented "clear() to change FilterStatus" pattern this same redesign introduced
-    VcfPosition position = new VcfPosition("chr1", 1, null, "C", null, null, List.of("PASS"), null, null, 0);
+    VcfPosition position = new VcfPosition("chr1", 1, null, "C", null, null, List.of("PASS"), null, null, -1);
     assertEquals(VcfPosition.FilterStatus.PASSED, position.getFilterStatus());
     position.getFilters().clear(); // must not throw UnsupportedOperationException
     position.validate();
@@ -566,49 +566,49 @@ public class VcfPositionTest {
 
   @Test
   public void testTelomericPositions() {
-    new VcfPosition("chr1", 0, null, "C", null, null, null, null, null, 0); // telomere at start is valid
+    new VcfPosition("chr1", 0, null, "C", null, null, null, null, null, -1); // telomere at start is valid
     assertThrows(VcfFormatException.class, () -> // a negative POS is invalid
-        new VcfPosition("chr1", -1, null, "C", null, null, null, null, null, 0));
+        new VcfPosition("chr1", -1, null, "C", null, null, null, null, null, -1));
   }
 
   @Test
   public void testGtMustBeFirstFormat() {
-    new VcfPosition("chr1", 1, null, "C", null, null, null, null, Arrays.asList("GT", "DP"), 0); // valid
+    new VcfPosition("chr1", 1, null, "C", null, null, null, null, Arrays.asList("GT", "DP"), -1); // valid
     assertThrows(VcfFormatException.class, () -> // GT not first is invalid
-        new VcfPosition("chr1", 1, null, "C", null, null, null, null, Arrays.asList("DP", "GT"), 0));
+        new VcfPosition("chr1", 1, null, "C", null, null, null, null, Arrays.asList("DP", "GT"), -1));
   }
 
   @Test
   public void testEmptyChromosome() {
     assertThrows(VcfFormatException.class, () ->
-        new VcfPosition("", 1, null, "C", null, null, null, null, null, 0));
+        new VcfPosition("", 1, null, "C", null, null, null, null, null, -1));
   }
 
   @Test
   public void testDuplicateIdRejected() {
-    new VcfPosition("chr1", 1, Arrays.asList("rs1", "rs2"), "C", null, null, null, null, null, 0); // unique IDs are fine
+    new VcfPosition("chr1", 1, Arrays.asList("rs1", "rs2"), "C", null, null, null, null, null, -1); // unique IDs are fine
     assertThrows(VcfFormatException.class, () ->
-        new VcfPosition("chr1", 1, Arrays.asList("rs1", "rs1"), "C", null, null, null, null, null, 0));
+        new VcfPosition("chr1", 1, Arrays.asList("rs1", "rs1"), "C", null, null, null, null, null, -1));
   }
 
   @Test
   public void testBadId() {
     assertThrows(VcfFormatException.class, () -> {
-      new VcfPosition("chr1", 1, Collections.singletonList(";"), "C", null, null, null, null, null, 0);
+      new VcfPosition("chr1", 1, Collections.singletonList(";"), "C", null, null, null, null, null, -1);
     });
   }
 
   @Test
   public void testBadRefBase() {
     assertThrows(VcfFormatException.class, () -> {
-      new VcfPosition("chr1", 1, null, "X", null, null, null, null, null, 0);
+      new VcfPosition("chr1", 1, null, "X", null, null, null, null, null, -1);
     });
   }
 
   @Test
   public void testBadVarBase() {
     assertThrows(VcfFormatException.class, () -> {
-      new VcfPosition("chr1", 1, null, "C", Collections.singletonList("X"), null, null, null, null, 0);
+      new VcfPosition("chr1", 1, null, "C", Collections.singletonList("X"), null, null, null, null, -1);
     });
   }
 
@@ -620,26 +620,26 @@ public class VcfPositionTest {
     // more explicitly: "Each allele in this list must be one of: ... the MISSING value '.' (no variant); ...".
     // Confirmed bcftools 1.23.1 accepts this with no warning, whether the '.' is literal or substituted, and
     // genotype indices before/at/after the dot still resolve correctly.
-    new VcfPosition("chr1", 1, null, "C", Collections.singletonList("."), null, null, null, null, 0); // "." alone is fine
+    new VcfPosition("chr1", 1, null, "C", Collections.singletonList("."), null, null, null, null, -1); // "." alone is fine
     VcfPosition afterReal = new VcfPosition("chr1", 1, null, "C", new ArrayList<>(Arrays.asList("A", ".")), null,
-        null, null, null, 0);
+        null, null, null, -1);
     assertEquals(Arrays.asList("A", "."), afterReal.getAltBases());
     VcfPosition beforeReal = new VcfPosition("chr1", 1, null, "C", new ArrayList<>(Arrays.asList(".", "A")), null,
-        null, null, null, 0);
+        null, null, null, -1);
     assertEquals(Arrays.asList(".", "A"), beforeReal.getAltBases());
   }
 
   @Test
   public void testZeroFilter() {
     assertThrows(VcfFormatException.class, () -> {
-      new VcfPosition("chr1", 1, null, "C", null, null, Collections.singletonList("0"), null, null, 0);
+      new VcfPosition("chr1", 1, null, "C", null, null, Collections.singletonList("0"), null, null, -1);
     });
   }
 
   @Test
   public void testFilterWithWhitespace() {
     assertThrows(VcfFormatException.class, () -> {
-      new VcfPosition("chr1", 1, null, "C", null, null, Collections.singletonList("adsf\nsdf"), null, null, 0);
+      new VcfPosition("chr1", 1, null, "C", null, null, Collections.singletonList("adsf\nsdf"), null, null, -1);
     });
   }
 
@@ -648,7 +648,7 @@ public class VcfPositionTest {
     // a wrapping ".*\s.*" pattern matched with matches() would fail to detect whitespace here (2+ line terminators);
     // the whitespace check must still catch it
     assertThrows(VcfFormatException.class, () -> {
-      new VcfPosition("chr1", 1, null, "C", null, null, Collections.singletonList("a\nb\nc"), null, null, 0);
+      new VcfPosition("chr1", 1, null, "C", null, null, Collections.singletonList("a\nb\nc"), null, null, -1);
     });
   }
 
@@ -657,14 +657,14 @@ public class VcfPositionTest {
     assertThrows(VcfFormatException.class, () -> {
       ListMultimap<String, String> map = ArrayListMultimap.create();
       map.put("anid", "a\nvalue");
-      new VcfPosition("chr1", 1, null, "C", null, null, null, map, null, 0);
+      new VcfPosition("chr1", 1, null, "C", null, null, null, map, null, -1);
     });
   }
 
   @Test
   public void testBadFormat() {
     assertThrows(VcfFormatException.class, () -> {
-      new VcfPosition("chr1", 1, null, "C", null, null, null, null, Collections.singletonList("+"), 0);
+      new VcfPosition("chr1", 1, null, "C", null, null, null, null, Collections.singletonList("+"), -1);
     });
   }
 
@@ -696,7 +696,7 @@ public class VcfPositionTest {
     // immutable or caller-owned list passed to the constructor is never mutated or rejected with
     // UnsupportedOperationException
     List<String> immutable = List.of("T", "");
-    VcfPosition position = new VcfPosition("chr1", 1, null, "C", immutable, null, null, null, null, 0);
+    VcfPosition position = new VcfPosition("chr1", 1, null, "C", immutable, null, null, null, null, -1);
     assertEquals(Arrays.asList("T", "."), position.getAltBases());
     assertEquals(Arrays.asList("T", ""), immutable);
   }
@@ -708,7 +708,7 @@ public class VcfPositionTest {
     // getFormat()/getInfo() already do (see the primary constructor's Javadoc). An immutable list with no empty
     // entry therefore stays immutable, and add() on the result throws.
     List<String> immutable = List.of("T", "C");
-    VcfPosition position = new VcfPosition("chr1", 1, null, "C", immutable, null, null, null, null, 0);
+    VcfPosition position = new VcfPosition("chr1", 1, null, "C", immutable, null, null, null, null, -1);
     assertEquals(Arrays.asList("T", "C"), position.getAltBases());
     assertThrows(UnsupportedOperationException.class, () -> position.getAltBases().add("G"));
   }

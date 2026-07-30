@@ -2,6 +2,7 @@ package org.pharmgkb.parser.vcf;
 
 import com.google.common.base.Preconditions;
 import org.apache.commons.lang3.StringUtils;
+import org.jspecify.annotations.Nullable;
 
 
 /**
@@ -10,32 +11,31 @@ import org.apache.commons.lang3.StringUtils;
  * @author Mark Woon
  */
 public class VcfFormatException extends RuntimeException {
-  private int m_lineNumber;
-  private String m_section;
+  private int m_lineNumber = -1;
+  private @Nullable String m_section;
   private final String m_baseMessage;
 
 
   public VcfFormatException(String msg) {
-    Preconditions.checkNotNull(msg);
-    m_baseMessage = msg;
+    m_baseMessage = Preconditions.checkNotNull(StringUtils.stripToNull(msg), "msg must not be null or blank");
   }
 
   public VcfFormatException(String msg, int lineNumber) {
-    Preconditions.checkNotNull(msg);
-    m_baseMessage = msg;
+    m_baseMessage = Preconditions.checkNotNull(StringUtils.stripToNull(msg), "msg must not be null or blank");
     m_lineNumber = lineNumber;
   }
 
   public VcfFormatException(String msg, Throwable ex) {
     super(ex);
-    m_baseMessage = StringUtils.stripToNull(msg);
+    m_baseMessage = Preconditions.checkNotNull(StringUtils.stripToNull(msg), "msg must not be null or blank");
   }
 
   public VcfFormatException(int lineNumber, String section, Throwable ex) {
     super(ex);
     m_lineNumber = lineNumber;
     m_section = section;
-    m_baseMessage = StringUtils.stripToNull(ex.getMessage());
+    String derived = StringUtils.stripToNull(ex.getMessage());
+    m_baseMessage = derived != null ? derived : ex.getClass().getName();
   }
 
 
@@ -47,21 +47,22 @@ public class VcfFormatException extends RuntimeException {
 
   @Override
   public String getMessage() {
-    if (m_section == null) {
-      return m_baseMessage;
+    StringBuilder sb = new StringBuilder();
+    if (m_lineNumber >= 0) {
+      sb.append("[Line #").append(m_lineNumber).append("] ");
     }
-    StringBuilder builder = new StringBuilder()
-        .append("[Line #")
-        .append(m_lineNumber)
-        .append("] Error parsing ")
-        .append(m_section);
-    if (m_baseMessage != null) {
-        builder.append(": ")
-            .append(m_baseMessage);
+    if (m_section != null) {
+      sb.append("Error parsing ").append(m_section).append(": ");
     }
-    return builder.toString();
+    sb.append(m_baseMessage);
+    return sb.toString();
   }
 
+  /**
+   * @return The line number this exception was attached to, or {@code -1} if none was ever attached (via
+   * {@link #VcfFormatException(String, int)}, {@link #addMetadata(int, String)}, or the
+   * {@link #VcfFormatException(int, String, Throwable)} constructor).
+   */
   public int getLineNumber() {
     return m_lineNumber;
   }
