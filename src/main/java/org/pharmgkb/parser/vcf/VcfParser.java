@@ -274,7 +274,7 @@ public class VcfParser implements Closeable {
 
       // QUAL and INFO are parsed lazily by VcfPosition (see setRawQuality/setRawInfo); many consumers never read them.
       VcfPosition pos = new VcfPosition(chromosome, position, ids, ref, alt,
-          null, filters, null, format);
+          null, filters, null, format, m_lineNumber);
       pos.setRawQuality(data.get(5));
       pos.setRawInfo(data.get(7));
       List<VcfSample> samples = new ArrayList<>();

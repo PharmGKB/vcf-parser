@@ -80,6 +80,51 @@ public class VcfParserTest {
   }
 
   @Test
+  void testDeferredInfoValidationExceptionCarriesLineNumberAfterParseReturns() throws IOException {
+    // regression test for findings19.md's line-number gap: a VcfFormatException from VcfPosition.getInfo()'s
+    // lazy-parse path, thrown AFTER parser.parse() has already returned (not from inside the parseWith callback),
+    // must still carry the correct originating line number -- this was previously silently lost, since
+    // VcfParser's own line-tracking call stack is gone by the time a caller inspects a collected position later
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\t.\tA\tT\t.\t.\t.;DP=1\n";
+    List<VcfPosition> positions = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .parseWith((metadata, position, sampleData) -> positions.add(position))
+        .build()) {
+      parser.parse();
+    }
+    assertEquals(1, positions.size());
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> positions.get(0).getInfo());
+    assertEquals(3, ex.getLineNumber());
+    assertTrue(ex.getMessage().contains("[Line #3]"));
+  }
+
+  @Test
+  void testDeferredReservedPropertyConversionExceptionCarriesLineNumberAfterParseReturns() throws IOException {
+    // regression test: VcfPosition.getInfo(ReservedInfoProperty)'s call to VcfUtils.convertProperty(...) is a
+    // fourth deferred throw site distinct from getInfo()'s lazy-parse path covered above -- DP (Depth) is declared
+    // as a Long-typed reserved property, so a non-numeric raw value fails type conversion only when this typed
+    // accessor is used, after parser.parse() has already returned.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\t.\tA\tT\t.\t.\tDP=abc\n";
+    List<VcfPosition> positions = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .parseWith((metadata, position, sampleData) -> positions.add(position))
+        .build()) {
+      parser.parse();
+    }
+    assertEquals(1, positions.size());
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> positions.get(0).getInfo(ReservedInfoProperty.Depth));
+    assertEquals(3, ex.getLineNumber());
+    assertTrue(ex.getMessage().contains("[Line #3]"));
+  }
+
+  @Test
   void testHeader()  {
     VcfFormatException ex = assertThrows(VcfFormatException.class, () -> {
       try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/bad_header.vcf"));

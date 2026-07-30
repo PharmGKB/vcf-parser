@@ -48,7 +48,7 @@ public class VcfWriterTest {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     position.setRef("");
     assertThrows(VcfFormatException.class,
@@ -63,7 +63,7 @@ public class VcfWriterTest {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("not-a-valid-base");
     writer.writeLine(metadata, position, Collections.emptyList());
     assertTrue(sw.toString().contains("not-a-valid-base"));
@@ -80,7 +80,7 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
         .addFilter(new IdDescriptionMetadata("FILTER", "STD_FILTER", "Standard filter"))
         .build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getFilters().add("STD_FILTER");
     position.getFilters().add("PASS");
 
@@ -104,7 +104,7 @@ public class VcfWriterTest {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("not-a-valid-base");
     assertThrows(VcfFormatException.class,
         () -> writer.writeLine(metadata, position, Collections.emptyList()));
@@ -117,7 +117,7 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     position.getFormat().add("DP");
     VcfSample sample = new VcfSample(new LinkedHashMap<>());
@@ -138,7 +138,7 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     position.getFormat().add("DP");
     VcfSample sample = new VcfSample(new LinkedHashMap<>());
@@ -156,7 +156,7 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     position.getFormat().add("GT");
     VcfSample sample = new VcfSample(new LinkedHashMap<>());
@@ -365,7 +365,7 @@ public class VcfWriterTest {
   public void testValidateBeforeWriteHandlesOversizedNumberAsDiagnostic() throws Exception {
     InfoMetadata info = new InfoMetadata("NS", "d", InfoType.Integer, "999999999999999999999", null, null);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     position.getInfo().put("NS", "1");
     StringWriter sw = new StringWriter();
@@ -383,7 +383,7 @@ public class VcfWriterTest {
     // must not throw, and the value must round-trip unchanged.
     InfoMetadata info = new InfoMetadata("AF", "d", InfoType.Float, "A", null, null);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     position.getAltBases().add("C");
     position.getInfo().put("AF", ".");
@@ -405,7 +405,7 @@ public class VcfWriterTest {
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .addFormat(ft)
         .build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     position.getFormat().add("FT");
     VcfSample sample = new VcfSample(new LinkedHashMap<>());
@@ -428,7 +428,7 @@ public class VcfWriterTest {
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .addFormat(ft)
         .build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     position.getFormat().add("FT");
     VcfSample sample = new VcfSample(new LinkedHashMap<>());
@@ -451,7 +451,7 @@ public class VcfWriterTest {
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .addFormat(ps)
         .build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     position.getFormat().add("PS");
     VcfSample sample = new VcfSample(new LinkedHashMap<>());
@@ -469,7 +469,7 @@ public class VcfWriterTest {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
 
     assertThrows(VcfFormatException.class,
@@ -492,7 +492,7 @@ public class VcfWriterTest {
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     VcfMetadata headerMetadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     VcfMetadata otherMetadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
 
     writer.writeHeader(headerMetadata);
@@ -515,7 +515,7 @@ public class VcfWriterTest {
 
     metadata.addInfo(new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null));
 
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     position.getInfo().put("NS", "1");
 
@@ -563,11 +563,11 @@ public class VcfWriterTest {
     // ##INFO=<ID=NS,Number=1,Type=Integer,Description="Number of samples with data">
     InfoMetadata info = new InfoMetadata("NS", "Number of samples with data", InfoType.Integer, "1", null, null);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
-    VcfPosition first = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition first = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     first.getAltBases().add("T");
     first.getInfo().put("NS", "0");
     first.getIds().add("rsa");
-    VcfPosition second = new VcfPosition("chr1", 2, "A", new BigDecimal("0"));
+    VcfPosition second = new VcfPosition("chr1", 2, "A", new BigDecimal("0"), 0);
     second.getAltBases().add("T");
     second.getIds().add("rsb");
     writer.writeHeader(metadata);
@@ -583,12 +583,12 @@ public class VcfWriterTest {
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
 
-    VcfPosition none = new VcfPosition("chr1", 1, null, "A", null, null, Collections.singletonList("."), null, null);
+    VcfPosition none = new VcfPosition("chr1", 1, null, "A", null, null, Collections.singletonList("."), null, null, 0);
     none.getAltBases().add("T");
     VcfPosition passed = new VcfPosition("chr1", 2, null, "A", null, null, Collections.singletonList("PASS"),
-        null, null);
+        null, null, 0);
     passed.getAltBases().add("T");
-    VcfPosition failed = new VcfPosition("chr1", 3, null, "A", null, null, Collections.singletonList("q10"), null, null);
+    VcfPosition failed = new VcfPosition("chr1", 3, null, "A", null, null, Collections.singletonList("q10"), null, null, 0);
     failed.getAltBases().add("T");
 
     writer.writeLine(metadata, none, Collections.emptyList());
@@ -608,7 +608,7 @@ public class VcfWriterTest {
     // INFO metadata with no Type -> getType() is null; the writer must not NPE
     InfoMetadata info = new InfoMetadata(VcfUtils.extractProperties("ID=NS", "Number=1", "Description=\"n\""));
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     position.getInfo().put("NS", "3");
     writer.writeLine(metadata, position, Collections.emptyList());
@@ -642,7 +642,7 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "SAMPLE1"))
         .build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     position.getFormat().add("GT");
     VcfSample sample = new VcfSample(new LinkedHashMap<>());
@@ -659,7 +659,7 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "SAMPLE1"))
         .build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     position.getFormat().add("GT");
     position.getFormat().add("DP");
@@ -679,7 +679,7 @@ public class VcfWriterTest {
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     InfoMetadata info = new InfoMetadata("AN", "d", InfoType.Integer, "1", null, null);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     position.getInfo().put("AN", "not-a-number"); // Type=Integer declared, but the value doesn't parse as one
     writer.writeLine(metadata, position, Collections.emptyList());
@@ -694,7 +694,7 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(format)
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "SAMPLE1"))
         .build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     position.getFormat().add("DP");
     VcfSample sample = new VcfSample(new LinkedHashMap<>());
@@ -709,7 +709,7 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1", "S2"))
         .build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     position.getFormat().add("GT");
     VcfSample sample = new VcfSample(new LinkedHashMap<>());
@@ -726,7 +726,7 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     position.getFormat().add("GT");
     VcfSample sample1 = new VcfSample(new LinkedHashMap<>());
@@ -743,7 +743,7 @@ public class VcfWriterTest {
   public void testWriteLineRejectsSampleDataWhenHeaderHasNoSamples() throws Exception {
     // header declares no samples (no setColumns call), but FORMAT/sample data is provided anyway
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     position.getFormat().add("GT");
     VcfSample sample = new VcfSample(new LinkedHashMap<>());
@@ -762,7 +762,7 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     // position.getFormat() is left empty
     VcfSample sample = new VcfSample(new LinkedHashMap<>());
@@ -780,7 +780,7 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     VcfSample sample = new VcfSample(new LinkedHashMap<>());
     StringWriter sw = new StringWriter();
@@ -921,7 +921,7 @@ public class VcfWriterTest {
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     writer.writeHeader(metadata);
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     VcfSample badSample = new VcfSample(new java.util.ArrayList<>(), new java.util.ArrayList<>());
     assertThrows(VcfFormatException.class,
@@ -996,7 +996,7 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     writer.writeHeader(metadata);
     failingWriter.startFailing();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), 0);
     position.getAltBases().add("T");
     assertThrows(UncheckedIOException.class, () -> {
       for (int i = 0; i < 1000; i++) {
@@ -1016,7 +1016,7 @@ public class VcfWriterTest {
     mdBuilder.setFileFormat("VCFv4.2");
     mdBuilder.setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"));
     VcfMetadata metadata = mdBuilder.build();
-    VcfPosition position = new VcfPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null);
+    VcfPosition position = new VcfPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, 0);
 
     Path vcfFile = tempDir.resolve("out.vcf");
     VcfWriter writer = new VcfWriter.Builder()
@@ -1060,7 +1060,7 @@ public class VcfWriterTest {
         .build();
     writer.writeHeader(metadata);
     for (int i = 1; i <= 3; i++) {
-      VcfPosition position = new VcfPosition("chr1", i, null, "A", List.of("T"), null, null, null, null);
+      VcfPosition position = new VcfPosition("chr1", i, null, "A", List.of("T"), null, null, null, null, 0);
       position.getInfo().put("UNDECLARED" + i, "1");
       writer.writeLine(metadata, position, List.of());
     }
@@ -1079,7 +1079,7 @@ public class VcfWriterTest {
     mdBuilder.setFileFormat("VCFv4.2");
     mdBuilder.setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"));
     VcfMetadata metadata = mdBuilder.build();
-    VcfPosition position = new VcfPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null);
+    VcfPosition position = new VcfPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, 0);
 
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -1174,7 +1174,7 @@ public class VcfWriterTest {
     mdBuilder.setFileFormat("VCFv4.2");
     mdBuilder.setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"));
     VcfMetadata writeMetadata = mdBuilder.build();
-    VcfPosition position = new VcfPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null);
+    VcfPosition position = new VcfPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, 0);
 
     Path outFile = tempDir.resolve("out.vcf");
     Path writerWarnings = tempDir.resolve("writer.warn.log");
@@ -1230,7 +1230,7 @@ public class VcfWriterTest {
     mdBuilder.setFileFormat("VCFv4.2");
     mdBuilder.setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"));
     VcfMetadata writeMetadata = mdBuilder.build();
-    VcfPosition position = new VcfPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null);
+    VcfPosition position = new VcfPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, 0);
 
     Path outFile = tempDir.resolve("out.vcf");
     VcfWriter writer = new VcfWriter.Builder()
