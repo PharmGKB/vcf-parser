@@ -81,16 +81,22 @@ warns and reconciles by key name: a FORMAT key with no corresponding sample valu
 sample property not declared in FORMAT is dropped. `VcfWriter.Builder.validateBeforeWrite()` still substitutes `.`
 for the first case, but rejects the second (a sample property not declared in FORMAT) with `VcfFormatException`.
 
+`writeHeader()` may not be called more than once, `writeLine()` may not be called before `writeHeader()`, and every
+`writeLine()` call must be given the same `VcfMetadata` object `writeHeader()` was given -- these three checks are
+enforced unconditionally, in both the default and `validateBeforeWrite()` modes, since each is a cheap, one-time
+check rather than a per-record cost. A stricter check -- that the same `VcfMetadata` object hasn't been mutated in
+place since `writeHeader()` was called (e.g. via `addInfo()`/`removeInfo()`) -- is `validateBeforeWrite()`-only,
+since detecting it requires rebuilding the entire header on every `writeLine()` call, a real per-record cost the
+default path avoids.
+
 The default writer path is optimized for data written directly after parsing. It preserves parser-normalized values and
 maintains record and sample-column structure without full revalidation. If data has been mutated and a full structural
 validity and diagnostic check is required, build the writer with `VcfWriter.Builder.validateBeforeWrite()`. In that
 mode, structurally invalid output is rejected and detected semantic non-compliance is reported with a warning. This
-mode also enforces file-level consistency: `writeHeader()` may not be called more than once, `writeLine()` may not be
-called before `writeHeader()`, every `writeLine()` call must be given the same `VcfMetadata` object `writeHeader()`
-was given, and every `INFO`/`FORMAT`/`FILTER`/`ALT`/`contig`/`SAMPLE` metadata entry's own `ID` property must still
-match the key it's stored under in `VcfMetadata`'s maps (mutating an entry's raw `ID` through `getPropertiesRaw()`
-without it being reflected in the map key would otherwise make the header declare a different ID than what records
-reference by that entry's map key).
+mode also enforces that every `INFO`/`FORMAT`/`FILTER`/`ALT`/`contig`/`SAMPLE` metadata entry's own `ID` property must
+still match the key it's stored under in `VcfMetadata`'s maps (mutating an entry's raw `ID` through
+`getPropertiesRaw()` without it being reflected in the map key would otherwise make the header declare a different ID
+than what records reference by that entry's map key).
 
 The writer detects a write failure (disk full, broken pipe, or an encoding failure) and reports it as an
 unchecked `java.io.UncheckedIOException`, but only checks periodically (every 1000 lines) and at

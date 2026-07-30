@@ -112,7 +112,7 @@ public class VcfWriter implements Closeable {
   }
 
   /**
-   * Writes the VCF header.
+   * Writes the VCF header. Must not be called more than once per instance.
    *
    * @throws IllegalStateException if {@link #isValid()} is already {@code false} -- this instance must be
    * abandoned after any prior write failure, not reused.
@@ -123,10 +123,10 @@ public class VcfWriter implements Closeable {
   public void writeHeader(VcfMetadata metadata) {
     checkValid();
     try (VcfWarnings.Deactivator ignored = activateWarningsIfConfigured()) {
+      if (m_headerWritten) {
+        throw new VcfFormatException("writeHeader() was already called; a VCF file must have exactly one header");
+      }
       if (m_validateBeforeWrite) {
-        if (m_headerWritten) {
-          throw new VcfFormatException("writeHeader() was already called; a VCF file must have exactly one header");
-        }
         validateMetadata(metadata);
       }
 
@@ -209,6 +209,8 @@ public class VcfWriter implements Closeable {
    * pending write failure is eventually reported and that all buffered output reaches the underlying stream;
    * writing fewer than 1000 lines and never calling {@link #close} will neither surface a failure nor guarantee
    * the data was actually written.
+   * <p>
+   * {@link #writeHeader} must be called first, and {@code metadata} must be the same object instance given to it.
    *
    * @throws IllegalStateException if {@link #isValid()} is already {@code false} -- this instance must be
    * abandoned after any prior write failure, not reused.
@@ -221,15 +223,15 @@ public class VcfWriter implements Closeable {
       List<VcfSample> samples) {
     checkValid();
     try (VcfWarnings.Deactivator ignored = activateWarningsIfConfigured()) {
+      if (!m_headerWritten) {
+        throw new VcfFormatException("writeLine() was called before writeHeader(); every VCF file must have a " +
+            "header before any data line");
+      }
+      if (metadata != m_headerMetadata) {
+        throw new VcfFormatException("writeLine() was given different metadata than writeHeader() used; the " +
+            "emitted header and this record would be inconsistent");
+      }
       if (m_validateBeforeWrite) {
-        if (!m_headerWritten) {
-          throw new VcfFormatException("writeLine() was called before writeHeader(); every VCF file must have a " +
-              "header before any data line");
-        }
-        if (metadata != m_headerMetadata) {
-          throw new VcfFormatException("writeLine() was given different metadata than writeHeader() used; the " +
-              "emitted header and this record would be inconsistent");
-        }
         // metadata == m_headerMetadata only proves it's the same object, not that it's unchanged: a caller can
         // mutate it in place (e.g. addInfo()/removeInfo()) after writeHeader() already flushed the header text, so
         // the header actually on disk/in the stream can still disagree with what this same object would now

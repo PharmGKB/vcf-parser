@@ -51,8 +51,10 @@ public class VcfWriterTest {
     VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
     position.getAltBases().add("T");
     position.setRef("");
-    assertThrows(VcfFormatException.class,
+    writer.writeHeader(metadata);
+    VcfFormatException e = assertThrows(VcfFormatException.class,
         () -> writer.writeLine(metadata, position, Collections.emptyList()));
+    assertTrue(e.getMessage().contains("has an empty REF, which the VCF spec does not allow"));
   }
 
   @Test
@@ -63,6 +65,7 @@ public class VcfWriterTest {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
     VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
     position.getAltBases().add("not-a-valid-base");
     writer.writeLine(metadata, position, Collections.emptyList());
@@ -80,6 +83,7 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
         .addFilter(new IdDescriptionMetadata("FILTER", "STD_FILTER", "Standard filter"))
         .build();
+    writer.writeHeader(metadata);
     VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
     position.getFilters().add("STD_FILTER");
     position.getFilters().add("PASS");
@@ -106,6 +110,7 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
     position.getAltBases().add("not-a-valid-base");
+    writer.writeHeader(metadata);
     assertThrows(VcfFormatException.class,
         () -> writer.writeLine(metadata, position, Collections.emptyList()));
   }
@@ -124,6 +129,7 @@ public class VcfWriterTest {
     sample.putProperty("DP", "1");
     sample.propertyEntrySet().iterator().next().setValue("1:2");
 
+    writer.writeHeader(metadata);
     assertThrows(VcfFormatException.class,
         () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
   }
@@ -163,6 +169,7 @@ public class VcfWriterTest {
     sample.putProperty("GT", "0/1");
     sample.putProperty("DP", "10");
 
+    writer.writeHeader(metadata);
     assertThrows(VcfFormatException.class,
         () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
   }
@@ -582,6 +589,7 @@ public class VcfWriterTest {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
 
     VcfPosition none = new VcfPosition("chr1", 1, null, "A", null, null, Collections.singletonList("."), null, null, -1);
     none.getAltBases().add("T");
@@ -596,9 +604,9 @@ public class VcfWriterTest {
     writer.writeLine(metadata, failed, Collections.emptyList());
 
     String[] lines = sw.toString().split("\n");
-    assertEquals(".", lines[0].split("\t")[6]);    // NONE -> missing value, not PASS
-    assertEquals("PASS", lines[1].split("\t")[6]); // PASSED
-    assertEquals("q10", lines[2].split("\t")[6]);  // FAILED
+    assertEquals(".", lines[2].split("\t")[6]);    // NONE -> missing value, not PASS
+    assertEquals("PASS", lines[3].split("\t")[6]); // PASSED
+    assertEquals("q10", lines[4].split("\t")[6]);  // FAILED
   }
 
   @Test
@@ -608,6 +616,7 @@ public class VcfWriterTest {
     // INFO metadata with no Type -> getType() is null; the writer must not NPE
     InfoMetadata info = new InfoMetadata(VcfUtils.extractProperties("ID=NS", "Number=1", "Description=\"n\""));
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
+    writer.writeHeader(metadata);
     VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
     position.getAltBases().add("T");
     position.getInfo().put("NS", "3");
@@ -642,6 +651,7 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "SAMPLE1"))
         .build();
+    writer.writeHeader(metadata);
     VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
     position.getAltBases().add("T");
     position.getFormat().add("GT");
@@ -659,6 +669,7 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "SAMPLE1"))
         .build();
+    writer.writeHeader(metadata);
     VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
     position.getAltBases().add("T");
     position.getFormat().add("GT");
@@ -679,6 +690,7 @@ public class VcfWriterTest {
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     InfoMetadata info = new InfoMetadata("AN", "d", InfoType.Integer, "1", null, null);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
+    writer.writeHeader(metadata);
     VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
     position.getAltBases().add("T");
     position.getInfo().put("AN", "not-a-number"); // Type=Integer declared, but the value doesn't parse as one
@@ -694,6 +706,7 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(format)
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "SAMPLE1"))
         .build();
+    writer.writeHeader(metadata);
     VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
     position.getAltBases().add("T");
     position.getFormat().add("DP");
@@ -716,8 +729,10 @@ public class VcfWriterTest {
     sample.putProperty(ReservedFormatProperty.Genotype, "0/1");
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    assertThrows(VcfFormatException.class,
+    writer.writeHeader(metadata);
+    VcfFormatException e = assertThrows(VcfFormatException.class,
         () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
+    assertTrue(e.getMessage().contains("but the header declares"));
   }
 
   @Test
@@ -735,8 +750,10 @@ public class VcfWriterTest {
     sample2.putProperty(ReservedFormatProperty.Genotype, "1/1");
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    assertThrows(VcfFormatException.class,
+    writer.writeHeader(metadata);
+    VcfFormatException e = assertThrows(VcfFormatException.class,
         () -> writer.writeLine(metadata, position, Arrays.asList(sample1, sample2)));
+    assertTrue(e.getMessage().contains("but the header declares"));
   }
 
   @Test
@@ -750,8 +767,10 @@ public class VcfWriterTest {
     sample.putProperty(ReservedFormatProperty.Genotype, "0/1");
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    assertThrows(VcfFormatException.class,
+    writer.writeHeader(metadata);
+    VcfFormatException e = assertThrows(VcfFormatException.class,
         () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
+    assertTrue(e.getMessage().contains("has FORMAT or sample data, but the header declares no samples"));
   }
 
   @Test
@@ -769,6 +788,7 @@ public class VcfWriterTest {
     sample.putProperty(ReservedFormatProperty.Genotype, "0/1");
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    writer.writeHeader(metadata);
     writer.writeLine(metadata, position, Collections.singletonList(sample));
     assertTrue(sw.toString().endsWith("\t.\t.\t.\t.\n"));
   }
@@ -1246,6 +1266,59 @@ public class VcfWriterTest {
     String finalWarnings = java.nio.file.Files.readString(sharedWarnings);
     assertTrue(finalWarnings.contains("UNDECLARED"));
     assertFalse(finalWarnings.contains("no ID"));
+  }
+
+  @Test
+  public void testWriteHeaderCalledTwiceThrowsInDefaultMode() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    VcfFormatException e = assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+    assertTrue(e.getMessage().contains("writeHeader() was already called"));
+  }
+
+  @Test
+  public void testWriteLineBeforeWriteHeaderThrowsInDefaultMode() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.emptyList()));
+    assertTrue(e.getMessage().contains("writeLine() was called before writeHeader()"));
+  }
+
+  @Test
+  public void testWriteLineWithDifferentMetadataThrowsInDefaultMode() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata headerMetadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata differentMetadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(headerMetadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(differentMetadata, position, Collections.emptyList()));
+    assertTrue(e.getMessage().contains("writeLine() was given different metadata than writeHeader() used"));
+  }
+
+  @Test
+  public void testWriteLineDoesNotDetectInPlaceMetadataMutationInDefaultMode() throws Exception {
+    // regression test: unlike the 3 checks above, detecting the SAME VcfMetadata object being mutated in place
+    // after writeHeader() requires rebuilding the entire header text on every writeLine() call -- a real
+    // per-record cost. This specific case is deliberately NOT promoted to the default fast path and remains
+    // validateBeforeWrite()-only; this test pins that boundary so it isn't accidentally regressed later.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    metadata.addInfo(new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    writer.writeLine(metadata, position, Collections.emptyList());
+    // no exception thrown -- the assertion is that this line completes normally
+    // and the emitted header genuinely does not reflect the post-header mutation, since it happened too late to be
+    // written -- this default-mode path doesn't detect or care
+    assertFalse(sw.toString().contains("##INFO=<ID=NS"));
   }
 
 }
