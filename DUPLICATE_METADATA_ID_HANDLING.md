@@ -131,17 +131,20 @@ surfaces any complaint about a dropped duplicate's content either.
 - `VcfMetadata.Builder.addAlt()` / `addInfo()` / `addFormat()` / `addFilter()` / `addContig()` / `addSample()`, and
   `VcfMetadata.addAlt()` / `addInfo()` / `addFormat()` / `addFilter()` / `addContig()` (the same five, minus
   `SAMPLE`, which has no instance-level equivalent) — each calls `warnIfDuplicate()` before storing a new
-  declaration, and returns immediately (without storing) if it reports a duplicate. To replace an existing entry,
-  call the corresponding `removeXxx()` method first, then add — there is no implicit-overwrite path anywhere in
-  this bucket.
+  declaration, and returns immediately (without storing) if it reports a duplicate. The five keyed `addXxx`
+  methods on `VcfMetadata` itself each have a matching `removeXxx()` method (`removeAlt()`/`removeInfo()`/
+  `removeFormat()`/`removeFilter()`/`removeContig()`) — to replace an existing entry there, call
+  `removeXxx()` first, then add. `Builder` has no `removeXxx` methods at all: it simply doesn't support
+  replacing a declaration mid-build.
 - `VcfMetadata.Builder.addPedigree()` — warns and keeps the first entry when a duplicate literal `ID` property is
   found; always adds when no `ID` property is present.
 - `VcfWriter.validateMetadata()`'s PEDIGREE loop — the same check, but warn-only (never drops), since it runs
   post-construction on content the caller already holds a reference to.
-- `IdMetadata`'s shared `protected IdMetadata(String id)` constructor -- used by every typed, named-parameter
-  constructor across `IdDescriptionMetadata`/`InfoMetadata`/`FormatMetadata`/`ContigMetadata` (`IdMetadata` itself
-  is abstract and has no public constructor) -- throws `VcfFormatException` immediately for a missing or blank
-  `ID`. The separate `Map<String,String>`-based constructors `VcfParser` uses are unaffected and remain warn-only.
+- `IdMetadata`'s shared `protected IdMetadata(String label, String id)` constructor -- used by every
+  typed, named-parameter constructor across `IdDescriptionMetadata`/`InfoMetadata`/`FormatMetadata`/
+  `ContigMetadata` (`IdMetadata` itself is abstract and has no public constructor) -- throws
+  `VcfFormatException` immediately for a missing or blank `ID`. The separate `Map<String,String>`-based
+  constructors `VcfParser` uses are unaffected and remain warn-only.
 - `VcfMetadata`'s 5 instance `addXxx` methods and `VcfMetadata.Builder`'s 6 `addXxx` methods each check for a
   missing or blank `ID` before calling `warnIfDuplicate()`, warning and dropping the declaration entirely (never
   storing it) if so -- this is what actually catches a malformed declaration built via the parser's lenient

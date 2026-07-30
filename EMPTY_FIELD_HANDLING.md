@@ -129,8 +129,8 @@ stricter choice, the same way this library is already stricter than bcftools for
 (the "position-independent list: drop" strategy above), and is justified directly by `VCFv4.3.tex` line 39 ("Zero
 length fields are not allowed, a dot ('.') must be used instead").
 
-`VcfWriter.validateBeforeWrite()` warns on this same condition but does not drop the entry -- unlike the parse-time
-path, the writer must not silently remove content the caller is already holding a reference to.
+`VcfWriter.Builder.validateBeforeWrite()` warns on this same condition but does not drop the entry -- unlike
+the parse-time path, the writer must not silently remove content the caller is already holding a reference to.
 
 ## A related, but distinct, fix: duplicate FORMAT keys
 
@@ -166,6 +166,6 @@ for rejection purposes, but they are still a data-loss case in practice.
 - `VcfSample.validate()` — warns and substitutes `.` for a sample property whose value was mutated to empty through
   `propertyEntrySet()`, consistent with `VcfWriter`'s own warn-only treatment of an empty INFO value or an empty
   comma-separated FORMAT element in `validateBeforeWrite()` mode.
-- `VcfMetadata.Builder.addRawProperty()` / `addAssembly()` / `addPedigreeDatabase()` -- warn and drop a generic
-  metadata property with an empty value, or an empty bracket pair (`<>`). `VcfWriter.validateBeforeWrite()` runs
-  the identical check but only warns, without dropping.
+- `VcfMetadata.Builder.addRawProperty()`, and `VcfMetadata.addAssembly()` / `addPedigreeDatabase()` -- warn and
+  drop a generic metadata property with an empty value, or an empty bracket pair (`<>`).
+  `VcfWriter.Builder.validateBeforeWrite()` runs the identical check but only warns, without dropping.
