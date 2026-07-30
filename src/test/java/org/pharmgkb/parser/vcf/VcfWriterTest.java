@@ -30,6 +30,7 @@ import org.pharmgkb.parser.vcf.spec.FailingWriter;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -973,8 +974,15 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     writer.writeHeader(metadata); // succeeds: failingWriter isn't failing yet
     failingWriter.startFailing();
-    assertThrows(UncheckedIOException.class, writer::close);
+    UncheckedIOException firstFailure = assertThrows(UncheckedIOException.class, writer::close);
     writer.close(); // second call: must be a no-op, not throw again
+
+    // repeat close() must never clobber m_invalidatingCause -- confirm the writer stays invalid and any further
+    // use still reports the ORIGINAL write failure, not a generic "already closed" message
+    assertFalse(writer.isValid());
+    IllegalStateException e = assertThrows(IllegalStateException.class, () -> writer.writeHeader(metadata));
+    assertTrue(e.getMessage().contains("write failure"));
+    assertSame(firstFailure, e.getCause());
   }
 
   @Test
@@ -1065,6 +1073,40 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testWarningsToFileSuppressesSlf4jOutput(@org.junit.jupiter.api.io.TempDir Path tempDir)
+      throws IOException {
+    VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder();
+    mdBuilder.setFileFormat("VCFv4.2");
+    mdBuilder.setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"));
+    VcfMetadata metadata = mdBuilder.build();
+    VcfPosition position = new VcfPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      Path vcfFile = tempDir.resolve("out.vcf");
+      VcfWriter writer = new VcfWriter.Builder()
+          .toFile(vcfFile)
+          .validateBeforeWrite()
+          .warningsToFile()
+          .build();
+      writer.writeHeader(metadata);
+      // an INFO key with no matching metadata declaration triggers a warning in validateBeforeWrite() mode
+      position.getInfo().put("UNDECLARED", "1");
+      writer.writeLine(metadata, position, List.of());
+      writer.close();
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testBuildClosesPrimaryWriterWhenWarningsFileFailsToOpen(@org.junit.jupiter.api.io.TempDir Path tempDir)
       throws IOException {
     // regression test: build() opens the primary file-backed writer (via toFile()) before attempting to open the
@@ -1107,6 +1149,103 @@ public class VcfWriterTest {
       }
       assertEquals(0, openFdCount, "primary writer's file descriptor leaked after the warnings file failed to open");
     }
+  }
+
+  @Test
+  public void testCombinedParseAndWriteWarningsToFileDontInterfere(@org.junit.jupiter.api.io.TempDir Path tempDir)
+      throws IOException {
+    // a metadata line with no ID triggers a warning during parseMetadata() -- see VcfMetadata.addInfo
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##INFO=<Number=1,Type=String,Description=\"d\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    Path vcfFile = tempDir.resolve("in.vcf");
+    java.nio.file.Files.writeString(vcfFile, vcf);
+    Path parserWarnings = tempDir.resolve("parser.warn.log");
+
+    VcfParser parser = new VcfParser.Builder()
+        .fromFile(vcfFile)
+        .warningsToFile(parserWarnings)
+        .parseWith(new MemoryMappedVcfLineParser.Builder().build())
+        .build();
+    parser.parse();
+    parser.close();
+
+    VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder();
+    mdBuilder.setFileFormat("VCFv4.2");
+    mdBuilder.setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"));
+    VcfMetadata writeMetadata = mdBuilder.build();
+    VcfPosition position = new VcfPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null);
+
+    Path outFile = tempDir.resolve("out.vcf");
+    Path writerWarnings = tempDir.resolve("writer.warn.log");
+    VcfWriter writer = new VcfWriter.Builder()
+        .toFile(outFile)
+        .validateBeforeWrite()
+        .warningsToFile(writerWarnings)
+        .build();
+    writer.writeHeader(writeMetadata);
+    // an INFO key with no matching metadata declaration triggers a warning in validateBeforeWrite() mode
+    position.getInfo().put("UNDECLARED", "1");
+    writer.writeLine(writeMetadata, position, List.of());
+    writer.close();
+
+    String parserWarningsText = java.nio.file.Files.readString(parserWarnings);
+    String writerWarningsText = java.nio.file.Files.readString(writerWarnings);
+    assertTrue(parserWarningsText.contains("no ID"));
+    assertFalse(parserWarningsText.contains("UNDECLARED"));
+    assertTrue(writerWarningsText.contains("UNDECLARED"));
+    assertFalse(writerWarningsText.contains("no ID"));
+  }
+
+  @Test
+  public void testCombinedParseAndWriteToSameWarningsFileTruncatesPriorContent(@org.junit.jupiter.api.io.TempDir Path tempDir)
+      throws IOException {
+    // documents current, verified behavior: VcfWarnings.openFile() and
+    // VcfWriter.Builder.build()'s warnings-file open both call Files.newBufferedWriter(path)
+    // with no OpenOption, which per its javadoc defaults to CREATE, TRUNCATE_EXISTING, WRITE.
+    // Pointing the writer's warningsToFile() at the same path the parser already wrote to and
+    // closed therefore silently discards the parser's prior warnings instead of appending to
+    // them. This is not a bug fix in this batch (test-coverage only) -- it's recorded here as
+    // real, verified behavior worth flagging as a follow-up finding (nothing currently documents
+    // this footgun for a caller who reuses one path for both sides). If this is ever
+    // intentionally changed to append (or to reject a reused path), update or delete this test --
+    // it pins current behavior, not a required contract.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##INFO=<Number=1,Type=String,Description=\"d\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    Path vcfFile = tempDir.resolve("in.vcf");
+    java.nio.file.Files.writeString(vcfFile, vcf);
+    Path sharedWarnings = tempDir.resolve("shared.warn.log");
+
+    VcfParser parser = new VcfParser.Builder()
+        .fromFile(vcfFile)
+        .warningsToFile(sharedWarnings)
+        .parseWith(new MemoryMappedVcfLineParser.Builder().build())
+        .build();
+    parser.parse();
+    parser.close();
+    assertTrue(java.nio.file.Files.readString(sharedWarnings).contains("no ID"));
+
+    VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder();
+    mdBuilder.setFileFormat("VCFv4.2");
+    mdBuilder.setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"));
+    VcfMetadata writeMetadata = mdBuilder.build();
+    VcfPosition position = new VcfPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null);
+
+    Path outFile = tempDir.resolve("out.vcf");
+    VcfWriter writer = new VcfWriter.Builder()
+        .toFile(outFile)
+        .validateBeforeWrite()
+        .warningsToFile(sharedWarnings)
+        .build();
+    writer.writeHeader(writeMetadata);
+    position.getInfo().put("UNDECLARED", "1");
+    writer.writeLine(writeMetadata, position, List.of());
+    writer.close();
+
+    String finalWarnings = java.nio.file.Files.readString(sharedWarnings);
+    assertTrue(finalWarnings.contains("UNDECLARED"));
+    assertFalse(finalWarnings.contains("no ID"));
   }
 
 }

@@ -178,6 +178,20 @@ public class MemoryMappedVcfDataStoreParserTest {
   }
 
   @Test
+  public void testGenotypePhasedBoundariesAreImmutable() {
+    List<Boolean> phasedBoundaries = new ArrayList<>(Arrays.asList(true, false));
+    MemoryMappedVcfDataStore.Genotype genotype =
+        new MemoryMappedVcfDataStore.Genotype(Arrays.asList("A", "T", "G"), phasedBoundaries);
+
+    // mutating the list passed to the constructor must not affect the Genotype (defensive copy)
+    phasedBoundaries.add(true);
+    assertEquals(Arrays.asList(true, false), genotype.getPhasedBoundaries());
+
+    // the returned list must itself be immutable
+    assertThrows(UnsupportedOperationException.class, () -> genotype.getPhasedBoundaries().add(true));
+  }
+
+  @Test
   public void testGenotypeToStringPreservesMixedPhasing() {
     // "0|1/2" -- boundary 0-1 is phased, boundary 1-2 is unphased; a single whole-genotype boolean cannot
     // represent this, so toString() must reconstruct using the actual per-boundary separator, not one uniform one
@@ -318,11 +332,17 @@ public class MemoryMappedVcfDataStoreParserTest {
       assertNull(dataStore.getSampleAtLocus("chr1", 1, 0, 99));
       assertNull(dataStore.getGenotypeAtLocus("chr1", 1, 0, 99));
 
-      // a negative index is equally out-of-range
+      // a negative index is equally out-of-range, for every int-overload -- not just getSampleForId
       assertNull(dataStore.getSampleForId("rsx", -1));
+      assertNull(dataStore.getGenotypeForId("rsx", -1));
+      assertNull(dataStore.getSampleAtLocus("chr1", 1, 0, -1));
+      assertNull(dataStore.getGenotypeAtLocus("chr1", 1, 0, -1));
 
-      // sanity: the valid index still works
+      // sanity: the valid index still works for every int-overload
       assertNotNull(dataStore.getSampleForId("rsx", 0));
+      assertNotNull(dataStore.getGenotypeForId("rsx", 0));
+      assertNotNull(dataStore.getSampleAtLocus("chr1", 1, 0, 0));
+      assertNotNull(dataStore.getGenotypeAtLocus("chr1", 1, 0, 0));
     }
   }
 }
