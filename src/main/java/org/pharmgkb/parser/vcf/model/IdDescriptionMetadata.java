@@ -19,7 +19,6 @@ import org.pharmgkb.parser.vcf.VcfWarnings;
  */
 public class IdDescriptionMetadata extends IdMetadata {
 
-  public static final String ID = "ID";
   public static final String DESCRIPTION = "Description";
 
   public IdDescriptionMetadata(String label, String id, String description) {

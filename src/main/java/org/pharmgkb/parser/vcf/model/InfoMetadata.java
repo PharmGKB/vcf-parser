@@ -25,7 +25,6 @@ import org.pharmgkb.parser.vcf.VcfWarnings;
  */
 public class InfoMetadata extends IdDescriptionMetadata {
 
-  public static final String ID = "ID";
   public static final String DESCRIPTION = "Description"; // should be quoted
   public static final String NUMBER = "Number";
   public static final String TYPE = "Type";

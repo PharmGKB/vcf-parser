@@ -14,7 +14,6 @@ import org.pharmgkb.parser.vcf.VcfWarnings;
  */
 public class ContigMetadata extends IdMetadata {
 
-  public static final String ID = "ID";
   public static final String LENGTH = "length";
   public static final String ASSEMBLY = "assembly";
   public static final String MD5 = "md5";
