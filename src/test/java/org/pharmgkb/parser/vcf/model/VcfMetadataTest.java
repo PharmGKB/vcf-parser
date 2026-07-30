@@ -764,6 +764,122 @@ public class VcfMetadataTest {
   }
 
   @Test
+  public void testInstanceAddSampleWarnsAndKeepsFirstOnDuplicateId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addSample(new IdDescriptionMetadata("SAMPLE", "S1", "First"));
+      metadata.addSample(new IdDescriptionMetadata("SAMPLE", "S1", "Second"));
+      assertTrue(appender.hasWarnOrHigher());
+      assertTrue(appender.anyMessageContains("Duplicate ID \"S1\" for SAMPLE metadata declaration ignored"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals("First", metadata.getSamples().get("S1").getDescription());
+  }
+
+  @Test
+  public void testInstanceAddSampleWarnsAndDropsMissingId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addSample(new IdDescriptionMetadata("SAMPLE",
+          org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Description=\"missing\"")));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getSamples().isEmpty());
+  }
+
+  @Test
+  public void testInstanceAddPedigreeWarnsAndKeepsFirstOnDuplicateId() {
+    java.util.Map<String, String> childProps = new java.util.LinkedHashMap<>();
+    childProps.put("ID", "Child");
+    childProps.put("Father", "Dad");
+    java.util.Map<String, String> duplicateProps = new java.util.LinkedHashMap<>();
+    duplicateProps.put("ID", "Child");
+    duplicateProps.put("Mother", "Mom");
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addPedigree(new PedigreeMetadata(childProps));
+      metadata.addPedigree(new PedigreeMetadata(duplicateProps));
+      assertTrue(appender.hasWarnOrHigher());
+      assertTrue(appender.anyMessageContains("Duplicate ID \"Child\" for PEDIGREE metadata declaration ignored"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(1, metadata.getPedigrees().size());
+    assertEquals("Dad", metadata.getPedigrees().get(0).getPropertiesRaw().get("Father"));
+  }
+
+  @Test
+  public void testInstanceAddPedigreeKeepsBothWhenIdAbsent() {
+    java.util.Map<String, String> props1 = new java.util.LinkedHashMap<>();
+    props1.put("Name_0", "G0-ID");
+    props1.put("Name_1", "G1-ID");
+    java.util.Map<String, String> props2 = new java.util.LinkedHashMap<>();
+    props2.put("Name_0", "G0-ID");
+    props2.put("Name_1", "G1-ID");
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addPedigree(new PedigreeMetadata(props1));
+      metadata.addPedigree(new PedigreeMetadata(props2));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(2, metadata.getPedigrees().size());
+  }
+
+  @Test
+  public void testRemoveSampleRemovesEntry() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    metadata.addSample(new IdDescriptionMetadata("SAMPLE", "S1", "First"));
+    assertTrue(metadata.getSamples().containsKey("S1"));
+    metadata.removeSample(new IdDescriptionMetadata("SAMPLE", "S1", "First"));
+    assertTrue(metadata.getSamples().isEmpty());
+  }
+
+  @Test
+  public void testRemovePedigreeRemovesEntry() {
+    java.util.Map<String, String> props = new java.util.LinkedHashMap<>();
+    props.put("ID", "Child");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    PedigreeMetadata pedigree = new PedigreeMetadata(props);
+    metadata.addPedigree(pedigree);
+    assertEquals(1, metadata.getPedigrees().size());
+    metadata.removePedigree(pedigree);
+    assertTrue(metadata.getPedigrees().isEmpty());
+  }
+
+  @Test
   public void testAddPedigreeIdPresentDoesNotConflictWithIdAbsentEntries() {
     // an ID-bearing entry's dedup check must not be confused by an unrelated ID-less entry already in the list
     java.util.Map<String, String> idLessProps = new java.util.LinkedHashMap<>();

@@ -305,6 +305,22 @@ public class VcfMetadata {
   }
 
   /**
+   * Adds {@code value} to the map of SAMPLE metadata, using its {@link IdDescriptionMetadata#getId() ID} as the
+   * key. Warns and keeps the existing entry if {@code value}'s ID is already present -- call {@link #removeSample}
+   * first to replace an existing declaration.
+   */
+  public void addSample(IdDescriptionMetadata value) {
+    if (value.getId() == null || value.getId().trim().isEmpty()) {
+      VcfWarnings.warn("SAMPLE metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
+      return;
+    }
+    if (warnIfDuplicate(m_sample, value.getId(), "SAMPLE")) {
+      return;
+    }
+    m_sample.put(value.getId(), value);
+  }
+
+  /**
    * Adds {@code value} to the list of assembly metadata.
    * @param value Should not be wrapped in angle brackets
    */
@@ -339,6 +355,24 @@ public class VcfMetadata {
     m_properties.put("pedigreeDB", value);
   }
 
+  /**
+   * Adds {@code value} to the list of PEDIGREE metadata. If {@code value} declares a literal {@code ID}
+   * property that duplicates an earlier PEDIGREE entry's {@code ID}, warns and keeps the first entry instead
+   * of storing {@code value} -- matching the six keyed types' warn-and-keep-first rule (see
+   * {@link Builder#addPedigree} for the full citation of this behavior). A PEDIGREE entry with no {@code ID}
+   * property is always added.
+   */
+  public void addPedigree(PedigreeMetadata value) {
+    String id = value.getPropertiesRaw().get("ID");
+    if (id != null &&
+        m_pedigree.stream().anyMatch(existing -> id.equals(existing.getPropertiesRaw().get("ID")))) {
+      VcfWarnings.warn("Duplicate ID \"{}\" for PEDIGREE metadata declaration ignored; keeping the first " +
+          "declaration", id);
+      return;
+    }
+    m_pedigree.add(value);
+  }
+
   public void removeAlt(IdDescriptionMetadata value) {
     m_alt.remove(value.getId());
   }
@@ -359,6 +393,10 @@ public class VcfMetadata {
     m_filter.remove(value.getId());
   }
 
+  public void removeSample(IdDescriptionMetadata value) {
+    m_sample.remove(value.getId());
+  }
+
   public void removeAssembly(String value) {
     m_properties.remove("assembly", value);
   }
@@ -369,6 +407,15 @@ public class VcfMetadata {
    */
   public void removePedigreeDb(String value) {
     m_properties.remove("pedigreeDB", value);
+  }
+
+  /**
+   * Removes {@code value} from the list of PEDIGREE metadata. Unlike {@link #removeSample}, this removes by
+   * reference identity (no {@code equals()} override exists) -- pass the exact instance obtained from
+   * {@link #getPedigrees()}.
+   */
+  public void removePedigree(PedigreeMetadata value) {
+    m_pedigree.remove(value);
   }
 
   /**
