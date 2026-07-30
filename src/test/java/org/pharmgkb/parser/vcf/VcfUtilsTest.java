@@ -410,4 +410,71 @@ public class VcfUtilsTest {
     assertFalse(VcfUtils.isReservedMetadataKey(null));
   }
 
+  @Test
+  public void testConvertPropertyDoesNotApplyFormatConstraintsToNonFormatReservedProperty() {
+    // regression test: a ReservedProperty implementation whose ID happens to equal "FT" (the same ID as
+    // ReservedFormatProperty.Filter) must NOT have FT's FORMAT-only "combines PASS with other codes"
+    // constraint applied, since checkReservedFormatConstraints is scoped to ReservedFormatProperty only
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    String result;
+    try {
+      result = VcfUtils.convertProperty(new FakeFormatIdReservedProperty(), "PASS;other");
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals("PASS;other", result);
+  }
+
+  @Test
+  public void testConvertPropertyStillAppliesFormatConstraintsToRealReservedFormatProperty() {
+    // confirms the fix above did not disable the check for the type it's actually meant to protect
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      VcfUtils.convertProperty(ReservedFormatProperty.Filter, "PASS;other");
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  private static final class FakeFormatIdReservedProperty implements org.pharmgkb.parser.vcf.model.ReservedProperty {
+    @Override
+    public String getId() {
+      return "FT";
+    }
+
+    @Override
+    public String getDescription() {
+      return "fake";
+    }
+
+    @Override
+    public Class getType() {
+      return String.class;
+    }
+
+    @Override
+    public boolean isList() {
+      return false;
+    }
+
+    @Override
+    public String getExpectedNumber() {
+      return "1";
+    }
+  }
+
 }

@@ -333,7 +333,10 @@ public class VcfUtils {
    * </ul>
    */
   public static @Nullable <T> T convertProperty(ReservedProperty key, @Nullable String value) {
-    String normalized = checkReservedFormatConstraints(key.getId(), value);
+    // FT/PS are FORMAT-only reserved IDs (see checkReservedFormatConstraints's Javadoc) -- a future
+    // ReservedInfoProperty whose ID happens to collide with one must not get FORMAT-only semantics applied
+    String normalized = key instanceof ReservedFormatProperty ? checkReservedFormatConstraints(key.getId(), value)
+        : value;
     return convertProperty(key.getType(), normalized, key.isList());
   }
 
