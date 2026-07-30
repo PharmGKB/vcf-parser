@@ -15,12 +15,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.pharmgkb.parser.vcf.model.BaseMetadata;
 import org.pharmgkb.parser.vcf.model.FormatMetadata;
 import org.pharmgkb.parser.vcf.model.FormatType;
 import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
 import org.pharmgkb.parser.vcf.model.InfoMetadata;
 import org.pharmgkb.parser.vcf.model.InfoType;
+import org.pharmgkb.parser.vcf.model.PedigreeMetadata;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
@@ -335,9 +335,9 @@ public class VcfWriterTest {
     duplicateProps.put("ID", "Child");
     duplicateProps.put("Mother", "Mom");
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-        .addPedigree(new BaseMetadata("PEDIGREE", childProps))
+        .addPedigree(new PedigreeMetadata(childProps))
         .build();
-    metadata.getPedigrees().add(new BaseMetadata("PEDIGREE", duplicateProps));
+    metadata.getPedigrees().add(new PedigreeMetadata(duplicateProps));
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
 

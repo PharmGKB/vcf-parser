@@ -152,7 +152,7 @@ surfaces any complaint about a dropped duplicate's content either.
 Unlike the six keyed types above, `##PEDIGREE`'s grammar (`VCFv4.2.tex` line 152: `##PEDIGREE=<Name_0=G0-ID,...,
 Name_N=GN-ID>`) has no mandatory `ID` attribute — the spec's own worked example (lines 904-908) declares three
 `##PEDIGREE` lines in one file, each with a different, non-`ID` attribute schema (`Derived=...,Original=...`).
-This is why `m_pedigree` is a `List<BaseMetadata>`, not a `Map<String, ...>` like the six keyed types — there is
+This is why `m_pedigree` is a `List<PedigreeMetadata>`, not a `Map<String, ...>` like the six keyed types — there is
 no guaranteed key to map on.
 
 Empirical testing shows bcftools still dedupes PEDIGREE by `ID` whenever a line happens to declare one:

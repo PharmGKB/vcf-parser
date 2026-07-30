@@ -607,8 +607,8 @@ public class VcfMetadataTest {
     VcfMetadata metadata;
     try {
       metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-          .addPedigree(new BaseMetadata("PEDIGREE", childProps))
-          .addPedigree(new BaseMetadata("PEDIGREE", duplicateProps))
+          .addPedigree(new PedigreeMetadata(childProps))
+          .addPedigree(new PedigreeMetadata(duplicateProps))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -639,8 +639,8 @@ public class VcfMetadataTest {
     VcfMetadata metadata;
     try {
       metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-          .addPedigree(new BaseMetadata("PEDIGREE", props1))
-          .addPedigree(new BaseMetadata("PEDIGREE", props2))
+          .addPedigree(new PedigreeMetadata(props1))
+          .addPedigree(new PedigreeMetadata(props2))
           .build();
       assertFalse(appender.hasWarnOrHigher());
     } finally {
@@ -760,8 +760,8 @@ public class VcfMetadataTest {
     idProps.put("ID", "Child");
     idProps.put("Father", "Dad");
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-        .addPedigree(new BaseMetadata("PEDIGREE", idLessProps))
-        .addPedigree(new BaseMetadata("PEDIGREE", idProps))
+        .addPedigree(new PedigreeMetadata(idLessProps))
+        .addPedigree(new PedigreeMetadata(idProps))
         .build();
     assertEquals(2, metadata.getPedigrees().size());
   }

@@ -31,13 +31,13 @@ public class VcfMetadata {
   private final ListMultimap<String, String> m_properties;
   private final Map<String, ContigMetadata> m_contig;
   private final Map<String, IdDescriptionMetadata> m_sample;
-  private final List<BaseMetadata> m_pedigree;
+  private final List<PedigreeMetadata> m_pedigree;
 
 
   private VcfMetadata(String fileFormat, @Nullable Map<String, IdDescriptionMetadata> alt,
       @Nullable Map<String, InfoMetadata> info, @Nullable Map<String, IdDescriptionMetadata> filter,
       @Nullable Map<String, FormatMetadata> format, @Nullable Map<String, ContigMetadata> contig,
-      @Nullable Map<String, IdDescriptionMetadata> sample, @Nullable List<BaseMetadata> pedigree,
+      @Nullable Map<String, IdDescriptionMetadata> sample, @Nullable List<PedigreeMetadata> pedigree,
       List<String> columns, @Nullable ListMultimap<String, String> properties) {
     Preconditions.checkNotNull(fileFormat);
     Preconditions.checkNotNull(columns);
@@ -108,7 +108,7 @@ public class VcfMetadata {
     return m_contig;
   }
 
-  public List<BaseMetadata> getPedigrees() {
+  public List<PedigreeMetadata> getPedigrees() {
     return m_pedigree;
   }
 
@@ -484,7 +484,7 @@ public class VcfMetadata {
     private final Map<String, FormatMetadata> m_format = new LinkedHashMap<>();
     private final Map<String, ContigMetadata> m_contig = new LinkedHashMap<>();
     private final Map<String, IdDescriptionMetadata> m_sample = new LinkedHashMap<>();
-    private final List<BaseMetadata> m_pedigree = new ArrayList<>();
+    private final List<PedigreeMetadata> m_pedigree = new ArrayList<>();
     private List<String> m_columns = new ArrayList<>();
     private final ListMultimap<String, String> m_properties = LinkedListMultimap.create();
 
@@ -585,7 +585,7 @@ public class VcfMetadata {
      * if an entry is ever removed from the list between calls -- the same "read live state" property the six
      * keyed types get for free from their backing {@code Map}.
      */
-    public Builder addPedigree(BaseMetadata md) {
+    public Builder addPedigree(PedigreeMetadata md) {
       String id = md.getPropertiesRaw().get("ID");
       if (id != null &&
           m_pedigree.stream().anyMatch(existing -> id.equals(existing.getPropertiesRaw().get("ID")))) {

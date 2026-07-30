@@ -16,11 +16,11 @@ import java.util.regex.Pattern;
 import com.google.common.base.Preconditions;
 import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
-import org.pharmgkb.parser.vcf.model.BaseMetadata;
 import org.pharmgkb.parser.vcf.model.ContigMetadata;
 import org.pharmgkb.parser.vcf.model.FormatMetadata;
 import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
 import org.pharmgkb.parser.vcf.model.InfoMetadata;
+import org.pharmgkb.parser.vcf.model.PedigreeMetadata;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
@@ -407,7 +407,7 @@ public class VcfParser implements Closeable {
         mdBuilder.addSample(new IdDescriptionMetadata("SAMPLE", props));
         break;
       case "pedigree":
-        mdBuilder.addPedigree(new BaseMetadata("PEDIGREE", props));
+        mdBuilder.addPedigree(new PedigreeMetadata(props));
         break;
     }
   }
