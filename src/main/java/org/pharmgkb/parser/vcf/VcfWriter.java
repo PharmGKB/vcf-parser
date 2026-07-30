@@ -321,17 +321,12 @@ public class VcfWriter implements Closeable {
       return; // idempotent: a second close() has no effect, regardless of whether the first one threw
     }
     // checkError() flushes before checking (see its own Javadoc), so this first call catches anything still
-    // buffered from writeLine()/writeHeader(). m_writer.close() always runs next regardless, so the
-    // resource is never leaked even when we're about to throw. The second checkError() (after m_writer.close())
+    // buffered from writeLine()/writeHeader(). closeUnderlyingWriter() always runs next regardless, so the
+    // resource is never leaked even when we're about to throw. The second checkError() (after closing)
     // catches a failure from the underlying stream's own close() (e.g. an fsync-on-close error) -- safe to call
     // again here because a closed PrintWriter's checkError() no longer attempts to flush.
     boolean hadError = m_writer.checkError();
-    try {
-      m_writer.close();
-    } finally {
-      m_closed = true;
-      closeWarningsWriterQuietly();
-    }
+    closeUnderlyingWriter();
     if (hadError || m_writer.checkError()) {
       throw recordWriteError();
     }
@@ -1001,8 +996,9 @@ public class VcfWriter implements Closeable {
   }
 
   // shared by close() and checkForWriteError(): builds the write-failure exception and stashes it as the cause.
-  // Each call site still owns its own m_closed handling, since the two sites differ there -- checkForWriteError()
-  // must close the resource itself here, while close() already did, just above, before ever reaching this point.
+  // Each call site still owns its own m_closed handling via closeUnderlyingWriter(), since the two sites differ
+  // in when they call it -- checkForWriteError() calls it here, while close() already had, just above, before
+  // ever reaching this point.
   private UncheckedIOException recordWriteError() {
     UncheckedIOException e = writeError();
     m_invalidatingCause = e;
@@ -1012,13 +1008,17 @@ public class VcfWriter implements Closeable {
   private void checkForWriteError() {
     if (m_writer.checkError()) {
       UncheckedIOException e = recordWriteError();
-      try {
-        m_writer.close();
-      } finally {
-        m_closed = true;
-        closeWarningsWriterQuietly();
-      }
+      closeUnderlyingWriter();
       throw e;
+    }
+  }
+
+  private void closeUnderlyingWriter() {
+    try {
+      m_writer.close();
+    } finally {
+      m_closed = true;
+      closeWarningsWriterQuietly();
     }
   }
 
