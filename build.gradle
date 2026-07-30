@@ -93,12 +93,12 @@ repositories {
 }
 
 dependencies {
-  implementation(
+  api(
       'com.google.guava:guava:33.6.0-jre',
       'org.apache.commons:commons-lang3:3.20.0',
-      'org.jspecify:jspecify:1.0.0',
       'org.slf4j:slf4j-api:2.0.18'
   )
+  compileOnlyApi 'org.jspecify:jspecify:1.0.0'
 
   testImplementation(
       'ch.qos.logback:logback-classic:1.6.0',
@@ -109,7 +109,6 @@ dependencies {
       'org.pharmgkb:pgkb-common:0.7.3',
   )
 }
-
 
 java {
   sourceCompatibility = JavaVersion.VERSION_17
@@ -205,3 +204,23 @@ test {
 }
 
 apply from: 'pgkb-build.gradle'
+
+// Strip JSpecify (compileOnlyApi) from the generated POM. Gradle's default is NOT to omit compileOnlyApi
+// deps -- it publishes them as <scope>compile</scope>, indistinguishable from api, which would put the
+// annotation jar on a downstream Maven consumer's runtime classpath. Maven has no compileOnlyApi
+// equivalent, and pom.withXml is the only supported way to drop a single dependency, so we remove the
+// element outright. Gradle consumers are unaffected: Gradle Module Metadata still exposes JSpecify via
+// the apiElements variant (and correctly omits it from runtimeElements).
+// Must stay after `apply from: 'pgkb-build.gradle'`, which defines the 'release' publication.
+publishing {
+  publications {
+    named('release', MavenPublication) {
+      pom.withXml {
+        def allDeps = asNode().dependencies.dependency
+        allDeps.findAll { dep ->
+          dep.groupId.text() == 'org.jspecify' && dep.artifactId.text() == 'jspecify'
+        }.each { it.parent().remove(it) }
+      }
+    }
+  }
+}
