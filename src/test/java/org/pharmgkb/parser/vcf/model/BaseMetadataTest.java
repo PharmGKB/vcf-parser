@@ -142,4 +142,17 @@ public class BaseMetadataTest {
       appender.stop();
     }
   }
+
+  @Test
+  public void testCheckAttributeOrderThrowsForNullPropertyName() {
+    // regression test: checkAttributeOrder() used to let CANONICAL_ATTRIBUTE_ORDER.contains(key) throw an
+    // uncaught NullPointerException for a null key (reachable via getPropertiesRaw().put(null, ...)) instead of
+    // the clean VcfFormatException validateProperties() already throws for the identical invalid state.
+    Map<String, String> map = new LinkedHashMap<>();
+    map.put("ID", "DP");
+    BaseMetadata metadata = new BaseMetadata("TEST", map);
+    metadata.getPropertiesRaw().put(null, "x");
+    VcfFormatException e = assertThrows(VcfFormatException.class, metadata::checkAttributeOrder);
+    assertTrue(e.getMessage().contains("null property name"));
+  }
 }

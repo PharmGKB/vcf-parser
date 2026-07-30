@@ -281,8 +281,8 @@ public class VcfUtils {
    * property using one of these names could never be re-read as what it was written, since reparsing would
    * route it through the wrong path entirely
    */
-  public static boolean isReservedMetadataKey(String name) {
-    return RESERVED_METADATA_KEYS.contains(name);
+  public static boolean isReservedMetadataKey(@Nullable String name) {
+    return name != null && RESERVED_METADATA_KEYS.contains(name);
   }
 
   /**

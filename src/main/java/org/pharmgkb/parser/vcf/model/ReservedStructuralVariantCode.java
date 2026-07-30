@@ -1,6 +1,7 @@
 package org.pharmgkb.parser.vcf.model;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -43,7 +44,7 @@ public enum ReservedStructuralVariantCode {
       ReservedStructuralVariantCode... parentCodes) {
     m_id = id;
     m_level = level;
-    m_parentCodes = Arrays.asList(parentCodes);
+    m_parentCodes = Collections.unmodifiableList(Arrays.asList(parentCodes));
   }
 
   /**
@@ -57,6 +58,9 @@ public enum ReservedStructuralVariantCode {
     return m_level;
   }
 
+  /**
+   * @return An unmodifiable view of this code's reserved parent codes (empty for a level-0 code)
+   */
   public List<ReservedStructuralVariantCode> getParentCodes() {
     return m_parentCodes;
   }

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 
 public class ReservedStructuralVariantCodeTest {
@@ -33,5 +34,12 @@ public class ReservedStructuralVariantCodeTest {
   @Test
   public void testFromIdReturnsNullForNullId() {
     assertNull(ReservedStructuralVariantCode.fromId(null));
+  }
+
+  @Test
+  public void testGetParentCodesIsUnmodifiable() {
+    // Tandem has a real, non-empty parent list (Duplication) -- unlike a level-0 code, which has none.
+    assertThrows(UnsupportedOperationException.class,
+        () -> ReservedStructuralVariantCode.Tandem.getParentCodes().set(0, ReservedStructuralVariantCode.Deletion));
   }
 }

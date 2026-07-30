@@ -401,4 +401,13 @@ public class VcfUtilsTest {
     assertEquals(String.class, VcfUtils.toJavaType(FormatType.String));
   }
 
+  @Test
+  public void testIsReservedMetadataKey() {
+    assertTrue(VcfUtils.isReservedMetadataKey("INFO"));
+    assertFalse(VcfUtils.isReservedMetadataKey("NotReserved"));
+    // regression test: this used to throw NullPointerException from Set.of(...).contains(null) instead of
+    // returning false -- null is trivially not one of the fixed reserved keyword strings.
+    assertFalse(VcfUtils.isReservedMetadataKey(null));
+  }
+
 }

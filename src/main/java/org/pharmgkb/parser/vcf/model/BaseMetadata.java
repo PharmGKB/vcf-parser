@@ -159,10 +159,15 @@ public class BaseMetadata {
    * format_003}.vcf and failed_meta_alt_004.vcf (##CauseOfFailure=Incorrect order of ALT/INFO/FORMAT fields)
    * establish that a declaration violating it is invalid, resolving the spec text's own silence on whether the
    * order shown is required.
+   *
+   * @throws VcfFormatException If a property name is {@code null}
    */
   public void checkAttributeOrder() {
     List<String> actual = new ArrayList<>();
     for (String key : getPropertyKeys()) {
+      if (key == null) {
+        throw new VcfFormatException("Metadata contains a null property name");
+      }
       if (CANONICAL_ATTRIBUTE_ORDER.contains(key)) {
         actual.add(key);
       }
