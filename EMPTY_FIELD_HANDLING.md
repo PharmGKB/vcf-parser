@@ -164,8 +164,16 @@ for rejection purposes, but they are still a data-loss case in practice.
   value (`InternalUtils.checkReservedFormatConstraints`).
 - `MemoryMappedVcfDataStore.doGetGenotype` — warns and substitutes `.` for an empty GT allele.
 - `VcfSample.validate()` — warns and substitutes `.` for a sample property whose value was mutated to empty through
-  `propertyEntrySet()`, consistent with `VcfWriter`'s own warn-only treatment of an empty INFO value or an empty
-  comma-separated FORMAT element in `validateBeforeWrite()` mode.
+  `propertyEntrySet()`, consistent with `VcfWriter`'s own warn-only treatment (in `validateBeforeWrite()` mode) of
+  an empty comma-separated FORMAT element.
+- `VcfWriter.addInfoOrDot()` — warns and substitutes `.` for an INFO key's value list mutated to a single empty
+  string through `VcfPosition.getInfo()`'s live view, but only when the key is declared with a `Type` other than
+  `Flag`. A key declared `Type=Flag`, or one with no `##INFO` declaration at all (the "INFO flag (no `=`)" row
+  above), still writes bare: an empty value there is either a genuine flag or indistinguishable from one, since
+  `VcfPosition.info()` produces the identical single-empty-string representation for both. Unlike every other row
+  in this table, this runs in **both** write modes, not just `validateBeforeWrite()` — the ambiguity this resolves
+  (a live-mutated empty value that looks identical to a Flag) would otherwise silently corrupt the field's
+  semantic type on the default write path too, not just under full diagnostics.
 - `VcfMetadata.Builder.addRawProperty()`, and `VcfMetadata.addAssembly()` / `addPedigreeDatabase()` -- warn and
   drop a generic metadata property with an empty value, or an empty bracket pair (`<>`).
   `VcfWriter.Builder.validateBeforeWrite()` runs the identical check but only warns, without dropping.
