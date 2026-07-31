@@ -94,14 +94,22 @@ ever added, at which point the shared-abstraction case gets stronger.
 same "wrong exception type for a null argument" shape that a long fix chain (see `findings22.md`'s
 `## Completed`, Batches 22.4-22.5) closed elsewhere in this codebase by converting to `VcfFormatException`.
 
-This is a different case, though: those other fixes closed a gap where a non-`@Nullable`-typed setter/
-mutator validated other things but not nullness, letting a null through to crash somewhere deeper and less
-informative (a regex matcher, a `.trim()`, a `.getId()`) -- or, worse, letting a null silently reach
-`VcfWriter`'s output as the literal text `"null"`. `VcfParser.Builder`'s setters, by contrast, already
-explicitly reject null at the very first line, via a long-established Guava idiom used consistently across
-this codebase's `Builder` classes for "this argument is required and was not provided" -- contrast with
-`TransformingVcfLineParser.Builder`'s *missing* check (`findings22.md`'s own Minor #1), which cites
-`Preconditions.checkNotNull` as the correct, existing pattern other builders should match, not a defect.
+This is a different case, though: those other fixes closed a gap reachable from parsed VCF *content* --
+a caller has no control over what a file contains, so a hostile or malformed value silently corrupting
+output or crashing with an unhelpful exception is this library's problem to prevent. `fromFile`/
+`fromReader`/`parseWith`/`warningsToFile(Path)` are the opposite: they are pure `Builder` configuration
+entry points, called exactly once per parse, before any file content is read, with a `Path`/
+`BufferedReader`/`VcfLineParser` the calling code itself constructs and passes in. Confirmed by grep: the
+only two matches for these method names anywhere in `src/main` are Javadoc example snippets (in
+`TransformingVcfLineParser.java` and `VcfWriter.java`), not real code -- nothing internal to this library
+ever calls them, and their arguments can never be derived from a parsed VCF file's own data. A `null` here
+is therefore always the direct library caller's own programming mistake (forgot to check a variable before
+passing it in), never something an untrusted `.vcf` file could trigger -- exactly the case
+`Preconditions.checkNotNull`'s fail-fast-with-NPE idiom is meant for, and why converting it to
+`VcfFormatException` (a *content*-rejection exception type) would be the wrong fix even taken in
+isolation, not just an inconsistent one. Contrast with `TransformingVcfLineParser.Builder`'s *missing*
+check (`findings22.md`'s own Minor #1), which cites `Preconditions.checkNotNull` as the correct, existing
+pattern other builders should match, not a defect.
 
 **Decision: won't fix.** Converting `Preconditions.checkNotNull`'s NPE to `VcfFormatException` here would
 mean re-litigating an established, consistently-applied convention across every `Builder` in this codebase,
