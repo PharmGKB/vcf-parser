@@ -666,6 +666,33 @@ public class VcfParserTest {
   }
 
   @Test
+  void testGleValuePatternDoesNotStackOverflowOnLongAlleleSequence() throws IOException {
+    // regression test: GLE_VALUE_PATTERN's allele-separator and pair-repetition groups must be possessive.
+    // Without it, a GLE value with a long sequence of short "|"-separated allele-index tokens blows the JVM
+    // call stack directly (an uncaught StackOverflowError, not a graceful VcfFormatException) via Java regex's
+    // per-repetition recursive call frames for a quantified group containing alternation -- reproduced through
+    // the full parse() entry point since GLE_VALUE_PATTERN itself is private. Confirmed before the fix: a GLE
+    // field with ~2,000+ "|"-separated tokens reliably crashed; 5,000 is a wide margin above that threshold.
+    StringBuilder alleles = new StringBuilder("0");
+    for (int i = 0; i < 5_000; i++) {
+      alleles.append("|0");
+    }
+    String gle = alleles + ":-1.0";
+    String input = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n" +
+        "chr1\t100\t.\tA\tT\t.\tPASS\t.\tGT:GLE:DP\t0/1:" + gle + ":50\n";
+    List<VcfSample> samples = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(input)))
+        .parseWith((ignoredMetadata, ignoredPosition, values) -> samples.addAll(values))
+        .build()) {
+      parser.parse();
+    }
+    assertEquals(gle, samples.get(0).getProperty("GLE"));
+    assertEquals("50", samples.get(0).getProperty("DP"));
+  }
+
+  @Test
   void testIsModifiable() throws IOException {
     try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/vcfposition.vcf"));
          VcfParser parser = new VcfParser.Builder()

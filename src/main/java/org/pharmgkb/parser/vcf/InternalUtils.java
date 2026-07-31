@@ -61,7 +61,16 @@ public class InternalUtils {
                                  // to backtrack into the sibling alternative below (symbolic IDs always start
                                  // with '<', which is never a nucleotide character)
           "|(?:<[^\\s,<>]+>)"  + // symbolic IDs (no whitespace, commas, or angle brackets inside)
-          ")+"                 + // see the note above for why this repeats
+          ")++"                + // see the note above for why this repeats. Also possessive, for a distinct
+                                 // reason than the inner nucleotide-run quantifier above: Java's regex engine
+                                 // recurses one Java call frame per repetition for a quantified group containing
+                                 // alternation, so a long sequence of short alternatives (e.g. many concatenated
+                                 // symbolic IDs) can throw an uncaught StackOverflowError instead of failing to
+                                 // match cleanly -- a stack-depth problem, not the time-complexity backtracking
+                                 // problem the inner quantifier's possessiveness addresses. Safe to make
+                                 // possessive: each repetition here is unambiguously anchored (nucleotide chars
+                                 // vs. a mandatory leading '<'), so no legitimate match ever needs to backtrack
+                                 // across repetitions of this group.
         "|\\*"                 + // indicates that the position doesn't exist due to an upstream deletion
       ")";
 

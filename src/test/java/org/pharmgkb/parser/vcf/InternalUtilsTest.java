@@ -146,6 +146,21 @@ public class InternalUtilsTest {
   }
 
   @Test
+  public void testAltBasePatternDoesNotStackOverflowOnLongSymbolicIdConcatenation() {
+    // regression test: sf_simpleAltPattern's outer alternation-quantified group must be possessive too --
+    // distinct from the inner nucleotide-run quantifier's possessiveness tested above, which only prevents
+    // exponential-time backtracking on one long run of a single alternative. This test exercises a different
+    // failure shape: a long *sequence* of short alternatives (many short symbolic IDs concatenated, a form
+    // testAltBasePatternAcceptsUnconfirmedBaseSymbolicConcatenations already treats as valid). Java's regex
+    // engine recurses one Java call frame per repetition for a quantified group containing alternation, so
+    // without the outer possessive quantifier this blows the JVM call stack directly (StackOverflowError)
+    // regardless of backtracking -- confirmed before the fix: 700 repetitions of "<a>" succeeded, 1,000
+    // crashed. 5,000 repetitions (15,000 chars) is a wide margin above that threshold.
+    String manySymbolicIds = "<a>".repeat(5_000);
+    assertTrue(InternalUtils.ALT_BASE_PATTERN.matcher(manySymbolicIds).matches());
+  }
+
+  @Test
   public void testExtractPropertiesWithEscapes() {
     // an escaped backslash (\\) and an escaped double-quote (\") inside a quoted Description must not crash and must be
     // preserved (the split must not treat the escaped quote as a real quote)

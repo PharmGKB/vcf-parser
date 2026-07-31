@@ -45,8 +45,14 @@ public class VcfParser implements Closeable {
   // first group consumes those pairs; the optional second group is the ordinary colon-separated remainder of the
   // sample field for FORMAT keys following GLE. Restrict each pair's genotype to allele indexes so a malformed,
   // arbitrary GLE string (which the parser deliberately preserves) is not mistaken for this special encoding.
+  // The "*+" (possessive) quantifiers on the allele-separator and pair-repetition groups are required: Java's
+  // regex engine recurses one Java call frame per repetition for a quantified group containing alternation, so a
+  // GLE value with a long sequence of short repetitions (e.g. thousands of "|"-separated allele-index tokens)
+  // would otherwise throw an uncaught StackOverflowError instead of failing to match cleanly. Safe to make
+  // possessive: each repetition is unambiguously anchored by a required literal separator ("|"/"/" before an
+  // allele, "," before a pair), so no legitimate match ever needs to backtrack across repetitions.
   private static final Pattern GLE_VALUE_PATTERN = Pattern.compile(
-      "((?:(?:\\d+|\\.)(?:[|/](?:\\d+|\\.))*:[^,:]+)(?:,(?:\\d+|\\.)(?:[|/](?:\\d+|\\.))*:[^,:]+)*)(?::(.*))?");
+      "((?:(?:\\d+|\\.)(?:[|/](?:\\d+|\\.))*+:[^,:]+)(?:,(?:\\d+|\\.)(?:[|/](?:\\d+|\\.))*+:[^,:]+)*+)(?::(.*))?");
   // the mandatory fixed fields, in order; in the column-header line CHROM is written as "#CHROM"
   private static final List<String> FIXED_FIELD_NAMES =
       List.of("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO");
