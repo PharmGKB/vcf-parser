@@ -1,6 +1,5 @@
 package org.pharmgkb.parser.vcf;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -373,7 +372,7 @@ public class VcfUtils {
    * <ul>
    *   <li>String</li>
    *   <li>Long</li>
-   *   <li>BigDecimal</li>
+   *   <li>VcfFloat</li>
    *   <li>The Boolean true (for flags)</li>
    *   <li>A List of any of the above types</li>
    * </ul>
@@ -455,10 +454,16 @@ public class VcfUtils {
   }
 
   /**
-   * @see #convertProperty(ReservedProperty, String)
+   * Shared type-dispatch plumbing behind the {@link ReservedProperty}/{@link FormatType}/{@link InfoType}
+   * overloads above -- not public API in its own right. Unlike those three (each driven by a real,
+   * caller-supplied domain concept -- a reserved key, or a metadata declaration's own {@code Type}), this
+   * takes a raw {@link Class}, which {@link #convertElement} only supports for a fixed, closed set of six
+   * types and throws {@link VcfFormatException} for anything else -- so it can't actually serve a caller
+   * with a genuinely custom type the way its signature suggests. Callers wanting to convert a custom,
+   * non-reserved property's raw value should do their own conversion instead.
    */
   @SuppressWarnings("unchecked")
-  public static @Nullable <T> T convertProperty(Class<?> clas, @Nullable String value, boolean isList) {
+  private static @Nullable <T> T convertProperty(Class<?> clas, @Nullable String value, boolean isList) {
     if (value == null || ".".equals(value)) {
       return null;
     }
@@ -560,12 +565,6 @@ public class VcfUtils {
       }
       throw new VcfFormatException("Invalid boolean value: '" + value + "'");
 
-    } else if (clas == BigDecimal.class) {
-      try {
-        return new BigDecimal(value);
-      } catch (NumberFormatException e) {
-        throw new VcfFormatException("Expected float; got " + value);
-      }
     } else if (clas == VcfFloat.class) {
       // unlike plain BigDecimal, this also accepts NAN/INF/INFINITY (case-insensitive, optionally signed), which
       // VCFv4.2 leaves undefined but VCFv4.5 clarifies are valid Float literals
