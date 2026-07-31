@@ -175,6 +175,44 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteDoesNotWarnAboutGleCardinality() throws Exception {
+    // GLE's declared Number=G describes its conventional expected-value shape for tooling, but GLE's own value is
+    // not a comma-delimited list the way every other FORMAT key's Number=G value is -- its commas are part of its
+    // internal genotype:likelihood encoding (see ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy).
+    // validateFormatValue must not compare its un-split value count (always 1) against Number=G's combinatorial
+    // expected count, which would always report a false "wrong cardinality" warning.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .addFormat(new FormatMetadata("GT", "Genotype", "1", FormatType.String))
+        .addFormat(new FormatMetadata("GLE", "Genotype likelihoods", "G", FormatType.String))
+        .build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getAltBases().add("T");
+    position.getFormat().add("GT");
+    position.getFormat().add("GLE");
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    sample.putProperty("GT", "0/1");
+    sample.putProperty("GLE", "0:-75.22,1:-223.42,0/0:-323.03,1/0:-99.29,1/1:-802.53");
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, Collections.singletonList(sample));
+      assertFalse(appender.anyMessageContains("Number=G requires"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testValidateBeforeWriteRejectsMetadataDelimiterInjectedThroughRawView() throws Exception {
     InfoMetadata info = new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null);
     info.getPropertiesRaw().put("Description", "unquoted,comma");

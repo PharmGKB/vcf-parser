@@ -598,15 +598,22 @@ public class VcfWriter implements Closeable {
       // reserved list-typed FORMAT value's empty entry is also only normalized on read, not on write.
       VcfUtils.checkReservedFormatConstraints(key, value);
     }
-    String[] values = key.equals("GLE") ? new String[] { value } : value.split(",", -1);
+    boolean isGle = key.equals("GLE");
+    String[] values = isGle ? new String[] { value } : value.split(",", -1);
     for (String element : values) {
       if (element.isEmpty()) {
         VcfWarnings.warn("FORMAT {} for sample #{} contains an empty value", key, sampleIndex);
       }
     }
     String number = format.getNumber();
-    warnIfWrongCardinality("FORMAT " + key + " for sample #" + sampleIndex, number, values.length, numAltAlleles,
-        ploidy);
+    if (!isGle) {
+      // GLE's conventional Number=G does not describe a comma-delimited value list the way it does for every other
+      // FORMAT key -- GLE's commas are part of its own internal genotype:likelihood encoding (see
+      // ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy), so values.length is always 1 here and
+      // comparing it against Number=G's combinatorial expected count would always be a false mismatch.
+      warnIfWrongCardinality("FORMAT " + key + " for sample #" + sampleIndex, number, values.length, numAltAlleles,
+          ploidy);
+    }
     FormatType type = format.getType();
     if (type == null) {
       return;
