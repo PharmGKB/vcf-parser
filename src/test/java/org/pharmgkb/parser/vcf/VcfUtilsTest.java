@@ -464,6 +464,71 @@ public class VcfUtilsTest {
         () -> VcfUtils.fillEmptyEntriesWithDot("ALT", new ArrayList<>(Arrays.asList("A", null))));
   }
 
+  // Every method below is public static API a caller can invoke directly with a null argument, despite each
+  // parameter being typed non-@Nullable; each must reject a null with VcfFormatException instead of raw-NPEing.
+
+  @Test
+  public void testContainsWhitespaceRejectsNullInsteadOfThrowingNpe() {
+    assertThrows(VcfFormatException.class, () -> VcfUtils.containsWhitespace(null));
+  }
+
+  @Test
+  public void testExtractPropertiesFromLineRejectsNullInsteadOfThrowingNpe() {
+    assertThrows(VcfFormatException.class, () -> VcfUtils.extractPropertiesFromLine(null));
+  }
+
+  @Test
+  public void testExtractPropertiesRejectsNullArrayInsteadOfThrowingNpe() {
+    assertThrows(VcfFormatException.class, () -> VcfUtils.extractProperties((String[]) null));
+  }
+
+  @Test
+  public void testExtractPropertiesRejectsNullEntryInsteadOfThrowingNpe() {
+    // unlike the other tests in this group, this specific case already threw VcfFormatException before this
+    // fix -- extractProperties()'s existing try/catch around splitProperty(prop) converts any RuntimeException
+    // (including the raw NullPointerException a null prop caused) into a VcfFormatException, just with a
+    // generic wrapped message. The new explicit check makes the rejection direct with a clearer message instead
+    // of relying on that wrapping, but this test's assertion alone doesn't distinguish the two paths.
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> VcfUtils.extractProperties("ID=X", null));
+    assertTrue(ex.getMessage().contains("null entry"));
+  }
+
+  @Test
+  public void testSplitPropertyRejectsNullInsteadOfThrowingNpe() {
+    assertThrows(VcfFormatException.class, () -> VcfUtils.splitProperty(null));
+  }
+
+  @Test
+  public void testQuoteRejectsNullInsteadOfThrowingNpe() {
+    assertThrows(VcfFormatException.class, () -> VcfUtils.quote(null));
+  }
+
+  @Test
+  public void testUnquoteRejectsNullInsteadOfThrowingNpe() {
+    assertThrows(VcfFormatException.class, () -> VcfUtils.unquote(null));
+  }
+
+  @Test
+  public void testCheckNoLineTerminatorRejectsNullKeyInsteadOfThrowingNpe() {
+    assertThrows(VcfFormatException.class, () -> VcfUtils.checkNoLineTerminator(null, "value"));
+  }
+
+  @Test
+  public void testDropEmptyEntriesRejectsNullListInsteadOfThrowingNpe() {
+    assertThrows(VcfFormatException.class, () -> VcfUtils.dropEmptyEntries("ID", null));
+  }
+
+  @Test
+  public void testFillEmptyEntriesWithDotRejectsNullListInsteadOfThrowingNpe() {
+    assertThrows(VcfFormatException.class, () -> VcfUtils.fillEmptyEntriesWithDot("ALT", null));
+  }
+
+  @Test
+  public void testConvertPropertyRejectsNullReservedPropertyKeyInsteadOfThrowingNpe() {
+    assertThrows(VcfFormatException.class,
+        () -> VcfUtils.convertProperty((org.pharmgkb.parser.vcf.model.ReservedProperty) null, "value"));
+  }
+
   private static final class FakeFormatIdReservedProperty implements org.pharmgkb.parser.vcf.model.ReservedProperty {
     @Override
     public String getId() {

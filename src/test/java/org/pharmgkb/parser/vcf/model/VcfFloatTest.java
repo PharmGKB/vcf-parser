@@ -55,6 +55,13 @@ public class VcfFloatTest {
   }
 
   @Test
+  public void testParseRejectsNullInsteadOfThrowingNpe() {
+    // value is typed non-@Nullable, but nothing enforces that at compile time; must reject a null with
+    // VcfFormatException, not let it reach a raw NullPointerException at SPECIAL_PATTERN.matcher(value)
+    assertThrows(VcfFormatException.class, () -> VcfFloat.parse(null));
+  }
+
+  @Test
   public void testEqualsAndHashCode() {
     assertEquals(VcfFloat.of(new BigDecimal("1.5")), VcfFloat.of(new BigDecimal("1.5")));
     assertEquals(VcfFloat.of(new BigDecimal("1.5")).hashCode(), VcfFloat.of(new BigDecimal("1.5")).hashCode());

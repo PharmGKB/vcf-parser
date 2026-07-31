@@ -122,10 +122,16 @@ public class VcfUtils {
    * {@code UNICODE_CHARACTER_CLASS}) -- does not detect non-ASCII Unicode whitespace.
    */
   public static boolean containsWhitespace(String s) {
+    if (s == null) {
+      throw new VcfFormatException("Cannot check for whitespace in a null string");
+    }
     return sf_whitespacePattern.matcher(s).find();
   }
 
   public static Map<String, String> extractPropertiesFromLine(String value) {
+    if (value == null) {
+      throw new VcfFormatException("Metadata declaration attribute list is null");
+    }
     if (hasUnbalancedQuotes(value)) {
       // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_001.vcf (##CauseOfFailure=Description contains
       // non-escaped quotes). Checked on the raw, unsplit string rather than per-attribute after splitTopLevel:
@@ -161,8 +167,14 @@ public class VcfUtils {
   }
 
   public static Map<String, String> extractProperties(String... props) {
+    if (props == null) {
+      throw new VcfFormatException("Property array is null");
+    }
     Map<String, String> map = new LinkedHashMap<>();
     for (String prop : props) {
+      if (prop == null) {
+        throw new VcfFormatException("Property array contains a null entry");
+      }
       Pair<String, String> pair;
       try {
         pair = splitProperty(prop);
@@ -194,6 +206,9 @@ public class VcfUtils {
    * @param prop In the form "key=value"
    */
   public static Pair<String, String> splitProperty(String prop) {
+    if (prop == null) {
+      throw new VcfFormatException("Property is null");
+    }
     List<String> parts = splitTopLevel(prop, '=');
     if (parts.size() != 2) {
       throw new VcfFormatException("There were " + (parts.size() - 1) + " equals signs for: " + prop);
@@ -236,6 +251,9 @@ public class VcfUtils {
    * spec requires: {@code \} becomes {@code \\}, {@code "} becomes {@code \"}). Reverse with {@link #unquote}.
    */
   public static String quote(String string) {
+    if (string == null) {
+      throw new VcfFormatException("Cannot quote a null string");
+    }
     StringBuilder sb = new StringBuilder(string.length() + 2).append('"');
     for (int i = 0; i < string.length(); i++) {
       char c = string.charAt(i);
@@ -252,6 +270,9 @@ public class VcfUtils {
    * double-quote ({@code \"}) inside. Reverse of {@link #quote}.
    */
   public static String unquote(String string) {
+    if (string == null) {
+      throw new VcfFormatException("Cannot unquote a null string");
+    }
     if (string.length() < 2 || !string.startsWith("\"") || !string.endsWith("\"")) {
       return string;
     }
@@ -277,6 +298,9 @@ public class VcfUtils {
    *              string as both {@code key} and {@code value}
    */
   public static void checkNoLineTerminator(String key, @Nullable String value) {
+    if (key == null) {
+      throw new VcfFormatException("Property key is null");
+    }
     if (key.contains("\n") || key.contains("\r") || (value != null && (value.contains("\n") || value.contains("\r")))) {
       throw new VcfFormatException("Property [[[" + key + "=" + value + "]]] contains a line terminator");
     }
@@ -302,6 +326,9 @@ public class VcfUtils {
    * @return {@code list} unchanged if it contained no empty entries, or a new list with them removed
    */
   public static List<String> dropEmptyEntries(String fieldName, List<String> list) {
+    if (list == null) {
+      throw new VcfFormatException(fieldName + " list is null");
+    }
     List<String> result = list;
     for (int i = 0; i < result.size(); i++) {
       if (result.get(i) == null) {
@@ -325,6 +352,9 @@ public class VcfUtils {
    * entry would misalign it with its corresponding key. See {@code EMPTY_FIELD_HANDLING.md} for the rationale.
    */
   public static void fillEmptyEntriesWithDot(String fieldName, List<String> list) {
+    if (list == null) {
+      throw new VcfFormatException(fieldName + " list is null");
+    }
     for (int i = 0; i < list.size(); i++) {
       if (list.get(i) == null) {
         throw new VcfFormatException(fieldName + " contains a null entry");
@@ -349,6 +379,9 @@ public class VcfUtils {
    * </ul>
    */
   public static @Nullable <T> T convertProperty(ReservedProperty key, @Nullable String value) {
+    if (key == null) {
+      throw new VcfFormatException("Reserved property key is null");
+    }
     // FT/PS are FORMAT-only reserved IDs (see checkReservedFormatConstraints's Javadoc) -- a future
     // ReservedInfoProperty whose ID happens to collide with one must not get FORMAT-only semantics applied
     String normalized = key instanceof ReservedFormatProperty ? checkReservedFormatConstraints(key.getId(), value)

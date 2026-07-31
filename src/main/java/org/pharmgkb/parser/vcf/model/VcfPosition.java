@@ -690,6 +690,12 @@ public class VcfPosition {
    *           otherwise {@code List<V>} where V is the type specified by {@code ReservedInfoProperty.getType()}.
    */
   public @Nullable <T> T getInfo(ReservedInfoProperty key) {
+    // matches getInfo(String)'s own null-tolerant "not present" contract (see hasInfo(ReservedInfoProperty)
+    // below for the same pattern) -- returning null here also avoids ever reaching
+    // VcfUtils.convertProperty(null, ...), which now rejects a null key outright
+    if (key == null) {
+      return null;
+    }
     List<String> list = info().get(key.getId());
     if (list.isEmpty()) {
       return null;
@@ -715,7 +721,9 @@ public class VcfPosition {
    * Checks if there is INFO metadata with the specified ID.
    */
   public boolean hasInfo(ReservedInfoProperty key) {
-    return hasInfo(key.getId());
+    // null-tolerant, matching hasInfo(String)'s own null-tolerant multimap lookup (LinkedListMultimap.containsKey
+    // never throws for a null key)
+    return key != null && hasInfo(key.getId());
   }
 
   public List<String> getFormat() {

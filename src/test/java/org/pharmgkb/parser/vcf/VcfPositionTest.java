@@ -525,6 +525,15 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testGetInfoAndHasInfoReservedPropertyOverloadsAreNullTolerant() {
+    // getInfo(String)/hasInfo(String) are already null-tolerant (a null id is trivially "not present"); the
+    // ReservedInfoProperty overloads must match that instead of raw-NPEing at key.getId()
+    VcfPosition position = newPosition();
+    assertNull(position.getInfo((ReservedInfoProperty) null));
+    assertFalse(position.hasInfo((ReservedInfoProperty) null));
+  }
+
+  @Test
   public void testValidateAttachesLineNumberToNonInfoCheckFailures() {
     // regression test: validate() previously annotated only its checkInfoEntries(...) call with line-number
     // metadata, leaving its other checks (checkChromosome, checkPosition, checkRef, checkIds, checkAltBases,

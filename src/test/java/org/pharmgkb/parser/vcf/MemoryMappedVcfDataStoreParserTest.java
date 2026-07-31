@@ -258,6 +258,16 @@ public class MemoryMappedVcfDataStoreParserTest {
   }
 
   @Test
+  public void testGenotypeConstructorsRejectNullInsteadOfThrowingNpe() {
+    // alleles/phasedBoundaries are typed non-@Nullable, but nothing enforces that at compile time; both
+    // constructors must reject a null with VcfFormatException, not raw-NPE at alleles.size()/phasedBoundaries.size()
+    assertThrows(VcfFormatException.class, () -> new MemoryMappedVcfDataStore.Genotype(null, true));
+    assertThrows(VcfFormatException.class, () -> new MemoryMappedVcfDataStore.Genotype(null, List.of(true)));
+    assertThrows(VcfFormatException.class,
+        () -> new MemoryMappedVcfDataStore.Genotype(List.of("A", "T"), (List<Boolean>) null));
+  }
+
+  @Test
   public void testGenotypeLegacyConstructorSingleAlleleIsNeverPhased() {
     // a single-allele genotype has zero boundaries, so isPhased() is now always false regardless of the flag
     // passed to the legacy constructor -- matches what doGetGenotype's real parsing already produced for a

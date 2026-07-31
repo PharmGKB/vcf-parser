@@ -57,6 +57,9 @@ public final class VcfFloat {
    * @throws VcfFormatException if {@code value} is neither a normal decimal number nor one of the special values
    */
   public static VcfFloat parse(String value) {
+    if (value == null) {
+      throw new VcfFormatException("Cannot parse a null Float value");
+    }
     if (SPECIAL_PATTERN.matcher(value).matches()) {
       if (value.toUpperCase(Locale.ROOT).endsWith("NAN")) {
         return ofSpecial(Special.NAN);

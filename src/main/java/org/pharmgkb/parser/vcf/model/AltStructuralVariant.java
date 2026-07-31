@@ -41,6 +41,9 @@ public class AltStructuralVariant {
    */
   public AltStructuralVariant(String string) {
 
+    if (string == null) {
+      throw new VcfFormatException("Structural variant code is null");
+    }
     if (string.isEmpty()) { // could be replaced with javax.validation.constraints.Size(min=1);
       throw new VcfFormatException("Structural variant code must not be empty");
     }

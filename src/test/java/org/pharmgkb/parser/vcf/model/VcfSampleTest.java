@@ -12,6 +12,7 @@ import org.pharmgkb.parser.vcf.spec.WarnCapturingAppender;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -74,6 +75,19 @@ class VcfSampleTest {
     assertThrows(VcfFormatException.class, () -> sample.putProperty("bad\nkey", "value"));
     // the ReservedFormatProperty overload must not bypass the check either
     assertThrows(VcfFormatException.class, () -> sample.putProperty(ReservedFormatProperty.Genotype, "0/1\nextra"));
+  }
+
+  @Test
+  void testReservedFormatPropertyOverloadsHandleNullKeyLikeTheirStringSiblings() {
+    // getProperty/containsProperty/removeProperty(ReservedFormatProperty) must not raw-NPE at key.getId() for a
+    // null key -- each matches its own String-keyed sibling's already-null-tolerant "not present"/no-op contract.
+    // putProperty is the exception: putProperty(String, ...) already throws for a null key, so the
+    // ReservedFormatProperty overload must throw too, not silently tolerate it.
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    assertNull(sample.getProperty((ReservedFormatProperty) null));
+    assertFalse(sample.containsProperty((ReservedFormatProperty) null));
+    assertThrows(VcfFormatException.class, () -> sample.putProperty((ReservedFormatProperty) null, "value"));
+    sample.removeProperty((ReservedFormatProperty) null); // must not throw
   }
 
   @Test

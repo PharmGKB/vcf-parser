@@ -277,7 +277,17 @@ public class MemoryMappedVcfDataStore {
     private final boolean m_isPhased;
 
     public Genotype(List<String> alleles, boolean isPhased) {
-      this(alleles, Collections.nCopies(Math.max(0, alleles.size() - 1), isPhased));
+      // requireNonNullAlleles() must run as part of this this(...) call's own argument evaluation (a constructor
+      // delegating via this(...) cannot have a preceding statement) -- Java evaluates arguments left to right, so
+      // this throws before alleles.size() below is ever reached if alleles is null
+      this(requireNonNullAlleles(alleles), Collections.nCopies(Math.max(0, alleles.size() - 1), isPhased));
+    }
+
+    private static List<String> requireNonNullAlleles(List<String> alleles) {
+      if (alleles == null) {
+        throw new VcfFormatException("alleles is null");
+      }
+      return alleles;
     }
 
     /**
@@ -286,6 +296,10 @@ public class MemoryMappedVcfDataStore {
      * @throws IllegalArgumentException if {@code phasedBoundaries}'s size does not match {@code alleles}'s
      */
     public Genotype(List<String> alleles, List<Boolean> phasedBoundaries) {
+      requireNonNullAlleles(alleles);
+      if (phasedBoundaries == null) {
+        throw new VcfFormatException("phasedBoundaries is null");
+      }
       int expected = Math.max(0, alleles.size() - 1);
       if (phasedBoundaries.size() != expected) {
         throw new IllegalArgumentException("phasedBoundaries must have " + expected + " element(s) for " +

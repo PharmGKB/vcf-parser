@@ -84,6 +84,13 @@ public class AltStructuralVariantTest {
   }
 
   @Test
+  public void testConstructorRejectsNullInsteadOfThrowingNpe() {
+    // string is typed non-@Nullable, but nothing enforces that at compile time; must reject a null with
+    // VcfFormatException, not let it reach a raw NullPointerException at string.isEmpty()
+    assertThrows(VcfFormatException.class, () -> new AltStructuralVariant(null));
+  }
+
+  @Test
   public void testGetComponentsIsUnmodifiable() {
     AltStructuralVariant alt = new AltStructuralVariant("INS:ME:LINE");
     assertThrows(UnsupportedOperationException.class, () -> alt.getComponents().add("X"));

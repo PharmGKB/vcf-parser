@@ -169,6 +169,12 @@ public class VcfSample {
    *           otherwise {@code List<V>} where V is the type specified by {@code ReservedFormatProperty.getType()}.
    */
   public @Nullable <T> T getProperty(ReservedFormatProperty key) {
+    // matches getProperty(String)'s own null-tolerant "not present" contract (see containsProperty's Javadoc
+    // comment below for the precedent this follows) -- returning null here also avoids ever reaching
+    // VcfUtils.convertProperty(null, ...), which now rejects a null key outright
+    if (key == null) {
+      return null;
+    }
     return VcfUtils.convertProperty(key, getProperty(key.getId()));
   }
 
@@ -189,7 +195,8 @@ public class VcfSample {
   }
 
   public boolean containsProperty(ReservedFormatProperty key) {
-    return containsProperty(key.getId());
+    // null-tolerant, matching containsProperty(String)'s own documented contract above
+    return key != null && containsProperty(key.getId());
   }
 
   public void putProperty(String key, @Nullable String value) {
@@ -198,7 +205,10 @@ public class VcfSample {
   }
 
   public void putProperty(ReservedFormatProperty key, @Nullable String value) {
-    putProperty(key.getId(), value);
+    // unlike the read/query methods, putProperty(String, ...) already throws for a null key (via
+    // checkNoStructuralDelimiter) -- pass through so a null ReservedFormatProperty key gets the identical
+    // VcfFormatException instead of NPEing here at key.getId()
+    putProperty(key == null ? null : key.getId(), value);
   }
 
   public void removeProperty(String key) {
@@ -206,7 +216,10 @@ public class VcfSample {
   }
 
   public void removeProperty(ReservedFormatProperty key) {
-    properties().remove(key.getId());
+    // null-tolerant no-op, matching removeProperty(String)'s own already-null-tolerant Map.remove(null) behavior
+    if (key != null) {
+      properties().remove(key.getId());
+    }
   }
 
   public void clearProperties() {
