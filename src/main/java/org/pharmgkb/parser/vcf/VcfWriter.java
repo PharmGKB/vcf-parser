@@ -850,11 +850,11 @@ public class VcfWriter implements Closeable {
         }
       }
 
-      if (!m_validateBeforeWrite && !metadata.getInfo().containsKey(key)) {
+      InfoMetadata info = metadata.getInfo().get(key);
+      if (!m_validateBeforeWrite && info == null) {
         VcfWarnings.warn("Position {}:{} contains INFO {}, but there is no INFO metadata with that name (on line {})",
             position.getChromosome(), position.getPosition(), key, m_lineNumber);
       } else if (!m_validateBeforeWrite) {
-        InfoMetadata info = metadata.getInfo().get(key);
         for (String value : values) {
           Integer number = null;
           try {
@@ -873,7 +873,33 @@ public class VcfWriter implements Closeable {
       }
 
       sb.append(key);
-      if (!values.isEmpty() && !(values.size() == 1 && values.get(0).isEmpty())) {
+      boolean isEmptyValueList = values.isEmpty() || (values.size() == 1 && values.get(0).isEmpty());
+      if (isEmptyValueList) {
+        // A single empty-string value is ambiguous here: VcfPosition.info() only ever produces this exact
+        // representation for a genuine Flag (no "=" in the original text) -- every other empty-value case
+        // (e.g. "AD=") is already normalized to the "." missing-value sentinel at parse time, before it can
+        // reach this method looking identical to a Flag (see EMPTY_FIELD_HANDLING.md). A caller can bypass
+        // that parse-time distinction by inserting an empty string directly into the live getInfo() view
+        // (e.g. a transformation pipeline), which this method previously could not tell apart from a real
+        // Flag, silently writing the bare key and reinterpreting a non-Flag field's type on reparse. Only
+        // emit the bare-key form when the key is entirely undeclared (info == null): that specific case is
+        // the library's existing, documented round-trip for a Flag with no ##INFO declaration at all
+        // (EMPTY_FIELD_HANDLING.md's "INFO flag (no =)" row), which this must not regress. A key that IS
+        // declared but whose Type is missing or unparseable gets no such benefit of the doubt: a genuine
+        // Type=Flag is an exact, easy-to-spell literal, so a garbled/absent Type is far more likely a
+        // malformed non-Flag declaration than an accidental near-miss on "Flag" -- treating it as "maybe a
+        // flag" would silently re-admit a narrower instance of the exact corruption this fix closes.
+        if (info != null && info.getType() != InfoType.Flag) {
+          // Under validateBeforeWrite(), validateInfoValue() already warned "INFO {} contains an empty
+          // value" for this exact key -- don't also warn here, matching validateFormatValue()'s established
+          // convention of skipping a check "already reported generically" to avoid warning about it twice.
+          if (!m_validateBeforeWrite) {
+            VcfWarnings.warn("INFO {} has an empty value but is declared Type={} (not Flag); writing the " +
+                "missing-value sentinel \".\" instead (on line {})", key, info.getType(), m_lineNumber);
+          }
+          sb.append("=.");
+        }
+      } else {
         sb.append("=").append(values.get(0));
         for (int i = 1; i < values.size(); i++) {
           sb.append(",").append(values.get(i));

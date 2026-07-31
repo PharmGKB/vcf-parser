@@ -146,6 +146,106 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testDefaultWriteCanonicalizesEmptyNonFlagInfoValueInsteadOfWritingBareFlagKey() throws Exception {
+    // position.getInfo() is a live view a caller can mutate directly (e.g. a transformation pipeline). A single
+    // empty-string value is the same internal representation VcfPosition.info() uses for a genuine Flag (no "="
+    // in the original text), so writing it as a bare key here would silently reinterpret this declared
+    // Type=String field as a Flag on reparse -- addInfoOrDot() must canonicalize to the "." missing-value
+    // sentinel instead, on the default path too, not just under validateBeforeWrite()
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata("XX", "d", InfoType.String, "1", null, null))
+        .build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getInfo().put("XX", "");
+
+    writer.writeLine(metadata, position, Collections.emptyList());
+    assertTrue(sw.toString().contains("XX=."));
+  }
+
+  @Test
+  public void testValidateBeforeWriteCanonicalizesEmptyNonFlagInfoValueInsteadOfWritingBareFlagKey() throws Exception {
+    // validateInfoValue() already warned about this exact case ("INFO {} contains an empty value") under
+    // validateBeforeWrite(), but that warning had no effect on what addInfoOrDot() actually wrote afterward in
+    // the same writeLine() call -- it fired, yet the output was neither preserved nor canonicalized, violating
+    // this mode's own "warn and canonicalize" contract. Confirms the fix applies in both write modes.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata("XX", "d", InfoType.String, "1", null, null))
+        .build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getInfo().put("XX", "");
+
+    writer.writeLine(metadata, position, Collections.emptyList());
+    assertTrue(sw.toString().contains("XX=."));
+  }
+
+  @Test
+  public void testWriteLinePreservesGenuineFlagValueAsBareKey() throws Exception {
+    // a key declared Type=Flag must still be written bare (no "="); this is the one empty-value case
+    // addInfoOrDot()'s new canonicalization must NOT touch
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata("DB", "d", InfoType.Flag, "0", null, null))
+        .build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getInfo().put("DB", "");
+
+    writer.writeLine(metadata, position, Collections.emptyList());
+    assertTrue(sw.toString().contains("DB"));
+    assertFalse(sw.toString().contains("DB="));
+  }
+
+  @Test
+  public void testWriteLineCanonicalizesEmptyInfoValueWhenDeclaredTypeIsUnparseable() throws Exception {
+    // a key that IS declared but whose Type doesn't parse to a real InfoType (info.getType() == null) gets no
+    // benefit of the doubt the way a completely undeclared key does: a garbled/absent Type is far more likely a
+    // malformed non-Flag declaration than an accidental near-miss on the literal "Flag", so this must still
+    // canonicalize -- not be treated the same as the undeclared-key case above
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    Map<String, String> props = new LinkedHashMap<>();
+    props.put("ID", "XX");
+    props.put("Number", "1");
+    props.put("Type", "NotARealType");
+    props.put("Description", "\"d\"");
+    InfoMetadata info = new InfoMetadata(props);
+    assertNull(info.getType());
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getInfo().put("XX", "");
+
+    writer.writeLine(metadata, position, Collections.emptyList());
+    assertTrue(sw.toString().contains("XX=."));
+  }
+
+  @Test
+  public void testWriteLinePreservesUndeclaredInfoFlagAsBareKeyInsteadOfCanonicalizing() throws Exception {
+    // an INFO key entirely absent from the ##INFO metadata is ambiguous -- it could be a genuine Flag with no
+    // header declaration (a long-standing, deliberately tolerated case: EMPTY_FIELD_HANDLING.md's "INFO flag
+    // (no =)" row) or a caller-mutated empty value for some other undeclared key. With no positive evidence
+    // either way, addInfoOrDot() must keep the existing bare-key round-trip rather than risk breaking the
+    // documented, tested undeclared-Flag case just to fix the declared-non-Flag case above
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getInfo().put("DB", "");
+
+    writer.writeLine(metadata, position, Collections.emptyList());
+    assertTrue(sw.toString().contains("DB"));
+    assertFalse(sw.toString().contains("DB="));
+  }
+
+  @Test
   public void testWriteHeaderRejectsNullMetadataInsteadOfThrowingNpe() throws Exception {
     // writeHeader()/writeLine() are the library's two primary entry points, called by every consumer; metadata
     // is typed non-@Nullable, but nothing enforces that at compile time. Must reject a null with
