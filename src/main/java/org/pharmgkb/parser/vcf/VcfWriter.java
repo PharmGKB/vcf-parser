@@ -389,6 +389,11 @@ public class VcfWriter implements Closeable {
       }
     }
     for (String key : metadata.getRawPropertyKeys()) {
+      // getRawProperties()/getRawValuesOfProperty() are live views (see their Javadoc), so a caller can insert a
+      // null key/value directly, bypassing every check addRawProperty() would otherwise run at insertion time
+      if (key == null) {
+        throw new VcfFormatException("Metadata contains a null raw property name");
+      }
       // a raw property is written as "##" + key + "=" + value, and reread by splitting on the FIRST "=" only
       // (VcfParser.parseMetadata); a key containing '=' shifts that split point, so the key/value recovered on
       // reparse would not match what was written. Verified live: writing key "foo=bar" reparses as key "foo",
@@ -406,6 +411,9 @@ public class VcfWriter implements Closeable {
             "declaration keyword");
       }
       for (String value : metadata.getRawValuesOfProperty(key)) {
+        if (value == null) {
+          throw new VcfFormatException("Metadata property \"" + key + "\" has a null value");
+        }
         VcfUtils.checkNoLineTerminator(key, value);
         if (VcfMetadata.isEmptyMetadataValue(value)) {
           // unlike VcfMetadata.Builder.addRawProperty()/addAssembly()/addPedigreeDatabase() (which drop an empty
@@ -853,7 +861,18 @@ public class VcfWriter implements Closeable {
   }
 
   private void addPropertyLines(List<String> lines, String name, Collection<String> list) {
+    // this is the only call site, from buildHeaderLines(), which runs on every write regardless of
+    // validateBeforeWrite() -- unlike validateMetadata()'s equivalent guards above, this is not dead code on the
+    // default (non-validated) write path: "##" + name + "=" + string silently stringifies a null into the literal
+    // text "null" via Java's string concatenation, corrupting the header with fabricated content that was never
+    // actually in the property, rather than an empty value or a clean rejection
+    if (name == null) {
+      throw new VcfFormatException("Metadata contains a null raw property name");
+    }
     for (String string : list) {
+      if (string == null) {
+        throw new VcfFormatException("Metadata property \"" + name + "\" has a null value");
+      }
       lines.add("##" + name + "=" + string);
     }
   }

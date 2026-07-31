@@ -237,6 +237,52 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteRejectsNullRawPropertyKey() throws Exception {
+    // getRawProperties() is a live view backed by a LinkedListMultimap, which permits null keys/values; a caller
+    // inserting a null key must get VcfFormatException from validateMetadata(), not a raw NullPointerException
+    // from key.contains("=")
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    metadata.getRawProperties().put(null, "value");
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+  }
+
+  @Test
+  public void testValidateBeforeWriteRejectsNullRawPropertyValue() throws Exception {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    metadata.getRawProperties().put("foo", null);
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+  }
+
+  @Test
+  public void testDefaultWriteRejectsNullRawPropertyKeyInsteadOfWritingLiteralNullText() throws Exception {
+    // without validateBeforeWrite(), buildHeaderLines() never calls validateMetadata(); addPropertyLines() must
+    // guard this itself, since "##" + name + "=" + string would otherwise silently stringify a null name/value
+    // into the literal text "null", fabricating content that was never actually in the property
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    metadata.getRawProperties().put(null, "value");
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+  }
+
+  @Test
+  public void testDefaultWriteRejectsNullRawPropertyValueInsteadOfWritingLiteralNullText() throws Exception {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    metadata.getRawProperties().put("foo", null);
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+  }
+
+  @Test
   public void testValidateBeforeWriteRejectsUnescapedQuoteInMetadataValue() throws Exception {
     // a value that isn't validly quoted (isQuoted() is false) but also contains no ',' or '=' previously slipped
     // through unrejected. Verified live: a value of "abc"def" (embedded unescaped '"', no comma/equals) followed
