@@ -42,6 +42,189 @@ public class VcfMetadataTest {
   }
 
   @Test
+  public void testSetFileFormatRejectsNullInsteadOfThrowingNpe() {
+    // fileFormat is typed non-@Nullable, but nothing enforces that at compile time; must reject a null with
+    // VcfFormatException, not let it reach a raw NullPointerException at FILE_FORMAT_PATTERN.matcher(fileFormat)
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.setFileFormat(null));
+  }
+
+  @Test
+  public void testBuilderSetFileFormatRejectsNullInsteadOfThrowingNpe() {
+    assertThrows(VcfFormatException.class, () -> new VcfMetadata.Builder().setFileFormat(null));
+  }
+
+  @Test
+  public void testBuilderSetColumnsRejectsNullEntryInsteadOfThrowingNpe() {
+    // setColumns() does not validate its argument at set time (deferred to build(), where columns is actually
+    // consumed via List.copyOf(columns)); a null entry must be rejected with VcfFormatException there, not a raw
+    // NullPointerException from List.copyOf
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", null));
+    assertThrows(VcfFormatException.class, builder::build);
+  }
+
+  @Test
+  public void testBuilderSetColumnsRejectsNullListInsteadOfThrowingNpe() {
+    // cols is typed non-@Nullable, but nothing enforces that at compile time; a null list itself (as opposed to
+    // a null entry, covered above) must be rejected with VcfFormatException at setColumns() itself, not deferred
+    // to a raw NullPointerException from Preconditions.checkNotNull(columns) at build() time
+    assertThrows(VcfFormatException.class, () -> new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(null));
+  }
+
+  @Test
+  public void testAddAssemblyRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.addAssembly(null));
+  }
+
+  @Test
+  public void testAddPedigreeDatabaseRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.addPedigreeDatabase(null));
+  }
+
+  @Test
+  public void testBuilderAddRawPropertyRejectsNullNameInsteadOfThrowingNpe() {
+    // name is typed non-@Nullable, but nothing enforces that at compile time; must reject a null with
+    // VcfFormatException, not let it reach a raw NullPointerException at VcfUtils.checkNoLineTerminator
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addRawProperty(null, "value"));
+  }
+
+  @Test
+  public void testBuilderAddRawPropertyRejectsNullValueInsteadOfThrowingNpe() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addRawProperty("name", null));
+  }
+
+  // Every addXxx/removeXxx method below (both VcfMetadata's own instance methods and Builder's mirrors) is typed
+  // to take a non-@Nullable metadata object, but nothing enforces that at compile time; each must reject a null
+  // with VcfFormatException via the shared requireNonNull() guard, not let it reach a raw NullPointerException at
+  // value.getId()/value.getPropertiesRaw().
+
+  @Test
+  public void testAddAltRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.addAlt(null));
+  }
+
+  @Test
+  public void testAddInfoRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.addInfo(null));
+  }
+
+  @Test
+  public void testAddFormatRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.addFormat(null));
+  }
+
+  @Test
+  public void testAddContigRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.addContig(null));
+  }
+
+  @Test
+  public void testAddFilterRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.addFilter(null));
+  }
+
+  @Test
+  public void testAddSampleRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.addSample(null));
+  }
+
+  @Test
+  public void testAddPedigreeRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.addPedigree(null));
+  }
+
+  @Test
+  public void testRemoveAltRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.removeAlt(null));
+  }
+
+  @Test
+  public void testRemoveInfoRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.removeInfo(null));
+  }
+
+  @Test
+  public void testRemoveFormatRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.removeFormat(null));
+  }
+
+  @Test
+  public void testRemoveContigRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.removeContig(null));
+  }
+
+  @Test
+  public void testRemoveFilterRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.removeFilter(null));
+  }
+
+  @Test
+  public void testRemoveSampleRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.removeSample(null));
+  }
+
+  @Test
+  public void testBuilderAddAltRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addAlt(null));
+  }
+
+  @Test
+  public void testBuilderAddInfoRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addInfo(null));
+  }
+
+  @Test
+  public void testBuilderAddFilterRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addFilter(null));
+  }
+
+  @Test
+  public void testBuilderAddFormatRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addFormat(null));
+  }
+
+  @Test
+  public void testBuilderAddContigRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addContig(null));
+  }
+
+  @Test
+  public void testBuilderAddSampleRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addSample(null));
+  }
+
+  @Test
+  public void testBuilderAddPedigreeRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addPedigree(null));
+  }
+
+  @Test
   public void testGetInfoPreservesDeclarationOrder() {
     // five distinct IDs added in a deliberately non-alphabetical order; HashMap's hash-bucket order for five
     // distinct keys is extremely unlikely to coincidentally match this insertion order

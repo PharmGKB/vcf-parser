@@ -50,6 +50,13 @@ public class FormatMetadataTest {
   }
 
   @Test
+  public void testTypedConstructorRejectsNullTypeInsteadOfThrowingNpe() {
+    // type is typed non-@Nullable, but nothing enforces that at compile time; must reject a null with
+    // VcfFormatException, not let it reach a raw NullPointerException at type.name()
+    assertThrows(VcfFormatException.class, () -> new FormatMetadata("GT", "d", "1", null));
+  }
+
+  @Test
   public void testExtraPropertyRetained() {
     // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included
     // after the default fields" -- an unrecognized property is compliant, not just tolerated, and must be preserved

@@ -54,7 +54,7 @@ public class VcfWriterTest {
     writer.writeHeader(metadata);
     VcfFormatException e = assertThrows(VcfFormatException.class,
         () -> writer.writeLine(metadata, position, Collections.emptyList()));
-    assertTrue(e.getMessage().contains("has an empty REF, which the VCF spec does not allow"));
+    assertTrue(e.getMessage().contains("has a null or empty REF, which the VCF spec does not allow"));
   }
 
   @Test
@@ -141,6 +141,36 @@ public class VcfWriterTest {
     writer.writeHeader(metadata);
     VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
     position.getInfo().put("NS", null);
+
+    assertThrows(VcfFormatException.class, () -> writer.writeLine(metadata, position, Collections.emptyList()));
+  }
+
+  @Test
+  public void testDefaultWriteRejectsNullChromosomeInsteadOfWritingLiteralNullText() throws Exception {
+    // setChromosome() does not validate its input, by design (see VcfPosition.validate()'s Javadoc);
+    // VcfWriter's default path must guard this itself, since CHROM has no missing-value sentinel and
+    // StringBuilder.append(Object) would otherwise silently stringify a null into the literal text "null"
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.setChromosome(null);
+
+    assertThrows(VcfFormatException.class, () -> writer.writeLine(metadata, position, Collections.emptyList()));
+  }
+
+  @Test
+  public void testDefaultWriteRejectsNullRefInsteadOfWritingLiteralNullText() throws Exception {
+    // unlike the other null-guard regressions in this class, this previously crashed with a raw
+    // NullPointerException even on the default path (position.getRef().isEmpty() ran unconditionally), not just
+    // silently stringified to "null"
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.setRef(null);
 
     assertThrows(VcfFormatException.class, () -> writer.writeLine(metadata, position, Collections.emptyList()));
   }

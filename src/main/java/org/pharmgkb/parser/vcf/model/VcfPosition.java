@@ -158,6 +158,12 @@ public class VcfPosition {
   }
 
   private static void checkChromosome(String chr) {
+    // chr is typed non-@Nullable, but setChromosome() (unlike the constructors) does not enforce that at runtime,
+    // by design -- see validate()'s Javadoc. Guard here rather than letting chr.isEmpty() below throw a raw
+    // NullPointerException; this runs from both constructors and validate(), so it also closes the same gap there.
+    if (chr == null) {
+      throw new VcfFormatException("CHROM is null");
+    }
     // the VCF spec forbids whitespace in CHROM (but not other characters, e.g. colons)
     if (chr.isEmpty() || VcfUtils.containsWhitespace(chr)) {
       throw new VcfFormatException("CHROM column \"" + chr + "\" is empty or contains whitespace");
@@ -172,6 +178,13 @@ public class VcfPosition {
   }
 
   private static void checkRef(String ref) {
+    // ref is typed non-@Nullable, but setRef() (unlike the constructors) does not enforce that at runtime, by
+    // design -- see validate()'s Javadoc. Guard here rather than letting REF_BASE_PATTERN.matcher(ref) below throw
+    // a raw NullPointerException; this runs from both constructors and validate(), so it also closes the same gap
+    // there.
+    if (ref == null) {
+      throw new VcfFormatException("REF is null");
+    }
     if (!VcfUtils.REF_BASE_PATTERN.matcher(ref).matches()) {
       throw new VcfFormatException("Invalid reference base '" + ref +
           "' (must match " + VcfUtils.REF_BASE_PATTERN + ")");

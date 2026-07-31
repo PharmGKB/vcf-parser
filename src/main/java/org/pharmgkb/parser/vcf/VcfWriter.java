@@ -258,19 +258,31 @@ public class VcfWriter implements Closeable {
         throw new VcfFormatException("Position " + position.getChromosome() + ":" + position.getPosition() +
             " has " + samples.size() + " sample(s), but the header declares " + numSamples);
       }
-      if (position.getRef().isEmpty()) {
-        // REF has no missing-value sentinel in the spec ("." means something else entirely for other columns); writing
-        // "." here would not actually be valid VCF, just a placeholder that avoids crashing on a mutated position
-        throw new VcfFormatException("Position " + position.getChromosome() + ":" + position.getPosition() +
-            " has an empty REF, which the VCF spec does not allow (REF has no missing-value sentinel)");
+      // getChromosome()/getRef() are set via setChromosome()/setRef(), which -- like the live-view accessors above
+      // -- do not validate their input by design (see VcfPosition.validate()'s Javadoc); position.validate() above
+      // (validateBeforeWrite() mode only) would catch a null here via checkChromosome()/checkRef(), but the
+      // default path needs its own guard, since neither has a missing-value sentinel in the spec ("." means
+      // something else entirely for other columns) and StringBuilder.append(Object) would otherwise silently
+      // stringify a null into the literal text "null" instead of a clean rejection.
+      String chromosome = position.getChromosome();
+      if (chromosome == null) {
+        throw new VcfFormatException("Position has a null CHROM, which the VCF spec does not allow (CHROM has no " +
+            "missing-value sentinel)");
+      }
+      String ref = position.getRef();
+      if (ref == null || ref.isEmpty()) {
+        // writing "." here would not actually be valid VCF, just a placeholder that avoids crashing on a mutated
+        // position
+        throw new VcfFormatException("Position " + chromosome + ":" + position.getPosition() +
+            " has a null or empty REF, which the VCF spec does not allow (REF has no missing-value sentinel)");
       }
 
       StringBuilder sb = new StringBuilder();
 
-      sb.append(position.getChromosome()).append("\t");
+      sb.append(chromosome).append("\t");
       sb.append(position.getPosition()).append("\t");
       addListOrElse("ID", position.getIds(), ";", ".", sb);
-      sb.append(position.getRef()).append("\t");
+      sb.append(ref).append("\t");
       addListOrElse("ALT", position.getAltBases(), ",", ".", sb);
       addStringOrElse(position.getQuality(), ".", sb);
       addListOrElse("FILTER", position.getFilters(), ";", ".", sb);

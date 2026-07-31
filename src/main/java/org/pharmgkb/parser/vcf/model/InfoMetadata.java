@@ -2,6 +2,7 @@ package org.pharmgkb.parser.vcf.model;
 
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
+import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
 import org.pharmgkb.parser.vcf.VcfWarnings;
 
@@ -38,6 +39,11 @@ public class InfoMetadata extends IdDescriptionMetadata {
       @Nullable String source, @Nullable String version) {
     super("INFO", id);
     putPropertyRaw(NUMBER, number);
+    // type is typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting
+    // type.name() below throw a raw NullPointerException
+    if (type == null) {
+      throw new VcfFormatException("INFO type is null");
+    }
     putPropertyRaw(TYPE, type.name());
     // Description is inserted here, before Source/Version and not immediately after ID, so this constructor's
     // property-insertion order matches the canonical ID, Number, Type, Description, Source, Version order that

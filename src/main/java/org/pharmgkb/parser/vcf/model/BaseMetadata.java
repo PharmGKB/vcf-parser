@@ -104,6 +104,11 @@ public class BaseMetadata {
   }
 
   public void putAndQuoteProperty(String key, String value) {
+    // key is typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting a null key
+    // reach VcfUtils.checkNoLineTerminator(key, value) below (key.contains(...) would NPE)
+    if (key == null) {
+      throw new VcfFormatException("Metadata contains a null property name");
+    }
     if (value == null) {
       throw new VcfFormatException("Metadata property \"" + key + "\" has a null value");
     }
@@ -112,6 +117,9 @@ public class BaseMetadata {
   }
 
   public void putPropertyRaw(String key, String value) {
+    if (key == null) {
+      throw new VcfFormatException("Metadata contains a null property name");
+    }
     if (value == null) {
       throw new VcfFormatException("Metadata property \"" + key + "\" has a null value");
     }

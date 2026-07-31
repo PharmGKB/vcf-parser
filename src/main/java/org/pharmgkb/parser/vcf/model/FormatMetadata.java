@@ -2,6 +2,7 @@ package org.pharmgkb.parser.vcf.model;
 
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
+import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfUtils;
 import org.pharmgkb.parser.vcf.VcfWarnings;
 
@@ -27,6 +28,11 @@ public class FormatMetadata extends IdDescriptionMetadata {
   public FormatMetadata(String id, String description, String number, FormatType type) {
     super("FORMAT", id);
     putPropertyRaw(NUMBER, number);
+    // type is typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting
+    // type.name() below throw a raw NullPointerException
+    if (type == null) {
+      throw new VcfFormatException("FORMAT type is null");
+    }
     putPropertyRaw(TYPE, type.name());
     // Description inserted last -- see InfoMetadata's identical constructor for why (matches canonical
     // ID, Number, Type, Description order per VCFv4.2.tex line 94).

@@ -59,6 +59,15 @@ public class VcfMetadata {
     // m_columns alone stays a true immutable copy: unlike the seven fields above, it has no supported
     // mutable-getter counterpart (no getColumns() exposing the live list, only derived read-only accessors like
     // getColumnIndex()) -- there is no mutation contract to preserve for it, so this asymmetry is intentional.
+    // Builder.setColumns() does not validate its argument (deferred to here, the single point where columns is
+    // actually consumed, matching this class's other checkXxx-at-construction-time pattern); a null element would
+    // otherwise reach List.copyOf(columns) below and throw a raw NullPointerException instead of a clean
+    // VcfFormatException.
+    for (String column : columns) {
+      if (column == null) {
+        throw new VcfFormatException("Column list contains a null entry");
+      }
+    }
     m_columns    = List.copyOf(columns);
   }
 
@@ -67,6 +76,11 @@ public class VcfMetadata {
   }
 
   public void setFileFormat(String fileFormat) {
+    // fileFormat is typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting
+    // FILE_FORMAT_PATTERN.matcher(fileFormat) below throw a raw NullPointerException
+    if (fileFormat == null) {
+      throw new VcfFormatException("VCF file format is null");
+    }
     if (!VcfUtils.FILE_FORMAT_PATTERN.matcher(fileFormat).matches()) {
       throw new VcfFormatException("VCF format must look like ex: VCFv4.2; was " + fileFormat);
     }
@@ -138,6 +152,7 @@ public class VcfMetadata {
    * to replace an existing declaration.
    */
   public void addAlt(IdDescriptionMetadata value) {
+    requireNonNull(value, "ALT");
     if (value.getId() == null || value.getId().trim().isEmpty()) {
       VcfWarnings.warn("ALT metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
       return;
@@ -212,6 +227,18 @@ public class VcfMetadata {
   }
 
   /**
+   * Guards every {@code addXxx}/{@code removeXxx} method (both {@code VcfMetadata}'s own instance methods and
+   * {@code Builder}'s mirrors) against a null metadata object. Each parameter is typed non-@Nullable, but nothing
+   * enforces that at runtime; without this, {@code value.getId()}/{@code value.getPropertiesRaw()} would throw a
+   * raw {@link NullPointerException} instead of a clean {@link VcfFormatException}.
+   */
+  private static void requireNonNull(@Nullable Object value, String kind) {
+    if (value == null) {
+      throw new VcfFormatException(kind + " metadata is null");
+    }
+  }
+
+  /**
    * Warns and returns {@code true} (does not throw) when {@code id} is already present in {@code map} -- the
    * caller must skip storing its value and keep the existing (first, or previously-added) entry. Shared by
    * {@code VcfMetadata}'s own instance {@code addXxx} methods and {@code VcfMetadata.Builder}'s {@code addXxx}
@@ -246,6 +273,7 @@ public class VcfMetadata {
    * replace an existing declaration.
    */
   public void addInfo(InfoMetadata value) {
+    requireNonNull(value, "INFO");
     if (value.getId() == null || value.getId().trim().isEmpty()) {
       VcfWarnings.warn("INFO metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
       return;
@@ -262,6 +290,7 @@ public class VcfMetadata {
    * first to replace an existing declaration.
    */
   public void addFormat(FormatMetadata value) {
+    requireNonNull(value, "FORMAT");
     if (value.getId() == null || value.getId().trim().isEmpty()) {
       VcfWarnings.warn("FORMAT metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
       return;
@@ -278,6 +307,7 @@ public class VcfMetadata {
    * first to replace an existing declaration.
    */
   public void addContig(ContigMetadata value) {
+    requireNonNull(value, "CONTIG");
     if (value.getId() == null || value.getId().trim().isEmpty()) {
       VcfWarnings.warn("CONTIG metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
       return;
@@ -294,6 +324,7 @@ public class VcfMetadata {
    * first to replace an existing declaration.
    */
   public void addFilter(IdDescriptionMetadata value) {
+    requireNonNull(value, "FILTER");
     if (value.getId() == null || value.getId().trim().isEmpty()) {
       VcfWarnings.warn("FILTER metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
       return;
@@ -310,6 +341,7 @@ public class VcfMetadata {
    * first to replace an existing declaration.
    */
   public void addSample(IdDescriptionMetadata value) {
+    requireNonNull(value, "SAMPLE");
     if (value.getId() == null || value.getId().trim().isEmpty()) {
       VcfWarnings.warn("SAMPLE metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
       return;
@@ -325,6 +357,11 @@ public class VcfMetadata {
    * @param value Should not be wrapped in angle brackets
    */
   public void addAssembly(String value) {
+    // value is typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting
+    // isEmptyMetadataValue(value) below throw a raw NullPointerException at value.trim()
+    if (value == null) {
+      throw new VcfFormatException("Metadata property \"assembly\" has a null value");
+    }
     VcfUtils.checkNoLineTerminator("assembly", value);
     if (isEmptyMetadataValue(value)) {
       VcfWarnings.warn("Metadata property \"assembly\" has an empty value and was dropped: {}", value);
@@ -347,6 +384,11 @@ public class VcfMetadata {
     // Known, deliberately out-of-scope gap: a non-empty bracket-wrapped value (e.g. "<ftp://example.com/db>") is
     // still accepted here as a literal string today, even though bcftools would also reject it via that same
     // grammar collision -- not fixed in this pass.
+    // value is typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting
+    // isEmptyMetadataValue(value) below throw a raw NullPointerException at value.trim()
+    if (value == null) {
+      throw new VcfFormatException("Metadata property \"pedigreeDB\" has a null value");
+    }
     VcfUtils.checkNoLineTerminator("pedigreeDB", value);
     if (isEmptyMetadataValue(value)) {
       VcfWarnings.warn("Metadata property \"pedigreeDB\" has an empty value and was dropped: {}", value);
@@ -363,6 +405,7 @@ public class VcfMetadata {
    * property is always added.
    */
   public void addPedigree(PedigreeMetadata value) {
+    requireNonNull(value, "PEDIGREE");
     String id = value.getPropertiesRaw().get("ID");
     if (id != null &&
         m_pedigree.stream().anyMatch(existing -> id.equals(existing.getPropertiesRaw().get("ID")))) {
@@ -374,26 +417,32 @@ public class VcfMetadata {
   }
 
   public void removeAlt(IdDescriptionMetadata value) {
+    requireNonNull(value, "ALT");
     m_alt.remove(value.getId());
   }
 
   public void removeInfo(InfoMetadata value) {
+    requireNonNull(value, "INFO");
     m_info.remove(value.getId());
   }
 
   public void removeFormat(FormatMetadata value) {
+    requireNonNull(value, "FORMAT");
     m_format.remove(value.getId());
   }
 
   public void removeContig(ContigMetadata value) {
+    requireNonNull(value, "CONTIG");
     m_contig.remove(value.getId());
   }
 
   public void removeFilter(IdDescriptionMetadata value) {
+    requireNonNull(value, "FILTER");
     m_filter.remove(value.getId());
   }
 
   public void removeSample(IdDescriptionMetadata value) {
+    requireNonNull(value, "SAMPLE");
     m_sample.remove(value.getId());
   }
 
@@ -546,6 +595,11 @@ public class VcfMetadata {
      * @param fileFormat Ex: "VCFv4.2"
      */
     public Builder setFileFormat(String fileFormat) {
+      // fileFormat is typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting
+      // FILE_FORMAT_PATTERN.matcher(fileFormat) below throw a raw NullPointerException
+      if (fileFormat == null) {
+        throw new VcfFormatException("VCF file format is null");
+      }
       m_fileFormat = fileFormat;
       if (!VcfUtils.FILE_FORMAT_PATTERN.matcher(fileFormat).matches()) {
         throw new VcfFormatException("Not a VCF file: fileformat is " + m_fileFormat);
@@ -554,6 +608,7 @@ public class VcfMetadata {
     }
 
     public Builder addAlt(IdDescriptionMetadata md) {
+      requireNonNull(md, "ALT");
       if (md.getId() == null || md.getId().trim().isEmpty()) {
         VcfWarnings.warn("ALT metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
@@ -567,6 +622,7 @@ public class VcfMetadata {
     }
 
     public Builder addInfo(InfoMetadata md) {
+      requireNonNull(md, "INFO");
       if (md.getId() == null || md.getId().trim().isEmpty()) {
         VcfWarnings.warn("INFO metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
@@ -579,6 +635,7 @@ public class VcfMetadata {
     }
 
     public Builder addFilter(IdDescriptionMetadata md) {
+      requireNonNull(md, "FILTER");
       if (md.getId() == null || md.getId().trim().isEmpty()) {
         VcfWarnings.warn("FILTER metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
@@ -591,6 +648,7 @@ public class VcfMetadata {
     }
 
     public Builder addFormat(FormatMetadata md) {
+      requireNonNull(md, "FORMAT");
       if (md.getId() == null || md.getId().trim().isEmpty()) {
         VcfWarnings.warn("FORMAT metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
@@ -603,6 +661,7 @@ public class VcfMetadata {
     }
 
     public Builder addContig(ContigMetadata md) {
+      requireNonNull(md, "CONTIG");
       if (md.getId() == null || md.getId().trim().isEmpty()) {
         VcfWarnings.warn("CONTIG metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
@@ -615,6 +674,7 @@ public class VcfMetadata {
     }
 
     public Builder addSample(IdDescriptionMetadata md) {
+      requireNonNull(md, "SAMPLE");
       if (md.getId() == null || md.getId().trim().isEmpty()) {
         VcfWarnings.warn("SAMPLE metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
@@ -639,6 +699,7 @@ public class VcfMetadata {
      * keyed types get for free from their backing {@code Map}.
      */
     public Builder addPedigree(PedigreeMetadata md) {
+      requireNonNull(md, "PEDIGREE");
       String id = md.getPropertiesRaw().get("ID");
       if (id != null &&
           m_pedigree.stream().anyMatch(existing -> id.equals(existing.getPropertiesRaw().get("ID")))) {
@@ -651,6 +712,15 @@ public class VcfMetadata {
     }
 
     public Builder addRawProperty(String name, String value) {
+      // name/value are typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting
+      // a null name reach VcfUtils.checkNoLineTerminator(name, value) below (name.contains(...) would NPE) or a
+      // null value reach isEmptyMetadataValue(value) further down (value.trim() would NPE)
+      if (name == null) {
+        throw new VcfFormatException("Metadata property name is null");
+      }
+      if (value == null) {
+        throw new VcfFormatException("Metadata property \"" + name + "\" has a null value");
+      }
       VcfUtils.checkNoLineTerminator(name, value);
       if (VcfUtils.isReservedMetadataKey(name)) {
         // this cannot currently be reached through normal parsing -- VcfParser.parseMetadata's switch routes
@@ -676,6 +746,11 @@ public class VcfMetadata {
     }
 
     public Builder setColumns(List<String> cols) {
+      // cols is typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting
+      // Preconditions.checkNotNull(columns) in the constructor throw a raw NullPointerException at build() time
+      if (cols == null) {
+        throw new VcfFormatException("Column list is null");
+      }
       m_columns = cols;
       return this;
     }

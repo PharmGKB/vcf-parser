@@ -84,6 +84,14 @@ public class BaseMetadataTest {
   }
 
   @Test
+  public void testPutPropertyRawRejectsNullKeyInsteadOfThrowingNpe() {
+    // key is typed non-@Nullable, but nothing enforces that at compile time; must reject a null with
+    // VcfFormatException, not let it reach a raw NullPointerException at VcfUtils.checkNoLineTerminator(key, value)
+    BaseMetadata metadata = new BaseMetadata("TEST", new HashMap<>());
+    assertThrows(VcfFormatException.class, () -> metadata.putPropertyRaw(null, "value"));
+  }
+
+  @Test
   public void testPutAndQuotePropertyRejectsLineTerminator() {
     BaseMetadata metadata = new BaseMetadata("TEST", new HashMap<>());
     assertThrows(VcfFormatException.class, () -> metadata.putAndQuoteProperty("key", "bad\nvalue"));
@@ -94,6 +102,12 @@ public class BaseMetadataTest {
   public void testPutAndQuotePropertyRejectsNull() {
     BaseMetadata metadata = new BaseMetadata("TEST", new HashMap<>());
     assertThrows(VcfFormatException.class, () -> metadata.putAndQuoteProperty("key", null));
+  }
+
+  @Test
+  public void testPutAndQuotePropertyRejectsNullKeyInsteadOfThrowingNpe() {
+    BaseMetadata metadata = new BaseMetadata("TEST", new HashMap<>());
+    assertThrows(VcfFormatException.class, () -> metadata.putAndQuoteProperty(null, "value"));
   }
 
   @Test

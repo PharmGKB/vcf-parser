@@ -46,6 +46,13 @@ public class InfoMetadataTest {
   }
 
   @Test
+  public void testTypedConstructorRejectsNullTypeInsteadOfThrowingNpe() {
+    // type is typed non-@Nullable, but nothing enforces that at compile time; must reject a null with
+    // VcfFormatException, not let it reach a raw NullPointerException at type.name()
+    assertThrows(VcfFormatException.class, () -> new InfoMetadata("AA", "d", null, "1", null, null));
+  }
+
+  @Test
   public void testFlagWithNonZeroNumberWarns() {
     // Type=Flag with Number != 0 is malformed; it should warn, not throw
     InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(

@@ -495,6 +495,36 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testConstructorRejectsNullChromosomeInsteadOfThrowingNpe() {
+    // chr is typed non-@Nullable, but nothing enforces that at compile time; checkChromosome() must reject a null
+    // with VcfFormatException, not let it reach a raw NullPointerException at chr.isEmpty()
+    assertThrows(VcfFormatException.class,
+        () -> new VcfPosition(null, 1, null, "C", null, null, null, null, null, -1));
+  }
+
+  @Test
+  public void testConstructorRejectsNullRefInsteadOfThrowingNpe() {
+    assertThrows(VcfFormatException.class,
+        () -> new VcfPosition("chr", 1, null, null, null, null, null, null, null, -1));
+  }
+
+  @Test
+  public void testValidateRejectsNullChromosomeInsteadOfThrowingNpe() {
+    // setChromosome() does not validate its input, by design (see validate()'s Javadoc); validate() must still
+    // reject a null via checkChromosome() with VcfFormatException, not a raw NullPointerException
+    VcfPosition position = newPosition();
+    position.setChromosome(null);
+    assertThrows(VcfFormatException.class, position::validate);
+  }
+
+  @Test
+  public void testValidateRejectsNullRefInsteadOfThrowingNpe() {
+    VcfPosition position = newPosition();
+    position.setRef(null);
+    assertThrows(VcfFormatException.class, position::validate);
+  }
+
+  @Test
   public void testValidateAttachesLineNumberToNonInfoCheckFailures() {
     // regression test: validate() previously annotated only its checkInfoEntries(...) call with line-number
     // metadata, leaving its other checks (checkChromosome, checkPosition, checkRef, checkIds, checkAltBases,
