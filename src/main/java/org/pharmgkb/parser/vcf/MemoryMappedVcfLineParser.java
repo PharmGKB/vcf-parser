@@ -1,7 +1,9 @@
 package org.pharmgkb.parser.vcf;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import com.google.common.base.Preconditions;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
@@ -58,10 +60,14 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
     m_dataStore.setMetadata(metadata);
 
     // check every ID for a FAIL-mode collision before mutating anything, so a rejected record is never partially
-    // committed -- neither its locus entry nor any of its (possibly several) IDs
+    // committed -- neither its locus entry nor any of its (possibly several) IDs. This must also catch a
+    // collision within this record's own ID list (e.g. "ID=rs1;rs1"): checking only against previously-committed
+    // records would miss it, since neither occurrence is in the data store yet -- the second loop below would then
+    // silently keep only the first occurrence (equivalent to KEEP_FIRST), contradicting FAIL's own contract.
     if (m_duplicateIdHandler == DuplicateHandler.FAIL) {
+      Set<String> idsSeenInThisRecord = new HashSet<>();
       for (String id : position.getIds()) {
-        if (m_dataStore.getIdToPosition().containsKey(id)) {
+        if (m_dataStore.getIdToPosition().containsKey(id) || !idsSeenInThisRecord.add(id)) {
           throw new VcfFormatException("Duplicate VCF record for ID " + id);
         }
       }

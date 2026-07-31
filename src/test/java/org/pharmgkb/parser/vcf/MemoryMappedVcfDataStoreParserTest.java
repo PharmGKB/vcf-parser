@@ -4,11 +4,14 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.StringReader;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
+import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
 
@@ -391,6 +394,25 @@ public class MemoryMappedVcfDataStoreParserTest {
       // the rejected record's own locus (chr1:2) must never have been populated either
       assertNull(dataStore.getPositionsAtLocus("chr1", 2));
     }
+  }
+
+  @Test
+  public void testDuplicateIdWithinSameRecordIsRejectedUnderFail() {
+    // a single record whose own ID list repeats an ID is a duplicate DuplicateHandler.FAIL must catch too -- the
+    // pre-check loop only compared against previously-committed records, so neither occurrence of a same-record
+    // duplicate was in the data store yet and the collision went undetected; the later linking loop then
+    // silently kept only the first occurrence (KEEP_FIRST-equivalent behavior) with no exception at all. Built
+    // by calling parseLine() directly (not through VcfParser/a raw VCF string): parsing "ID=rs1;rs1" through
+    // VcfParser would have VcfPosition's own constructor-time checkIds() reject the duplicate first, before
+    // this class's own gap could ever be exercised -- getIds() is a live list that bypasses that check.
+    MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build(); // FAIL is the default
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    lineParser.parseMetadata(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getIds().add("rs1");
+    position.getIds().add("rs1");
+
+    assertThrows(VcfFormatException.class, () -> lineParser.parseLine(metadata, position, Collections.emptyList()));
   }
 
   @Test
