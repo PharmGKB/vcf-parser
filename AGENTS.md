@@ -59,6 +59,36 @@ A record accepted by the parser must be writable without losing fields or produc
 - Reviewers should report a default-writer issue when an unmodified parser-produced record cannot be written and parsed again without field loss or structural corruption. They should report a full-output-diagnostics issue when `validateBeforeWrite()` permits structurally invalid output or fails to issue a warning for detected semantic non-compliance.
 
 
+### Public API Null-Safety Policy
+
+The Writer Validation policy above carves basic Java null-safety out of the default write path's "trusts
+already-valid input" exemption for one specific case (a live-mutable value reaching `VcfWriter`'s output).
+The same underlying rule applies across this library's whole public API surface, not just that one path: a
+public constructor, static factory, or method whose parameter is typed as a non-`@Nullable` reference (the
+default when no `@Nullable` annotation is present) must not raw-crash with `NullPointerException` when a
+caller passes `null` at runtime -- JSpecify annotations are documentation only in this codebase (no
+compile-time or runtime enforcement), so a caller can always pass `null` regardless of the declared type.
+
+- For a method that constructs or mutates state (a constructor, a `Builder` setter that stores
+  caller-supplied VCF content, an `addXxx`/`putXxx`/factory method), reject a `null` argument immediately
+  with `VcfFormatException`, before it can be stored or used. Never let a `null` silently produce an
+  internally-inconsistent object whose corruption only surfaces later, at an arbitrary unrelated call site
+  (e.g. `toString()`) -- that is a strictly worse failure mode than an immediate crash, since the exception
+  no longer points at the actual mistake.
+- For a lookup-by-key query or predicate method (e.g. `getXxx(key)`, `hasXxx(key)`, `containsXxx(key)`),
+  match whatever null-tolerant "not present" contract the equivalent `String`-keyed/plain-typed overload of
+  the same operation already has, rather than uniformly rejecting -- e.g.
+  `VcfSample.getProperty(ReservedFormatProperty)`/`VcfPosition.getInfo(ReservedInfoProperty)` each match
+  their own `String`-keyed sibling's existing behavior instead of introducing a new, inconsistent rule.
+  Only reject with `VcfFormatException` if the sibling itself already does (e.g. `putProperty`, which
+  mutates state).
+- This is a distinct question from a `Builder`'s own required-argument check on a caller-configuration
+  parameter (a `Path`, a `Reader`, a `VcfLineParser` -- never VCF content, always something the calling
+  code constructs and passes in before parsing/writing starts). `Preconditions.checkNotNull`'s raw
+  `NullPointerException` remains the correct, established convention there -- see `WONT_FIX.md`'s
+  `VcfParser.Builder` entries for the full reasoning and the exact boundary between the two cases.
+
+
 ## Repository Guidelines
 
 - Use the checked-in Gradle wrapper. The Node/Yarn files support semantic-release; they are not the application build.
