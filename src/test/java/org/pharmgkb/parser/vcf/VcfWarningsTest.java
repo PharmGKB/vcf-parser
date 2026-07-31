@@ -98,6 +98,45 @@ public class VcfWarningsTest {
   }
 
   @Test
+  public void testOpenFileStillClosesWriterWhenDeactivatorCloseFails(@TempDir Path tempDir) throws Exception {
+    // Deactivator.close()'s own Javadoc documents a failure mode reachable through direct openFile() use:
+    // closing from a different thread than the one that called openFile() throws NullPointerException (the
+    // calling thread's thread-local stack does not exist on a different thread). Before this fix, that
+    // failure skipped writer.close() entirely (deactivator.close() was the first of two un-wrapped
+    // statements), leaving the file's content unflushed and the underlying file handle unclosed.
+    Path file = tempDir.resolve("test.warn.log");
+    Closeable handle = VcfWarnings.openFile(file);
+    try {
+      VcfWarnings.warn("before close");
+
+      AtomicReference<Throwable> closeThrew = new AtomicReference<>();
+      Thread otherThread = new Thread(() -> {
+        try {
+          handle.close();
+        } catch (Throwable t) {
+          closeThrew.set(t);
+        }
+      });
+      otherThread.start();
+      otherThread.join();
+
+      assertNotNull(closeThrew.get(), "closing from a different thread was expected to throw");
+      assertEquals(NullPointerException.class, closeThrew.get().getClass());
+      // writer.close() must have run despite deactivator.close() throwing -- confirmed by the flushed,
+      // closed file actually containing the warning written before close() was called
+      assertEquals("before close\n", Files.readString(file));
+    } finally {
+      // the failed cross-thread close() attempt above never reached this (the calling) thread's own
+      // active-writers stack -- Deactivator.close() failed on the OTHER thread's own, unrelated, empty
+      // stack, popping nothing. So this thread's stack still has the (now already-closed) writer on top;
+      // it must be popped here, or every later VcfWarnings.warn() call on this thread -- including from
+      // later, unrelated tests, since JUnit can reuse the same thread across test methods -- would try to
+      // write to a permanently-closed Writer instead of falling back to SLF4J.
+      handle.close();
+    }
+  }
+
+  @Test
   public void testThreadLocalIsolationAcrossTwoThreads() throws Exception {
     Path threadAFile = Files.createTempFile("vcfwarnings-a", ".log");
     Path threadBFile = Files.createTempFile("vcfwarnings-b", ".log");

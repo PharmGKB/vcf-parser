@@ -85,8 +85,15 @@ public final class VcfWarnings {
     Writer writer = Files.newBufferedWriter(file);
     Deactivator deactivator = activate(writer);
     return () -> {
-      deactivator.close();
-      writer.close();
+      // wrapped in try/finally so a Deactivator.close() failure (see its own Javadoc: double-close, or
+      // closing from a different thread than the one that called openFile) can't skip closing (and thus
+      // flushing) writer -- this class's own openFile() Javadoc promises the file is closed when the
+      // returned handle is closed, not "closed unless deactivation happened to fail first"
+      try {
+        deactivator.close();
+      } finally {
+        writer.close();
+      }
     };
   }
 
