@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 /**
@@ -59,6 +60,18 @@ public class VcfFormatExceptionTest {
     RuntimeException cause = new RuntimeException("  real message  ");
     VcfFormatException ex = new VcfFormatException(5, "data", cause);
     assertEquals("[Line #5] Error parsing data: real message", ex.getMessage());
+  }
+
+  @Test
+  public void testLineNumberSectionConstructorRejectsNullEx() {
+    // regression test: this constructor's null/blank-message fallback (see the two tests above) anticipated
+    // "ex has no message" but not "ex itself is null" -- both before and after this fix, a null ex throws
+    // NullPointerException, so asserting the exception type alone would be vacuous. Before the fix, that NPE
+    // came from an uncontrolled ex.getMessage() deep in the constructor body, with a generic JVM-generated
+    // message; the fix instead rejects ex immediately via Preconditions.checkNotNull, with a specific message
+    // -- asserting on that message is what actually distinguishes the two.
+    NullPointerException ex = assertThrows(NullPointerException.class, () -> new VcfFormatException(5, "data", null));
+    assertTrue(ex.getMessage().contains("ex must not be null"));
   }
 
   @Test

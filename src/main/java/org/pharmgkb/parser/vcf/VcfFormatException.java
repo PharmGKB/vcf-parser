@@ -31,7 +31,13 @@ public class VcfFormatException extends RuntimeException {
   }
 
   public VcfFormatException(int lineNumber, String section, Throwable ex) {
-    super(ex);
+    // ex must be checked before use below (ex.getMessage()), but super(...) must be this constructor's first
+    // statement -- so the check is embedded in super()'s own argument expression, the same pattern this
+    // codebase already uses when a null guard can't precede a mandatory first call (e.g.
+    // MemoryMappedVcfDataStore.Genotype's this(...)-delegating constructor). Matches this class's own
+    // established convention of a raw NullPointerException (via Preconditions.checkNotNull) for a required
+    // constructor argument, the same treatment the other constructors already give a null/blank msg.
+    super(Preconditions.checkNotNull(ex, "ex must not be null"));
     m_lineNumber = lineNumber;
     m_section = section;
     String derived = StringUtils.stripToNull(ex.getMessage());
