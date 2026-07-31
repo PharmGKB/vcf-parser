@@ -20,6 +20,16 @@ import static org.junit.jupiter.api.Assertions.*;
 public class MemoryMappedVcfDataStoreParserTest {
 
   @Test
+  public void testSetDuplicateIdHandlerRejectsNullInsteadOfSilentlyAccepting() {
+    // regression test: handler is a caller-configuration object, never VCF content -- a raw
+    // NullPointerException is this codebase's established convention for this category. Before this fix, a
+    // null handler silently fell through every == comparison against DuplicateHandler.FAIL/KEEP_LAST in
+    // MemoryMappedVcfLineParser.parseLine(), substituting the remaining behavior with no warning that the
+    // caller's intended handler was never applied.
+    assertThrows(NullPointerException.class, () -> new MemoryMappedVcfLineParser.Builder().setDuplicateIdHandler(null));
+  }
+
+  @Test
   public void test() throws IOException {
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream(
         "/vcfposition.vcf")))) {

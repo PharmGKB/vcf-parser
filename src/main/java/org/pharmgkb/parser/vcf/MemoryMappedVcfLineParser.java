@@ -2,6 +2,7 @@ package org.pharmgkb.parser.vcf;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.google.common.base.Preconditions;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
@@ -90,6 +91,13 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
      * correspond to the same locus.
      */
     public Builder setDuplicateIdHandler(DuplicateHandler handler) {
+      // handler is a caller-configuration object, never VCF content, so Preconditions.checkNotNull's raw
+      // NullPointerException is this codebase's established convention here (see AGENTS.md's Public API
+      // Null-Safety Policy and WONT_FIX.md's VcfParser.Builder entries). Without this, a null handler would
+      // silently fall through every == comparison against DuplicateHandler.FAIL/KEEP_LAST in parseLine()
+      // above (lines 61, 77), substituting the remaining behavior with no warning that the caller's intended
+      // handler was never applied, rather than failing fast at the actual mistake.
+      Preconditions.checkNotNull(handler);
       m_duplicateIdHandler = handler;
       return this;
     }

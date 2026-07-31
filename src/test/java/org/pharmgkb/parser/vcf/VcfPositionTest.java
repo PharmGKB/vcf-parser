@@ -49,6 +49,49 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testQualityWarnsOnGrammarMismatchButStillParses() {
+    // regression test: BigDecimal accepts "5." (a trailing decimal point with no digits after it), but
+    // VCFv4.3.tex line 100's Float grammar (QUAL is VCF-spec-typed Float) requires at least one digit after
+    // the decimal point -- VcfFloat.parse() already warns rather than silently accepting this; getQuality()
+    // used to accept it with no diagnostic at all
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      VcfPosition value = newPosition();
+      value.setRawQuality("5.");
+      assertEquals(new BigDecimal("5"), value.getQuality());
+      assertTrue(appender.hasWarnOrHigher());
+      assertTrue(appender.anyMessageContains("does not match the VCF Float grammar"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testQualityDoesNotWarnOnNormalValue() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      VcfPosition value = newPosition();
+      value.setRawQuality("29.5");
+      value.getQuality();
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testLazyInfo() {
     VcfPosition p = newPosition();
     p.setRawInfo("DP=35;AF=0.5,0.25;FLAG");

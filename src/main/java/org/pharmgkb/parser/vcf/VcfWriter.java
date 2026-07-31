@@ -20,6 +20,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.google.common.base.Preconditions;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.model.BaseMetadata;
 import org.pharmgkb.parser.vcf.model.FormatMetadata;
@@ -984,6 +985,12 @@ public class VcfWriter implements Closeable {
      * Files are written as UTF-8, matching {@link org.pharmgkb.parser.vcf.VcfParser.Builder#fromFile}.
      */
     public Builder toFile(Path file) {
+      // file is a caller-configuration object (like VcfParser.Builder's Path/Reader/VcfLineParser arguments),
+      // never VCF content, so Preconditions.checkNotNull's raw NullPointerException is this codebase's
+      // established convention here (see AGENTS.md's Public API Null-Safety Policy and WONT_FIX.md's
+      // VcfParser.Builder entries) -- without this, build() would only detect the omission indirectly, via
+      // "Must specify either file or writer", which doesn't indicate the caller actually passed null here
+      Preconditions.checkNotNull(file);
       if (m_writer != null) {
         throw new IllegalStateException("Already writing to a writer");
       }
@@ -992,6 +999,8 @@ public class VcfWriter implements Closeable {
     }
 
     public Builder toWriter(PrintWriter writer) {
+      // same caller-configuration-object reasoning as toFile(Path) above
+      Preconditions.checkNotNull(writer);
       if (m_file != null) {
         throw new IllegalStateException("Already writing to a file");
       }
@@ -1051,6 +1060,12 @@ public class VcfWriter implements Closeable {
      * getter never re-triggers it -- the warnings file silently ends up missing it.
      */
     public Builder warningsToFile(Path customFile) {
+      // customFile is a caller-configuration object, matching the established convention (see toFile(Path)
+      // above and VcfParser.Builder.warningsToFile(Path), which already has this same check). Without this, a
+      // null customFile would silently set m_warningsFile back to null -- identical to calling the zero-arg
+      // warningsToFile() -- so build() would silently fall back to the default derived filename instead of
+      // failing, rather than raising a clear error at the actual mistake.
+      Preconditions.checkNotNull(customFile);
       m_warningsToFile = true;
       m_warningsFile = customFile;
       return this;

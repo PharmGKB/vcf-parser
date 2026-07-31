@@ -176,6 +176,30 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testToFileRejectsNullPathInsteadOfSilentlyAccepting() {
+    // regression test: file is a caller-configuration object (like VcfParser.Builder's Path/Reader
+    // arguments), never VCF content -- a raw NullPointerException is this codebase's established convention
+    // for this category, not a fail-fast check further down at build() with a message that doesn't identify
+    // which setter the caller actually called with null
+    assertThrows(NullPointerException.class, () -> new VcfWriter.Builder().toFile(null));
+  }
+
+  @Test
+  public void testToWriterRejectsNullWriterInsteadOfSilentlyAccepting() {
+    assertThrows(NullPointerException.class, () -> new VcfWriter.Builder().toWriter(null));
+  }
+
+  @Test
+  public void testWarningsToFileRejectsNullPathInsteadOfSilentlyAccepting() {
+    // regression test: customFile is a caller-configuration object, matching the already-fixed sibling
+    // VcfParser.Builder.warningsToFile(Path). Before this fix, a null customFile silently set the same state
+    // as calling the zero-arg warningsToFile() (both set m_warningsFile = null), so build() would silently
+    // fall back to the default derived filename instead of failing at the actual mistake.
+    assertThrows(NullPointerException.class,
+        () -> new VcfWriter.Builder().toWriter(new PrintWriter(new StringWriter())).warningsToFile(null));
+  }
+
+  @Test
   public void testWriteLineRejectsNullMetadataViaExistingIdentityCheck() throws Exception {
     // a null metadata is already rejected cleanly by the pre-existing metadata != m_headerMetadata identity
     // check, once a header has been written with non-null metadata (now guaranteed by writeHeader()'s own new

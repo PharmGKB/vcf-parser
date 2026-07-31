@@ -352,4 +352,33 @@ public class InfoMetadataTest {
     assertNull(md.getNumber());
     assertNull(md.getReservedNumber());
   }
+
+  @Test
+  public void testGetSourceAndVersionUnquote() {
+    // regression-shaped test: getSource()/getVersion() had zero test coverage despite using
+    // getPropertyUnquoted (the same operation whose sibling, ContigMetadata.getLength(), previously had a
+    // real quoted-value bug closed in docs/issues/findings21.md Batch 21.3) -- verify the quote-stripping
+    // actually round-trips, not just that construction doesn't throw
+    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
+        "ID=X", "Number=1", "Type=String", "Description=\"d\"", "Source=\"dbSNP\"", "Version=\"138\""));
+    assertEquals("dbSNP", md.getSource());
+    assertEquals("138", md.getVersion());
+  }
+
+  @Test
+  public void testTypedConstructorSourceAndVersionRoundTrip() {
+    // the typed constructor auto-quotes Source/Version via putAndQuoteProperty(); getSource()/getVersion()
+    // must unquote them back to the original values, not just avoid throwing
+    InfoMetadata md = new InfoMetadata("X", "d", InfoType.String, "1", "dbSNP", "138");
+    assertEquals("dbSNP", md.getSource());
+    assertEquals("138", md.getVersion());
+  }
+
+  @Test
+  public void testGetSourceAndVersionReturnNullWhenAbsent() {
+    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
+        "ID=X", "Number=1", "Type=String", "Description=\"d\""));
+    assertNull(md.getSource());
+    assertNull(md.getVersion());
+  }
 }

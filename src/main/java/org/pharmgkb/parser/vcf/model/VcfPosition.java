@@ -483,7 +483,12 @@ public class VcfPosition {
       m_rawQuality = null;
       if (!raw.isEmpty() && !raw.equals(".")) {
         try {
-          m_quality = new BigDecimal(raw);
+          // QUAL is VCF-spec-typed Float; VcfFloat.parseDecimal shares the same grammar check (and warning)
+          // VcfFloat.parse() uses, so this class doesn't need its own copy of FLOAT_PATTERN -- only the
+          // unparseable-input handling differs (warn-and-fall-back-to-missing here, vs. VcfFormatException
+          // in VcfFloat.parse()), which is exactly why that's a bare NumberFormatException below, not thrown
+          // from inside parseDecimal itself
+          m_quality = VcfFloat.parseDecimal("QUAL", raw);
         } catch (NumberFormatException e) {
           // a non-numeric QUAL is a value-quality issue, not a structural one (the column itself is well-formed);
           // warn and recover as the missing value, consistent with how other non-structural content issues are

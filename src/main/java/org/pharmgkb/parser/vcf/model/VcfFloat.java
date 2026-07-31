@@ -29,8 +29,8 @@ public final class VcfFloat {
   private static final Pattern SPECIAL_PATTERN = Pattern.compile("[-+]?(?:INF|INFINITY|NAN)", Pattern.CASE_INSENSITIVE);
   // VCFv4.3.tex line 100's non-special-case Float grammar (see this class's own Javadoc for why VCFv4.3, not
   // VCFv4.5, is cited). BigDecimal's own string grammar is looser than this -- e.g. it accepts "5." (a trailing
-  // decimal point with no digits after it), which this pattern rejects -- so parse() below warns rather than
-  // rejecting when BigDecimal accepts a value this pattern doesn't match, per this project's permissive
+  // decimal point with no digits after it), which this pattern rejects -- so parseDecimal() below warns rather
+  // than rejecting when BigDecimal accepts a value this pattern doesn't match, per this project's permissive
   // warn-and-preserve parser policy.
   private static final Pattern FLOAT_PATTERN = Pattern.compile("[-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?");
 
@@ -83,15 +83,33 @@ public final class VcfFloat {
       return ofSpecial(value.startsWith("-") ? Special.NEGATIVE_INFINITY : Special.POSITIVE_INFINITY);
     }
     try {
-      BigDecimal decimal = new BigDecimal(value);
-      if (!FLOAT_PATTERN.matcher(value).matches()) {
-        VcfWarnings.warn("Float value '{}' does not match the VCF Float grammar (VCFv4.3.tex line 100); " +
-            "accepting it anyway", value);
-      }
-      return of(decimal);
+      return of(parseDecimal("Float", value));
     } catch (NumberFormatException e) {
       throw new VcfFormatException("Expected float; got " + value);
     }
+  }
+
+  /**
+   * Parses {@code value} as a plain (non-special) decimal number, warning -- via {@code fieldName} in the
+   * message, matching {@link org.pharmgkb.parser.vcf.InternalUtils#dropEmptyEntries}'s established
+   * shared-warning-with-a-field-name-parameter convention -- rather than rejecting if {@code value} doesn't
+   * match VCFv4.3.tex line 100's Float grammar but {@link BigDecimal} accepts it anyway (see {@link
+   * #FLOAT_PATTERN}'s own comment for why, e.g. {@code "5."}). Package-private: shared by this class's own
+   * {@link #parse} and {@link VcfPosition#getQuality()}, which need the
+   * identical grammar check but different unparseable-input handling ({@link #parse} throws {@link
+   * VcfFormatException}; {@code getQuality()} warns and falls back to the missing value) -- left as a bare
+   * {@link NumberFormatException} here so each caller applies its own policy instead of this method picking
+   * one for both.
+   *
+   * @throws NumberFormatException if {@code value} is not a valid decimal number at all
+   */
+  static BigDecimal parseDecimal(String fieldName, String value) {
+    BigDecimal decimal = new BigDecimal(value);
+    if (!FLOAT_PATTERN.matcher(value).matches()) {
+      VcfWarnings.warn("{} value '{}' does not match the VCF Float grammar (VCFv4.3.tex line 100); " +
+          "accepting it anyway", fieldName, value);
+    }
+    return decimal;
   }
 
   public boolean isSpecial() {
