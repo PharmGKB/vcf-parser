@@ -165,6 +165,37 @@ public class TransformingVcfLineParserTest {
   }
 
   @Test
+  public void testTransformationWithNullTransformationRejectsFastInsteadOfDefeatingAlreadySetGuard() {
+    // regression test: this 2-arg overload previously had no null check on transformation, so a null-
+    // transformation call left m_transformation indistinguishable from "never called," silently defeating
+    // checkNotAlreadySet()'s guard for every later call -- including the Path/PrintWriter overloads, which
+    // open a real VcfWriter/file handle before delegating here, leaking it on a silent overwrite
+    TransformingVcfLineParser.Builder builder = new TransformingVcfLineParser.Builder();
+    assertThrows(NullPointerException.class,
+        () -> builder.transformation((VcfTransformation) null, new PrintWriter(new StringWriter())));
+  }
+
+  @Test
+  public void testTransformationWithPathOverload(@org.junit.jupiter.api.io.TempDir Path tempDir) throws Exception {
+    // the Path overload had zero test coverage anywhere in the repo before this batch, despite being the
+    // overload most exposed to the file-handle-leak consequence the null-transformation guard exists to
+    // prevent
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    Path outputFile = tempDir.resolve("out.vcf");
+    TransformingVcfLineParser lineParser = new TransformingVcfLineParser.Builder()
+        .transformation(new VcfTransformation() {}, outputFile).build();
+    try (VcfParser parser = new VcfParser.Builder()
+        .parseWith(lineParser)
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .build()) {
+      parser.parse();
+    }
+    lineParser.close();
+    assertEquals(vcf, java.nio.file.Files.readString(outputFile));
+  }
+
+  @Test
   public void testTransformMetadataFailureDoesNotInvalidateAndIsRetried() throws Exception {
     // a transformation-logic failure (not a write failure) must not permanently invalidate the parser -- nothing
     // was written yet, so a later call retries the whole header attempt from scratch

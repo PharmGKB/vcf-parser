@@ -156,6 +156,13 @@ public class TransformingVcfLineParser implements VcfLineParser, Closeable {
       // m_writer, and the failure would only surface later as a bare NullPointerException inside
       // writeHeader()/close() instead of a fail-fast diagnostic here.
       Preconditions.checkNotNull(writer);
+      // transformation is the same category of caller-configuration object as writer above, and needs the
+      // identical guard for a distinct reason: checkNotAlreadySet() (below) tests m_transformation != null to
+      // detect a second call to this method, so a null transformation here would leave m_transformation
+      // indistinguishable from "never called" -- silently defeating that guard for every subsequent call,
+      // including the Path/PrintWriter overloads, which open a real VcfWriter/file handle before delegating
+      // here (exactly the leaked-file-handle scenario checkNotAlreadySet()'s own comment warns against).
+      Preconditions.checkNotNull(transformation);
       m_transformation = transformation;
       m_writer = writer;
       return this;
