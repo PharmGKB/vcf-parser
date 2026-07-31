@@ -269,11 +269,11 @@ public class VcfWriter implements Closeable {
 
       sb.append(position.getChromosome()).append("\t");
       sb.append(position.getPosition()).append("\t");
-      addListOrElse(position.getIds(), ";", ".", sb);
+      addListOrElse("ID", position.getIds(), ";", ".", sb);
       sb.append(position.getRef()).append("\t");
-      addListOrElse(position.getAltBases(), ",", ".", sb);
+      addListOrElse("ALT", position.getAltBases(), ",", ".", sb);
       addStringOrElse(position.getQuality(), ".", sb);
-      addListOrElse(position.getFilters(), ";", ".", sb);
+      addListOrElse("FILTER", position.getFilters(), ";", ".", sb);
       addInfoOrDot(metadata, position, sb);
 
       // "PASS" is VCF's reserved "all filters passed" keyword (VCFv4.2.tex line 185: "PASS if this position has
@@ -343,7 +343,15 @@ public class VcfWriter implements Closeable {
       return;
     }
     while (formats.hasNext()) {
-      sb.append(formats.next());
+      // position.getFormat() is a live view a caller can insert a null entry into directly, bypassing
+      // VcfPosition.validate()'s own checkFormat() null guard, which only runs under validateBeforeWrite(). On the
+      // default path, StringBuilder.append(Object) would otherwise silently stringify a null key into the literal
+      // text "null" instead of a clean rejection.
+      String key = formats.next();
+      if (key == null) {
+        throw new VcfFormatException("FORMAT contains a null sub-field name");
+      }
+      sb.append(key);
       if (formats.hasNext()) {
         sb.append(":");
       }
@@ -798,9 +806,23 @@ public class VcfWriter implements Closeable {
 
     while (keys.hasNext()) {
       String key = keys.next();
+      // position.getInfo() is a live LinkedListMultimap view that permits null keys/values (see
+      // VcfPosition.checkInfoEntries's identical comment), bypassing VcfPosition.validate()'s own null guard, which
+      // only runs under validateBeforeWrite(). Left unguarded, a null value would reach values.get(0).isEmpty()
+      // below as a raw NullPointerException, and a non-crashing null would otherwise silently stringify via
+      // StringBuilder.append(Object) into the literal text "null" -- neither is the clean VcfFormatException
+      // rejection this project's null-safety policy requires on the default path.
+      if (key == null) {
+        throw new VcfFormatException("INFO column contains a null key");
+      }
 
       List<String> values = position.getInfo(key);
       assert values != null;
+      for (String value : values) {
+        if (value == null) {
+          throw new VcfFormatException("INFO value for key \"" + key + "\" is null");
+        }
+      }
 
       if (!m_validateBeforeWrite && !metadata.getInfo().containsKey(key)) {
         VcfWarnings.warn("Position {}:{} contains INFO {}, but there is no INFO metadata with that name (on line {})",
@@ -847,17 +869,28 @@ public class VcfWriter implements Closeable {
     sb.append("\t");
   }
 
-  private void addListOrElse(List<String> list, String delimiter, String missingValue,
+  private void addListOrElse(String fieldName, List<String> list, String delimiter, String missingValue,
       StringBuilder sb) {
+    // list (position.getIds()/getAltBases()/getFilters()) is a live view a caller can insert a null entry into
+    // directly, bypassing VcfPosition.validate()'s own null guards (checkIds/checkAltBases/checkFilters), which
+    // only run under validateBeforeWrite(). On the default path, StringBuilder.append(Object) would otherwise
+    // silently stringify a null entry into the literal text "null" instead of a clean rejection.
     if (list.isEmpty()) {
       sb.append(missingValue);
     } else {
-      sb.append(list.get(0));
+      sb.append(requireNonNullEntry(fieldName, list.get(0)));
       for (int i = 1; i < list.size(); i++) {
-        sb.append(delimiter).append(list.get(i));
+        sb.append(delimiter).append(requireNonNullEntry(fieldName, list.get(i)));
       }
     }
     sb.append("\t");
+  }
+
+  private static String requireNonNullEntry(String fieldName, @Nullable String entry) {
+    if (entry == null) {
+      throw new VcfFormatException(fieldName + " contains a null entry");
+    }
+    return entry;
   }
 
   private void addPropertyLines(List<String> lines, String name, Collection<String> list) {
@@ -886,13 +919,28 @@ public class VcfWriter implements Closeable {
   private String getAllProperties(String name, BaseMetadata metadata) {
     StringBuilder sb = new StringBuilder("##");
     sb.append(name).append("=<");
+    // metadata.getPropertiesRaw() is a live view (see its Javadoc), so a caller can insert a null key/value after
+    // this entry's own validate() already ran. Unlike addPropertyLines() below, there's no validateBeforeWrite()
+    // gap to close here -- validateMetadata() already rejects a null key/value for every kind this method
+    // processes, via validateMetadataProperties(), and that check runs before buildHeaderLines() in writeHeader().
+    // This guard covers only the default (non-validateBeforeWrite()) path, where entry.getKey()/entry.getValue()
+    // being null would otherwise silently stringify via StringBuilder.append(Object) into the literal text "null"
+    // (e.g. "##INFO=<ID=X,Description=null>"), fabricating content that was never actually in the property.
     Map<String, String> props = metadata.getPropertiesRaw();
     int i = 0;
     for (Map.Entry<String, String> entry : props.entrySet()) {
       if (i > 0) {
         sb.append(",");
       }
-      sb.append(entry.getKey()).append("=").append(entry.getValue());
+      String key = entry.getKey();
+      String value = entry.getValue();
+      if (key == null) {
+        throw new VcfFormatException(name + " metadata has a null property name");
+      }
+      if (value == null) {
+        throw new VcfFormatException(name + " metadata property \"" + key + "\" has a null value");
+      }
+      sb.append(key).append("=").append(value);
       i++;
     }
     sb.append(">");

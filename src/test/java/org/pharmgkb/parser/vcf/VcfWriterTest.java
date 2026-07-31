@@ -73,6 +73,79 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testDefaultWriteRejectsNullIdInsteadOfWritingLiteralNullText() throws Exception {
+    // getIds() is a live view; VcfPosition.validate()'s checkIds() null guard only runs under
+    // validateBeforeWrite(), so addListOrElse() must guard the default path itself, since
+    // StringBuilder.append(Object) would otherwise silently stringify a null entry into the literal text "null"
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getIds().add(null);
+
+    assertThrows(VcfFormatException.class, () -> writer.writeLine(metadata, position, Collections.emptyList()));
+  }
+
+  @Test
+  public void testDefaultWriteRejectsNullFilterInsteadOfWritingLiteralNullText() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getFilters().add(null);
+
+    assertThrows(VcfFormatException.class, () -> writer.writeLine(metadata, position, Collections.emptyList()));
+  }
+
+  @Test
+  public void testDefaultWriteRejectsNullFormatKeyInsteadOfWritingLiteralNullText() throws Exception {
+    // getFormat() is a live view; VcfPosition.validate()'s checkFormat() null guard only runs under
+    // validateBeforeWrite(), so addFormatConditionally() must guard the default path itself
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getAltBases().add("T");
+    position.getFormat().add(null);
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+
+    assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
+  }
+
+  @Test
+  public void testDefaultWriteRejectsNullInfoKeyInsteadOfWritingLiteralNullText() throws Exception {
+    // getInfo() is a live LinkedListMultimap view that permits null keys/values; VcfPosition.validate()'s
+    // checkInfoEntries() null guard only runs under validateBeforeWrite(), so addInfoOrDot() must guard the
+    // default path itself
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getInfo().put(null, "1");
+
+    assertThrows(VcfFormatException.class, () -> writer.writeLine(metadata, position, Collections.emptyList()));
+  }
+
+  @Test
+  public void testDefaultWriteRejectsNullInfoValueInsteadOfWritingLiteralNullText() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getInfo().put("NS", null);
+
+    assertThrows(VcfFormatException.class, () -> writer.writeLine(metadata, position, Collections.emptyList()));
+  }
+
+  @Test
   public void testWriteLineDoesNotWarnAboutPassFilter() throws Exception {
     // PASS is VCF's reserved "all filters passed" keyword (VCFv4.2.tex line 185) and is never expected to have its
     // own ##FILTER=<ID=PASS,...> declaration. FILTER combining PASS with another code now warns instead of
@@ -276,6 +349,46 @@ public class VcfWriterTest {
   public void testDefaultWriteRejectsNullRawPropertyValueInsteadOfWritingLiteralNullText() throws Exception {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     metadata.getRawProperties().put("foo", null);
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+  }
+
+  @Test
+  public void testValidateBeforeWriteRejectsNullInfoPropertyValueViaLiveView() throws Exception {
+    // getPropertiesRaw() is a live view, so a caller can insert a null value after construction, bypassing the
+    // constructor's own validateProperties() check. Unlike the raw-property case, validateMetadata() already
+    // rejects this today via validateMetadataProperties() (called from validateKeyedMetadataEntries()) -- this
+    // test locks in that pre-existing protection rather than exercising a new fix.
+    InfoMetadata info = new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
+    metadata.getInfo().get("NS").getPropertiesRaw().put("Description", null);
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+  }
+
+  @Test
+  public void testDefaultWriteRejectsNullInfoPropertyKeyInsteadOfWritingLiteralNullText() throws Exception {
+    // without validateBeforeWrite(), buildHeaderLines() never calls validateMetadata(); getAllProperties() must
+    // guard this itself, since entry.getKey()/entry.getValue() being null would otherwise silently stringify via
+    // StringBuilder.append(Object) into the literal text "null", fabricating content never actually in the property
+    InfoMetadata info = new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
+    metadata.getInfo().get("NS").getPropertiesRaw().put(null, "value");
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+  }
+
+  @Test
+  public void testDefaultWriteRejectsNullInfoPropertyValueInsteadOfWritingLiteralNullText() throws Exception {
+    InfoMetadata info = new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
+    metadata.getInfo().get("NS").getPropertiesRaw().put("Description", null);
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
 
