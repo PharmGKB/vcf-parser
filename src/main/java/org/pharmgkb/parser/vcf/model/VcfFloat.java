@@ -42,10 +42,19 @@ public final class VcfFloat {
   }
 
   public static VcfFloat of(BigDecimal value) {
+    // value is typed non-@Nullable, but nothing enforces that at runtime; without this, of(null) would
+    // silently build an instance with both m_value and m_special null -- a state isSpecial()/getValue() can't
+    // represent -- and the raw NullPointerException would only surface later, in toString()
+    if (value == null) {
+      throw new VcfFormatException("Cannot create a VcfFloat from a null value");
+    }
     return new VcfFloat(value, null);
   }
 
   public static VcfFloat ofSpecial(Special special) {
+    if (special == null) {
+      throw new VcfFormatException("Cannot create a VcfFloat from a null special value");
+    }
     return new VcfFloat(null, special);
   }
 

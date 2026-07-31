@@ -62,6 +62,19 @@ public class VcfFloatTest {
   }
 
   @Test
+  public void testOfRejectsNullInsteadOfSilentlyBuildingInvalidInstance() {
+    // unlike parse(), of(null) previously succeeded silently, building an instance with both m_value and
+    // m_special null -- a state isSpecial()/getValue() can't represent -- and only raw-NPE'd later, in
+    // toString()
+    assertThrows(VcfFormatException.class, () -> VcfFloat.of(null));
+  }
+
+  @Test
+  public void testOfSpecialRejectsNullInsteadOfSilentlyBuildingInvalidInstance() {
+    assertThrows(VcfFormatException.class, () -> VcfFloat.ofSpecial(null));
+  }
+
+  @Test
   public void testEqualsAndHashCode() {
     assertEquals(VcfFloat.of(new BigDecimal("1.5")), VcfFloat.of(new BigDecimal("1.5")));
     assertEquals(VcfFloat.of(new BigDecimal("1.5")).hashCode(), VcfFloat.of(new BigDecimal("1.5")).hashCode());

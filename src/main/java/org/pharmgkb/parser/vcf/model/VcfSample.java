@@ -63,6 +63,13 @@ public class VcfSample {
    * it. Callers must not mutate the map after construction.
    */
   public VcfSample(LinkedHashMap<String, String> properties) {
+    // properties is typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting
+    // m_properties.entrySet() below throw a raw NullPointerException. The sibling VcfSample(List, List)
+    // constructor already rejects null keys/values cleanly; this constructor's own properties parameter was
+    // simply missed.
+    if (properties == null) {
+      throw new VcfFormatException("Sample properties map is null");
+    }
     m_properties = properties;
     for (Map.Entry<String, String> entry : m_properties.entrySet()) {
       checkNoStructuralDelimiter(entry.getKey(), entry.getValue());

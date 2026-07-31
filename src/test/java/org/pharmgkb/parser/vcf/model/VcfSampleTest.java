@@ -78,6 +78,13 @@ class VcfSampleTest {
   }
 
   @Test
+  void testMapConstructorRejectsNullPropertiesInsteadOfThrowingNpe() {
+    // properties is typed non-@Nullable, but nothing enforces that at compile time; must reject a null with
+    // VcfFormatException, not let it reach a raw NullPointerException at m_properties.entrySet()
+    assertThrows(VcfFormatException.class, () -> new VcfSample((LinkedHashMap<String, String>) null));
+  }
+
+  @Test
   void testReservedFormatPropertyOverloadsHandleNullKeyLikeTheirStringSiblings() {
     // getProperty/containsProperty/removeProperty(ReservedFormatProperty) must not raw-NPE at key.getId() for a
     // null key -- each matches its own String-keyed sibling's already-null-tolerant "not present"/no-op contract.
