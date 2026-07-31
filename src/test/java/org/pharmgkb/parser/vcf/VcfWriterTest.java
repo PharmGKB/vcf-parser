@@ -825,6 +825,20 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteRejectsLineTerminatorInMetadataProperty() throws Exception {
+    // validateKeyedMetadataEntries() calls entry.validate() (which already runs checkNoLineTerminator on every
+    // property) immediately before its own validateMetadataProperties() call -- pins that this
+    // validateBeforeWrite()-mode path still rejects a line terminator via entry.validate() alone, now that
+    // validateMetadataProperties() no longer redundantly re-checks the same property for the same thing
+    InfoMetadata info = new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null);
+    info.getPropertiesRaw().put("Description", "bad\rvalue");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+  }
+
+  @Test
   public void testWriteHeaderIsAtomicWhenALaterLineContainsALineTerminator() throws Exception {
     // regression test: the pre-fix code checked each header line for a terminator inside the same loop that
     // printed it, so lines before the bad one (including ##fileformat, always line 1) were already written to the

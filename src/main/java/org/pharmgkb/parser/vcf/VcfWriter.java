@@ -448,6 +448,9 @@ public class VcfWriter implements Closeable {
     }
   }
 
+  // both call sites pass the same live map an entry.validate()/pedigree.validate() call already ran against,
+  // immediately before this method runs -- BaseMetadata.validate() already calls checkNoLineTerminator(key,
+  // value) for every property in that same map, so redoing it here would just repeat that work per property
   private void validateMetadataProperties(String kind, Map<String, String> properties) {
     for (Map.Entry<String, String> property : properties.entrySet()) {
       String propertyName = property.getKey();
@@ -459,7 +462,6 @@ public class VcfWriter implements Closeable {
       if (value == null) {
         throw new VcfFormatException(kind + " metadata property " + propertyName + " has a null value");
       }
-      VcfUtils.checkNoLineTerminator(propertyName, value);
       if (!isQuoted(value) && (value.contains(",") || value.contains("=") || containsUnescapedQuote(value))) {
         throw new VcfFormatException(kind + " metadata property " + propertyName +
             " contains an unquoted structural delimiter");
