@@ -5,8 +5,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
+import org.pharmgkb.parser.vcf.InternalUtils;
 import org.pharmgkb.parser.vcf.VcfFormatException;
-import org.pharmgkb.parser.vcf.VcfUtils;
 
 
 /**
@@ -47,7 +47,7 @@ public class AltStructuralVariant {
     if (string.isEmpty()) { // could be replaced with javax.validation.constraints.Size(min=1);
       throw new VcfFormatException("Structural variant code must not be empty");
     }
-    if (VcfUtils.containsWhitespace(string) || string.chars().anyMatch(c -> c == '<' || c == '>')) {
+    if (InternalUtils.containsWhitespace(string) || string.chars().anyMatch(c -> c == '<' || c == '>')) {
       // VCFv4.2.tex line 105: "ID values are case sensitive strings and may not contain whitespace or angle
       // brackets."
       throw new VcfFormatException("Structural variant code \"" + string + "\" must not contain whitespace or " +

@@ -6,8 +6,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
+import org.pharmgkb.parser.vcf.InternalUtils;
 import org.pharmgkb.parser.vcf.VcfFormatException;
-import org.pharmgkb.parser.vcf.VcfUtils;
 import org.pharmgkb.parser.vcf.VcfWarnings;
 
 
@@ -97,7 +97,7 @@ public class VcfSample {
     if (key == null) {
       throw new VcfFormatException("Sample property key is null");
     }
-    VcfUtils.checkNoLineTerminator(key, value);
+    InternalUtils.checkNoLineTerminator(key, value);
     if (key.contains(":") || key.contains("\t")) {
       throw new VcfFormatException("Sample property key \"" + key + "\" contains ':' or a tab");
     }
@@ -178,17 +178,18 @@ public class VcfSample {
   public @Nullable <T> T getProperty(ReservedFormatProperty key) {
     // matches getProperty(String)'s own null-tolerant "not present" contract (see containsProperty's Javadoc
     // comment below for the precedent this follows) -- returning null here also avoids ever reaching
-    // VcfUtils.convertProperty(null, ...), which now rejects a null key outright
+    // InternalUtils.convertProperty(null, ...); this method guards against a null key itself rather than
+    // relying on convertProperty to reject it
     if (key == null) {
       return null;
     }
-    return VcfUtils.convertProperty(key, getProperty(key.getId()));
+    return InternalUtils.convertProperty(key, getProperty(key.getId()));
   }
 
   public boolean containsProperty(@Nullable String key) {
     // Property keys can never actually be null in this class (checkNoStructuralDelimiter rejects a null
     // key in every constructor/mutation path), so a null argument is trivially "not present" -- the same
-    // null-tolerant-predicate shape as VcfUtils.isReservedMetadataKey and
+    // null-tolerant-predicate shape as InternalUtils.isReservedMetadataKey and
     // VcfMetadata.getColumnIndex()/getSampleIndex(), not a caller contract violation worth throwing over.
     if (key == null) {
       return false;

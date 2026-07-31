@@ -150,7 +150,7 @@ for rejection purposes, but they are still a data-loss case in practice.
 
 ## Where this is implemented
 
-- `VcfUtils.dropEmptyEntries` / `VcfUtils.fillEmptyEntriesWithDot` — the two shared normalization strategies.
+- `InternalUtils.dropEmptyEntries` / `InternalUtils.fillEmptyEntriesWithDot` — the two shared normalization strategies.
 - `VcfPosition.checkIds` / `checkFilters` — drop empty entries (ID, FILTER).
 - `VcfPosition.checkAltBases` — substitutes `.` for an empty entry (position-dependent, like the sample/INFO
   values below), and no longer rejects `.` combined with a real allele.
@@ -159,9 +159,9 @@ for rejection purposes, but they are still a data-loss case in practice.
 - `VcfPosition.info()` — warns and drops an empty top-level entry or empty key; warns and substitutes `.` for an
   empty value.
 - `VcfParser`'s per-sample value parsing — warns and substitutes `.` for an empty sample value.
-- `VcfUtils.convertProperty` — warns and substitutes `.` (`null`) for an empty entry in a reserved list-typed
+- `InternalUtils.convertProperty` — warns and substitutes `.` (`null`) for an empty entry in a reserved list-typed
   property's comma-separated value; warns and drops an empty semicolon-separated code in a reserved `FORMAT/FT`
-  value (`VcfUtils.checkReservedFormatConstraints`).
+  value (`InternalUtils.checkReservedFormatConstraints`).
 - `MemoryMappedVcfDataStore.doGetGenotype` — warns and substitutes `.` for an empty GT allele.
 - `VcfSample.validate()` — warns and substitutes `.` for a sample property whose value was mutated to empty through
   `propertyEntrySet()`, consistent with `VcfWriter`'s own warn-only treatment of an empty INFO value or an empty

@@ -249,7 +249,7 @@ public class VcfParser implements Closeable {
       List<String> ids = null;
       if (!data.get(2).equals(".")) {
         List<String> parsedIds = toList(SEMICOLON, data.get(2));
-        if (m_rsidsOnly && parsedIds.stream().noneMatch(id -> VcfUtils.RSID_PATTERN.matcher(id).matches())) {
+        if (m_rsidsOnly && parsedIds.stream().noneMatch(id -> InternalUtils.RSID_PATTERN.matcher(id).matches())) {
           return true;
         }
         ids = parsedIds;
@@ -307,7 +307,7 @@ public class VcfParser implements Closeable {
           values = new ArrayList<>();
         } else {
           values = toSampleValues(format, data.get(x));
-          VcfUtils.fillEmptyEntriesWithDot("sample value", values);
+          InternalUtils.fillEmptyEntriesWithDot("sample value", values);
           // per the VCF spec, trailing FORMAT sub-fields may be dropped from a sample; pad any missing ones with the
           // missing value so the sample's value count matches the FORMAT key count
           if (format != null) {
@@ -373,7 +373,7 @@ public class VcfParser implements Closeable {
         mdBuilder.setFileFormat(propValue);
         break;
 
-      // keep in sync with VcfUtils.RESERVED_METADATA_KEYS (VcfWriter/VcfMetadata reject raw properties with these names)
+      // keep in sync with InternalUtils.RESERVED_METADATA_KEYS (VcfWriter/VcfMetadata reject raw properties with these names)
       case "ALT":
       case "FILTER":
       case "INFO":
@@ -405,7 +405,7 @@ public class VcfParser implements Closeable {
    */
   private void parseMetadataProperty(VcfMetadata.Builder mdBuilder,
       String propName, String value) {
-    Map<String, String> props = VcfUtils.extractPropertiesFromLine(value);
+    Map<String, String> props = InternalUtils.extractPropertiesFromLine(value);
     // propName is already constrained to these exact-case literals by parseMetadata()'s own switch above,
     // so no case-folding is needed here at all -- a prior version lower-cased propName before this switch,
     // which meant a Turkish/Azeri default locale's dotless-i case-folding (e.g. "INFO".toLowerCase() ->

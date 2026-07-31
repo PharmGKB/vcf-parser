@@ -87,6 +87,21 @@ compile-time or runtime enforcement), so a caller can always pass `null` regardl
   code constructs and passes in before parsing/writing starts). `Preconditions.checkNotNull`'s raw
   `NullPointerException` remains the correct, established convention there -- see `WONT_FIX.md`'s
   `VcfParser.Builder` entries for the full reasoning and the exact boundary between the two cases.
+- A class or method explicitly documented as not part of this library's supported public API -- currently
+  `InternalUtils` (renamed from `VcfUtils`; most of its members are `public` only because Java has no
+  cross-package-within-a-library visibility modifier, not because they're designed for external callers)
+  and `VcfMetadata.validateAlt`/`isEmptyMetadataValue` (the same situation, on an otherwise fully-supported
+  class) -- is exempt from this policy's null-rejection requirement. Both are marked with
+  `@RestrictedApi`/`@hidden` and a class- or method-level Javadoc disclaimer; `@RestrictedApi` has no
+  compile-time or runtime enforcement in this codebase (no ErrorProne plugin is configured), so this is a
+  purely documentation-level exemption, exactly like the JSpecify annotations this whole policy exists
+  because of. A caller who calls one of these methods directly despite the documentation and hits a raw
+  `NullPointerException` is getting an acceptable outcome for ignoring an explicit "not supported" contract
+  -- unlike anywhere else this policy applies. Two of `InternalUtils`'s null-guards were judged genuinely
+  load-bearing regardless of this exemption and were kept: `unquote` (see its own comment) and the
+  per-element checks in `dropEmptyEntries`/`fillEmptyEntriesWithDot` (reachable via `VcfPosition`'s
+  documented live-mutation contract on its own genuinely-supported getters, not through `InternalUtils`
+  itself).
 
 
 ## Repository Guidelines
@@ -127,7 +142,7 @@ On Unix-like systems, use `./gradlew` instead. The full `test` task is the requi
 - Use JSpecify annotations for explicit nullability and follow the surrounding API's collection/null conventions.
 - Keep changes narrow. This is a published library, so avoid changing public behavior or signatures unless the task requires it.
 - Preserve lazy parsing and allocation-conscious code in hot per-record paths unless tests and measurements justify a change.
-- Helpers that normalize a `List` in place (e.g. `VcfUtils.fillEmptyEntriesWithDot`) mutate their argument directly and require a mutable list. Callers must never pass a constructor/method parameter straight through to such a helper -- defensively copy first (`new ArrayList<>(list)`), since external callers may supply an immutable list (`List.of(...)`) or one they don't expect to be mutated (`Arrays.asList(...)`).
+- Helpers that normalize a `List` in place (e.g. `InternalUtils.fillEmptyEntriesWithDot`) mutate their argument directly and require a mutable list. Callers must never pass a constructor/method parameter straight through to such a helper -- defensively copy first (`new ArrayList<>(list)`), since external callers may supply an immutable list (`List.of(...)`) or one they don't expect to be mutated (`Arrays.asList(...)`).
 - JDK immutable collections (`List.of(...)`, `Set.of(...)`, `Map.copyOf(...)`, `Collectors.toUnmodifiableMap(...)`) null-check lookup arguments and throw `NullPointerException` from `.contains(null)`/`.get(null)`/`.indexOf(null)`, unlike `HashMap`/`ArrayList`, which tolerate `null` there. For a lookup over a fixed, known domain where `null` trivially isn't a match (e.g. `isReservedMetadataKey`, `getColumnIndex`), guard the lookup explicitly rather than letting this throw. Prefer `Collections.unmodifiableList(Arrays.asList(...))` over `List.of(...)` only when wrapping data provably owned by no one else (e.g. a varargs parameter's freshly-allocated array) -- it is zero-copy and null-tolerant, but does not defensively copy, so it is unsafe for data a caller might still hold a mutable reference to.
 - String case-folding used for parsing or dispatch logic (`toUpperCase()`/`toLowerCase()`) must use `Locale.ROOT` explicitly (`value.toUpperCase(Locale.ROOT)`), never the default-locale overload -- under a Turkish/Azeri locale, default-locale case-folding on `I`/`i` produces different code points than ASCII expects, which can silently break `String.equals`-based dispatch or comparison.
 

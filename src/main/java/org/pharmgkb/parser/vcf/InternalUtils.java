@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+import com.google.errorprone.annotations.RestrictedApi;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jspecify.annotations.Nullable;
@@ -17,15 +18,24 @@ import org.pharmgkb.parser.vcf.model.VcfFloat;
 
 
 /**
- * Contains static methods for handling properties in INFO and FORMAT fields.
+ * Internal helper methods shared across this library's own {@code org.pharmgkb.parser.vcf} and
+ * {@code org.pharmgkb.parser.vcf.model} packages. Despite several members being {@code public} -- Java has
+ * no cross-package-within-a-library visibility modifier, so a method needed by
+ * {@code org.pharmgkb.parser.vcf.model} has no narrower option -- nothing in this class is part of this
+ * library's supported public API. It may change or be removed without notice in any release. See the
+ * {@link RestrictedApi} annotation on each such method for the same signal in a form linters/IDEs can act
+ * on; also excluded from generated Javadoc entirely via the {@code @hidden} tag below, since published
+ * Javadoc is the one surface a real external consumer would actually browse.
+ *
  * @author Douglas Myers-Turnbull
+ * @hidden
  */
-public class VcfUtils {
+public class InternalUtils {
 
   // The "+" below deliberately allows repeating/concatenating the nucleotides-or-symbolic-ID alternative (e.g.
   // "C<ctg1>"), not just one instance of either. This is confirmed necessary for VCFv4.2's own "Large Insertions"
   // shorthand ("13 321682 INS0 T C<ctg1> ... SVTYPE=INS", a base run directly followed by a symbolic ID with no
-  // breakend bracket between them) -- see VcfUtilsTest#testAltBasePatternAcceptsLargeInsertionShorthand, which
+  // breakend bracket between them) -- see InternalUtilsTest#testAltBasePatternAcceptsLargeInsertionShorthand, which
   // exists specifically because a prior review round mistakenly "fixed" this as over-permissive and rejected it.
   //
   // The "+" is broader than that one confirmed case requires, though: it also accepts forms with no known
@@ -114,23 +124,24 @@ public class VcfUtils {
 
   private static final Pattern sf_whitespacePattern = Pattern.compile("\\s");
 
+  private static final String RESTRICTED_API_EXPLANATION =
+      "Internal helper; public only because Java requires it for cross-package use within this library. Not "
+          + "part of this library's supported public API and may change or be removed without notice.";
+
+  private InternalUtils() {}
+
   /**
    * Matched with {@code find()}, not {@code matches()}: a wrapping {@code ".*\s.*"} pattern would fail to
    * detect whitespace in a string containing 2+ line-terminator characters, since {@code "."} does not match
    * line terminators without {@code DOTALL}. ASCII-only ({@code \s}'s default meaning without
    * {@code UNICODE_CHARACTER_CLASS}) -- does not detect non-ASCII Unicode whitespace.
    */
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static boolean containsWhitespace(String s) {
-    if (s == null) {
-      throw new VcfFormatException("Cannot check for whitespace in a null string");
-    }
     return sf_whitespacePattern.matcher(s).find();
   }
 
-  public static Map<String, String> extractPropertiesFromLine(String value) {
-    if (value == null) {
-      throw new VcfFormatException("Metadata declaration attribute list is null");
-    }
+  static Map<String, String> extractPropertiesFromLine(String value) {
     if (hasUnbalancedQuotes(value)) {
       // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_001.vcf (##CauseOfFailure=Description contains
       // non-escaped quotes). Checked on the raw, unsplit string rather than per-attribute after splitTopLevel:
@@ -165,15 +176,14 @@ public class VcfUtils {
     return unescapedQuoteCount % 2 != 0;
   }
 
+  // public only because ~57 test call sites across org.pharmgkb.parser.vcf.model (InfoMetadataTest,
+  // FormatMetadataTest, IdDescriptionMetadataTest, VcfMetadataTest, ContigMetadataTest) call this directly
+  // to build a Map<String,String> from "key=value" varargs -- its only PRODUCTION caller is
+  // extractPropertiesFromLine, in this same class
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static Map<String, String> extractProperties(String... props) {
-    if (props == null) {
-      throw new VcfFormatException("Property array is null");
-    }
     Map<String, String> map = new LinkedHashMap<>();
     for (String prop : props) {
-      if (prop == null) {
-        throw new VcfFormatException("Property array contains a null entry");
-      }
       Pair<String, String> pair;
       try {
         pair = splitProperty(prop);
@@ -204,10 +214,7 @@ public class VcfUtils {
    * Splits a property into a key-value pair.
    * @param prop In the form "key=value"
    */
-  public static Pair<String, String> splitProperty(String prop) {
-    if (prop == null) {
-      throw new VcfFormatException("Property is null");
-    }
+  static Pair<String, String> splitProperty(String prop) {
     List<String> parts = splitTopLevel(prop, '=');
     if (parts.size() != 2) {
       throw new VcfFormatException("There were " + (parts.size() - 1) + " equals signs for: " + prop);
@@ -249,10 +256,8 @@ public class VcfUtils {
    * Adds double quotation marks around a string, escaping any embedded backslash or double-quote character (as the VCF
    * spec requires: {@code \} becomes {@code \\}, {@code "} becomes {@code \"}). Reverse with {@link #unquote}.
    */
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static String quote(String string) {
-    if (string == null) {
-      throw new VcfFormatException("Cannot quote a null string");
-    }
     StringBuilder sb = new StringBuilder(string.length() + 2).append('"');
     for (int i = 0; i < string.length(); i++) {
       char c = string.charAt(i);
@@ -268,7 +273,13 @@ public class VcfUtils {
    * Removes double quotation marks around a string if they are present, decoding any escaped backslash ({@code \\}) or
    * double-quote ({@code \"}) inside. Reverse of {@link #quote}.
    */
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static String unquote(String string) {
+    // unlike this class's other null-guards (removed as dead code once the class became internal-only), this
+    // one stays: BaseMetadata.getPropertiesUnquoted() iterates its live properties map and calls unquote() on
+    // every value with no guard of its own, and a caller can insert a null value directly through
+    // BaseMetadata.getPropertiesRaw()'s own documented bypass -- so this can genuinely receive null in
+    // production today, not just from a hypothetical caller ignoring this class's internal-only documentation
     if (string == null) {
       throw new VcfFormatException("Cannot unquote a null string");
     }
@@ -296,10 +307,8 @@ public class VcfUtils {
    * @param value if there is no value to check (e.g. a single-string property with no separate key), pass the same
    *              string as both {@code key} and {@code value}
    */
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static void checkNoLineTerminator(String key, @Nullable String value) {
-    if (key == null) {
-      throw new VcfFormatException("Property key is null");
-    }
     if (key.contains("\n") || key.contains("\r") || (value != null && (value.contains("\n") || value.contains("\r")))) {
       throw new VcfFormatException("Property [[[" + key + "=" + value + "]]] contains a line terminator");
     }
@@ -314,6 +323,7 @@ public class VcfUtils {
    * property using one of these names could never be re-read as what it was written, since reparsing would
    * route it through the wrong path entirely
    */
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static boolean isReservedMetadataKey(@Nullable String name) {
     return name != null && RESERVED_METADATA_KEYS.contains(name);
   }
@@ -324,10 +334,8 @@ public class VcfUtils {
    *
    * @return {@code list} unchanged if it contained no empty entries, or a new list with them removed
    */
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static List<String> dropEmptyEntries(String fieldName, List<String> list) {
-    if (list == null) {
-      throw new VcfFormatException(fieldName + " list is null");
-    }
     List<String> result = list;
     for (int i = 0; i < result.size(); i++) {
       if (result.get(i) == null) {
@@ -350,10 +358,8 @@ public class VcfUtils {
    * sentinel), for a position-dependent delimited field (e.g. a sample's FORMAT-keyed values) where dropping an
    * entry would misalign it with its corresponding key. See {@code EMPTY_FIELD_HANDLING.md} for the rationale.
    */
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static void fillEmptyEntriesWithDot(String fieldName, List<String> list) {
-    if (list == null) {
-      throw new VcfFormatException(fieldName + " list is null");
-    }
     for (int i = 0; i < list.size(); i++) {
       if (list.get(i) == null) {
         throw new VcfFormatException(fieldName + " contains a null entry");
@@ -377,10 +383,8 @@ public class VcfUtils {
    *   <li>A List of any of the above types</li>
    * </ul>
    */
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static @Nullable <T> T convertProperty(ReservedProperty key, @Nullable String value) {
-    if (key == null) {
-      throw new VcfFormatException("Reserved property key is null");
-    }
     // FT/PS are FORMAT-only reserved IDs (see checkReservedFormatConstraints's Javadoc) -- a future
     // ReservedInfoProperty whose ID happens to collide with one must not get FORMAT-only semantics applied
     String normalized = key instanceof ReservedFormatProperty ? checkReservedFormatConstraints(key.getId(), value)
@@ -488,13 +492,8 @@ public class VcfUtils {
     return (T) list;
   }
 
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static Class<?> toJavaType(FormatType type) {
-    // FormatMetadata.getType() is documented @Nullable (absent/invalid Type property), so a caller passing it
-    // straight through here is a realistic case, not just a theoretical one; treat null the same as any other
-    // unhandled type below rather than letting the switch below raw-NPE
-    if (type == null) {
-      throw new VcfFormatException("FORMAT type is null");
-    }
     switch (type) {
       case Integer:
         return Long.class;
@@ -509,17 +508,12 @@ public class VcfUtils {
     }
   }
 
-  public static @Nullable <T> T convertProperty(FormatType type, @Nullable String value) {
+  static @Nullable <T> T convertProperty(FormatType type, @Nullable String value) {
     return convertProperty(toJavaType(type), value, false);
   }
 
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static Class<?> toJavaType(InfoType type) {
-    // InfoMetadata.getType() is documented @Nullable (absent/invalid Type property), so a caller passing it
-    // straight through here is a realistic case, not just a theoretical one; treat null the same as any other
-    // unhandled type below rather than letting the switch below raw-NPE
-    if (type == null) {
-      throw new VcfFormatException("INFO type is null");
-    }
     switch (type) {
       case Integer:
         return Long.class;
@@ -536,7 +530,7 @@ public class VcfUtils {
     }
   }
 
-  public static @Nullable <T> T convertProperty(InfoType type, @Nullable String value) {
+  static @Nullable <T> T convertProperty(InfoType type, @Nullable String value) {
     return convertProperty(toJavaType(type), value, false);
   }
 

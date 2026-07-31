@@ -93,7 +93,7 @@ public class BaseMetadataTest {
   @Test
   public void testPutPropertyRawRejectsNullKeyInsteadOfThrowingNpe() {
     // key is typed non-@Nullable, but nothing enforces that at compile time; must reject a null with
-    // VcfFormatException, not let it reach a raw NullPointerException at VcfUtils.checkNoLineTerminator(key, value)
+    // VcfFormatException, not let it reach a raw NullPointerException at InternalUtils.checkNoLineTerminator(key, value)
     BaseMetadata metadata = new BaseMetadata("TEST", new HashMap<>());
     assertThrows(VcfFormatException.class, () -> metadata.putPropertyRaw(null, "value"));
   }

@@ -2,8 +2,8 @@ package org.pharmgkb.parser.vcf.model;
 
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
+import org.pharmgkb.parser.vcf.InternalUtils;
 import org.pharmgkb.parser.vcf.VcfFormatException;
-import org.pharmgkb.parser.vcf.VcfUtils;
 import org.pharmgkb.parser.vcf.VcfWarnings;
 
 
@@ -97,7 +97,7 @@ public class InfoMetadata extends IdDescriptionMetadata {
         VcfWarnings.warn("{} {} has Number '{}' but the reserved definition expects '{}'", getLabel(), getId(),
             number, reserved.getExpectedNumber());
       }
-      if (m_type != null && !VcfUtils.toJavaType(m_type).equals(reserved.getType())) {
+      if (m_type != null && !InternalUtils.toJavaType(m_type).equals(reserved.getType())) {
         VcfWarnings.warn("{} {} has Type '{}' but the reserved definition expects '{}'", getLabel(), getId(),
             m_type, reserved.getType().getSimpleName());
       }

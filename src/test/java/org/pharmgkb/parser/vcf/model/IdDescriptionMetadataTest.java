@@ -1,8 +1,8 @@
 package org.pharmgkb.parser.vcf.model;
 
 import org.junit.jupiter.api.Test;
+import org.pharmgkb.parser.vcf.InternalUtils;
 import org.pharmgkb.parser.vcf.VcfFormatException;
-import org.pharmgkb.parser.vcf.VcfUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -20,7 +20,7 @@ public class IdDescriptionMetadataTest {
     // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included
     // after the default fields" -- an unrecognized property is compliant, not just tolerated, and must be preserved
     IdDescriptionMetadata md = new IdDescriptionMetadata("TEST",
-        VcfUtils.extractProperties("ID=X", "Description=\"d\"", "Custom=extra"));
+        InternalUtils.extractProperties("ID=X", "Description=\"d\"", "Custom=extra"));
     assertEquals("extra", md.getPropertyRaw("Custom"));
   }
 
@@ -34,7 +34,7 @@ public class IdDescriptionMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new IdDescriptionMetadata("TEST", VcfUtils.extractProperties(
+      new IdDescriptionMetadata("TEST", InternalUtils.extractProperties(
           "ID=DEL", "Type=String", "Number=1", "Description=\"Deletion\""));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -53,7 +53,7 @@ public class IdDescriptionMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new IdDescriptionMetadata("TEST", VcfUtils.extractProperties("ID=DEL", "Description=\"Deletion\""));
+      new IdDescriptionMetadata("TEST", InternalUtils.extractProperties("ID=DEL", "Description=\"Deletion\""));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -67,7 +67,7 @@ public class IdDescriptionMetadataTest {
     // used to call checkAttributeOrder() -- calling .validate() directly (e.g. after mutating properties via
     // getPropertiesRaw(), as VcfWriter's validateKeyedMetadataEntries does) fired the attribute-order warning twice
     IdDescriptionMetadata md = new IdDescriptionMetadata("TEST",
-        VcfUtils.extractProperties("ID=DEL", "Type=String", "Number=1", "Description=\"Deletion\""));
+        InternalUtils.extractProperties("ID=DEL", "Type=String", "Number=1", "Description=\"Deletion\""));
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -102,7 +102,7 @@ public class IdDescriptionMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new IdDescriptionMetadata("TEST", VcfUtils.extractProperties("ID=A B", "Description=\"d\""));
+      new IdDescriptionMetadata("TEST", InternalUtils.extractProperties("ID=A B", "Description=\"d\""));
       assertTrue(appender.anyMessageContains("must not contain whitespace"));
     } finally {
       root.detachAppender(appender);
@@ -122,7 +122,7 @@ public class IdDescriptionMetadataTest {
       appender.start();
       root.addAppender(appender);
       try {
-        new IdDescriptionMetadata(label, VcfUtils.extractProperties("ID=A B", "Description=\"d\""));
+        new IdDescriptionMetadata(label, InternalUtils.extractProperties("ID=A B", "Description=\"d\""));
         assertTrue(appender.anyMessageContains(label + " metadata ID"));
         assertFalse(appender.anyMessageContains("IdDescriptionMetadata"));
       } finally {

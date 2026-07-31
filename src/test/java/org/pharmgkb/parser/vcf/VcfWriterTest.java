@@ -697,7 +697,7 @@ public class VcfWriterTest {
 
   @Test
   public void testValidateBeforeWriteDoesNotRewriteFtEmptyCode() throws Exception {
-    // unlike the typed read accessor (VcfUtils.convertProperty), which drops an empty FT code, this writer
+    // unlike the typed read accessor (InternalUtils.convertProperty), which drops an empty FT code, this writer
     // preserves raw sample content rather than rewriting it -- the same "read normalizes, write preserves"
     // split already used for a reserved list-typed FORMAT value's empty entry
     FormatMetadata ft = new FormatMetadata(ReservedFormatProperty.Filter.getId(), "d", "1", FormatType.String);
@@ -884,7 +884,7 @@ public class VcfWriterTest {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     // INFO metadata with no Type -> getType() is null; the writer must not NPE
-    InfoMetadata info = new InfoMetadata(VcfUtils.extractProperties("ID=NS", "Number=1", "Description=\"n\""));
+    InfoMetadata info = new InfoMetadata(InternalUtils.extractProperties("ID=NS", "Number=1", "Description=\"n\""));
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
     writer.writeHeader(metadata);
     VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
@@ -953,7 +953,7 @@ public class VcfWriterTest {
 
   @Test
   public void testWriteInfoValueNotMatchingDeclaredTypeWarnsInsteadOfThrowing() throws Exception {
-    // VcfUtils.convertProperty/convertElement only ever throw VcfFormatException for a bad value, never
+    // InternalUtils.convertProperty/convertElement only ever throw VcfFormatException for a bad value, never
     // IllegalArgumentException; addInfoOrDot's "just test" conversion caught IllegalArgumentException, so this
     // previously propagated out of writeLine uncaught instead of just logging a warning
     StringWriter sw = new StringWriter();

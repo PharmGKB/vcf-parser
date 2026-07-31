@@ -3,8 +3,8 @@ package org.pharmgkb.parser.vcf.model;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
+import org.pharmgkb.parser.vcf.InternalUtils;
 import org.pharmgkb.parser.vcf.VcfFormatException;
-import org.pharmgkb.parser.vcf.VcfUtils;
 import org.pharmgkb.parser.vcf.VcfWarnings;
 
 
@@ -50,7 +50,7 @@ public abstract class IdMetadata extends BaseMetadata {
     // check for either -- directly contradicting hts-specs' own failed_meta_sample_001.vcf fixture; this is
     // treated as a bcftools coverage gap rather than a considered position, so the hts-specs fixture and
     // vcf_validator's uniform treatment govern instead, per this project's decision hierarchy.
-    if (id != null && VcfUtils.containsWhitespace(id)) {
+    if (id != null && InternalUtils.containsWhitespace(id)) {
       VcfWarnings.warn("{} metadata ID \"{}\" must not contain whitespace", getLabel(), id);
     }
   }

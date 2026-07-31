@@ -9,8 +9,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
+import org.pharmgkb.parser.vcf.InternalUtils;
 import org.pharmgkb.parser.vcf.VcfFormatException;
-import org.pharmgkb.parser.vcf.VcfUtils;
 import org.pharmgkb.parser.vcf.VcfWarnings;
 
 
@@ -68,7 +68,7 @@ public class BaseMetadata {
       if (entry.getKey() == null) {
         throw new VcfFormatException("Metadata contains a null property name");
       }
-      VcfUtils.checkNoLineTerminator(entry.getKey(), entry.getValue());
+      InternalUtils.checkNoLineTerminator(entry.getKey(), entry.getValue());
     }
   }
 
@@ -78,7 +78,7 @@ public class BaseMetadata {
     if (got == null) {
       return null;
     }
-    return VcfUtils.unquote(got);
+    return InternalUtils.unquote(got);
   }
 
   @Nullable
@@ -93,14 +93,14 @@ public class BaseMetadata {
   public Map<String, String> getPropertiesUnquoted() {
     Map<String, String> map = new HashMap<>();
     for (Map.Entry<String, String>  entry : m_properties.entrySet()) {
-      map.put(entry.getKey(), VcfUtils.unquote(entry.getValue()));
+      map.put(entry.getKey(), InternalUtils.unquote(entry.getValue()));
     }
     return map;
   }
 
   /**
    * @return The backing, mutable properties map. Unlike {@link #putPropertyRaw} and {@link #putAndQuoteProperty},
-   * mutations made directly through this map do not run {@link VcfUtils#checkNoLineTerminator}.
+   * mutations made directly through this map do not run {@link InternalUtils#checkNoLineTerminator}.
    */
   public Map<String, String> getPropertiesRaw() {
     return m_properties;
@@ -112,15 +112,15 @@ public class BaseMetadata {
 
   public void putAndQuoteProperty(String key, String value) {
     // key is typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting a null key
-    // reach VcfUtils.checkNoLineTerminator(key, value) below (key.contains(...) would NPE)
+    // reach InternalUtils.checkNoLineTerminator(key, value) below (key.contains(...) would NPE)
     if (key == null) {
       throw new VcfFormatException("Metadata contains a null property name");
     }
     if (value == null) {
       throw new VcfFormatException("Metadata property \"" + key + "\" has a null value");
     }
-    VcfUtils.checkNoLineTerminator(key, value);
-    m_properties.put(key, VcfUtils.quote(value));
+    InternalUtils.checkNoLineTerminator(key, value);
+    m_properties.put(key, InternalUtils.quote(value));
   }
 
   public void putPropertyRaw(String key, String value) {
@@ -130,7 +130,7 @@ public class BaseMetadata {
     if (value == null) {
       throw new VcfFormatException("Metadata property \"" + key + "\" has a null value");
     }
-    VcfUtils.checkNoLineTerminator(key, value);
+    InternalUtils.checkNoLineTerminator(key, value);
     m_properties.put(key, value);
   }
 
@@ -164,13 +164,13 @@ public class BaseMetadata {
 
   /**
    * Validates a VCF {@code Number} property value, warning (via {@link VcfWarnings#warn}) if it is missing or does
-   * not match {@link VcfUtils#NUMBER_PATTERN}. Shared by the metadata types ({@code INFO}, {@code FORMAT}) that
+   * not match {@link InternalUtils#NUMBER_PATTERN}. Shared by the metadata types ({@code INFO}, {@code FORMAT}) that
    * declare a {@code Number} field with identical semantics. The warning message embeds this declaration's
    * {@link #getLabel() label} so it is attributed to the correct VCF declaration kind.
    */
   protected void checkNumberProperty(@Nullable String number) {
     warnIfMissing("Number", number);
-    if (number != null && !VcfUtils.NUMBER_PATTERN.matcher(number).matches()) {
+    if (number != null && !InternalUtils.NUMBER_PATTERN.matcher(number).matches()) {
       VcfWarnings.warn("{} Number is not a valid VCF number: '{}'", getLabel(), number);
     }
   }

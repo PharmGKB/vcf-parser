@@ -104,7 +104,7 @@ public class VcfParserTest {
 
   @Test
   void testDeferredReservedPropertyConversionExceptionCarriesLineNumberAfterParseReturns() throws IOException {
-    // regression test: VcfPosition.getInfo(ReservedInfoProperty)'s call to VcfUtils.convertProperty(...) is a
+    // regression test: VcfPosition.getInfo(ReservedInfoProperty)'s call to InternalUtils.convertProperty(...) is a
     // fourth deferred throw site distinct from getInfo()'s lazy-parse path covered above -- DP (Depth) is declared
     // as a Long-typed reserved property, so a non-numeric raw value fails type conversion only when this typed
     // accessor is used, after parser.parse() has already returned.

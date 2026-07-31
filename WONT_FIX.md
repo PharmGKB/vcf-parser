@@ -36,7 +36,7 @@ containing a null value survives both construction (via the `Map`-based construc
 put methods) and a later `validate()` call, as long as the null value was inserted directly through
 `getPropertiesRaw()` rather than through `putPropertyRaw`/`putAndQuoteProperty`.
 
-This is unreachable from real VCF parsing: `VcfUtils.splitProperty` always returns two non-null halves or
+This is unreachable from real VCF parsing: `InternalUtils.splitProperty` always returns two non-null halves or
 throws, so a parsed property value is never null. It's reachable only via a caller directly mutating the
 map returned by `getPropertiesRaw()` with a hand-built null value. `BaseMetadata.checkNoLineTerminator`
 already deliberately tolerates a null `value` parameter elsewhere in this class, suggesting this asymmetry

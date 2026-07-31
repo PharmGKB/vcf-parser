@@ -384,7 +384,7 @@ public class VcfWriter implements Closeable {
   }
 
   private void validateMetadata(VcfMetadata metadata) {
-    if (!VcfUtils.FILE_FORMAT_PATTERN.matcher(metadata.getFileFormat()).matches()) {
+    if (!InternalUtils.FILE_FORMAT_PATTERN.matcher(metadata.getFileFormat()).matches()) {
       throw new VcfFormatException("VCF file format must be VCF 4.x: " + metadata.getFileFormat());
     }
     validateKeyedMetadataEntries("INFO", metadata.getInfo());
@@ -415,7 +415,7 @@ public class VcfWriter implements Closeable {
     Set<String> sampleNames = new HashSet<>();
     for (int i = 0; i < metadata.getNumSamples(); i++) {
       String sampleName = metadata.getSampleName(i);
-      VcfUtils.checkNoLineTerminator("sample name", sampleName);
+      InternalUtils.checkNoLineTerminator("sample name", sampleName);
       if (sampleName.isEmpty() || sampleName.contains("\t") || !sampleNames.add(sampleName)) {
         throw new VcfFormatException("Invalid or duplicate sample name in header: " + sampleName);
       }
@@ -434,7 +434,7 @@ public class VcfWriter implements Closeable {
         throw new VcfFormatException("Metadata property name \"" + key + "\" contains '=', which would shift " +
             "where the key/value split falls when re-read");
       }
-      if (VcfUtils.isReservedMetadataKey(key)) {
+      if (InternalUtils.isReservedMetadataKey(key)) {
         // getRawProperties() returns the backing multimap directly, so a caller can insert this after
         // addRawProperty()'s own check has already run once, at insertion time; unlike that check, this one
         // rejects outright, since a raw "INFO"/"FORMAT"/etc. property would produce output VcfParser cannot
@@ -446,7 +446,7 @@ public class VcfWriter implements Closeable {
         if (value == null) {
           throw new VcfFormatException("Metadata property \"" + key + "\" has a null value");
         }
-        VcfUtils.checkNoLineTerminator(key, value);
+        InternalUtils.checkNoLineTerminator(key, value);
         if (VcfMetadata.isEmptyMetadataValue(value)) {
           // unlike VcfMetadata.Builder.addRawProperty()/addAssembly()/addPedigreeDatabase() (which drop an empty
           // value at insertion time), this only warns -- silently removing content the caller is already holding
@@ -530,7 +530,7 @@ public class VcfWriter implements Closeable {
 
   /**
    * @return whether {@code value} contains a {@code "} not preceded by an escaping {@code \} (the same escape
-   * convention {@link VcfUtils}'s top-level splitter uses). {@link #isQuoted} already rejects a value that starts
+   * convention {@link InternalUtils}'s top-level splitter uses). {@link #isQuoted} already rejects a value that starts
    * and ends with {@code "} but isn't validly escaped in between, but a value can also contain a stray, unescaped
    * {@code "} without looking quoted at all (no leading/trailing {@code "}) and without containing {@code ,} or
    * {@code =} either, so this must be checked independently of both. Left unrejected, such a value would flip the
@@ -619,7 +619,7 @@ public class VcfWriter implements Closeable {
     }
     for (String value : values) {
       try {
-        VcfUtils.convertProperty(type, value);
+        InternalUtils.convertProperty(type, value);
       } catch (VcfFormatException e) {
         VcfWarnings.warn("INFO {} value {} is not of type {}", key, value, type);
       }
@@ -636,7 +636,7 @@ public class VcfWriter implements Closeable {
       // about it twice via checkReservedFormatConstraints's own "empty filter code" check. The returned normalized
       // value is discarded: this writer preserves raw content rather than rewriting it, consistent with how a
       // reserved list-typed FORMAT value's empty entry is also only normalized on read, not on write.
-      VcfUtils.checkReservedFormatConstraints(key, value);
+      InternalUtils.checkReservedFormatConstraints(key, value);
     }
     boolean isGle = key.equals("GLE");
     String[] values = isGle ? new String[] { value } : value.split(",", -1);
@@ -660,7 +660,7 @@ public class VcfWriter implements Closeable {
     }
     for (String element : values) {
       try {
-        VcfUtils.convertProperty(type, element);
+        InternalUtils.convertProperty(type, element);
       } catch (VcfFormatException e) {
         VcfWarnings.warn("FORMAT {} for sample #{} value {} is not of type {}", key, sampleIndex, element, type);
       }
@@ -798,7 +798,7 @@ public class VcfWriter implements Closeable {
         } catch (NumberFormatException ignored) {}
         if (number != null && number == 1 && format.getType() != null) {
           try {
-            VcfUtils.convertProperty(format.getType(), value);
+            InternalUtils.convertProperty(format.getType(), value);
           } catch (VcfFormatException e) {
             VcfWarnings.warn("Property {} for sample #{} is not of type {}" +
                 " (on line {})", key, sampleIndex, format.getType(), m_lineNumber);
@@ -863,7 +863,7 @@ public class VcfWriter implements Closeable {
           // in that case, we can't compare
           if (number != null && number == 1 && info.getType() != null) {
             try {
-              VcfUtils.convertProperty(info.getType(), value); // just test
+              InternalUtils.convertProperty(info.getType(), value); // just test
             } catch (VcfFormatException e) {
               VcfWarnings.warn("Property {} is not of type {} (on line {})", key, info.getType(), m_lineNumber);
             }

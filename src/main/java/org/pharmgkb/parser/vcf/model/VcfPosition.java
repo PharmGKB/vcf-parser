@@ -10,8 +10,8 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.LinkedListMultimap;
 import com.google.common.collect.ListMultimap;
 import org.jspecify.annotations.Nullable;
+import org.pharmgkb.parser.vcf.InternalUtils;
 import org.pharmgkb.parser.vcf.VcfFormatException;
-import org.pharmgkb.parser.vcf.VcfUtils;
 import org.pharmgkb.parser.vcf.VcfWarnings;
 
 
@@ -165,7 +165,7 @@ public class VcfPosition {
       throw new VcfFormatException("CHROM is null");
     }
     // the VCF spec forbids whitespace in CHROM (but not other characters, e.g. colons)
-    if (chr.isEmpty() || VcfUtils.containsWhitespace(chr)) {
+    if (chr.isEmpty() || InternalUtils.containsWhitespace(chr)) {
       throw new VcfFormatException("CHROM column \"" + chr + "\" is empty or contains whitespace");
     }
   }
@@ -185,9 +185,9 @@ public class VcfPosition {
     if (ref == null) {
       throw new VcfFormatException("REF is null");
     }
-    if (!VcfUtils.REF_BASE_PATTERN.matcher(ref).matches()) {
+    if (!InternalUtils.REF_BASE_PATTERN.matcher(ref).matches()) {
       throw new VcfFormatException("Invalid reference base '" + ref +
-          "' (must match " + VcfUtils.REF_BASE_PATTERN + ")");
+          "' (must match " + InternalUtils.REF_BASE_PATTERN + ")");
     }
   }
 
@@ -196,10 +196,10 @@ public class VcfPosition {
    * {@code EMPTY_FIELD_HANDLING.md}
    */
   private static List<String> checkIds(List<String> ids) {
-    ids = VcfUtils.dropEmptyEntries("ID", ids);
+    ids = InternalUtils.dropEmptyEntries("ID", ids);
     Set<String> seenIds = new HashSet<>();
     for (String id : ids) {
-      if (VcfUtils.containsWhitespace(id) || id.contains(";")) {
+      if (InternalUtils.containsWhitespace(id) || id.contains(";")) {
         throw new VcfFormatException("ID \"" + id + "\" contains whitespace or semicolons");
       }
       if (!seenIds.add(id)) {
@@ -227,14 +227,14 @@ public class VcfPosition {
       // copying when an empty entry actually needs substituting avoids an allocation on the common case (no
       // empty ALT entry), matching checkIds()/checkFilters()'s existing lazy-copy style.
       altBases = new ArrayList<>(altBases);
-      VcfUtils.fillEmptyEntriesWithDot("ALT", altBases);
+      InternalUtils.fillEmptyEntriesWithDot("ALT", altBases);
     }
     for (String base : altBases) {
       if (base == null) {
         throw new VcfFormatException("ALT contains a null entry");
       }
-      if (!VcfUtils.ALT_BASE_PATTERN.matcher(base).matches()) {
-        throw new VcfFormatException("Invalid alternate base '" + base + "' (must match " + VcfUtils.ALT_BASE_PATTERN + ")");
+      if (!InternalUtils.ALT_BASE_PATTERN.matcher(base).matches()) {
+        throw new VcfFormatException("Invalid alternate base '" + base + "' (must match " + InternalUtils.ALT_BASE_PATTERN + ")");
       }
     }
     return altBases;
@@ -248,9 +248,9 @@ public class VcfPosition {
    * {@code EMPTY_FIELD_HANDLING.md}
    */
   private static List<String> checkFilters(List<String> filters) {
-    filters = VcfUtils.dropEmptyEntries("FILTER", filters);
+    filters = InternalUtils.dropEmptyEntries("FILTER", filters);
     for (String f : filters) {
-      if (VcfUtils.containsWhitespace(f)) {
+      if (InternalUtils.containsWhitespace(f)) {
         throw new VcfFormatException("FILTER column entry \"" + f + "\" contains whitespace");
       }
       if (f.equals("0")) {
@@ -286,7 +286,7 @@ public class VcfPosition {
       if (value == null) {
         throw new VcfFormatException("INFO value for key \"" + key + "\" is null");
       }
-      if (VcfUtils.containsWhitespace(key) || VcfUtils.containsWhitespace(value)) {
+      if (InternalUtils.containsWhitespace(key) || InternalUtils.containsWhitespace(value)) {
         throw new VcfFormatException("INFO column entry \"" + key + "=" + value + "\" contains whitespace");
       }
       // a parsed value can never contain these (they were already split on to arrive at this value), but a value set
@@ -342,7 +342,7 @@ public class VcfPosition {
       }
       // f.contains(":") is not checked separately: FORMAT_PATTERN's character class ([0-9A-Za-z_.]) never
       // includes ':', so matches() alone already rejects any f containing one.
-      if (!VcfUtils.FORMAT_PATTERN.matcher(f).matches()) {
+      if (!InternalUtils.FORMAT_PATTERN.matcher(f).matches()) {
         throw new VcfFormatException("FORMAT ID does not match VCF spec");
       }
       if (!seenKeys.add(f)) {
@@ -692,7 +692,8 @@ public class VcfPosition {
   public @Nullable <T> T getInfo(ReservedInfoProperty key) {
     // matches getInfo(String)'s own null-tolerant "not present" contract (see hasInfo(ReservedInfoProperty)
     // below for the same pattern) -- returning null here also avoids ever reaching
-    // VcfUtils.convertProperty(null, ...), which now rejects a null key outright
+    // InternalUtils.convertProperty(null, ...); this method guards against a null key itself rather than
+    // relying on convertProperty to reject it
     if (key == null) {
       return null;
     }
@@ -701,7 +702,7 @@ public class VcfPosition {
       return null;
     }
     try {
-      return VcfUtils.convertProperty(key, sf_commaJoiner.join(list));
+      return InternalUtils.convertProperty(key, sf_commaJoiner.join(list));
     } catch (VcfFormatException ex) {
       if (m_lineNumber >= 0) {
         ex.addMetadata(m_lineNumber, "data");

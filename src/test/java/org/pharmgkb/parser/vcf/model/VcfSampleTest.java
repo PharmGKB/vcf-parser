@@ -131,7 +131,7 @@ class VcfSampleTest {
   @Test
   void testGetPropertyReservedListTypeWithEmptyEntries() {
     // HQ is a list-typed reserved FORMAT property (Long); getProperty(ReservedFormatProperty) previously routed
-    // through VcfUtils.convertProperty's plain value.split(","), which silently dropped a trailing empty entry and
+    // through InternalUtils.convertProperty's plain value.split(","), which silently dropped a trailing empty entry and
     // threw an unhelpful generic exception for an interior one, unlike the rest of the empty-field handling
     LinkedHashMap<String, String> trailing = new LinkedHashMap<>();
     trailing.put("HQ", "1,2,");
@@ -249,7 +249,7 @@ class VcfSampleTest {
   @Test
   void testContainsPropertyReturnsFalseForNullKeyOnLeanListPath() {
     // containsProperty(null) is null-tolerant, matching the other null-tolerant predicates
-    // VcfUtils.isReservedMetadataKey and VcfMetadata.getColumnIndex()/getSampleIndex() -- a property key can
+    // InternalUtils.isReservedMetadataKey and VcfMetadata.getColumnIndex()/getSampleIndex() -- a property key can
     // never actually be null in this class, so null trivially "isn't one of this sample's keys". Uses List.of
     // (not Arrays.asList) so m_keys.contains(null) would throw NullPointerException without the guard.
     List<String> keys = List.of("key1", "key2");

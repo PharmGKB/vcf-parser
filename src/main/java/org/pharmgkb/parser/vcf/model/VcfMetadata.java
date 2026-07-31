@@ -9,9 +9,10 @@ import java.util.Set;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.LinkedListMultimap;
 import com.google.common.collect.ListMultimap;
+import com.google.errorprone.annotations.RestrictedApi;
 import org.jspecify.annotations.Nullable;
+import org.pharmgkb.parser.vcf.InternalUtils;
 import org.pharmgkb.parser.vcf.VcfFormatException;
-import org.pharmgkb.parser.vcf.VcfUtils;
 import org.pharmgkb.parser.vcf.VcfWarnings;
 
 
@@ -21,6 +22,12 @@ import org.pharmgkb.parser.vcf.VcfWarnings;
  * @author Mark Woon
  */
 public class VcfMetadata {
+
+  // keep in sync with InternalUtils.RESTRICTED_API_EXPLANATION (this string is intentionally duplicated,
+  // not shared, since sharing it would require making InternalUtils's copy public, defeating its own purpose)
+  private static final String RESTRICTED_API_EXPLANATION =
+      "Internal helper; public only because Java requires it for cross-package use within this library. Not "
+          + "part of this library's supported public API and may change or be removed without notice.";
 
   private String m_fileFormat;
   private final Map<String, IdDescriptionMetadata> m_alt;
@@ -81,7 +88,7 @@ public class VcfMetadata {
     if (fileFormat == null) {
       throw new VcfFormatException("VCF file format is null");
     }
-    if (!VcfUtils.FILE_FORMAT_PATTERN.matcher(fileFormat).matches()) {
+    if (!InternalUtils.FILE_FORMAT_PATTERN.matcher(fileFormat).matches()) {
       throw new VcfFormatException("VCF format must look like ex: VCFv4.2; was " + fileFormat);
     }
     m_fileFormat = fileFormat;
@@ -174,7 +181,12 @@ public class VcfMetadata {
    * Warns (does not throw -- matching this project's warn-and-preserve policy for metadata declarations) if
    * {@code value}'s ID is not a valid ALT structural variant code, or if it declares a Number/Type extra property
    * with a syntactically invalid value.
+   * <p>Public only because {@link org.pharmgkb.parser.vcf.VcfWriter} needs cross-package access; not part of
+   * this library's supported public API.
+   *
+   * @hidden
    */
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static void validateAlt(IdDescriptionMetadata value) {
     String id = value.getId();
     if (id != null) {
@@ -205,7 +217,7 @@ public class VcfMetadata {
     // .../failed_meta_alt_002.vcf (##CauseOfFailure=Incorrect ALT Number/Type value) establish that, once
     // declared, they're still expected to be syntactically valid VCF Number/Type tokens.
     String number = value.getPropertyRaw(InfoMetadata.NUMBER);
-    if (number != null && !VcfUtils.NUMBER_PATTERN.matcher(number).matches()) {
+    if (number != null && !InternalUtils.NUMBER_PATTERN.matcher(number).matches()) {
       VcfWarnings.warn("ALT {} has Number '{}' but it is not a valid VCF number", id, number);
     }
     String type = value.getPropertyRaw(InfoMetadata.TYPE);
@@ -221,7 +233,12 @@ public class VcfMetadata {
   /**
    * @return Whether {@code value} has no meaningful content -- either fully empty, or an empty bracket pair
    * ({@code <>}).
+   * <p>Public only because {@link org.pharmgkb.parser.vcf.VcfWriter} needs cross-package access; not part of
+   * this library's supported public API.
+   *
+   * @hidden
    */
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static boolean isEmptyMetadataValue(String value) {
     String trimmed = value.trim();
     // ##pedigreeDB=<> (test/vcf/{4.1,4.2}/failed/failed_meta_pedigreedb_001.vcf, ##CauseOfFailure=Meta-data entry
@@ -368,7 +385,7 @@ public class VcfMetadata {
     if (value == null) {
       throw new VcfFormatException("Metadata property \"assembly\" has a null value");
     }
-    VcfUtils.checkNoLineTerminator("assembly", value);
+    InternalUtils.checkNoLineTerminator("assembly", value);
     if (isEmptyMetadataValue(value)) {
       VcfWarnings.warn("Metadata property \"assembly\" has an empty value and was dropped: {}", value);
       return;
@@ -395,7 +412,7 @@ public class VcfMetadata {
     if (value == null) {
       throw new VcfFormatException("Metadata property \"pedigreeDB\" has a null value");
     }
-    VcfUtils.checkNoLineTerminator("pedigreeDB", value);
+    InternalUtils.checkNoLineTerminator("pedigreeDB", value);
     if (isEmptyMetadataValue(value)) {
       VcfWarnings.warn("Metadata property \"pedigreeDB\" has an empty value and was dropped: {}", value);
       return;
@@ -607,7 +624,7 @@ public class VcfMetadata {
         throw new VcfFormatException("VCF file format is null");
       }
       m_fileFormat = fileFormat;
-      if (!VcfUtils.FILE_FORMAT_PATTERN.matcher(fileFormat).matches()) {
+      if (!InternalUtils.FILE_FORMAT_PATTERN.matcher(fileFormat).matches()) {
         throw new VcfFormatException("Not a VCF file: fileformat is " + m_fileFormat);
       }
       return this;
@@ -719,7 +736,7 @@ public class VcfMetadata {
 
     public Builder addRawProperty(String name, String value) {
       // name/value are typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting
-      // a null name reach VcfUtils.checkNoLineTerminator(name, value) below (name.contains(...) would NPE) or a
+      // a null name reach InternalUtils.checkNoLineTerminator(name, value) below (name.contains(...) would NPE) or a
       // null value reach isEmptyMetadataValue(value) further down (value.trim() would NPE)
       if (name == null) {
         throw new VcfFormatException("Metadata property name is null");
@@ -727,8 +744,8 @@ public class VcfMetadata {
       if (value == null) {
         throw new VcfFormatException("Metadata property \"" + name + "\" has a null value");
       }
-      VcfUtils.checkNoLineTerminator(name, value);
-      if (VcfUtils.isReservedMetadataKey(name)) {
+      InternalUtils.checkNoLineTerminator(name, value);
+      if (InternalUtils.isReservedMetadataKey(name)) {
         // this cannot currently be reached through normal parsing -- VcfParser.parseMetadata's switch routes
         // every reserved name to the structured path, never to addRawProperty -- but it closes the hole for
         // direct/programmatic Builder use, matching the empty-value case below's warn-and-drop style

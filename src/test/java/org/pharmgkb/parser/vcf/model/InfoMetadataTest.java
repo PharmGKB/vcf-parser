@@ -1,8 +1,8 @@
 package org.pharmgkb.parser.vcf.model;
 
 import org.junit.jupiter.api.Test;
+import org.pharmgkb.parser.vcf.InternalUtils;
 import org.pharmgkb.parser.vcf.VcfFormatException;
-import org.pharmgkb.parser.vcf.VcfUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -23,7 +23,7 @@ public class InfoMetadataTest {
     props[2] = "Type=String";
     String desc = "Ancestral Allele, test";
     props[3] = "Description=\"" + desc + "\"";
-    InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(props));
+    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(props));
     assertEquals(InfoType.String, md.getType());
     assertEquals(desc, md.getDescription());
 
@@ -32,7 +32,7 @@ public class InfoMetadataTest {
     };
     for (String n : nums) {
       props[1] = "Number=" + n;
-      md = new InfoMetadata(VcfUtils.extractProperties(props));
+      md = new InfoMetadata(InternalUtils.extractProperties(props));
       assertEquals(n, md.getNumber());
     }
 
@@ -41,7 +41,7 @@ public class InfoMetadataTest {
     };
     for (String n : nums) {
       props[1] = "Number=" + n;
-      new InfoMetadata(VcfUtils.extractProperties(props));
+      new InfoMetadata(InternalUtils.extractProperties(props));
     }
   }
 
@@ -55,7 +55,7 @@ public class InfoMetadataTest {
   @Test
   public void testFlagWithNonZeroNumberWarns() {
     // Type=Flag with Number != 0 is malformed; it should warn, not throw
-    InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(
+    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
         "ID=X", "Number=1", "Type=Flag", "Description=\"d\""));
     assertEquals("1", md.getNumber());
     assertEquals(InfoType.Flag, md.getType());
@@ -74,7 +74,7 @@ public class InfoMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties("ID=X", "Type=Flag", "Description=\"d\""));
+      InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties("ID=X", "Type=Flag", "Description=\"d\""));
       assertEquals(InfoType.Flag, md.getType());
       assertTrue(appender.anyMessageContains("required metadata property \"Number\" is missing"));
       assertFalse(appender.anyMessageContains("'null'"));
@@ -87,7 +87,7 @@ public class InfoMetadataTest {
   @Test
   public void testUnquotedDescriptionWarns() {
     // an unquoted Description is malformed; it should warn, not throw
-    InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(
+    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
         "ID=X", "Number=1", "Type=String", "Description=unquoted"));
     assertEquals("X", md.getId());
   }
@@ -95,7 +95,7 @@ public class InfoMetadataTest {
   @Test
   public void testInvalidTypeWarns() {
     // an invalid Type should warn (not throw); the type is left null
-    InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(
+    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
         "ID=X", "Number=1", "Type=NotAType", "Description=\"d\""));
     assertNull(md.getType());
   }
@@ -103,7 +103,7 @@ public class InfoMetadataTest {
   @Test
   public void testMissingTypeWarns() {
     // a missing Type should warn (not throw); the type is left null
-    InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(
+    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
         "ID=X", "Number=1", "Description=\"d\""));
     assertNull(md.getType());
   }
@@ -130,7 +130,7 @@ public class InfoMetadataTest {
   public void testExtraPropertyRetained() {
     // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included
     // after the default fields" -- an unrecognized property is compliant, not just tolerated, and must be preserved
-    InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(
+    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
         "ID=X", "Number=1", "Type=String", "Description=\"d\"", "Custom=extra"));
     assertEquals("extra", md.getPropertyRaw("Custom"));
   }
@@ -146,7 +146,7 @@ public class InfoMetadataTest {
     root.addAppender(appender);
     InfoMetadata md;
     try {
-      md = new InfoMetadata(VcfUtils.extractProperties(
+      md = new InfoMetadata(InternalUtils.extractProperties(
           "ID=AC", "Number=1", "Type=Integer", "Description=\"d\""));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -167,7 +167,7 @@ public class InfoMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new InfoMetadata(VcfUtils.extractProperties("ID=AC", "Number=A", "Type=String", "Description=\"d\""));
+      new InfoMetadata(InternalUtils.extractProperties("ID=AC", "Number=A", "Type=String", "Description=\"d\""));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -185,7 +185,7 @@ public class InfoMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new InfoMetadata(VcfUtils.extractProperties("ID=AC", "Number=A", "Type=Integer", "Description=\"d\""));
+      new InfoMetadata(InternalUtils.extractProperties("ID=AC", "Number=A", "Type=Integer", "Description=\"d\""));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -204,7 +204,7 @@ public class InfoMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new InfoMetadata(VcfUtils.extractProperties("ID=END", "Number=1", "Type=Integer", "Description=\"d\""));
+      new InfoMetadata(InternalUtils.extractProperties("ID=END", "Number=1", "Type=Integer", "Description=\"d\""));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -223,7 +223,7 @@ public class InfoMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new InfoMetadata(VcfUtils.extractProperties("ID=MYCUSTOM", "Number=3", "Type=String", "Description=\"d\""));
+      new InfoMetadata(InternalUtils.extractProperties("ID=MYCUSTOM", "Number=3", "Type=String", "Description=\"d\""));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -254,7 +254,7 @@ public class InfoMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new InfoMetadata(VcfUtils.extractProperties(
+      new InfoMetadata(InternalUtils.extractProperties(
           "Number=1", "Type=Integer", "Description=\"Raw read depth\"", "ID=DP"));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -308,7 +308,7 @@ public class InfoMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new InfoMetadata(VcfUtils.extractProperties("ID=AA", "Number=1", "Type=String", "Description=unquoted"));
+      new InfoMetadata(InternalUtils.extractProperties("ID=AA", "Number=1", "Type=String", "Description=unquoted"));
       assertTrue(appender.hasWarnOrHigher());
       assertTrue(appender.anyMessageContains("INFO"));
     } finally {
@@ -328,7 +328,7 @@ public class InfoMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new InfoMetadata(VcfUtils.extractProperties("ID=A B", "Number=1", "Type=String", "Description=\"d\""));
+      new InfoMetadata(InternalUtils.extractProperties("ID=A B", "Number=1", "Type=String", "Description=\"d\""));
       assertTrue(appender.anyMessageContains("must not contain whitespace"));
     } finally {
       root.detachAppender(appender);
@@ -338,7 +338,7 @@ public class InfoMetadataTest {
 
   @Test
   public void testGetReservedNumberReturnsReservedCode() {
-    InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(
+    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
         "ID=X", "Number=A", "Type=String", "Description=\"d\""));
     assertEquals(SpecialVcfNumber.ONE_PER_ALT, md.getReservedNumber());
   }
@@ -347,7 +347,7 @@ public class InfoMetadataTest {
   public void testGetReservedNumberReturnsNullWhenNumberIsMissing() {
     // regression test: getReservedNumber() used to throw NullPointerException here instead of returning null,
     // because SpecialVcfNumber.fromId previously had no null guard; it now returns null for a null id.
-    InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(
+    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
         "ID=X", "Type=String", "Description=\"d\""));
     assertNull(md.getNumber());
     assertNull(md.getReservedNumber());

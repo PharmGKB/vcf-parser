@@ -349,7 +349,7 @@ public class ContigMetadataTest {
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     ContigMetadata contig = new ContigMetadata(
-        org.pharmgkb.parser.vcf.VcfUtils.extractProperties("Number=1", "ID=chr1"));
+        org.pharmgkb.parser.vcf.InternalUtils.extractProperties("Number=1", "ID=chr1"));
     appender.start();
     root.addAppender(appender);
     try {

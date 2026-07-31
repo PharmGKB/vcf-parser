@@ -13,23 +13,23 @@ import org.pharmgkb.parser.vcf.model.VcfFloat;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests {@link VcfUtils}.
+ * Tests {@link InternalUtils}.
  * @author Douglas Myers-Turnbull
  */
-public class VcfUtilsTest {
+public class InternalUtilsTest {
 
   @Test
   public void testAltBasePatternSimple() throws Exception {
-    System.out.println(VcfUtils.ALT_BASE_PATTERN.pattern());
+    System.out.println(InternalUtils.ALT_BASE_PATTERN.pattern());
     String[] shouldPass = {".", "A", "AaT", "*", ".An", "An.", "<3&*FH#>", ".TGCA"};
     for (String test : shouldPass) {
-      assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher(test).matches(), "String " + test + " was not recognized");
+      assertTrue(InternalUtils.ALT_BASE_PATTERN.matcher(test).matches(), "String " + test + " was not recognized");
     }
   }
 
   @Test
   public void testAltBasePatternBreakpoint() throws Exception {
-    System.out.println(VcfUtils.ALT_BASE_PATTERN.pattern());
+    System.out.println(InternalUtils.ALT_BASE_PATTERN.pattern());
     // all copied from the VCF 4.2 specification, in order
     String[] shouldPass = {" G]17:198982]", " ]13:123456]T", "C[2:321682[", "[17:198983[A", "A]2:321681]",
         " [13:123457[C", "]13 : 123456]AGTNNNNNCAT", " CAGTNNNNNCA[2 : 321682[", "C[<ctg1>: 1[", "] <ctg1 >: 329]A ",
@@ -40,7 +40,7 @@ public class VcfUtilsTest {
         "A]2 : 321687]", " [2 : 321682[C" };
     for (String test : shouldPass) {
       test = test.replaceAll(" ", "");
-      assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher(test).matches(), "String " + test + " was not recognized");
+      assertTrue(InternalUtils.ALT_BASE_PATTERN.matcher(test).matches(), "String " + test + " was not recognized");
     }
   }
 
@@ -48,7 +48,7 @@ public class VcfUtilsTest {
   public void testAltBasePatternBad() throws Exception {
     String[] shouldPass = {"<at", "at>", "", "<", "]34[AT", "[34]AT", "[<xxx[AT"};
     for (String test : shouldPass) {
-      assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher(test).matches(), "String " + test + " was recognized");
+      assertFalse(InternalUtils.ALT_BASE_PATTERN.matcher(test).matches(), "String " + test + " was recognized");
     }
   }
 
@@ -58,7 +58,7 @@ public class VcfUtilsTest {
     // passed because every example in the spec itself happens to use a purely numeric chromosome name
     String[] shouldPass = {"A]chr1:100]", "A]X:100]", "G]scaffold_12:55]", "]chrX:1]T", "C[chr1:1["};
     for (String test : shouldPass) {
-      assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher(test).matches(), "String " + test + " was not recognized");
+      assertTrue(InternalUtils.ALT_BASE_PATTERN.matcher(test).matches(), "String " + test + " was not recognized");
     }
   }
 
@@ -68,7 +68,7 @@ public class VcfUtilsTest {
     // without a position (a truly mate-less breakend uses the unrelated "G."/".A" single-breakend shorthand)
     String[] shouldFail = {"A]2]", "A]chr1]", "C[2[", "]13]T", "[<ctg1>[A"};
     for (String test : shouldFail) {
-      assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher(test).matches(), "String " + test + " was recognized");
+      assertFalse(InternalUtils.ALT_BASE_PATTERN.matcher(test).matches(), "String " + test + " was recognized");
     }
   }
 
@@ -78,10 +78,10 @@ public class VcfUtilsTest {
     // replacement string "t" is missing on both sides: CauseOfFailure="Breakend without bases at either side",
     // ALT="[1:100[". Every officially-passing breakend example (test/vcf/4.1/passed/passed_body_alt.vcf) has
     // content on exactly one side (e.g. "]1:100]AGT", "[1:100[AGT", "AGT]1:100]", "AGT[1:100[").
-    assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher("[1:100[").matches());
-    assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher("]1:100]").matches());
-    assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher("[1:100[AGT").matches());
-    assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher("AGT]1:100]").matches());
+    assertFalse(InternalUtils.ALT_BASE_PATTERN.matcher("[1:100[").matches());
+    assertFalse(InternalUtils.ALT_BASE_PATTERN.matcher("]1:100]").matches());
+    assertTrue(InternalUtils.ALT_BASE_PATTERN.matcher("[1:100[AGT").matches());
+    assertTrue(InternalUtils.ALT_BASE_PATTERN.matcher("AGT]1:100]").matches());
   }
 
   @Test
@@ -90,7 +90,7 @@ public class VcfUtilsTest {
     // telomeric breakend where "t" (the replacement string) is literally "." -- representing no real reference
     // sequence at the virtual position -- not "t" being absent (which testAltBasePatternBreakendRequiresReplacementString
     // confirms is invalid).
-    assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher(".[13:123457[").matches());
+    assertTrue(InternalUtils.ALT_BASE_PATTERN.matcher(".[13:123457[").matches());
   }
 
   @Test
@@ -104,7 +104,7 @@ public class VcfUtilsTest {
     // NOT implement this shorthand -- it rejects "C<ctg1>" with the same generic error it gives for clearly
     // invalid ALT syntax -- but the VCFv4.2 spec text is unambiguous that this form is valid, so this parser
     // accepts it. This test exists specifically to prevent this exact regression from recurring.
-    assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher("C<ctg1>").matches());
+    assertTrue(InternalUtils.ALT_BASE_PATTERN.matcher("C<ctg1>").matches());
   }
 
   @Test
@@ -113,8 +113,8 @@ public class VcfUtilsTest {
     // used to also wrap the whole expression in its own optional leading/trailing dot, a leftover from before t
     // supported "." directly. Combined with t's new "." alternative, that let a stray extra dot slip in beside t
     // with no basis in any spec example. Fixed by removing the now-redundant outer wrapper.
-    assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher("..[1:1[").matches());
-    assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher("A]1:1].").matches());
+    assertFalse(InternalUtils.ALT_BASE_PATTERN.matcher("..[1:1[").matches());
+    assertFalse(InternalUtils.ALT_BASE_PATTERN.matcher("A]1:1].").matches());
   }
 
   @Test
@@ -128,8 +128,8 @@ public class VcfUtilsTest {
     // validating ALT syntax at all. With no source able to confirm or deny these forms, and a previous attempt to
     // narrow this regex having incorrectly broken the one confirmed-valid case, this permissiveness is left as-is
     // rather than risked again -- this test locks in that deliberate decision, not a confirmed compliance claim.
-    assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher("AC<ctg1>GT").matches());
-    assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher("<ctg1><ctg2>").matches());
+    assertTrue(InternalUtils.ALT_BASE_PATTERN.matcher("AC<ctg1>GT").matches());
+    assertTrue(InternalUtils.ALT_BASE_PATTERN.matcher("<ctg1><ctg2>").matches());
   }
 
   @Test
@@ -142,14 +142,14 @@ public class VcfUtilsTest {
     // greedy matching.
     String malformed = "A".repeat(20_000) + "!";
     assertTimeoutPreemptively(java.time.Duration.ofSeconds(3), () ->
-        assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher(malformed).matches()));
+        assertFalse(InternalUtils.ALT_BASE_PATTERN.matcher(malformed).matches()));
   }
 
   @Test
   public void testExtractPropertiesWithEscapes() {
     // an escaped backslash (\\) and an escaped double-quote (\") inside a quoted Description must not crash and must be
     // preserved (the split must not treat the escaped quote as a real quote)
-    Map<String, String> props = VcfUtils.extractPropertiesFromLine("ID=X,Description=\"a \\\\ b \\\" c\"");
+    Map<String, String> props = InternalUtils.extractPropertiesFromLine("ID=X,Description=\"a \\\\ b \\\" c\"");
     assertEquals("X", props.get("ID"));
     assertEquals("\"a \\\\ b \\\" c\"", props.get("Description"));
   }
@@ -159,7 +159,7 @@ public class VcfUtilsTest {
     // a backslash not followed by "\\" or "\"" has no defined escape meaning and must not consume/protect the following
     // delimiter; before the fix, the comma here was incorrectly treated as escaped, merging both properties into one
     // blob with two "=" signs, which then threw instead of parsing to two properties
-    Map<String, String> props = VcfUtils.extractPropertiesFromLine("Source=A\\,Number=1");
+    Map<String, String> props = InternalUtils.extractPropertiesFromLine("Source=A\\,Number=1");
     assertEquals("A\\", props.get("Source"));
     assertEquals("1", props.get("Number"));
   }
@@ -169,7 +169,7 @@ public class VcfUtilsTest {
     // a declaration with a repeated attribute (e.g. ##INFO=<ID=X,Number=1,Number=2,...>) silently kept only the
     // last value with no diagnostic at all; must at least warn (VCF metadata-declaration policy is lenient, not a
     // structural violation, so this doesn't throw)
-    Map<String, String> props = VcfUtils.extractPropertiesFromLine("ID=X,Number=1,Number=2");
+    Map<String, String> props = InternalUtils.extractPropertiesFromLine("ID=X,Number=1,Number=2");
     assertEquals("2", props.get("Number"));
   }
 
@@ -177,7 +177,7 @@ public class VcfUtilsTest {
   public void testExtractPropertiesNoPlaceholderCollision() {
     // a value literally containing the old "~~~~" placeholder must be preserved, and an escaped quote must not be
     // treated as a real quote (so the comma inside the quoted value is not a top-level delimiter)
-    Map<String, String> props = VcfUtils.extractPropertiesFromLine(
+    Map<String, String> props = InternalUtils.extractPropertiesFromLine(
         "ID=X,Description=\"literal ~~~~ and \\\"q, v\\\"\"");
     assertEquals("X", props.get("ID"));
     assertEquals("\"literal ~~~~ and \\\"q, v\\\"\"", props.get("Description"));
@@ -188,7 +188,7 @@ public class VcfUtilsTest {
     // real example from an hts-specs SAMPLE fixture: this attribute order was previously scrambled to
     // Description,Genomes,Mixture on write because extractProperties built a plain HashMap (hash-bucket order),
     // not insertion order
-    Map<String, String> props = VcfUtils.extractPropertiesFromLine(
+    Map<String, String> props = InternalUtils.extractPropertiesFromLine(
         "ID=Sample_ok,Genomes=G1_ID;G2_ID;GK_ID,Mixture=N1;N2;NK,Description=\"S1;S2;SK\"");
     assertEquals(Arrays.asList("ID", "Genomes", "Mixture", "Description"), new ArrayList<>(props.keySet()));
   }
@@ -207,7 +207,7 @@ public class VcfUtilsTest {
     root.addAppender(appender);
     Map<String, String> props;
     try {
-      props = VcfUtils.extractPropertiesFromLine(
+      props = InternalUtils.extractPropertiesFromLine(
           "ID=DEL,Number=1,Type=String,Description=\"Description with \"non-escaped quote\"");
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -229,7 +229,7 @@ public class VcfUtilsTest {
     appender.start();
     root.addAppender(appender);
     try {
-      VcfUtils.extractPropertiesFromLine("ID=X,Description=\"a \\\" b\"");
+      InternalUtils.extractPropertiesFromLine("ID=X,Description=\"a \\\" b\"");
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -246,7 +246,7 @@ public class VcfUtilsTest {
     appender.start();
     root.addAppender(appender);
     try {
-      VcfUtils.extractPropertiesFromLine("ID=X,Description=\"\"");
+      InternalUtils.extractPropertiesFromLine("ID=X,Description=\"\"");
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -263,7 +263,7 @@ public class VcfUtilsTest {
     appender.start();
     root.addAppender(appender);
     try {
-      VcfUtils.extractPropertiesFromLine("ID=X,Number=1,Type=String");
+      InternalUtils.extractPropertiesFromLine("ID=X,Number=1,Type=String");
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -274,59 +274,59 @@ public class VcfUtilsTest {
   @Test
   public void testSymbolicAltRejectsWhitespace() {
     // an angle-bracketed ALT ID may not contain whitespace, commas, or angle brackets
-    assertTrue(VcfUtils.ALT_BASE_PATTERN.matcher("<DEL>").matches());
-    assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher("<DEL bad>").matches());
-    assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher("<a,b>").matches());
-    assertFalse(VcfUtils.ALT_BASE_PATTERN.matcher("<a<b>").matches());
+    assertTrue(InternalUtils.ALT_BASE_PATTERN.matcher("<DEL>").matches());
+    assertFalse(InternalUtils.ALT_BASE_PATTERN.matcher("<DEL bad>").matches());
+    assertFalse(InternalUtils.ALT_BASE_PATTERN.matcher("<a,b>").matches());
+    assertFalse(InternalUtils.ALT_BASE_PATTERN.matcher("<a<b>").matches());
   }
 
   @Test
   public void testQuoteEscapesBackslashAndQuote() {
-    assertEquals("\"plain\"", VcfUtils.quote("plain"));
-    assertEquals("\"a \\\\ b\"", VcfUtils.quote("a \\ b"));
-    assertEquals("\"a \\\"quoted\\\" b\"", VcfUtils.quote("a \"quoted\" b"));
+    assertEquals("\"plain\"", InternalUtils.quote("plain"));
+    assertEquals("\"a \\\\ b\"", InternalUtils.quote("a \\ b"));
+    assertEquals("\"a \\\"quoted\\\" b\"", InternalUtils.quote("a \"quoted\" b"));
   }
 
   @Test
   public void testUnquoteDecodesEscapes() {
-    assertEquals("plain", VcfUtils.unquote("\"plain\""));
-    assertEquals("a \\ b", VcfUtils.unquote("\"a \\\\ b\""));
-    assertEquals("a \"quoted\" b", VcfUtils.unquote("\"a \\\"quoted\\\" b\""));
+    assertEquals("plain", InternalUtils.unquote("\"plain\""));
+    assertEquals("a \\ b", InternalUtils.unquote("\"a \\\\ b\""));
+    assertEquals("a \"quoted\" b", InternalUtils.unquote("\"a \\\"quoted\\\" b\""));
     // not wrapped in quotes: returned as-is
-    assertEquals("unquoted", VcfUtils.unquote("unquoted"));
+    assertEquals("unquoted", InternalUtils.unquote("unquoted"));
     // single-quote-character input must not crash (previously threw StringIndexOutOfBoundsException)
-    assertEquals("\"", VcfUtils.unquote("\""));
+    assertEquals("\"", InternalUtils.unquote("\""));
   }
 
   @Test
   public void testQuoteUnquoteRoundTrip() {
     String[] values = { "plain", "a \\ b", "a \"quoted\" b", "\\\"both\\\"", "" };
     for (String value : values) {
-      assertEquals(value, VcfUtils.unquote(VcfUtils.quote(value)), "round-trip failed for: " + value);
+      assertEquals(value, InternalUtils.unquote(InternalUtils.quote(value)), "round-trip failed for: " + value);
     }
   }
 
   @Test
   public void testSplitProp() throws Exception {
-    assertEquals(Pair.of("abc", "\"d=ef\""), VcfUtils.splitProperty("abc=\"d=ef\""));
-    assertEquals(Pair.of("\"a=bc\"", "\"d=ef\""), VcfUtils.splitProperty("\"a=bc\"=\"d=ef\""));
-    assertEquals(Pair.of("\"a=b=c\"", "\"d=ef\""), VcfUtils.splitProperty("\"a=b=c\"=\"d=ef\""));
+    assertEquals(Pair.of("abc", "\"d=ef\""), InternalUtils.splitProperty("abc=\"d=ef\""));
+    assertEquals(Pair.of("\"a=bc\"", "\"d=ef\""), InternalUtils.splitProperty("\"a=bc\"=\"d=ef\""));
+    assertEquals(Pair.of("\"a=b=c\"", "\"d=ef\""), InternalUtils.splitProperty("\"a=b=c\"=\"d=ef\""));
   }
 
   @Test
   public void testCheckNoLineTerminator() {
-    VcfUtils.checkNoLineTerminator("key", "value"); // no line terminator: does not throw
-    VcfUtils.checkNoLineTerminator("key", null); // a null value is not checked (nothing to check)
-    assertThrows(VcfFormatException.class, () -> VcfUtils.checkNoLineTerminator("bad\nkey", "value"));
-    assertThrows(VcfFormatException.class, () -> VcfUtils.checkNoLineTerminator("key", "bad\nvalue"));
-    assertThrows(VcfFormatException.class, () -> VcfUtils.checkNoLineTerminator("key", "bad\rvalue"));
+    InternalUtils.checkNoLineTerminator("key", "value"); // no line terminator: does not throw
+    InternalUtils.checkNoLineTerminator("key", null); // a null value is not checked (nothing to check)
+    assertThrows(VcfFormatException.class, () -> InternalUtils.checkNoLineTerminator("bad\nkey", "value"));
+    assertThrows(VcfFormatException.class, () -> InternalUtils.checkNoLineTerminator("key", "bad\nvalue"));
+    assertThrows(VcfFormatException.class, () -> InternalUtils.checkNoLineTerminator("key", "bad\rvalue"));
   }
 
   @Test
   public void testConvertPropertyCharacterReturnsCharacterNotString() {
     // convertElement's Character.class branch previously returned the raw String; type erasure let that past
     // convertProperty() itself, but it then threw ClassCastException at the caller's assignment site below
-    Character value = VcfUtils.convertProperty(InfoType.Character, "A");
+    Character value = InternalUtils.convertProperty(InfoType.Character, "A");
     assertEquals(Character.valueOf('A'), value);
   }
 
@@ -335,12 +335,12 @@ public class VcfUtilsTest {
     // FT's grammar (PASS/./semicolon-separated codes, no whitespace, PASS/'.' not combined with other codes) isn't
     // expressible through its declared Type=String, so it's checked separately; this is non-structural sample
     // content, so an invalid value warns rather than throws
-    assertEquals("PASS", VcfUtils.checkReservedFormatConstraints("FT", "PASS")); // valid: does not throw
-    assertEquals("q10;q20", VcfUtils.checkReservedFormatConstraints("FT", "q10;q20")); // valid: does not throw
-    assertEquals("q10 q20", VcfUtils.checkReservedFormatConstraints("FT", "q10 q20")); // whitespace in a code: warns
-    assertEquals("PASS;q10", VcfUtils.checkReservedFormatConstraints("FT", "PASS;q10")); // PASS + code: warns
-    assertNull(VcfUtils.checkReservedFormatConstraints("FT", null)); // no value set: nothing to check
-    assertEquals(".", VcfUtils.checkReservedFormatConstraints("FT", ".")); // missing value: nothing to check
+    assertEquals("PASS", InternalUtils.checkReservedFormatConstraints("FT", "PASS")); // valid: does not throw
+    assertEquals("q10;q20", InternalUtils.checkReservedFormatConstraints("FT", "q10;q20")); // valid: does not throw
+    assertEquals("q10 q20", InternalUtils.checkReservedFormatConstraints("FT", "q10 q20")); // whitespace in a code: warns
+    assertEquals("PASS;q10", InternalUtils.checkReservedFormatConstraints("FT", "PASS;q10")); // PASS + code: warns
+    assertNull(InternalUtils.checkReservedFormatConstraints("FT", null)); // no value set: nothing to check
+    assertEquals(".", InternalUtils.checkReservedFormatConstraints("FT", ".")); // missing value: nothing to check
   }
 
   @Test
@@ -349,12 +349,12 @@ public class VcfUtilsTest {
     // used for an empty entry in FILTER (FT's grammar is explicitly modeled on FILTER's) and every other
     // position-independent list in this library -- unlike PASS/'.' combined with a genuine other code (see above),
     // which is a real grammar violation and must not be silently rewritten away
-    assertEquals("q10;q20", VcfUtils.checkReservedFormatConstraints("FT", "q10;;q20"));
-    assertEquals("q10", VcfUtils.checkReservedFormatConstraints("FT", "q10;"));
-    assertEquals("q10", VcfUtils.checkReservedFormatConstraints("FT", ";q10"));
+    assertEquals("q10;q20", InternalUtils.checkReservedFormatConstraints("FT", "q10;;q20"));
+    assertEquals("q10", InternalUtils.checkReservedFormatConstraints("FT", "q10;"));
+    assertEquals("q10", InternalUtils.checkReservedFormatConstraints("FT", ";q10"));
     // dropping the empty artifacts must not leave a false "combined with PASS" warning when PASS is the only
     // remaining real content (e.g. a trailing ';' after PASS)
-    assertEquals("PASS", VcfUtils.checkReservedFormatConstraints("FT", "PASS;"));
+    assertEquals("PASS", InternalUtils.checkReservedFormatConstraints("FT", "PASS;"));
   }
 
   @Test
@@ -362,17 +362,17 @@ public class VcfUtilsTest {
     // PS must be a non-negative 32-bit integer, but that constraint isn't expressible through its declared
     // Type=Integer (which maps to a 64-bit Long), so it's checked separately; this is non-structural sample
     // content, so an out-of-range value warns rather than throws
-    VcfUtils.checkReservedFormatConstraints("PS", "0"); // valid: does not throw
-    VcfUtils.checkReservedFormatConstraints("PS", String.valueOf(Integer.MAX_VALUE)); // valid: does not throw
-    VcfUtils.checkReservedFormatConstraints("PS", "-5"); // negative: warns, does not throw
-    VcfUtils.checkReservedFormatConstraints("PS", String.valueOf(Integer.MAX_VALUE + 1L)); // out of 32-bit range: warns
+    InternalUtils.checkReservedFormatConstraints("PS", "0"); // valid: does not throw
+    InternalUtils.checkReservedFormatConstraints("PS", String.valueOf(Integer.MAX_VALUE)); // valid: does not throw
+    InternalUtils.checkReservedFormatConstraints("PS", "-5"); // negative: warns, does not throw
+    InternalUtils.checkReservedFormatConstraints("PS", String.valueOf(Integer.MAX_VALUE + 1L)); // out of 32-bit range: warns
   }
 
   @Test
   public void testConvertPropertyPhaseSetPreservesOutOfRangeValue() {
     // the typed accessor still returns the parsed Long even when it violates PS's non-negative-32-bit constraint,
     // consistent with the "warn and preserve" policy for non-structural sample content
-    Long value = VcfUtils.convertProperty(ReservedFormatProperty.PhaseSet, "-5");
+    Long value = InternalUtils.convertProperty(ReservedFormatProperty.PhaseSet, "-5");
     assertEquals(-5L, value);
   }
 
@@ -380,50 +380,34 @@ public class VcfUtilsTest {
   public void testConvertPropertyFilterDropsEmptyCodes() {
     // unlike PS, the typed FT accessor returns a normalized value: an empty semicolon-separated code is dropped,
     // matching the "warn and drop" convention used for FILTER's own empty entries
-    String value = VcfUtils.convertProperty(ReservedFormatProperty.Filter, "q10;;q20");
+    String value = InternalUtils.convertProperty(ReservedFormatProperty.Filter, "q10;;q20");
     assertEquals("q10;q20", value);
   }
 
   @Test
   public void testToJavaTypeMapsInfoType() {
-    assertEquals(Long.class, VcfUtils.toJavaType(InfoType.Integer));
-    assertEquals(VcfFloat.class, VcfUtils.toJavaType(InfoType.Float));
-    assertEquals(Character.class, VcfUtils.toJavaType(InfoType.Character));
-    assertEquals(String.class, VcfUtils.toJavaType(InfoType.String));
-    assertEquals(Boolean.class, VcfUtils.toJavaType(InfoType.Flag));
+    assertEquals(Long.class, InternalUtils.toJavaType(InfoType.Integer));
+    assertEquals(VcfFloat.class, InternalUtils.toJavaType(InfoType.Float));
+    assertEquals(Character.class, InternalUtils.toJavaType(InfoType.Character));
+    assertEquals(String.class, InternalUtils.toJavaType(InfoType.String));
+    assertEquals(Boolean.class, InternalUtils.toJavaType(InfoType.Flag));
   }
 
   @Test
   public void testToJavaTypeMapsFormatType() {
-    assertEquals(Long.class, VcfUtils.toJavaType(FormatType.Integer));
-    assertEquals(VcfFloat.class, VcfUtils.toJavaType(FormatType.Float));
-    assertEquals(Character.class, VcfUtils.toJavaType(FormatType.Character));
-    assertEquals(String.class, VcfUtils.toJavaType(FormatType.String));
-  }
-
-  @Test
-  public void testToJavaTypeRejectsNullInsteadOfThrowingNpe() {
-    // FormatMetadata.getType()/InfoMetadata.getType() are themselves documented @Nullable (absent/invalid
-    // Type property), so a caller passing one straight through here is a realistic case; must reject a null
-    // with VcfFormatException, matching the existing default-branch treatment of any other unhandled type,
-    // not let it reach a raw NullPointerException at the switch statement itself
-    assertThrows(VcfFormatException.class, () -> VcfUtils.toJavaType((FormatType) null));
-    assertThrows(VcfFormatException.class, () -> VcfUtils.toJavaType((InfoType) null));
-  }
-
-  @Test
-  public void testConvertPropertyRejectsNullFormatOrInfoTypeInsteadOfThrowingNpe() {
-    assertThrows(VcfFormatException.class, () -> VcfUtils.convertProperty((FormatType) null, "value"));
-    assertThrows(VcfFormatException.class, () -> VcfUtils.convertProperty((InfoType) null, "value"));
+    assertEquals(Long.class, InternalUtils.toJavaType(FormatType.Integer));
+    assertEquals(VcfFloat.class, InternalUtils.toJavaType(FormatType.Float));
+    assertEquals(Character.class, InternalUtils.toJavaType(FormatType.Character));
+    assertEquals(String.class, InternalUtils.toJavaType(FormatType.String));
   }
 
   @Test
   public void testIsReservedMetadataKey() {
-    assertTrue(VcfUtils.isReservedMetadataKey("INFO"));
-    assertFalse(VcfUtils.isReservedMetadataKey("NotReserved"));
+    assertTrue(InternalUtils.isReservedMetadataKey("INFO"));
+    assertFalse(InternalUtils.isReservedMetadataKey("NotReserved"));
     // regression test: this used to throw NullPointerException from Set.of(...).contains(null) instead of
     // returning false -- null is trivially not one of the fixed reserved keyword strings.
-    assertFalse(VcfUtils.isReservedMetadataKey(null));
+    assertFalse(InternalUtils.isReservedMetadataKey(null));
   }
 
   @Test
@@ -439,7 +423,7 @@ public class VcfUtilsTest {
     root.addAppender(appender);
     String result;
     try {
-      result = VcfUtils.convertProperty(new FakeFormatIdReservedProperty(), "PASS;other");
+      result = InternalUtils.convertProperty(new FakeFormatIdReservedProperty(), "PASS;other");
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -458,7 +442,7 @@ public class VcfUtilsTest {
     appender.start();
     root.addAppender(appender);
     try {
-      VcfUtils.convertProperty(ReservedFormatProperty.Filter, "PASS;other");
+      InternalUtils.convertProperty(ReservedFormatProperty.Filter, "PASS;other");
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -471,78 +455,23 @@ public class VcfUtilsTest {
     // a null entry can only reach here through a caller-mutated list (e.g. VcfPosition.getIds().add(null)), never
     // through parsing; it must be rejected with VcfFormatException, not a raw NullPointerException from isEmpty()
     assertThrows(VcfFormatException.class,
-        () -> VcfUtils.dropEmptyEntries("ID", new ArrayList<>(Arrays.asList("rs1", null))));
+        () -> InternalUtils.dropEmptyEntries("ID", new ArrayList<>(Arrays.asList("rs1", null))));
   }
 
   @Test
   public void testFillEmptyEntriesWithDotRejectsNullEntry() {
     assertThrows(VcfFormatException.class,
-        () -> VcfUtils.fillEmptyEntriesWithDot("ALT", new ArrayList<>(Arrays.asList("A", null))));
-  }
-
-  // Every method below is public static API a caller can invoke directly with a null argument, despite each
-  // parameter being typed non-@Nullable; each must reject a null with VcfFormatException instead of raw-NPEing.
-
-  @Test
-  public void testContainsWhitespaceRejectsNullInsteadOfThrowingNpe() {
-    assertThrows(VcfFormatException.class, () -> VcfUtils.containsWhitespace(null));
-  }
-
-  @Test
-  public void testExtractPropertiesFromLineRejectsNullInsteadOfThrowingNpe() {
-    assertThrows(VcfFormatException.class, () -> VcfUtils.extractPropertiesFromLine(null));
-  }
-
-  @Test
-  public void testExtractPropertiesRejectsNullArrayInsteadOfThrowingNpe() {
-    assertThrows(VcfFormatException.class, () -> VcfUtils.extractProperties((String[]) null));
-  }
-
-  @Test
-  public void testExtractPropertiesRejectsNullEntryInsteadOfThrowingNpe() {
-    // unlike the other tests in this group, this specific case already threw VcfFormatException before this
-    // fix -- extractProperties()'s existing try/catch around splitProperty(prop) converts any RuntimeException
-    // (including the raw NullPointerException a null prop caused) into a VcfFormatException, just with a
-    // generic wrapped message. The new explicit check makes the rejection direct with a clearer message instead
-    // of relying on that wrapping, but this test's assertion alone doesn't distinguish the two paths.
-    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> VcfUtils.extractProperties("ID=X", null));
-    assertTrue(ex.getMessage().contains("null entry"));
-  }
-
-  @Test
-  public void testSplitPropertyRejectsNullInsteadOfThrowingNpe() {
-    assertThrows(VcfFormatException.class, () -> VcfUtils.splitProperty(null));
-  }
-
-  @Test
-  public void testQuoteRejectsNullInsteadOfThrowingNpe() {
-    assertThrows(VcfFormatException.class, () -> VcfUtils.quote(null));
+        () -> InternalUtils.fillEmptyEntriesWithDot("ALT", new ArrayList<>(Arrays.asList("A", null))));
   }
 
   @Test
   public void testUnquoteRejectsNullInsteadOfThrowingNpe() {
-    assertThrows(VcfFormatException.class, () -> VcfUtils.unquote(null));
-  }
-
-  @Test
-  public void testCheckNoLineTerminatorRejectsNullKeyInsteadOfThrowingNpe() {
-    assertThrows(VcfFormatException.class, () -> VcfUtils.checkNoLineTerminator(null, "value"));
-  }
-
-  @Test
-  public void testDropEmptyEntriesRejectsNullListInsteadOfThrowingNpe() {
-    assertThrows(VcfFormatException.class, () -> VcfUtils.dropEmptyEntries("ID", null));
-  }
-
-  @Test
-  public void testFillEmptyEntriesWithDotRejectsNullListInsteadOfThrowingNpe() {
-    assertThrows(VcfFormatException.class, () -> VcfUtils.fillEmptyEntriesWithDot("ALT", null));
-  }
-
-  @Test
-  public void testConvertPropertyRejectsNullReservedPropertyKeyInsteadOfThrowingNpe() {
-    assertThrows(VcfFormatException.class,
-        () -> VcfUtils.convertProperty((org.pharmgkb.parser.vcf.model.ReservedProperty) null, "value"));
+    // unlike its sibling methods in this class, unquote()'s null-check is genuinely load-bearing even though
+    // the class is documented as internal-only: BaseMetadata.getPropertiesUnquoted() iterates its live
+    // properties map and calls unquote() on every value with no guard of its own, and a caller can insert a
+    // null value directly through BaseMetadata.getPropertiesRaw()'s own documented bypass -- so this can
+    // genuinely receive null in production, not a hypothetical external-caller-only scenario.
+    assertThrows(VcfFormatException.class, () -> InternalUtils.unquote(null));
   }
 
   private static final class FakeFormatIdReservedProperty implements org.pharmgkb.parser.vcf.model.ReservedProperty {
