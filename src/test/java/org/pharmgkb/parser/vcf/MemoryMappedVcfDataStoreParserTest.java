@@ -76,6 +76,46 @@ public class MemoryMappedVcfDataStoreParserTest {
   }
 
   @Test
+  public void testGetPositionForId() throws IOException {
+    try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream(
+        "/vcfposition.vcf")))) {
+      MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+      new VcfParser.Builder()
+          .fromReader(reader)
+          .parseWith(lineParser)
+          .build().parse();
+      MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
+
+      VcfPosition position = dataStore.getPositionForId("rsb");
+      assertNotNull(position);
+      assertEquals("chr1", position.getChromosome());
+      assertEquals(2, position.getPosition());
+
+      assertNull(dataStore.getPositionForId("nope"));
+    }
+  }
+
+  @Test
+  public void testGetSamplesForId() throws IOException {
+    try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream(
+        "/vcfposition.vcf")))) {
+      MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+      new VcfParser.Builder()
+          .fromReader(reader)
+          .parseWith(lineParser)
+          .build().parse();
+      MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
+
+      List<VcfSample> samples = dataStore.getSamplesForId("rsb");
+      assertNotNull(samples);
+      assertEquals(1, samples.size());
+      assertEquals("0|1", samples.get(0).getProperty(ReservedFormatProperty.Genotype));
+
+      assertNull(dataStore.getSamplesForId("nope"));
+    }
+  }
+
+  @Test
   public void testMalformedGenotypeConvertsToVcfFormatException() throws IOException {
     // ALT has one allele (T), so valid GT indices are 0 (REF) and 1; index 5 is out of range
     String outOfRange = "##fileformat=VCFv4.2\n" +
