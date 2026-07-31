@@ -47,11 +47,16 @@ public class AltStructuralVariant {
     if (string.isEmpty()) { // could be replaced with javax.validation.constraints.Size(min=1);
       throw new VcfFormatException("Structural variant code must not be empty");
     }
-    if (InternalUtils.containsWhitespace(string) || string.chars().anyMatch(c -> c == '<' || c == '>')) {
+    if (InternalUtils.containsWhitespace(string) || string.chars().anyMatch(c -> c == '<' || c == '>' || c == ',')) {
       // VCFv4.2.tex line 105: "ID values are case sensitive strings and may not contain whitespace or angle
-      // brackets."
-      throw new VcfFormatException("Structural variant code \"" + string + "\" must not contain whitespace or " +
-          "angle brackets");
+      // brackets." VCFv4.2 is silent on commas specifically; VCFv4.3.tex line 200 (unchanged through
+      // VCFv4.4.tex:209/VCFv4.5.tex:258) clarifies the same sentence to "...must not contain whitespace,
+      // commas or angle brackets" -- used here as VCFv4.2-silent clarifying guidance per AGENTS.md. hts-specs'
+      // own test/vcf/4.2/failed/failed_meta_alt_007.vcf (and an identical test/vcf/4.3 counterpart) declares
+      // ID=DEL:A,B with ##CauseOfFailure=The ALT ID contains a comma, confirming this is rejected under the
+      // target 4.2 spec too, not just a 4.3+-only rule.
+      throw new VcfFormatException("Structural variant code \"" + string + "\" must not contain whitespace, " +
+          "commas, or angle brackets");
     }
 
     // limit -1 preserves trailing empty components (e.g. a trailing colon), which are rejected below rather than

@@ -78,6 +78,15 @@ public class AltStructuralVariantTest {
   }
 
   @Test
+  public void testCommaInComponentRejected() {
+    // VCFv4.2.tex line 105 is silent on commas specifically; VCFv4.3.tex line 200 (unchanged through 4.4/4.5)
+    // clarifies the same sentence to "...must not contain whitespace, commas or angle brackets" -- used as
+    // VCFv4.2-silent clarifying guidance per AGENTS.md. Reproduces test/vcf/{4.2,4.3}/failed/
+    // failed_meta_alt_007.vcf's ##CauseOfFailure=The ALT ID contains a comma
+    assertThrows(VcfFormatException.class, () -> new AltStructuralVariant("DEL:A,B"));
+  }
+
+  @Test
   public void testClosingAngleBracketInComponentRejected() {
     // reproduces failed_meta_alt_009.vcf's ##CauseOfFailure=The ALT ID contains a closing angle bracket
     assertThrows(VcfFormatException.class, () -> new AltStructuralVariant("DEL:A>B"));
