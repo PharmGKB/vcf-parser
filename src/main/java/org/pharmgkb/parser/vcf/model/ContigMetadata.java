@@ -53,7 +53,10 @@ public class ContigMetadata extends IdMetadata {
    */
   @SuppressWarnings("ConstantConditions")
   public long getLength() {
-    String length = getPropertyRaw(LENGTH);
+    // getPropertyUnquoted, not getPropertyRaw, matching init()'s own validation below -- a quoted length
+    // (e.g. length="249250621") is otherwise silently accepted at construction (init() already unquotes
+    // before checking) but threw here, since this getter still parsed the raw, still-quoted value
+    String length = getPropertyUnquoted(LENGTH);
     try {
       return Long.parseLong(length);
     } catch (NumberFormatException e) {

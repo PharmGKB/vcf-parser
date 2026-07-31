@@ -124,6 +124,20 @@ public class ContigMetadataTest {
   }
 
   @Test
+  public void testGetLengthAcceptsQuotedNumber() {
+    // init()'s own construction-time validation already unquotes before checking (so a quoted length
+    // like "249250621" parses fine and warns nothing), but getLength() used to parse the raw, still-quoted
+    // value and threw VcfFormatException on the exact same data init() had silently accepted -- getLength()
+    // must agree with init() and use the unquoted value too
+    Map<String, String> map = new HashMap<>();
+    map.put(ContigMetadata.ID, "id");
+    map.put(ContigMetadata.ASSEMBLY, "assembly");
+    map.put(ContigMetadata.LENGTH, "\"23\"");
+    ContigMetadata contig = new ContigMetadata(map);
+    assertEquals(23, contig.getLength());
+  }
+
+  @Test
   public void testNullUrlNotSerialized() {
     // a null URL argument must not be stored (it would otherwise serialize as the literal "URL=null")
     ContigMetadata contig = new ContigMetadata("chr1", 10, "asm", null, null, null, null);
