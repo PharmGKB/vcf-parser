@@ -119,7 +119,13 @@ public class ContigMetadata extends IdMetadata {
         VcfWarnings.warn("{} URL {} is malformed: {}", getLabel(), url, e.getMessage());
       }
     }
-    ensureNoExtras(ID, LENGTH, ASSEMBLY, MD5, SPECIES, TAXONOMY, URL);
+    // No ensureNoExtras() call here, matching InfoMetadata/FormatMetadata/IdDescriptionMetadata's identical
+    // no-warn-on-extras treatment: VCFv4.2.tex line 123's "extra fields can be included after the default
+    // fields" sentence doesn't name ##contig directly, but ##contig's own worked example a few lines later
+    // (line 140) ends in "..." (`##contig=<ID=ctg1,URL=ftp://somewhere.org/assembly.fa,...>`), signaling the
+    // identical "more tags may follow" contract. Confirmed against hts-specs' own passed/passed_meta_contig.vcf
+    // fixture, which declares an unmodeled `accession` attribute and is expected to parse without warning, and
+    // against bcftools 1.23.1, which silently round-trips a custom contig attribute with zero warning.
   }
 
   @Override

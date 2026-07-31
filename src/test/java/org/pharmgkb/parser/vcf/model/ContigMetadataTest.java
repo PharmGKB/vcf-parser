@@ -42,10 +42,13 @@ public class ContigMetadataTest {
   }
 
   @Test
-  public void testExtraProperty() {
-    // BaseMetadata.ensureNoExtras() should warn on an unrecognized property, attributed to ContigMetadata by
-    // embedding its label ("CONTIG"), set via the required label constructor parameter, in the message text,
-    // since every warning now routes through the single shared VcfWarnings logger
+  public void testExtraPropertyRetainedWithoutWarning() {
+    // VCFv4.2.tex line 123's "extra fields can be included after the default fields" sentence doesn't name
+    // ##contig directly, but its own worked example at line 140 ends in "..." (more tags may follow) --
+    // matching InfoMetadata/FormatMetadata/IdDescriptionMetadata's identical no-warn-on-extras treatment.
+    // Confirmed against hts-specs' own passed_meta_contig.vcf fixture, which declares an unmodeled
+    // "accession" attribute and is expected to parse without warning (see testAcceptsHtsSpecsExtraAttributes
+    // below), and bcftools 1.23.1, which silently round-trips a custom contig attribute with zero warning.
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -58,9 +61,35 @@ public class ContigMetadataTest {
       map.put(ContigMetadata.ASSEMBLY, "assembly");
       map.put(ContigMetadata.LENGTH, "23");
       map.put("test", "one");
-      new ContigMetadata(map);
-      assertTrue(appender.hasWarnOrHigher());
-      assertTrue(appender.anyMessageContains("CONTIG"));
+      ContigMetadata contig = new ContigMetadata(map);
+      assertFalse(appender.hasWarnOrHigher());
+      assertEquals("one", contig.getPropertyRaw("test"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testAcceptsHtsSpecsExtraAttributes() {
+    // reproduces hts-specs' own test/vcf/4.2/passed/passed_meta_contig.vcf fixture's
+    // "##contig=<ID=contig_accession,species=\"Homo sapiens\",accession=GCA_000001405.1>" line: a passed/
+    // fixture, i.e. expected to parse without incident. "accession" is not one of ContigMetadata's own
+    // modeled attributes.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      Map<String, String> map = new HashMap<>();
+      map.put(ContigMetadata.ID, "contig_accession");
+      map.put(ContigMetadata.SPECIES, "\"Homo sapiens\"");
+      map.put("accession", "GCA_000001405.1");
+      ContigMetadata contig = new ContigMetadata(map);
+      assertFalse(appender.hasWarnOrHigher());
+      assertEquals("GCA_000001405.1", contig.getPropertyRaw("accession"));
     } finally {
       root.detachAppender(appender);
       appender.stop();
