@@ -1065,6 +1065,25 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testToFileAfterToWriterThrowsIllegalState(@org.junit.jupiter.api.io.TempDir Path tempDir) {
+    // toFile() used to silently override toWriter(), discarding the caller's writer with no error and never
+    // writing to or closing it -- now a caller mistake this builder rejects immediately, matching
+    // VcfParser.Builder's analogous fromFile()/fromReader() mutual-exclusion guard.
+    assertThrows(IllegalStateException.class, () ->
+        new VcfWriter.Builder()
+            .toWriter(new PrintWriter(new StringWriter()))
+            .toFile(tempDir.resolve("out.vcf")));
+  }
+
+  @Test
+  public void testToWriterAfterToFileThrowsIllegalState(@org.junit.jupiter.api.io.TempDir Path tempDir) {
+    assertThrows(IllegalStateException.class, () ->
+        new VcfWriter.Builder()
+            .toFile(tempDir.resolve("out.vcf"))
+            .toWriter(new PrintWriter(new StringWriter())));
+  }
+
+  @Test
   public void testWarningsToFileAccumulatesAcrossMultipleWriteLineCalls(@org.junit.jupiter.api.io.TempDir Path tempDir)
       throws IOException {
     VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder();

@@ -883,11 +883,17 @@ public class VcfWriter implements Closeable {
      * Files are written as UTF-8, matching {@link org.pharmgkb.parser.vcf.VcfParser.Builder#fromFile}.
      */
     public Builder toFile(Path file) {
+      if (m_writer != null) {
+        throw new IllegalStateException("Already writing to a writer");
+      }
       m_file = file;
       return this;
     }
 
     public Builder toWriter(PrintWriter writer) {
+      if (m_file != null) {
+        throw new IllegalStateException("Already writing to a file");
+      }
       m_writer = writer;
       return this;
     }
