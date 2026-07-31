@@ -122,6 +122,9 @@ public class VcfWriter implements Closeable {
    */
   public void writeHeader(VcfMetadata metadata) {
     checkValid();
+    if (metadata == null) {
+      throw new VcfFormatException("writeHeader() was called with a null metadata");
+    }
     try (VcfWarnings.Deactivator ignored = activateWarningsIfConfigured()) {
       if (m_headerWritten) {
         throw new VcfFormatException("writeHeader() was already called; a VCF file must have exactly one header");
@@ -227,9 +230,18 @@ public class VcfWriter implements Closeable {
         throw new VcfFormatException("writeLine() was called before writeHeader(); every VCF file must have a " +
             "header before any data line");
       }
+      // a null metadata is already rejected cleanly here: m_headerMetadata is guaranteed non-null once
+      // m_headerWritten is true (writeHeader() itself now rejects a null metadata), so null != m_headerMetadata
+      // is true and this throws, rather than needing its own explicit null check
       if (metadata != m_headerMetadata) {
         throw new VcfFormatException("writeLine() was given different metadata than writeHeader() used; the " +
             "emitted header and this record would be inconsistent");
+      }
+      if (position == null) {
+        throw new VcfFormatException("writeLine() was called with a null position");
+      }
+      if (samples == null) {
+        throw new VcfFormatException("writeLine() was called with a null samples list");
       }
       if (m_validateBeforeWrite) {
         // metadata == m_headerMetadata only proves it's the same object, not that it's unchanged: a caller can

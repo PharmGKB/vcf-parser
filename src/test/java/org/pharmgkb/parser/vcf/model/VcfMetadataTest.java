@@ -42,6 +42,14 @@ public class VcfMetadataTest {
   }
 
   @Test
+  public void testGetAltIsNullTolerantInsteadOfThrowingNpe() {
+    // null-tolerant "not present," matching getColumnIndex()/getSampleIndex()'s own null-tolerant contract
+    // above -- id.startsWith(...) below m_alt.get(id) would otherwise raw-NPE for a null id
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertNull(metadata.getAlt(null));
+  }
+
+  @Test
   public void testSetFileFormatRejectsNullInsteadOfThrowingNpe() {
     // fileFormat is typed non-@Nullable, but nothing enforces that at compile time; must reject a null with
     // VcfFormatException, not let it reach a raw NullPointerException at FILE_FORMAT_PATTERN.matcher(fileFormat)

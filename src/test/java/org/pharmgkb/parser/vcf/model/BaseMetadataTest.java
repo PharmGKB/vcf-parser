@@ -19,6 +19,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class BaseMetadataTest {
 
   @Test
+  public void testConstructorRejectsNullPropertiesMapInsteadOfThrowingNpe() {
+    // properties is typed non-@Nullable, but nothing enforces that at compile time; must reject a null with
+    // VcfFormatException, not let it reach a raw NullPointerException at new LinkedHashMap<>(properties)
+    assertThrows(VcfFormatException.class, () -> new BaseMetadata("TEST", null));
+  }
+
+  @Test
   public void testGetProperty() throws Exception {
     Map<String, String> map = new HashMap<>();
     map.put("test", "one");

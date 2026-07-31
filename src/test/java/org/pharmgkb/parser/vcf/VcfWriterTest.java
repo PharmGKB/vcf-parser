@@ -146,6 +146,49 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testWriteHeaderRejectsNullMetadataInsteadOfThrowingNpe() throws Exception {
+    // writeHeader()/writeLine() are the library's two primary entry points, called by every consumer; metadata
+    // is typed non-@Nullable, but nothing enforces that at compile time. Must reject a null with
+    // VcfFormatException, not let it reach a raw NullPointerException at metadata.getFileFormat() in
+    // buildHeaderLines()
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(null));
+  }
+
+  @Test
+  public void testWriteLineRejectsNullPositionInsteadOfThrowingNpe() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    assertThrows(VcfFormatException.class, () -> writer.writeLine(metadata, null, Collections.emptyList()));
+  }
+
+  @Test
+  public void testWriteLineRejectsNullSamplesInsteadOfThrowingNpe() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    assertThrows(VcfFormatException.class, () -> writer.writeLine(metadata, position, null));
+  }
+
+  @Test
+  public void testWriteLineRejectsNullMetadataViaExistingIdentityCheck() throws Exception {
+    // a null metadata is already rejected cleanly by the pre-existing metadata != m_headerMetadata identity
+    // check, once a header has been written with non-null metadata (now guaranteed by writeHeader()'s own new
+    // null guard) -- confirming this stays true rather than silently regressing
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    assertThrows(VcfFormatException.class, () -> writer.writeLine(null, position, Collections.emptyList()));
+  }
+
+  @Test
   public void testDefaultWriteRejectsNullChromosomeInsteadOfWritingLiteralNullText() throws Exception {
     // setChromosome() does not validate its input, by design (see VcfPosition.validate()'s Javadoc);
     // VcfWriter's default path must guard this itself, since CHROM has no missing-value sentinel and

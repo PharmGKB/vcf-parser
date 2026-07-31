@@ -402,6 +402,22 @@ public class VcfUtilsTest {
   }
 
   @Test
+  public void testToJavaTypeRejectsNullInsteadOfThrowingNpe() {
+    // FormatMetadata.getType()/InfoMetadata.getType() are themselves documented @Nullable (absent/invalid
+    // Type property), so a caller passing one straight through here is a realistic case; must reject a null
+    // with VcfFormatException, matching the existing default-branch treatment of any other unhandled type,
+    // not let it reach a raw NullPointerException at the switch statement itself
+    assertThrows(VcfFormatException.class, () -> VcfUtils.toJavaType((FormatType) null));
+    assertThrows(VcfFormatException.class, () -> VcfUtils.toJavaType((InfoType) null));
+  }
+
+  @Test
+  public void testConvertPropertyRejectsNullFormatOrInfoTypeInsteadOfThrowingNpe() {
+    assertThrows(VcfFormatException.class, () -> VcfUtils.convertProperty((FormatType) null, "value"));
+    assertThrows(VcfFormatException.class, () -> VcfUtils.convertProperty((InfoType) null, "value"));
+  }
+
+  @Test
   public void testIsReservedMetadataKey() {
     assertTrue(VcfUtils.isReservedMetadataKey("INFO"));
     assertFalse(VcfUtils.isReservedMetadataKey("NotReserved"));

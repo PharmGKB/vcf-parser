@@ -98,6 +98,12 @@ public class VcfMetadata {
    */
   @Nullable
   public IdDescriptionMetadata getAlt(String id) {
+    // null-tolerant, matching this codebase's established "not present" contract for other getters taking a
+    // lookup key (e.g. getInfo(String)/hasInfo(String)) -- m_alt.get(null) is already null-tolerant, but
+    // id.startsWith(...) below is not
+    if (id == null) {
+      return null;
+    }
     IdDescriptionMetadata md = m_alt.get(id);
     if (md == null && id.startsWith("<") && id.endsWith(">")) {
       md = m_alt.get(id.substring(1, id.length() - 1));

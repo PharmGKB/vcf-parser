@@ -484,6 +484,12 @@ public class VcfUtils {
   }
 
   public static Class<?> toJavaType(FormatType type) {
+    // FormatMetadata.getType() is documented @Nullable (absent/invalid Type property), so a caller passing it
+    // straight through here is a realistic case, not just a theoretical one; treat null the same as any other
+    // unhandled type below rather than letting the switch below raw-NPE
+    if (type == null) {
+      throw new VcfFormatException("FORMAT type is null");
+    }
     switch (type) {
       case Integer:
         return Long.class;
@@ -503,6 +509,12 @@ public class VcfUtils {
   }
 
   public static Class<?> toJavaType(InfoType type) {
+    // InfoMetadata.getType() is documented @Nullable (absent/invalid Type property), so a caller passing it
+    // straight through here is a realistic case, not just a theoretical one; treat null the same as any other
+    // unhandled type below rather than letting the switch below raw-NPE
+    if (type == null) {
+      throw new VcfFormatException("INFO type is null");
+    }
     switch (type) {
       case Integer:
         return Long.class;

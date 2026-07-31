@@ -36,6 +36,13 @@ public class BaseMetadata {
    * order that was never preserved in the first place.
    */
   public BaseMetadata(String label, Map<String, String> properties) {
+    // properties is typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting
+    // new LinkedHashMap<>(properties) below throw a raw NullPointerException. Reachable through every
+    // Map-taking constructor of every subclass (PedigreeMetadata, ContigMetadata, IdDescriptionMetadata,
+    // InfoMetadata, FormatMetadata).
+    if (properties == null) {
+      throw new VcfFormatException("Metadata properties map is null");
+    }
     m_label = label;
     m_properties = new LinkedHashMap<>(properties);
     validateProperties();
