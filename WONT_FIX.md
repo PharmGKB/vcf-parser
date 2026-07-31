@@ -87,6 +87,30 @@ quoting check that only apply to one side — real complexity for marginal DRY b
 fixed number of call sites. Revisit if a third sibling with the same Number/Type/reserved-property shape is
 ever added, at which point the shared-abstraction case gets stronger.
 
+## VcfParser.Builder's required-argument setters raise a raw NullPointerException, not VcfFormatException
+
+`VcfParser.Builder.fromFile`/`fromReader`/`parseWith`/`warningsToFile(Path)` reject a null argument via
+`Preconditions.checkNotNull`, which throws a plain `java.lang.NullPointerException` with no message -- the
+same "wrong exception type for a null argument" shape that a long fix chain (see `findings22.md`'s
+`## Completed`, Batches 22.4-22.5) closed elsewhere in this codebase by converting to `VcfFormatException`.
+
+This is a different case, though: those other fixes closed a gap where a non-`@Nullable`-typed setter/
+mutator validated other things but not nullness, letting a null through to crash somewhere deeper and less
+informative (a regex matcher, a `.trim()`, a `.getId()`) -- or, worse, letting a null silently reach
+`VcfWriter`'s output as the literal text `"null"`. `VcfParser.Builder`'s setters, by contrast, already
+explicitly reject null at the very first line, via a long-established Guava idiom used consistently across
+this codebase's `Builder` classes for "this argument is required and was not provided" -- contrast with
+`TransformingVcfLineParser.Builder`'s *missing* check (`findings22.md`'s own Minor #1), which cites
+`Preconditions.checkNotNull` as the correct, existing pattern other builders should match, not a defect.
+
+**Decision: won't fix.** Converting `Preconditions.checkNotNull`'s NPE to `VcfFormatException` here would
+mean re-litigating an established, consistently-applied convention across every `Builder` in this codebase,
+not just `VcfParser.Builder`, for arguments that can never reach parsed VCF *content* -- a caller who never
+passes a `Path`/`Reader` to `fromFile`/`fromReader` has a programming error, not a data-quality problem the
+way a null CHROM or a null metadata property is. Revisit only alongside a deliberate, codebase-wide
+decision to migrate every `Builder`'s required-argument convention away from `Preconditions.checkNotNull`,
+not as a one-off triggered by this fix chain.
+
 ## AltStructuralVariant's parent-check no-ops when a component's parent isn't itself a reserved code
 
 `AltStructuralVariant`'s constructor validates that a reserved code's declared parent (per
