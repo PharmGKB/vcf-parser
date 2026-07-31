@@ -91,8 +91,10 @@ ever added, at which point the shared-abstraction case gets stronger.
 
 `VcfParser.Builder.fromFile`/`fromReader`/`parseWith`/`warningsToFile(Path)` reject a null argument via
 `Preconditions.checkNotNull`, which throws a plain `java.lang.NullPointerException` with no message -- the
-same "wrong exception type for a null argument" shape that a long fix chain (see `findings22.md`'s
-`## Completed`, Batches 22.4-22.5) closed elsewhere in this codebase by converting to `VcfFormatException`.
+same "wrong exception type for a null argument" shape that a long fix chain closed elsewhere across this
+codebase (`VcfWriter`, `VcfPosition`, `VcfMetadata`, `BaseMetadata`, `InfoMetadata`, `FormatMetadata`,
+`InternalUtils`, `VcfSample`, `MemoryMappedVcfDataStore`, `AltStructuralVariant`, and `VcfFloat`) by
+converting it to `VcfFormatException`.
 
 This is a different case, though: those other fixes closed a gap reachable from parsed VCF *content* --
 a caller has no control over what a file contains, so a hostile or malformed value silently corrupting
@@ -107,9 +109,10 @@ is therefore always the direct library caller's own programming mistake (forgot 
 passing it in), never something an untrusted `.vcf` file could trigger -- exactly the case
 `Preconditions.checkNotNull`'s fail-fast-with-NPE idiom is meant for, and why converting it to
 `VcfFormatException` (a *content*-rejection exception type) would be the wrong fix even taken in
-isolation, not just an inconsistent one. Contrast with `TransformingVcfLineParser.Builder`'s *missing*
-check (`findings22.md`'s own Minor #1), which cites `Preconditions.checkNotNull` as the correct, existing
-pattern other builders should match, not a defect.
+isolation, not just an inconsistent one. Contrast with
+`TransformingVcfLineParser.Builder.transformation(VcfTransformation, VcfWriter)`'s `writer` argument,
+which also uses `Preconditions.checkNotNull` -- the correct, existing pattern this decision matches, not a
+defect.
 
 **Decision: won't fix.** Converting `Preconditions.checkNotNull`'s NPE to `VcfFormatException` here would
 mean re-litigating an established, consistently-applied convention across every `Builder` in this codebase,
