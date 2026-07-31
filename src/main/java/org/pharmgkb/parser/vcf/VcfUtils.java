@@ -304,6 +304,9 @@ public class VcfUtils {
   public static List<String> dropEmptyEntries(String fieldName, List<String> list) {
     List<String> result = list;
     for (int i = 0; i < result.size(); i++) {
+      if (result.get(i) == null) {
+        throw new VcfFormatException(fieldName + " contains a null entry");
+      }
       if (result.get(i).isEmpty()) {
         if (result == list) {
           result = new ArrayList<>(list);
@@ -323,6 +326,9 @@ public class VcfUtils {
    */
   public static void fillEmptyEntriesWithDot(String fieldName, List<String> list) {
     for (int i = 0; i < list.size(); i++) {
+      if (list.get(i) == null) {
+        throw new VcfFormatException(fieldName + " contains a null entry");
+      }
       if (list.get(i).isEmpty()) {
         VcfWarnings.warn("{} contains an empty entry (VCF does not allow zero-length fields); treating it as the " +
             "missing value '.'", fieldName);

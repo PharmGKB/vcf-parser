@@ -217,6 +217,9 @@ public class VcfPosition {
       VcfUtils.fillEmptyEntriesWithDot("ALT", altBases);
     }
     for (String base : altBases) {
+      if (base == null) {
+        throw new VcfFormatException("ALT contains a null entry");
+      }
       if (!VcfUtils.ALT_BASE_PATTERN.matcher(base).matches()) {
         throw new VcfFormatException("Invalid alternate base '" + base + "' (must match " + VcfUtils.ALT_BASE_PATTERN + ")");
       }
@@ -262,6 +265,14 @@ public class VcfPosition {
     for (Map.Entry<String, String> entry : entries) {
       String key = entry.getKey();
       String value = entry.getValue();
+      // a parsed entry's key/value can never be null; only a value set directly via getInfo().put(...) could be
+      // (LinkedListMultimap permits both null keys and null values)
+      if (key == null) {
+        throw new VcfFormatException("INFO column contains a null key");
+      }
+      if (value == null) {
+        throw new VcfFormatException("INFO value for key \"" + key + "\" is null");
+      }
       if (VcfUtils.containsWhitespace(key) || VcfUtils.containsWhitespace(value)) {
         throw new VcfFormatException("INFO column entry \"" + key + "=" + value + "\" contains whitespace");
       }
@@ -298,13 +309,16 @@ public class VcfPosition {
    * silent, this is treated as valid here too.
    */
   private static List<String> checkFormat(List<String> format) {
-    if (format.size() == 1 && format.get(0).equals(".")) {
+    if (format.size() == 1 && ".".equals(format.get(0))) {
       return new ArrayList<>();
     }
     // duplicate keys are explicitly disallowed by the VCF spec (VCFv4.3+ states this outright; empty keys are
     // excluded from this check since they're already handled, and warned about, separately below)
     Set<String> seenKeys = new HashSet<>();
     for (String f : format) {
+      if (f == null) {
+        throw new VcfFormatException("FORMAT contains a null sub-field name");
+      }
       // an empty sub-field name is kept as-is rather than dropped: every sample's colon-split values are matched to
       // FORMAT keys by index, and dropping this key would misalign every sample's values with the wrong key. See
       // EMPTY_FIELD_HANDLING.md.

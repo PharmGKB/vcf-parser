@@ -465,6 +465,36 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testValidateRejectsNullEntriesInsteadOfThrowingNpe() {
+    // a parsed value can never be null; only a value set directly through a mutable accessor (getIds(), getAltBases(),
+    // getFilters(), getFormat(), getInfo()) could be. Each of validate()'s five post-mutation checkers must reject a
+    // null element with VcfFormatException, not let it reach a raw NullPointerException deeper in the check.
+    VcfPosition ids = newPosition();
+    ids.getIds().add(null);
+    assertThrows(VcfFormatException.class, ids::validate);
+
+    VcfPosition altBases = newPosition();
+    altBases.getAltBases().add(null);
+    assertThrows(VcfFormatException.class, altBases::validate);
+
+    VcfPosition filters = newPosition();
+    filters.getFilters().add(null);
+    assertThrows(VcfFormatException.class, filters::validate);
+
+    VcfPosition format = newPosition();
+    format.getFormat().add(null);
+    assertThrows(VcfFormatException.class, format::validate);
+
+    VcfPosition infoKey = newPosition();
+    infoKey.getInfo().put(null, "value");
+    assertThrows(VcfFormatException.class, infoKey::validate);
+
+    VcfPosition infoValue = newPosition();
+    infoValue.getInfo().put("KEY", null);
+    assertThrows(VcfFormatException.class, infoValue::validate);
+  }
+
+  @Test
   public void testValidateAttachesLineNumberToNonInfoCheckFailures() {
     // regression test: validate() previously annotated only its checkInfoEntries(...) call with line-number
     // metadata, leaving its other checks (checkChromosome, checkPosition, checkRef, checkIds, checkAltBases,

@@ -450,6 +450,20 @@ public class VcfUtilsTest {
     }
   }
 
+  @Test
+  public void testDropEmptyEntriesRejectsNullEntry() {
+    // a null entry can only reach here through a caller-mutated list (e.g. VcfPosition.getIds().add(null)), never
+    // through parsing; it must be rejected with VcfFormatException, not a raw NullPointerException from isEmpty()
+    assertThrows(VcfFormatException.class,
+        () -> VcfUtils.dropEmptyEntries("ID", new ArrayList<>(Arrays.asList("rs1", null))));
+  }
+
+  @Test
+  public void testFillEmptyEntriesWithDotRejectsNullEntry() {
+    assertThrows(VcfFormatException.class,
+        () -> VcfUtils.fillEmptyEntriesWithDot("ALT", new ArrayList<>(Arrays.asList("A", null))));
+  }
+
   private static final class FakeFormatIdReservedProperty implements org.pharmgkb.parser.vcf.model.ReservedProperty {
     @Override
     public String getId() {
