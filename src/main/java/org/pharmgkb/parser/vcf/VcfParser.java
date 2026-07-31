@@ -400,26 +400,30 @@ public class VcfParser implements Closeable {
   private void parseMetadataProperty(VcfMetadata.Builder mdBuilder,
       String propName, String value) {
     Map<String, String> props = VcfUtils.extractPropertiesFromLine(value);
-    switch (propName.toLowerCase()) {
-      case "alt":
+    // propName is already constrained to these exact-case literals by parseMetadata()'s own switch above,
+    // so no case-folding is needed here at all -- a prior version lower-cased propName before this switch,
+    // which meant a Turkish/Azeri default locale's dotless-i case-folding (e.g. "INFO".toLowerCase() ->
+    // "ınfo") silently matched none of the case labels below and dropped the declaration with no warning.
+    switch (propName) {
+      case "ALT":
         mdBuilder.addAlt(new IdDescriptionMetadata("ALT", props));
         break;
-      case "filter":
+      case "FILTER":
         mdBuilder.addFilter(new IdDescriptionMetadata("FILTER", props));
         break;
-      case "info":
+      case "INFO":
         mdBuilder.addInfo(new InfoMetadata(props));
         break;
-      case "format":
+      case "FORMAT":
         mdBuilder.addFormat(new FormatMetadata(props));
         break;
       case "contig":
         mdBuilder.addContig(new ContigMetadata(props));
         break;
-      case "sample":
+      case "SAMPLE":
         mdBuilder.addSample(new IdDescriptionMetadata("SAMPLE", props));
         break;
-      case "pedigree":
+      case "PEDIGREE":
         mdBuilder.addPedigree(new PedigreeMetadata(props));
         break;
     }

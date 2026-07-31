@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.common.util.PathUtils;
@@ -430,6 +431,38 @@ public class VcfParserTest {
     }
     assertEquals(1, captured[0].getInfo().size());
     assertTrue(captured[0].getInfo().containsKey("DP"));
+  }
+
+  @Test
+  void testMetadataDeclarationsSurviveTurkishDefaultLocale() throws IOException {
+    // parseMetadataProperty() used to lower-case propName (without Locale.ROOT) before dispatching on it;
+    // under a Turkish/Azeri default locale, "INFO".toLowerCase() produces "ınfo" (dotless i, U+0131), which
+    // matched none of the switch's case labels and silently dropped the ##INFO declaration entirely, with
+    // no warning or exception. ##FILTER and ##PEDIGREE contain uppercase "I" too and were equally affected;
+    // ##ALT/##FORMAT/##contig/##SAMPLE have no "I"/"i" and were unaffected either way.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##INFO=<ID=DP,Number=1,Type=Integer,Description=\"depth\">\n" +
+        "##FILTER=<ID=q10,Description=\"quality below 10\">\n" +
+        "##PEDIGREE=<ID=cid,Father=fid,Mother=mid>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t1\t.\tA\tT\t.\tq10\tDP=10\n";
+    Locale originalLocale = Locale.getDefault();
+    Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+    VcfMetadata[] captured = new VcfMetadata[1];
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, position, sampleData) -> captured[0] = metadata)
+             .build()) {
+      parser.parse();
+    } finally {
+      Locale.setDefault(originalLocale);
+    }
+    assertEquals(1, captured[0].getInfo().size());
+    assertTrue(captured[0].getInfo().containsKey("DP"));
+    assertEquals(1, captured[0].getFilters().size());
+    assertTrue(captured[0].getFilters().containsKey("q10"));
+    assertEquals(1, captured[0].getPedigrees().size());
   }
 
   @Test
