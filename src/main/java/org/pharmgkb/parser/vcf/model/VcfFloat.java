@@ -7,6 +7,7 @@ import java.util.regex.Pattern;
 import com.google.errorprone.annotations.Immutable;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfFormatException;
+import org.pharmgkb.parser.vcf.VcfWarnings;
 
 
 /**
@@ -26,6 +27,12 @@ import org.pharmgkb.parser.vcf.VcfFormatException;
 public final class VcfFloat {
 
   private static final Pattern SPECIAL_PATTERN = Pattern.compile("[-+]?(?:INF|INFINITY|NAN)", Pattern.CASE_INSENSITIVE);
+  // VCFv4.3.tex line 100's non-special-case Float grammar (see this class's own Javadoc for why VCFv4.3, not
+  // VCFv4.5, is cited). BigDecimal's own string grammar is looser than this -- e.g. it accepts "5." (a trailing
+  // decimal point with no digits after it), which this pattern rejects -- so parse() below warns rather than
+  // rejecting when BigDecimal accepts a value this pattern doesn't match, per this project's permissive
+  // warn-and-preserve parser policy.
+  private static final Pattern FLOAT_PATTERN = Pattern.compile("[-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?");
 
   public enum Special {
     NAN,
@@ -76,7 +83,12 @@ public final class VcfFloat {
       return ofSpecial(value.startsWith("-") ? Special.NEGATIVE_INFINITY : Special.POSITIVE_INFINITY);
     }
     try {
-      return of(new BigDecimal(value));
+      BigDecimal decimal = new BigDecimal(value);
+      if (!FLOAT_PATTERN.matcher(value).matches()) {
+        VcfWarnings.warn("Float value '{}' does not match the VCF Float grammar (VCFv4.3.tex line 100); " +
+            "accepting it anyway", value);
+      }
+      return of(decimal);
     } catch (NumberFormatException e) {
       throw new VcfFormatException("Expected float; got " + value);
     }

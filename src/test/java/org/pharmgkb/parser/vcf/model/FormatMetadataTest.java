@@ -36,16 +36,15 @@ public class FormatMetadataTest {
       assertEquals(n, md.getNumber());
     }
 
+    // an invalid Number value only warns under this project's permissive policy (checkNumberProperty never
+    // throws), matching the sibling InfoMetadataTest.testConstructor's analogous case -- constructing with
+    // each of these must not throw
     nums = new String[] {
         "A", "a", "G", "g", "R", "r", "AA", "x", ".g", "23a"
     };
     for (String n : nums) {
-      try {
-        props[1] = "Number=" + n;
-        new FormatMetadata(VcfUtils.extractProperties(props));
-      } catch (IllegalArgumentException ex) {
-        // expected
-      }
+      props[1] = "Number=" + n;
+      new FormatMetadata(VcfUtils.extractProperties(props));
     }
   }
 

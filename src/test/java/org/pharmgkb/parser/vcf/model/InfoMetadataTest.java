@@ -62,6 +62,29 @@ public class InfoMetadataTest {
   }
 
   @Test
+  public void testFlagWithMissingNumberWarnsOnceNotTwice() {
+    // regression test: Type=Flag with Number simply absent previously fired both the legitimate
+    // "required metadata property \"Number\" is missing" warning from checkNumberProperty AND a second,
+    // redundant, confusingly worded one containing the literal string "Number is 'null'" -- only the first
+    // should fire
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties("ID=X", "Type=Flag", "Description=\"d\""));
+      assertEquals(InfoType.Flag, md.getType());
+      assertTrue(appender.anyMessageContains("required metadata property \"Number\" is missing"));
+      assertFalse(appender.anyMessageContains("'null'"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testUnquotedDescriptionWarns() {
     // an unquoted Description is malformed; it should warn, not throw
     InfoMetadata md = new InfoMetadata(VcfUtils.extractProperties(
@@ -244,10 +267,11 @@ public class InfoMetadataTest {
   public void testTypedConstructorDoesNotWarnAboutAttributeOrder() {
     // the typed constructor's own internal property-insertion order matches the canonical
     // ID, Number, Type, Description, Source, Version order (see the constructor's own comment); checkAttributeOrder
-    // is called directly here (it isn't wired into init()/validate() for a typed-constructed instance -- see
-    // IdDescriptionMetadata's Map-based-constructor-only wiring -- so this is the only way to exercise it against
-    // one). Source/Version are both non-null here because an earlier version of this constructor inserted
-    // Description after Source/Version instead of before them, which only this specific case would have caught.
+    // is called directly here rather than via validate() (IdMetadata.validate() does call checkAttributeOrder()
+    // unconditionally, regardless of construction path) purely so this test can assert on checkAttributeOrder's
+    // warning in isolation, without also running validate()'s other unrelated checks. Source/Version are both
+    // non-null here because an earlier version of this constructor inserted Description after Source/Version
+    // instead of before them, which only this specific case would have caught.
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =

@@ -466,7 +466,8 @@ public class VcfParser implements Closeable {
   /**
    * Splits a sample field according to its FORMAT keys. GLE is the sole VCF 4.1/4.2 exception to ordinary
    * colon-delimited sample values: its value is a String containing comma-separated {@code genotype:likelihood}
-   * pairs. See the GLE example in the VCF 4.2 specification.
+   * pairs. See {@code VCFv4.2.tex} line 225's GLE example (
+   * {@code GLE=0:-75.22,1:-223.42,0/0:-323.03,1/0:-99.29,1/1:-802.53}).
    */
   private static List<String> toSampleValues(@Nullable List<String> format, String sample) {
     if (format == null) {

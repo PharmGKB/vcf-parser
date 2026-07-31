@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.file.Path;
 import java.util.List;
+import com.google.common.base.Preconditions;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
@@ -148,6 +149,13 @@ public class TransformingVcfLineParser implements VcfLineParser, Closeable {
       // exist purely to fail before a Path/PrintWriter overload opens a file (see their own comment) --
       // removing either one reopens a real gap the other doesn't cover
       checkNotAlreadySet();
+      // writer is a caller-configuration object (like VcfParser.Builder's Path/Reader/VcfLineParser
+      // arguments), never VCF content -- Preconditions.checkNotNull's raw NullPointerException is this
+      // codebase's established convention for that category (see AGENTS.md's Public API Null-Safety Policy
+      // and WONT_FIX.md's VcfParser.Builder entries). Without this, build() would succeed with a null
+      // m_writer, and the failure would only surface later as a bare NullPointerException inside
+      // writeHeader()/close() instead of a fail-fast diagnostic here.
+      Preconditions.checkNotNull(writer);
       m_transformation = transformation;
       m_writer = writer;
       return this;

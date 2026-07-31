@@ -156,6 +156,15 @@ public class TransformingVcfLineParserTest {
   }
 
   @Test
+  public void testTransformationWithNullWriterRejectsFastInsteadOfThrowingNpeLater() {
+    // regression test: this 2-arg overload previously had no null check on writer, so build() succeeded and
+    // the failure only surfaced as a bare NullPointerException deep inside writeHeader()/close() on first use
+    TransformingVcfLineParser.Builder builder = new TransformingVcfLineParser.Builder();
+    assertThrows(NullPointerException.class,
+        () -> builder.transformation(new VcfTransformation() {}, (VcfWriter) null));
+  }
+
+  @Test
   public void testTransformMetadataFailureDoesNotInvalidateAndIsRetried() throws Exception {
     // a transformation-logic failure (not a write failure) must not permanently invalidate the parser -- nothing
     // was written yet, so a later call retries the whole header attempt from scratch

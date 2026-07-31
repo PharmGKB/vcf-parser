@@ -78,7 +78,10 @@ public class InfoMetadata extends IdDescriptionMetadata {
         VcfWarnings.warn("{} {} '{}' is not a valid {} type", getLabel(), TYPE, type, getLabel());
       }
     }
-    if (m_type == InfoType.Flag && !"0".equals(number)) {
+    // number == null means the property is simply absent, already covered by checkNumberProperty's own
+    // "required metadata property \"Number\" is missing" warning above -- guard here so this check doesn't
+    // also fire a second, redundant warning containing the confusing literal text "Number is 'null'"
+    if (m_type == InfoType.Flag && number != null && !"0".equals(number)) {
       VcfWarnings.warn("{} {} has Type=Flag but Number is '{}' (should be 0)", getLabel(), getId(), number);
     }
     for (String optional : new String[] { SOURCE, VERSION }) {

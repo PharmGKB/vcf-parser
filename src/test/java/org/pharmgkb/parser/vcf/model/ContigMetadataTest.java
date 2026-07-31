@@ -157,6 +157,57 @@ public class ContigMetadataTest {
   }
 
   @Test
+  public void testGetAssembly() {
+    Map<String, String> map = new HashMap<>();
+    map.put(ContigMetadata.ID, "id");
+    map.put(ContigMetadata.ASSEMBLY, "GRCh38");
+    ContigMetadata contig = new ContigMetadata(map);
+    assertEquals("GRCh38", contig.getAssembly());
+  }
+
+  @Test
+  public void testGetMd5() {
+    Map<String, String> map = new HashMap<>();
+    map.put(ContigMetadata.ID, "id");
+    map.put(ContigMetadata.MD5, "d7d0c95cd23db914d68f9ce9e2d0c7c8");
+    ContigMetadata contig = new ContigMetadata(map);
+    assertEquals("d7d0c95cd23db914d68f9ce9e2d0c7c8", contig.getMd5());
+  }
+
+  @Test
+  public void testGetTaxonomy() {
+    Map<String, String> map = new HashMap<>();
+    map.put(ContigMetadata.ID, "id");
+    map.put(ContigMetadata.TAXONOMY, "9606");
+    ContigMetadata contig = new ContigMetadata(map);
+    assertEquals("9606", contig.getTaxonomy());
+  }
+
+  @Test
+  public void testGetSpeciesUnquotes() {
+    // regression-shaped test: getLength()'s own quoted-value mismatch (fixed in findings21.md Batch 21.3) was
+    // hidden by the same kind of gap this closes -- a getter that unquotes but was never actually exercised
+    // against a quoted value
+    Map<String, String> map = new HashMap<>();
+    map.put(ContigMetadata.ID, "id");
+    map.put(ContigMetadata.SPECIES, "\"Homo sapiens\"");
+    ContigMetadata contig = new ContigMetadata(map);
+    assertEquals("Homo sapiens", contig.getSpecies());
+  }
+
+  @Test
+  public void testTypedConstructorAssemblyMd5TaxonomySpeciesRoundTrip() {
+    // the typed constructor auto-quotes species via putAndQuoteProperty(); getSpecies() must unquote it back
+    // to the original value, not just avoid throwing
+    ContigMetadata contig = new ContigMetadata("chr1", 100L, "GRCh38",
+        "d7d0c95cd23db914d68f9ce9e2d0c7c8", "Homo sapiens", "9606", "http://example.com");
+    assertEquals("GRCh38", contig.getAssembly());
+    assertEquals("d7d0c95cd23db914d68f9ce9e2d0c7c8", contig.getMd5());
+    assertEquals("9606", contig.getTaxonomy());
+    assertEquals("Homo sapiens", contig.getSpecies());
+  }
+
+  @Test
   public void testGetLengthMissingThrowsVcfFormatException() {
     // length is not required by the spec (absence doesn't even warn at construction -- see
     // testMissingAssemblyAndLengthDoesNotWarn), but getLength() previously let a raw, confusing

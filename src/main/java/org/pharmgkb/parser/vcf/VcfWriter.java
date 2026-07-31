@@ -734,7 +734,8 @@ public class VcfWriter implements Closeable {
       return null;
     }
     String[] alleles = gt.split("[/|]", -1);
-    boolean valid = alleles.length > 0;
+    // gt.split(regex, -1) on a non-null input always yields an array of length >= 1, so this starts true
+    boolean valid = true;
     for (String allele : alleles) {
       if (allele.equals(".")) {
         continue;
@@ -1016,6 +1017,12 @@ public class VcfWriter implements Closeable {
      * {@link #warningsToFile(Path)}'s Javadoc for a same-path truncation risk that also applies here if this
      * default-derived name happens to collide with another {@code warningsToFile()}-configured
      * {@link VcfWriter}/{@link VcfParser}'s own default-derived name (e.g. an in-place parse-then-write).
+     * <p>
+     * This redirection is scoped to this {@link VcfWriter}'s own write calls. {@link VcfPosition}'s QUAL/INFO
+     * fields are lazily parsed on first getter access and cache the result; if a caller accesses such a getter
+     * before handing the position to a {@code warningsToFile()}-configured {@link VcfWriter}, the warning fires
+     * to the default (root) logger, and since the value is now cached, {@link #writeLine}'s own call to the same
+     * getter never re-triggers it -- the warnings file silently ends up missing it.
      */
     public Builder warningsToFile() {
       m_warningsToFile = true;
@@ -1036,6 +1043,12 @@ public class VcfWriter implements Closeable {
      * file still open -- each side holds an independent file position from its own {@code open()} call, so the
      * result is a byte-level overwrite/interleave (potentially leaving a zero-filled gap) rather than a clean,
      * complete truncation of one side's content.
+     * <p>
+     * This redirection is scoped to this {@link VcfWriter}'s own write calls. {@link VcfPosition}'s QUAL/INFO
+     * fields are lazily parsed on first getter access and cache the result; if a caller accesses such a getter
+     * before handing the position to a {@code warningsToFile()}-configured {@link VcfWriter}, the warning fires
+     * to the default (root) logger, and since the value is now cached, {@link #writeLine}'s own call to the same
+     * getter never re-triggers it -- the warnings file silently ends up missing it.
      */
     public Builder warningsToFile(Path customFile) {
       m_warningsToFile = true;

@@ -24,6 +24,48 @@ public class VcfFloatTest {
   }
 
   @Test
+  public void testParseNormalDecimalDoesNotWarn() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      VcfFloat.parse("52.4");
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testParseTrailingDecimalPointWarnsButStillParses() {
+    // regression test: BigDecimal accepts "5." (a trailing decimal point with no digits after it), but
+    // VCFv4.3.tex line 100's Float grammar requires at least one digit after the decimal point. This doesn't
+    // corrupt or misdirect anything (the numeric value is unambiguous), so per this project's permissive
+    // parser policy (AGENTS.md's Parser Validation Policy) it must warn and still return the parsed value,
+    // not silently accept it with no diagnostic
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      VcfFloat value = VcfFloat.parse("5.");
+      assertFalse(value.isSpecial());
+      assertEquals(new BigDecimal("5"), value.getValue());
+      assertTrue(appender.hasWarnOrHigher());
+      assertTrue(appender.anyMessageContains("does not match the VCF Float grammar"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testParseSpecialValuesCaseInsensitiveAndSigned() {
     // VCFv4.2 doesn't define Float's grammar; VCFv4.5 clarifies it accepts NAN/INF/INFINITY (case-insensitive,
     // optionally signed) in addition to a normal decimal number
