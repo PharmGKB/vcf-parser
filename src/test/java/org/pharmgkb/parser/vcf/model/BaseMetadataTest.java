@@ -27,6 +27,19 @@ public class BaseMetadataTest {
   }
 
   @Test
+  public void testConstructorDoesNotAliasCallersMap() {
+    // the constructor used to store the caller's map by reference, so mutating it after construction
+    // silently corrupted this instance's state; it now defensively copies into its own LinkedHashMap
+    Map<String, String> map = new LinkedHashMap<>();
+    map.put("test", "one");
+    BaseMetadata metadata = new BaseMetadata("TEST", map);
+    map.put("test", "mutated-after-construction");
+    map.put("extra", "should not appear");
+    assertEquals("one", metadata.getPropertyRaw("test"));
+    assertFalse(metadata.getPropertyKeys().contains("extra"));
+  }
+
+  @Test
   public void testGetPropertiesUnquoted() {
     Map<String, String> map = new LinkedHashMap<>();
     map.put("a", "\"quoted\"");

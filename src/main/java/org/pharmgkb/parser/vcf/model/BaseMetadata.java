@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -23,9 +24,20 @@ public class BaseMetadata {
   private final Map<String, String> m_properties;
   private final String m_label;
 
+  /**
+   * @param properties this declaration's raw key-value properties. Copied defensively into a new
+   * {@link LinkedHashMap} -- the caller's own map is never retained by reference, so mutating it after
+   * construction has no effect on this instance. The copy also fixes this instance's iteration order at
+   * construction time, but only to whatever order {@code properties} itself iterated in: {@link #checkAttributeOrder()}
+   * and {@link #validate()} rely on that order matching declaration order, which is only guaranteed if
+   * {@code properties} was itself order-preserving (e.g. a {@link LinkedHashMap}, as {@code VcfParser}'s own
+   * real parsing path always constructs) -- passing a {@code HashMap} or {@code Map.of(...)} still risks a
+   * meaningless (nondeterministic or simply wrong) attribute-order warning, since this copy cannot recover an
+   * order that was never preserved in the first place.
+   */
   public BaseMetadata(String label, Map<String, String> properties) {
     m_label = label;
-    m_properties = properties;
+    m_properties = new LinkedHashMap<>(properties);
     validateProperties();
   }
 
