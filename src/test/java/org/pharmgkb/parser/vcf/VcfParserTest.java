@@ -400,6 +400,47 @@ public class VcfParserTest {
   }
 
   @Test
+  void testAllTabDataLineReportsSpecificEmptyField() throws IOException {
+    // a data line consisting only of tab characters used to be caught by the generic "Empty line" check
+    // (StringUtils.stripToNull treats it as blank) before ever reaching the more specific per-field check --
+    // now it's recognized as splitting into the expected number of (empty) columns and correctly reports
+    // which specific field is missing, matching how any other data line with an empty CHROM is reported
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "\t\t\t\t\t\t\t\n";
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> {
+      try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+           VcfParser parser = new VcfParser.Builder()
+               .fromReader(reader)
+               .parseWith((metadata, position, sampleData) -> fail("Should not reach here"))
+               .build()) {
+        parser.parse();
+      }
+    });
+    assertThat(ex.getMessage(), containsString("CHROM field is empty"));
+  }
+
+  @Test
+  void testBlankDataLineStillReportsEmptyLine() throws IOException {
+    // a genuinely blank line (no tab at all) is still reported as "Empty line" -- only an all-tab line that
+    // splits into the expected number of columns is treated as a set of empty fields instead (see
+    // testAllTabDataLineReportsSpecificEmptyField)
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "   \n";
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> {
+      try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+           VcfParser parser = new VcfParser.Builder()
+               .fromReader(reader)
+               .parseWith((metadata, position, sampleData) -> fail("Should not reach here"))
+               .build()) {
+        parser.parse();
+      }
+    });
+    assertThat(ex.getMessage(), containsString("Empty line"));
+  }
+
+  @Test
   void testEmptyInfoRejected() throws IOException {
     // an empty INFO field is malformed (the missing value must be "."); the strict parser must reject it
     String vcf = "##fileformat=VCFv4.2\n" +

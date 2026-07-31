@@ -13,10 +13,12 @@ import org.pharmgkb.parser.vcf.VcfFormatException;
  * A VCF {@code Float} value: either a finite decimal number, or one of the IEEE-754-style special values NaN,
  * {@code +Infinity}, or {@code -Infinity}.
  * <p>
- * VCFv4.2 does not define {@code Float}'s literal grammar at all (it's only named as a type). VCFv4.5 clarifies it:
- * a value matches either a normal decimal number, or (case-insensitively) {@code NAN}, {@code INF}, or
- * {@code INFINITY} with an optional leading sign. A plain {@link BigDecimal} cannot represent the special values at
- * all, so this class holds either a {@link BigDecimal} or one of {@link Special}'s markers.
+ * VCFv4.2 does not define {@code Float}'s literal grammar at all (it's only named as a type). VCFv4.3.tex line 100
+ * clarifies it (the earliest version to do so -- the identical sentence carries through unchanged to
+ * VCFv4.4.tex line 100 and VCFv4.5.tex line 98): a value matches either a normal decimal number, or
+ * (case-insensitively) {@code NAN}, {@code INF}, or {@code INFINITY} with an optional leading sign. A plain
+ * {@link BigDecimal} cannot represent the special values at all, so this class holds either a {@link BigDecimal}
+ * or one of {@link Special}'s markers.
  *
  * @author Douglas Myers-Turnbull
  */
@@ -49,8 +51,8 @@ public final class VcfFloat {
 
   /**
    * Parses a VCF {@code Float} value, accepting {@code NAN}/{@code INF}/{@code INFINITY} (case-insensitive,
-   * optionally signed) per VCFv4.5's clarification of the {@code Float} grammar, in addition to a normal decimal
-   * number.
+   * optionally signed) per VCFv4.3.tex line 100's clarification of the {@code Float} grammar (see this class's
+   * own Javadoc for why VCFv4.3, not VCFv4.5, is cited as the source), in addition to a normal decimal number.
    *
    * @throws VcfFormatException if {@code value} is neither a normal decimal number nor one of the special values
    */

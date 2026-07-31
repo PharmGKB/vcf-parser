@@ -30,7 +30,7 @@ import org.pharmgkb.parser.vcf.model.VcfSample;
  * @author Douglas Myers-Turnbull
  */
 public class MemoryMappedVcfLineParser implements VcfLineParser {
-  private MemoryMappedVcfDataStore m_dataStore = new MemoryMappedVcfDataStore();
+  private final MemoryMappedVcfDataStore m_dataStore = new MemoryMappedVcfDataStore();
   private DuplicateHandler m_duplicateIdHandler;
 
 

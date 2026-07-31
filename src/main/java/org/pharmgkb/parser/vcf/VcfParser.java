@@ -211,10 +211,16 @@ public class VcfParser implements Closeable {
     }
 
     try {
-      if (StringUtils.stripToNull(line) == null) {
+      List<String> data = toList(TAB, line);
+      // a line with no tab at all (data.size() == 1) and nothing but whitespace is genuinely empty -- report
+      // that directly rather than a less-specific message below. A line that DOES split into the expected
+      // number of tab-delimited columns (e.g. an all-tab, no-sample data row) is not "empty" in that sense --
+      // let it fall through to the column-count and per-field checks below instead, which usually pinpoint the
+      // specific empty field, though a line whose fields are non-empty whitespace (e.g. a lone space per field)
+      // instead fails at whichever column-specific parse first rejects non-numeric/non-enum content (e.g. POS)
+      if (data.size() == 1 && StringUtils.stripToNull(data.get(0)) == null) {
         throw new VcfFormatException("Empty line", m_lineNumber);
       }
-      List<String> data = toList(TAB, line);
       if (data.size() != m_vcfMetadata.getNumColumns()) {
         throw new VcfFormatException("Data line does not have expected number of columns (got " + data.size() +
             " vs. " + m_vcfMetadata.getNumColumns() + ")", m_lineNumber);
