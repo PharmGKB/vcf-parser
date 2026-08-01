@@ -6,123 +6,105 @@ import java.io.UncheckedIOException;
 import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayDeque;
-import java.util.Deque;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.helpers.MessageFormatter;
 
 
 /**
- * Consolidated dispatch for every VCF-content warning this library emits. By default, warnings go to this
- * class's own shared SLF4J logger; {@link #activate(Writer)}/{@link #openFile(Path)} redirect them, for the
- * calling thread only, to a file instead -- see {@code VcfParser.Builder#warningsToFile()} and
- * {@code VcfWriter.Builder#warningsToFile()} for the common way to use this, or call {@link #openFile(Path)}
- * directly around manual/standalone model construction.
+ * Consolidated destination for every VCF-content warning this library emits. An instance either writes to a
+ * caller-supplied {@link Writer} sink, or -- for {@link #DEFAULT}, or any instance after {@link #close()} has
+ * run -- falls back to this class's own shared SLF4J logger.
+ * <p>
+ * Model classes (see {@code org.pharmgkb.parser.vcf.model}) hold a mutable reference to whichever instance is
+ * currently responsible for their warnings, explicitly re-claimed via each class's own {@code setWarningsSink}
+ * method -- there is no ambient/thread-local dispatch. See {@code VcfParser.Builder#warningsToFile()} and
+ * {@code VcfWriter.Builder#warningsToFile()} for the common way an instance gets built and wired up; construct
+ * one directly (or use {@link #DEFAULT}) around manual/standalone model construction.
  * <p>
  * Not for non-VCF-content log output (e.g. I/O housekeeping, progress logging) -- those stay on SLF4J directly,
  * unconditionally.
- * <p>
- * As of this class's introduction, every warning that isn't file-redirected logs under this one shared
- * {@code org.pharmgkb.parser.vcf.VcfWarnings} category, replacing what were previously ~10 distinct per-class
- * logger names (e.g. {@code org.pharmgkb.parser.vcf.model.VcfPosition}, {@code org.pharmgkb.parser.vcf.model.InfoMetadata}).
- * Logging configuration scoped to one of those old per-class names no longer matches; scope it to this class,
- * or to the {@code org.pharmgkb.parser.vcf} package as a whole, instead.
  */
-public final class VcfWarnings {
+public final class VcfWarnings implements Closeable {
 
   private static final Logger sf_logger = LoggerFactory.getLogger(VcfWarnings.class);
-  private static final ThreadLocal<Deque<Writer>> sf_activeWriters = new ThreadLocal<>();
 
-  private VcfWarnings() {}
+  /** Always warns to the shared SLF4J logger. Stateless and immutable; safe to share/reference from anywhere. */
+  public static final VcfWarnings DEFAULT = new VcfWarnings(null);
+
+  // guards m_closed and every access to m_sink -- this class explicitly supports being shared across threads
+  // (a VcfPosition/VcfSample built under one instance can be handed to any thread), so both concurrent warn()
+  // calls (which must not interleave partial writes into one sink) and a warn() racing a close() (which must
+  // never let warn() attempt to write to an already-closing/closed sink) need a common lock, not just a
+  // volatile flag -- a plain volatile boolean makes each individual read/write atomic, but not the
+  // check-then-write sequence across the two.
+  private final Object m_lock = new Object();
+  private final @Nullable Writer m_sink;
+  private boolean m_closed;
 
   /**
-   * A handle that deactivates a warnings sink when closed, without closing the sink itself -- the caller
-   * retains ownership of the sink's own lifecycle. Narrows {@link AutoCloseable#close()} to declare no checked
-   * exception (deactivation is only a thread-local stack pop), so a try-with-resources using this type imposes
-   * no exception-handling burden on the caller.
-   * <p>
-   * If multiple {@code Deactivator}s are active on the same thread at once, they must be closed in strict LIFO
-   * order, mirroring try-with-resources' own nesting discipline: {@link #close()} always pops whatever is
-   * currently on top of the calling thread's stack, not necessarily the entry this particular handle was
-   * returned for, so closing them out of order silently deactivates the wrong sink. {@link VcfParser}/
-   * {@link VcfWriter}'s own internal usage is always correctly nested via try-with-resources; this only matters
-   * for a caller using {@link #activate(Writer)} directly.
-   * <p>
-   * Two adjacent misuse modes, both reachable only through direct {@link #activate(Writer)} use (never through
-   * {@link VcfParser}/{@link VcfWriter}'s own internal, correctly-nested usage): closing the same handle twice
-   * throws {@link java.util.NoSuchElementException} (popping an already-empty stack), and closing from a thread
-   * other than the one that called {@link #activate(Writer)} throws {@link NullPointerException} (the
-   * calling thread's stack, being thread-local, does not exist there).
+   * @param sink where {@link #warn} writes, or {@code null} to always use the shared SLF4J logger (matching
+   * {@link #DEFAULT}'s own behavior -- {@code new VcfWarnings(null)} and {@link #DEFAULT} behave identically,
+   * but {@link #DEFAULT} avoids a redundant allocation for the common case)
    */
-  @FunctionalInterface
-  public interface Deactivator extends AutoCloseable {
-    @Override
-    void close();
+  public VcfWarnings(@Nullable Writer sink) {
+    m_sink = sink;
   }
 
   /**
-   * Pushes {@code sink} onto the calling thread's active-warnings stack. Every {@link #warn} call on this
-   * thread, until the returned handle is closed, writes to {@code sink} instead of the shared SLF4J logger.
-   * Nested activation is supported: closing an inner handle restores whichever sink (if any) was active before
-   * it. Does not open or close {@code sink} -- the caller owns that lifecycle.
+   * Opens {@code file} (creating it, or overwriting it if it already exists) and returns an instance that
+   * writes to it until {@link #close()} is called.
    */
-  public static Deactivator activate(Writer sink) {
-    Deque<Writer> stack = sf_activeWriters.get();
-    if (stack == null) {
-      stack = new ArrayDeque<>();
-      sf_activeWriters.set(stack);
-    }
-    stack.push(sink);
-    return () -> sf_activeWriters.get().pop();
+  public static VcfWarnings openFile(Path file) throws IOException {
+    return new VcfWarnings(Files.newBufferedWriter(file));
   }
 
   /**
-   * Opens {@code file} (creating it, or overwriting it if it already exists), activates it for the calling
-   * thread via {@link #activate}, and closes it when the returned handle is closed.
+   * Formats {@code message} with {@code args} (SLF4J {@code {}}-placeholder syntax) and writes the formatted
+   * message, alone with a trailing newline and no other decoration, to this instance's sink -- or forwards to
+   * the shared SLF4J logger if this instance has no sink ({@link #DEFAULT}), or if {@link #close()} has already
+   * run on this instance. The close-fallback exists because a {@code VcfPosition}/{@code VcfSample} built while
+   * this instance was active can outlive the {@code parse()}/write call that built it; a lazy getter firing
+   * after this instance's file has since been closed must not crash, it must behave as if no sink were ever
+   * configured. Safe to call from multiple threads concurrently, including concurrently with {@link #close()}.
    */
-  public static Closeable openFile(Path file) throws IOException {
-    Writer writer = Files.newBufferedWriter(file);
-    Deactivator deactivator = activate(writer);
-    return () -> {
-      // wrapped in try/finally so a Deactivator.close() failure (see its own Javadoc: double-close, or
-      // closing from a different thread than the one that called openFile) can't skip closing (and thus
-      // flushing) writer -- this class's own openFile() Javadoc promises the file is closed when the
-      // returned handle is closed, not "closed unless deactivation happened to fail first"
-      try {
-        deactivator.close();
-      } finally {
-        writer.close();
+  public void warn(String message, Object... args) {
+    synchronized (m_lock) {
+      if (m_sink == null || m_closed) {
+        sf_logger.warn(message, args);
+        return;
       }
-    };
+      String formatted = MessageFormatter.arrayFormat(message, args).getMessage();
+      try {
+        m_sink.write(formatted);
+        m_sink.write('\n');
+      } catch (IOException e) {
+        throw new UncheckedIOException("Error writing to the active VCF warnings file", e);
+      }
+    }
   }
 
   /**
-   * Formats {@code message} with {@code args} (SLF4J {@code {}}-placeholder syntax) and either writes the
-   * formatted message, alone with a trailing newline and no other decoration, to the calling thread's active
-   * warnings sink if one exists, or forwards to the shared SLF4J logger otherwise. Does not flush the sink after
-   * each call -- {@link VcfParser}/{@link VcfWriter}'s {@code warningsToFile()}, and {@link #openFile} used
-   * directly, all guarantee a flush at close time (closing the {@link Writer} {@link #openFile} opens flushes
-   * it, per {@link Writer}'s close-time flush contract, whether that close happens via {@link VcfWriter#close()}
-   * or {@link #openFile}'s own returned handle), so a caller through any of those needs no extra step. Only a
-   * caller using {@link #activate(Writer)} directly -- the one entry point that hands the caller the sink's
-   * {@link Writer} itself, rather than a handle that closes it for them -- and wanting warnings visible before
-   * its sink is flushed or closed (e.g. to tail the file live during a long-running parse) must flush
-   * {@code sink} itself.
+   * Closes this instance's sink, if it has one. Idempotent -- a second call is a complete no-op and never
+   * re-attempts closing the sink, regardless of whether the first call's own close succeeded. Calling this on
+   * {@link #DEFAULT} (or any instance constructed with a {@code null} sink) is also a no-op -- there is nothing
+   * to close, and the instance remains fully usable afterward. Declares no checked exception: a close-time
+   * {@link IOException} from the underlying sink is caught and logged (via the shared SLF4J logger directly,
+   * not {@link #warn} -- this is I/O housekeeping, not VCF-content), matching how this same failure was already
+   * handled before this class existed. Safe to call concurrently with {@link #warn}.
    */
-  public static void warn(String message, Object... args) {
-    Deque<Writer> stack = sf_activeWriters.get();
-    Writer active = stack == null ? null : stack.peek();
-    if (active == null) {
-      sf_logger.warn(message, args);
-      return;
-    }
-    String formatted = MessageFormatter.arrayFormat(message, args).getMessage();
-    try {
-      active.write(formatted);
-      active.write('\n');
-    } catch (IOException e) {
-      throw new UncheckedIOException("Error writing to the active VCF warnings file", e);
+  @Override
+  public void close() {
+    synchronized (m_lock) {
+      if (m_sink != null && !m_closed) {
+        m_closed = true;
+        try {
+          m_sink.close();
+        } catch (IOException e) {
+          sf_logger.warn("Error closing VCF warnings file", e);
+        }
+      }
     }
   }
 }

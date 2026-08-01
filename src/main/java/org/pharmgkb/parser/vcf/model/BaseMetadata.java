@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.google.common.base.Preconditions;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.InternalUtils;
 import org.pharmgkb.parser.vcf.VcfFormatException;
@@ -23,6 +24,14 @@ public class BaseMetadata {
 
   private final Map<String, String> m_properties;
   private final String m_label;
+  /**
+   * Where this instance's own lazy/re-validation warnings go. Defaults to {@link VcfWarnings#DEFAULT} (the
+   * shared SLF4J logger); {@link #setWarningsSink} lets {@code VcfWriter}/{@code VcfParser} explicitly claim
+   * this instance for the duration of a specific parse or write, and a lenient (Map-based) subclass constructor
+   * sets it once at construction time via the same method. This is a live, mutable field -- the same category
+   * of caller-mutable state already exposed by e.g. {@link #getPropertiesRaw()} -- not thread-local or ambient.
+   */
+  protected VcfWarnings m_warnings = VcfWarnings.DEFAULT;
 
   /**
    * @param properties this declaration's raw key-value properties. Copied defensively into a new
@@ -54,6 +63,16 @@ public class BaseMetadata {
    */
   protected final String getLabel() {
     return m_label;
+  }
+
+  /**
+   * Redirects this instance's future lazy/re-validation warnings to {@code warnings}, replacing whatever was
+   * previously configured (the constructor's own choice, or an earlier call to this method). Used by
+   * {@code VcfWriter}/{@code VcfParser} to claim an object for the duration of a specific write or parse, even
+   * if it was originally built (or last used) under a different destination.
+   */
+  public void setWarningsSink(VcfWarnings warnings) {
+    m_warnings = Preconditions.checkNotNull(warnings, "warnings must not be null");
   }
 
   /**
@@ -146,7 +165,7 @@ public class BaseMetadata {
     Set<String> set = new HashSet<>();
     Collections.addAll(set, names);
     m_properties.keySet().stream().filter(property -> !set.contains(property)).forEach(property -> {
-      VcfWarnings.warn("{} metadata line contains unexpected property {}", getLabel(), property);
+      m_warnings.warn("{} metadata line contains unexpected property {}", getLabel(), property);
     });
   }
 
@@ -158,7 +177,7 @@ public class BaseMetadata {
    */
   protected void warnIfMissing(String propertyName, @Nullable String value) {
     if (value == null) {
-      VcfWarnings.warn("{} required metadata property \"{}\" is missing", getLabel(), propertyName);
+      m_warnings.warn("{} required metadata property \"{}\" is missing", getLabel(), propertyName);
     }
   }
 
@@ -171,7 +190,7 @@ public class BaseMetadata {
   protected void checkNumberProperty(@Nullable String number) {
     warnIfMissing("Number", number);
     if (number != null && !InternalUtils.NUMBER_PATTERN.matcher(number).matches()) {
-      VcfWarnings.warn("{} Number is not a valid VCF number: '{}'", getLabel(), number);
+      m_warnings.warn("{} Number is not a valid VCF number: '{}'", getLabel(), number);
     }
   }
 
@@ -206,7 +225,7 @@ public class BaseMetadata {
     List<String> expected = new ArrayList<>(CANONICAL_ATTRIBUTE_ORDER);
     expected.retainAll(actual);
     if (!actual.equals(expected)) {
-      VcfWarnings.warn("{} metadata attributes declared out of canonical order: {} (expected order: {})",
+      m_warnings.warn("{} metadata attributes declared out of canonical order: {} (expected order: {})",
           getLabel(), actual, expected);
     }
   }

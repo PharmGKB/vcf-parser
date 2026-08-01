@@ -1,33 +1,36 @@
 package org.pharmgkb.parser.vcf;
 
-import java.io.BufferedReader;
-import java.io.Closeable;
 import java.io.IOException;
-import java.io.StringReader;
 import java.io.StringWriter;
+import java.io.UncheckedIOException;
+import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.pharmgkb.parser.vcf.spec.WarnCapturingAppender;
-
+import org.slf4j.LoggerFactory;
 import static org.junit.jupiter.api.Assertions.*;
 
-public class VcfWarningsTest {
+
+class VcfWarningsTest {
 
   @Test
-  public void testWarnWithNoActiveSinkGoesToSlf4j() {
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+  void testWarnWithNoSinkGoesToSharedLogger() {
+    Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
     try {
-      VcfWarnings.warn("plain {} message", "test");
-      assertTrue(appender.hasWarnOrHigher());
-      assertTrue(appender.anyMessageContains("plain test message"));
+      VcfWarnings.DEFAULT.warn("test message {}", "x");
+      assertTrue(appender.anyMessageContains("test message x"));
     } finally {
       root.detachAppender(appender);
       appender.stop();
@@ -35,19 +38,25 @@ public class VcfWarningsTest {
   }
 
   @Test
-  public void testActivateRedirectsToWriterInsteadOfSlf4j() {
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+  void testWarnWithSinkWritesFormattedMessageWithNewline() {
+    StringWriter sink = new StringWriter();
+    VcfWarnings warnings = new VcfWarnings(sink);
+    warnings.warn("test message {}", "x");
+    assertEquals("test message x\n", sink.toString());
+  }
+
+  @Test
+  void testDefaultIsStatelessAndReusableAcrossCalls() {
+    // DEFAULT must never accumulate per-call or per-thread state -- it's a shared static constant
+    Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    StringWriter sink = new StringWriter();
     try {
-      try (VcfWarnings.Deactivator ignored = VcfWarnings.activate(sink)) {
-        VcfWarnings.warn("redirected {} message", "test");
-      }
-      assertFalse(appender.hasWarnOrHigher());
-      assertEquals("redirected test message\n", sink.toString());
+      VcfWarnings.DEFAULT.warn("first {}", "a");
+      VcfWarnings.DEFAULT.warn("second {}", "b");
+      assertTrue(appender.anyMessageContains("first a"));
+      assertTrue(appender.anyMessageContains("second b"));
     } finally {
       root.detachAppender(appender);
       appender.stop();
@@ -55,158 +64,182 @@ public class VcfWarningsTest {
   }
 
   @Test
-  public void testFileLineFormatIsMessageOnly() {
-    StringWriter sink = new StringWriter();
-    try (VcfWarnings.Deactivator ignored = VcfWarnings.activate(sink)) {
-      VcfWarnings.warn("exact message with no decoration");
-    }
-    assertEquals("exact message with no decoration\n", sink.toString());
+  void testOpenFileWritesAndClosesFile(@TempDir Path tempDir) throws IOException {
+    Path file = tempDir.resolve("warnings.log");
+    VcfWarnings warnings = VcfWarnings.openFile(file);
+    warnings.warn("hello {}", "world");
+    warnings.close();
+    List<String> lines = Files.readAllLines(file);
+    assertEquals(List.of("hello world"), lines);
   }
 
   @Test
-  public void testDeactivateRestoresPriorSinkNotSilence() {
-    StringWriter outer = new StringWriter();
-    StringWriter inner = new StringWriter();
-    try (VcfWarnings.Deactivator outerHandle = VcfWarnings.activate(outer)) {
-      VcfWarnings.warn("to outer");
-      try (VcfWarnings.Deactivator innerHandle = VcfWarnings.activate(inner)) {
-        VcfWarnings.warn("to inner");
-      }
-      VcfWarnings.warn("back to outer");
-    }
-    assertEquals("to outer\nback to outer\n", outer.toString());
-    assertEquals("to inner\n", inner.toString());
-  }
-
-  @Test
-  public void testOpenFileCreatesWritesAndClosesFile(@TempDir Path tempDir) throws IOException {
-    Path file = tempDir.resolve("test.warn.log");
-    try (Closeable ignored = VcfWarnings.openFile(file)) {
-      VcfWarnings.warn("written to file");
-    }
-    assertEquals("written to file\n", Files.readString(file));
-  }
-
-  @Test
-  public void testOpenFileOverwritesExistingContent(@TempDir Path tempDir) throws IOException {
-    Path file = tempDir.resolve("test.warn.log");
-    Files.writeString(file, "stale content that must be gone\n");
-    try (Closeable ignored = VcfWarnings.openFile(file)) {
-      VcfWarnings.warn("fresh content");
-    }
-    assertEquals("fresh content\n", Files.readString(file));
-  }
-
-  @Test
-  public void testOpenFileStillClosesWriterWhenDeactivatorCloseFails(@TempDir Path tempDir) throws Exception {
-    // Deactivator.close()'s own Javadoc documents a failure mode reachable through direct openFile() use:
-    // closing from a different thread than the one that called openFile() throws NullPointerException (the
-    // calling thread's thread-local stack does not exist on a different thread). Before this fix, that
-    // failure skipped writer.close() entirely (deactivator.close() was the first of two un-wrapped
-    // statements), leaving the file's content unflushed and the underlying file handle unclosed.
-    Path file = tempDir.resolve("test.warn.log");
-    Closeable handle = VcfWarnings.openFile(file);
+  void testWarnAfterCloseFallsBackToSharedLoggerInsteadOfThrowing(@TempDir Path tempDir) throws IOException {
+    // regression test: a VcfPosition/VcfSample built under a warningsToFile()-backed VcfWarnings can outlive the
+    // parse() call that built it (that's the whole point of parsing); a lazy getter (getQuality(), info()) firing
+    // after that file has been closed must not throw UncheckedIOException -- it must fall back to SLF4J, matching
+    // the old ThreadLocal design's accidental safety here (deactivation made warn() fall through to SLF4J once
+    // parse() returned)
+    Path file = tempDir.resolve("warnings.log");
+    VcfWarnings warnings = VcfWarnings.openFile(file);
+    warnings.close();
+    Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
     try {
-      VcfWarnings.warn("before close");
+      assertDoesNotThrow(() -> warnings.warn("after close {}", "x"));
+      assertTrue(appender.anyMessageContains("after close x"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
 
-      AtomicReference<Throwable> closeThrew = new AtomicReference<>();
-      Thread otherThread = new Thread(() -> {
+  @Test
+  void testCloseIsIdempotent(@TempDir Path tempDir) throws IOException {
+    Path file = tempDir.resolve("warnings.log");
+    VcfWarnings warnings = VcfWarnings.openFile(file);
+    warnings.close();
+    assertDoesNotThrow(warnings::close);
+  }
+
+  @Test
+  void testCloseOnDefaultIsNoOp() {
+    assertDoesNotThrow(VcfWarnings.DEFAULT::close);
+    // DEFAULT must remain usable after close() -- it's a shared static constant, never really "closed"
+    assertDoesNotThrow(() -> VcfWarnings.DEFAULT.warn("still works"));
+  }
+
+  @Test
+  void testWriteFailureDuringWarnThrowsUncheckedIOException() throws IOException {
+    Writer failingSink = new Writer() {
+      @Override public void write(char[] cbuf, int off, int len) throws IOException {
+        throw new IOException("disk full");
+      }
+      @Override public void flush() {}
+      @Override public void close() {}
+    };
+    VcfWarnings warnings = new VcfWarnings(failingSink);
+    assertThrows(UncheckedIOException.class, () -> warnings.warn("test"));
+  }
+
+  @Test
+  void testCloseSwallowsAndLogsUnderlyingCloseFailureInsteadOfThrowing() {
+    // regression test for finding #3 of this plan's external review: close() must not declare a checked
+    // exception a caller (e.g. VcfParser's finally block, VcfWriter.closeWarningsWriterQuietly()) would have to
+    // handle -- a close-time IOException from the underlying sink is caught and logged, matching VcfWriter's
+    // own pre-existing precedent for this exact failure mode. Calling close() again afterward must also not
+    // re-attempt closing the sink (true idempotency, not just "happens to not throw a second time because the
+    // underlying Writer tolerates a double close").
+    java.util.concurrent.atomic.AtomicInteger closeAttempts = new java.util.concurrent.atomic.AtomicInteger();
+    Writer failingSink = new Writer() {
+      @Override public void write(char[] cbuf, int off, int len) {}
+      @Override public void flush() {}
+      @Override public void close() throws IOException {
+        closeAttempts.incrementAndGet();
+        throw new IOException("disk full");
+      }
+    };
+    VcfWarnings warnings = new VcfWarnings(failingSink);
+    assertDoesNotThrow(warnings::close);
+    assertDoesNotThrow(warnings::close);
+    assertEquals(1, closeAttempts.get());
+  }
+
+  @Test
+  void testConcurrentWarnCallsDoNotInterleaveOutput() throws InterruptedException {
+    // regression test for finding #4 of this plan's external review: this design explicitly supports a
+    // VcfWarnings instance being shared across threads (see VcfParserTest's cross-thread test) -- multiple
+    // threads calling warn() concurrently on a shared Writer sink must not interleave partial writes into
+    // garbled/corrupted lines
+    StringWriter sink = new StringWriter();
+    VcfWarnings warnings = new VcfWarnings(sink);
+    int threadCount = 8;
+    int perThread = 200;
+    ExecutorService pool = Executors.newFixedThreadPool(threadCount);
+    List<Future<?>> futures = new ArrayList<>();
+    for (int t = 0; t < threadCount; t++) {
+      futures.add(pool.submit(() -> {
+        for (int i = 0; i < perThread; i++) {
+          warnings.warn("message");
+        }
+      }));
+    }
+    for (Future<?> f : futures) {
+      assertDoesNotThrow(() -> f.get());
+    }
+    pool.shutdown();
+    String[] lines = sink.toString().split("\n");
+    assertEquals(threadCount * perThread, lines.length);
+    for (String line : lines) {
+      assertEquals("message", line);
+    }
+  }
+
+  @Test
+  void testCloseNeverRunsWhileAnInProgressWarnIsStillWriting() throws Exception {
+    // regression test for finding #4 of this plan's first review round (synchronization), rewritten per
+    // finding #3 of the second round: the original version used StringWriter, whose close() is a documented
+    // no-op that never makes a later write() fail -- it could pass even with no synchronization at all, since
+    // there was nothing for an unsynchronized implementation to actually get wrong. This version uses a sink
+    // whose write() blocks (via a latch) until told to proceed, and whose close() records whether a write was
+    // in progress when it ran -- so it directly proves warn() and close() are mutually exclusive, not just that
+    // neither happened to throw.
+    // Fifth-round correction (finding #1): the fourth-round version removed the timing-based
+    // Thread.sleep(200)/isDone() check (correctly, per round 3's finding #4) but didn't replace it with
+    // anything that actually forces closeTask to attempt close() before the write is released -- without that,
+    // an unsynchronized implementation could still pass by pure luck, if the scheduler happens to run closeTask
+    // only after releaseWrite fires and the write has already finished (no contention ever attempted, so
+    // overlapDetected never had a chance to fire either way). Fixed with a "closeAttempted" latch that
+    // closeTask signals immediately before calling warnings.close(): the main thread waits on it before
+    // releasing the write, guaranteeing the close attempt has already begun (and, under correct synchronization,
+    // is therefore already blocked on the lock the in-progress warn() call holds) at the moment the write is
+    // released -- not just hoped-for by scheduling luck.
+    java.util.concurrent.CountDownLatch writeStarted = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.CountDownLatch releaseWrite = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.CountDownLatch closeAttempted = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.atomic.AtomicBoolean writeInProgress = new java.util.concurrent.atomic.AtomicBoolean(false);
+    java.util.concurrent.atomic.AtomicBoolean overlapDetected = new java.util.concurrent.atomic.AtomicBoolean(false);
+    Writer sink = new Writer() {
+      @Override public void write(char[] cbuf, int off, int len) {
+        writeInProgress.set(true);
+        writeStarted.countDown();
         try {
-          handle.close();
-        } catch (Throwable t) {
-          closeThrew.set(t);
+          if (!releaseWrite.await(5, java.util.concurrent.TimeUnit.SECONDS)) {
+            throw new AssertionError("releaseWrite was never signaled within 5 seconds");
+          }
+        } catch (InterruptedException e) {
+          throw new RuntimeException(e);
         }
-      });
-      otherThread.start();
-      otherThread.join();
-
-      assertNotNull(closeThrew.get(), "closing from a different thread was expected to throw");
-      assertEquals(NullPointerException.class, closeThrew.get().getClass());
-      // writer.close() must have run despite deactivator.close() throwing -- confirmed by the flushed,
-      // closed file actually containing the warning written before close() was called
-      assertEquals("before close\n", Files.readString(file));
-    } finally {
-      // the failed cross-thread close() attempt above never reached this (the calling) thread's own
-      // active-writers stack -- Deactivator.close() failed on the OTHER thread's own, unrelated, empty
-      // stack, popping nothing. So this thread's stack still has the (now already-closed) writer on top;
-      // it must be popped here, or every later VcfWarnings.warn() call on this thread -- including from
-      // later, unrelated tests, since JUnit can reuse the same thread across test methods -- would try to
-      // write to a permanently-closed Writer instead of falling back to SLF4J.
-      handle.close();
-    }
-  }
-
-  @Test
-  public void testThreadLocalIsolationAcrossTwoThreads() throws Exception {
-    Path threadAFile = Files.createTempFile("vcfwarnings-a", ".log");
-    Path threadBFile = Files.createTempFile("vcfwarnings-b", ".log");
+        writeInProgress.set(false);
+      }
+      @Override public void flush() {}
+      @Override public void close() {
+        if (writeInProgress.get()) {
+          overlapDetected.set(true);
+        }
+      }
+    };
+    VcfWarnings warnings = new VcfWarnings(sink);
+    ExecutorService pool = Executors.newFixedThreadPool(2);
     try {
-      CountDownLatch aReady = new CountDownLatch(1);
-      CountDownLatch bReady = new CountDownLatch(1);
-      CountDownLatch bothWarned = new CountDownLatch(2);
-      AtomicReference<Exception> failure = new AtomicReference<>();
-
-      Thread threadA = new Thread(() -> {
-        try (Closeable ignored = VcfWarnings.openFile(threadAFile)) {
-          aReady.countDown();
-          bReady.await();
-          VcfWarnings.warn("from thread A");
-          bothWarned.countDown();
-        } catch (Exception e) {
-          failure.set(e);
-        }
+      Future<?> warnTask = pool.submit(() -> warnings.warn("message"));
+      assertTrue(writeStarted.await(5, java.util.concurrent.TimeUnit.SECONDS));
+      Future<?> closeTask = pool.submit(() -> {
+        closeAttempted.countDown();
+        warnings.close();
       });
-      Thread threadB = new Thread(() -> {
-        try (Closeable ignored = VcfWarnings.openFile(threadBFile)) {
-          bReady.countDown();
-          aReady.await();
-          VcfWarnings.warn("from thread B");
-          bothWarned.countDown();
-        } catch (Exception e) {
-          failure.set(e);
-        }
-      });
-      threadA.start();
-      threadB.start();
-      threadA.join();
-      threadB.join();
-      assertNull(failure.get());
-      assertEquals("from thread A\n", Files.readString(threadAFile));
-      assertEquals("from thread B\n", Files.readString(threadBFile));
+      // wait for closeTask to signal it's about to call close() -- this is the deterministic handshake finding
+      // #1 required; only once we know the close attempt has begun do we release the write, guaranteeing a
+      // correct implementation's lock forces closeTask to actually block here, not just happen to run later
+      assertTrue(closeAttempted.await(5, java.util.concurrent.TimeUnit.SECONDS));
+      releaseWrite.countDown();
+      assertDoesNotThrow(() -> warnTask.get(5, java.util.concurrent.TimeUnit.SECONDS));
+      assertDoesNotThrow(() -> closeTask.get(5, java.util.concurrent.TimeUnit.SECONDS));
     } finally {
-      Files.deleteIfExists(threadAFile);
-      Files.deleteIfExists(threadBFile);
+      pool.shutdown();
     }
-  }
-
-  @Test
-  public void testWarningsAllPresentAfterParseCompletesWithoutPerWarningFlush() throws Exception {
-    // Regression test for findings19.md's per-warning-flush removal: VcfWarnings.warn() no longer flushes after
-    // every call, relying instead on the close-time flush guaranteed by warningsToFile()'s try-with-resources.
-    // This proves that guarantee actually holds -- every warning from a multi-warning parse is present in the
-    // file once parse() returns, not just some of them.
-    // FILTER combining PASS with another code is checked eagerly in VcfPosition's constructor (during parse(),
-    // not deferred to a getter -- unlike e.g. a duplicate INFO key, which is only checked on first getInfo()
-    // access), so this reliably produces one warning per data line without needing to touch any getter.
-    Path warningsFile = Files.createTempFile("warnings", ".log");
-    String vcf = "##fileformat=VCFv4.2\n" +
-        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
-        "chr1\t1\t.\tA\tT\t.\tSTD_FILTER;PASS\t.\n" +
-        "chr1\t2\t.\tA\tT\t.\tSTD_FILTER;PASS\t.\n" +
-        "chr1\t3\t.\tA\tT\t.\tSTD_FILTER;PASS\t.\n";
-    try {
-      VcfParser parser = new VcfParser.Builder()
-          .fromReader(new BufferedReader(new StringReader(vcf)))
-          .warningsToFile(warningsFile)
-          .parseWith(new MemoryMappedVcfLineParser.Builder().build())
-          .build();
-      parser.parse();
-      parser.close();
-      String content = Files.readString(warningsFile);
-      // three "PASS along with other filters" warnings expected, one per data line
-      assertEquals(3, content.lines().filter(line -> line.contains("PASS along with other filters")).count());
-    } finally {
-      Files.deleteIfExists(warningsFile);
-    }
+    assertFalse(overlapDetected.get(), "close() must never run while a warn() call is still writing");
   }
 }

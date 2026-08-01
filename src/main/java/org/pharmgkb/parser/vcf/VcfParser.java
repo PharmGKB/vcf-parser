@@ -65,6 +65,7 @@ public class VcfParser implements Closeable {
 
   private int m_lineNumber;
   private boolean m_alreadyFinished;
+  private VcfWarnings m_warnings = VcfWarnings.DEFAULT;
 
 
 
@@ -86,7 +87,7 @@ public class VcfParser implements Closeable {
     if (m_vcfMetadata != null) {
       throw new IllegalStateException("Metadata has already been parsed.");
     }
-    VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder();
+    VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder().lenient(m_warnings);
 
     // the first physical line must be the single ##fileformat declaration
     String first = m_reader.readLine();
@@ -136,11 +137,11 @@ public class VcfParser implements Closeable {
       for (int i = 0; i < m_vcfMetadata.getNumSamples(); i++) {
         String sampleName = m_vcfMetadata.getSampleName(i);
         if (!m_vcfMetadata.getSamples().containsKey(sampleName)) {
-          VcfWarnings.warn("Sample {} is missing in the metadata", sampleName);
+          m_warnings.warn("Sample {} is missing in the metadata", sampleName);
         }
       }
     } else {
-      VcfWarnings.warn("There are {} samples in the header but {} in the metadata", m_vcfMetadata.getNumSamples(),
+      m_warnings.warn("There are {} samples in the header but {} in the metadata", m_vcfMetadata.getNumSamples(),
           m_vcfMetadata.getSamples().size());
     }
 
@@ -169,8 +170,12 @@ public class VcfParser implements Closeable {
       doParse();
       return;
     }
-    try (Closeable ignored = VcfWarnings.openFile(m_warningsFile)) {
+    m_warnings = VcfWarnings.openFile(m_warningsFile);
+    try {
       doParse();
+    } finally {
+      m_warnings.close();
+      m_warnings = VcfWarnings.DEFAULT;
     }
   }
 
@@ -289,7 +294,7 @@ public class VcfParser implements Closeable {
 
       // QUAL and INFO are parsed lazily by VcfPosition (see setRawQuality/setRawInfo); many consumers never read them.
       VcfPosition pos = new VcfPosition(chromosome, position, ids, ref, alt,
-          null, filters, null, format, m_lineNumber);
+          null, filters, null, format, m_lineNumber, m_warnings);
       pos.setRawQuality(data.get(5));
       pos.setRawInfo(data.get(7));
       List<VcfSample> samples = new ArrayList<>();
@@ -307,13 +312,13 @@ public class VcfParser implements Closeable {
         List<String> values;
         if (noFormatFields) {
           if (!data.get(x).equals(".")) {
-            VcfWarnings.warn("Sample column \"{}\" has content, but FORMAT is '.' (no format fields declared); " +
+            m_warnings.warn("Sample column \"{}\" has content, but FORMAT is '.' (no format fields declared); " +
                 "ignoring it, matching bcftools 1.23.1 behavior", data.get(x));
           }
           values = new ArrayList<>();
         } else {
           values = toSampleValues(format, data.get(x));
-          InternalUtils.fillEmptyEntriesWithDot("sample value", values);
+          InternalUtils.fillEmptyEntriesWithDot("sample value", values, m_warnings);
           // per the VCF spec, trailing FORMAT sub-fields may be dropped from a sample; pad any missing ones with the
           // missing value so the sample's value count matches the FORMAT key count
           if (format != null) {
@@ -322,7 +327,9 @@ public class VcfParser implements Closeable {
             }
           }
         }
-        samples.add(new VcfSample(sampleFormat, values));
+        VcfSample sample = new VcfSample(sampleFormat, values);
+        sample.setWarningsSink(m_warnings);
+        samples.add(sample);
       }
 
       m_vcfLineParser.parseLine(m_vcfMetadata, pos, samples);
@@ -411,31 +418,38 @@ public class VcfParser implements Closeable {
    */
   private void parseMetadataProperty(VcfMetadata.Builder mdBuilder,
       String propName, String value) {
-    Map<String, String> props = InternalUtils.extractPropertiesFromLine(value);
+    Map<String, String> props = InternalUtils.extractPropertiesFromLine(value, m_warnings);
     // propName is already constrained to these exact-case literals by parseMetadata()'s own switch above,
     // so no case-folding is needed here at all -- a prior version lower-cased propName before this switch,
     // which meant a Turkish/Azeri default locale's dotless-i case-folding (e.g. "INFO".toLowerCase() ->
     // "ınfo") silently matched none of the case labels below and dropped the declaration with no warning.
     switch (propName) {
       case "ALT":
-        mdBuilder.addAlt(new IdDescriptionMetadata("ALT", props));
+        mdBuilder.addAlt(new IdDescriptionMetadata("ALT", props, m_warnings));
         break;
       case "FILTER":
-        mdBuilder.addFilter(new IdDescriptionMetadata("FILTER", props));
+        mdBuilder.addFilter(new IdDescriptionMetadata("FILTER", props, m_warnings));
         break;
       case "INFO":
-        mdBuilder.addInfo(new InfoMetadata(props));
+        mdBuilder.addInfo(new InfoMetadata(props, m_warnings));
         break;
       case "FORMAT":
-        mdBuilder.addFormat(new FormatMetadata(props));
+        mdBuilder.addFormat(new FormatMetadata(props, m_warnings));
         break;
       case "contig":
-        mdBuilder.addContig(new ContigMetadata(props));
+        mdBuilder.addContig(new ContigMetadata(props, m_warnings));
         break;
       case "SAMPLE":
-        mdBuilder.addSample(new IdDescriptionMetadata("SAMPLE", props));
+        mdBuilder.addSample(new IdDescriptionMetadata("SAMPLE", props, m_warnings));
         break;
       case "PEDIGREE":
+        // PedigreeMetadata's constructor is unchanged and has no warn site of its own (it has no init() at all,
+        // unlike the IdMetadata subclasses above -- PedigreeMetadata extends BaseMetadata directly). This
+        // construction site is deliberately asymmetric with VcfWriter, which DOES claim pedigrees in
+        // claimMetadataWarningsSinks(): BaseMetadata's own inherited checkAttributeOrder() already warns and is
+        // reachable on any PedigreeMetadata, so a pedigree's attribute-order warning already bypasses the
+        // parser's warningsToFile() destination today (falling back to the shared logger), while the writer's
+        // side captures it correctly. Passing m_warnings here would close that one gap.
         mdBuilder.addPedigree(new PedigreeMetadata(props));
         break;
     }
@@ -628,10 +642,14 @@ public class VcfParser implements Closeable {
      * {@link VcfParser}/{@link VcfWriter}'s own default-derived name (e.g. an in-place parse-then-write).
      * <p>
      * This redirection is scoped to the {@link VcfParser#parse()} call itself. A warning from a value whose
-     * validation this library defers until a getter is called (e.g. {@code VcfPosition.getQuality()}) is not
-     * redirected if that getter is called after {@link VcfParser#parse()} has already returned -- it goes to the
-     * default logger instead. Calling {@link VcfParser#parseMetadata()} or {@link VcfParser#parseNextLine()}
-     * directly, instead of {@link VcfParser#parse()}, is not redirected at all.
+     * validation this library defers until a getter is called (e.g. {@code VcfPosition.getQuality()}) is
+     * captured correctly even if that getter is called from a different thread than the one running
+     * {@link VcfParser#parse()}, as long as it's called before {@code parse()} returns -- {@link VcfPosition}
+     * holds the same {@link VcfWarnings} instance {@code parse()} configured, not a thread-local reference. If
+     * that getter is instead called after {@code parse()} has already returned (and this file has been closed),
+     * it falls back to the default logger instead of failing -- see {@link VcfWarnings#warn}'s own Javadoc.
+     * Calling {@link VcfParser#parseMetadata()} or {@link VcfParser#parseNextLine()} directly, instead of
+     * {@link VcfParser#parse()}, is not redirected at all.
      */
     public Builder warningsToFile() {
       m_warningsToFile = true;
@@ -643,10 +661,14 @@ public class VcfParser implements Closeable {
      * Redirects VCF-content warnings from parsing to {@code customFile} instead of the default derived name.
      * <p>
      * This redirection is scoped to the {@link VcfParser#parse()} call itself. A warning from a value whose
-     * validation this library defers until a getter is called (e.g. {@code VcfPosition.getQuality()}) is not
-     * redirected if that getter is called after {@link VcfParser#parse()} has already returned -- it goes to the
-     * default logger instead. Calling {@link VcfParser#parseMetadata()} or {@link VcfParser#parseNextLine()}
-     * directly, instead of {@link VcfParser#parse()}, is not redirected at all.
+     * validation this library defers until a getter is called (e.g. {@code VcfPosition.getQuality()}) is
+     * captured correctly even if that getter is called from a different thread than the one running
+     * {@link VcfParser#parse()}, as long as it's called before {@code parse()} returns -- {@link VcfPosition}
+     * holds the same {@link VcfWarnings} instance {@code parse()} configured, not a thread-local reference. If
+     * that getter is instead called after {@code parse()} has already returned (and this file has been closed),
+     * it falls back to the default logger instead of failing -- see {@link VcfWarnings#warn}'s own Javadoc.
+     * Calling {@link VcfParser#parseMetadata()} or {@link VcfParser#parseNextLine()} directly, instead of
+     * {@link VcfParser#parse()}, is not redirected at all.
      * <p>
      * If {@code customFile} is the same path another {@code warningsToFile()}-configured {@link VcfParser} or
      * {@link VcfWriter} also writes to -- including via a matching default-derived name, e.g. an in-place

@@ -30,6 +30,12 @@ public class MemoryMappedVcfDataStore {
   private final Map<Locus, List<VcfPosition>> m_locusToPositions = new HashMap<>();
   private final Map<String, List<VcfSample>> m_idToSamples = new HashMap<>();
   private final Map<Locus, List<List<VcfSample>>> m_locusToSamplesList = new HashMap<>();
+  private VcfWarnings m_warnings = VcfWarnings.DEFAULT;
+
+  /** See {@link org.pharmgkb.parser.vcf.model.BaseMetadata#setWarningsSink}'s identical Javadoc. */
+  public void setWarningsSink(VcfWarnings warnings) {
+    m_warnings = Objects.requireNonNull(warnings, "warnings must not be null");
+  }
 
   /**
    * @return Every position read, or null if parsing has not happened yet. Returns an empty (non-null) collection
@@ -221,7 +227,7 @@ public class MemoryMappedVcfDataStore {
     boolean allMissing = true;
     for (String base : bases) {
       if (base.isEmpty()) {
-        VcfWarnings.warn("GT \"{}\" contains an empty allele (VCF does not allow zero-length fields); treating it " +
+        m_warnings.warn("GT \"{}\" contains an empty allele (VCF does not allow zero-length fields); treating it " +
             "as the missing value '.'", genotype);
       }
       if (base.isEmpty() || base.equals(".")) {

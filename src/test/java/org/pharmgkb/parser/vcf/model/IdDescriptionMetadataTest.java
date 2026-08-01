@@ -1,8 +1,11 @@
 package org.pharmgkb.parser.vcf.model;
 
+import java.io.StringWriter;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.InternalUtils;
 import org.pharmgkb.parser.vcf.VcfFormatException;
+import org.pharmgkb.parser.vcf.VcfWarnings;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -20,7 +23,8 @@ public class IdDescriptionMetadataTest {
     // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included
     // after the default fields" -- an unrecognized property is compliant, not just tolerated, and must be preserved
     IdDescriptionMetadata md = new IdDescriptionMetadata("TEST",
-        InternalUtils.extractProperties("ID=X", "Description=\"d\"", "Custom=extra"));
+        InternalUtils.extractProperties(new String[]{"ID=X", "Description=\"d\"", "Custom=extra"}, VcfWarnings.DEFAULT),
+        VcfWarnings.DEFAULT);
     assertEquals("extra", md.getPropertyRaw("Custom"));
   }
 
@@ -35,7 +39,8 @@ public class IdDescriptionMetadataTest {
     root.addAppender(appender);
     try {
       new IdDescriptionMetadata("TEST", InternalUtils.extractProperties(
-          "ID=DEL", "Type=String", "Number=1", "Description=\"Deletion\""));
+          new String[]{"ID=DEL", "Type=String", "Number=1", "Description=\"Deletion\""}, VcfWarnings.DEFAULT),
+          VcfWarnings.DEFAULT);
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -53,7 +58,9 @@ public class IdDescriptionMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new IdDescriptionMetadata("TEST", InternalUtils.extractProperties("ID=DEL", "Description=\"Deletion\""));
+      new IdDescriptionMetadata("TEST",
+          InternalUtils.extractProperties(new String[]{"ID=DEL", "Description=\"Deletion\""}, VcfWarnings.DEFAULT),
+          VcfWarnings.DEFAULT);
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -67,7 +74,8 @@ public class IdDescriptionMetadataTest {
     // used to call checkAttributeOrder() -- calling .validate() directly (e.g. after mutating properties via
     // getPropertiesRaw(), as VcfWriter's validateKeyedMetadataEntries does) fired the attribute-order warning twice
     IdDescriptionMetadata md = new IdDescriptionMetadata("TEST",
-        InternalUtils.extractProperties("ID=DEL", "Type=String", "Number=1", "Description=\"Deletion\""));
+        InternalUtils.extractProperties(new String[]{"ID=DEL", "Type=String", "Number=1", "Description=\"Deletion\""}, VcfWarnings.DEFAULT),
+        VcfWarnings.DEFAULT);
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -102,7 +110,9 @@ public class IdDescriptionMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new IdDescriptionMetadata("TEST", InternalUtils.extractProperties("ID=A B", "Description=\"d\""));
+      new IdDescriptionMetadata("TEST",
+          InternalUtils.extractProperties(new String[]{"ID=A B", "Description=\"d\""}, VcfWarnings.DEFAULT),
+          VcfWarnings.DEFAULT);
       assertTrue(appender.anyMessageContains("must not contain whitespace"));
     } finally {
       root.detachAppender(appender);
@@ -122,7 +132,9 @@ public class IdDescriptionMetadataTest {
       appender.start();
       root.addAppender(appender);
       try {
-        new IdDescriptionMetadata(label, InternalUtils.extractProperties("ID=A B", "Description=\"d\""));
+        new IdDescriptionMetadata(label,
+            InternalUtils.extractProperties(new String[]{"ID=A B", "Description=\"d\""}, VcfWarnings.DEFAULT),
+            VcfWarnings.DEFAULT);
         assertTrue(appender.anyMessageContains(label + " metadata ID"));
         assertFalse(appender.anyMessageContains("IdDescriptionMetadata"));
       } finally {
@@ -130,6 +142,40 @@ public class IdDescriptionMetadataTest {
         appender.stop();
       }
     }
+  }
+
+  @Test
+  public void testTypedConstructorRejectsWhitespaceInIdInsteadOfWarning() {
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> new IdDescriptionMetadata("FILTER", "bad id", "some description"));
+    assertTrue(ex.getMessage().contains("must not contain whitespace"));
+  }
+
+  @Test
+  public void testMapConstructorRequiresWarningsInstance() {
+    Map<String, String> props = InternalUtils.extractProperties(
+        new String[] {"ID=bad id", "Description=\"d\""}, VcfWarnings.DEFAULT);
+    assertThrows(NullPointerException.class, () -> new IdDescriptionMetadata("FILTER", props, null));
+  }
+
+  @Test
+  public void testMapConstructorWarnsForWhitespaceInIdToSuppliedSink() {
+    Map<String, String> props = InternalUtils.extractProperties(
+        new String[] {"ID=bad id", "Description=\"d\""}, VcfWarnings.DEFAULT);
+    StringWriter sink = new StringWriter();
+    new IdDescriptionMetadata("FILTER", props, new VcfWarnings(sink));
+    assertTrue(sink.toString().contains("must not contain whitespace"));
+  }
+
+  @Test
+  public void testTypedConstructorDoesNotCallWarnBasedInit() {
+    // regression guard: the typed constructor must not warn even to the shared logger for a well-formed input --
+    // if a future change accidentally reintroduces a call to init() here, this would still pass (init() is a
+    // no-op for well-formed input), so this test's real value is documented in testTypedConstructorRejectsWhitespaceInIdInsteadOfWarning
+    // actually exercising the throw path instead of a silent warn
+    IdDescriptionMetadata md = new IdDescriptionMetadata("FILTER", "q10", "quality below 10");
+    assertEquals("q10", md.getId());
+    assertEquals("quality below 10", md.getDescription());
   }
 
 }

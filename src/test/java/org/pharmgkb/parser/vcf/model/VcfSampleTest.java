@@ -268,4 +268,39 @@ class VcfSampleTest {
     sample.putProperty("key3", "value3"); // forces materialization of m_properties
     assertFalse(sample.containsProperty((String) null));
   }
+
+  @Test
+  void testValidateWarnsToConfiguredSinkForEmptyValue() {
+    VcfSample sample = new VcfSample(List.of("DP"), new ArrayList<>(List.of("")));
+    java.io.StringWriter sink = new java.io.StringWriter();
+    sample.setWarningsSink(new org.pharmgkb.parser.vcf.VcfWarnings(sink));
+    sample.validate();
+    assertTrue(sink.toString().contains("has an empty value"));
+    assertEquals(".", sample.getProperty("DP"));
+  }
+
+  @Test
+  void testDuplicateFormatKeyWarnsToConfiguredSinkOnLazyMaterialization() {
+    VcfSample sample = new VcfSample(List.of("DP", "DP"), List.of("1", "2"));
+    java.io.StringWriter sink = new java.io.StringWriter();
+    sample.setWarningsSink(new org.pharmgkb.parser.vcf.VcfWarnings(sink));
+    assertEquals("1", sample.getPropertyKeys().contains("DP") ? sample.getProperty("DP") : null);
+    assertTrue(sink.toString().contains("duplicate FORMAT key"));
+  }
+
+  @Test
+  void testDefaultWarningsSinkIsSharedLoggerWhenNeverConfigured() {
+    VcfSample sample = new VcfSample(List.of("DP"), new ArrayList<>(List.of("")));
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      sample.validate();
+      assertTrue(appender.anyMessageContains("has an empty value"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
 }

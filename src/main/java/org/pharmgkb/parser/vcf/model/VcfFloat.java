@@ -5,6 +5,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.regex.Pattern;
 import com.google.errorprone.annotations.Immutable;
+import com.google.errorprone.annotations.RestrictedApi;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfWarnings;
@@ -25,6 +26,12 @@ import org.pharmgkb.parser.vcf.VcfWarnings;
  */
 @Immutable
 public final class VcfFloat {
+
+  // keep in sync with InternalUtils.RESTRICTED_API_EXPLANATION (this string is intentionally duplicated,
+  // not shared, since sharing it would require making InternalUtils's copy public, defeating its own purpose)
+  private static final String RESTRICTED_API_EXPLANATION =
+      "Internal helper; public only because Java requires it for cross-package use within this library. Not "
+          + "part of this library's supported public API and may change or be removed without notice.";
 
   private static final Pattern SPECIAL_PATTERN = Pattern.compile("[-+]?(?:INF|INFINITY|NAN)", Pattern.CASE_INSENSITIVE);
   // VCFv4.3.tex line 100's non-special-case Float grammar (see this class's own Javadoc for why VCFv4.3, not
@@ -73,6 +80,22 @@ public final class VcfFloat {
    * @throws VcfFormatException if {@code value} is neither a normal decimal number nor one of the special values
    */
   public static VcfFloat parse(String value) {
+    return parse(value, VcfWarnings.DEFAULT);
+  }
+
+  /**
+   * Parses a VCF {@code Float} value, accepting {@code NAN}/{@code INF}/{@code INFINITY} (case-insensitive,
+   * optionally signed) per VCFv4.3.tex line 100's clarification of the {@code Float} grammar (see this class's
+   * own Javadoc for why VCFv4.3, not VCFv4.5, is cited as the source), in addition to a normal decimal number.
+   * Routes grammar-mismatch warnings to {@code warnings} instead of the shared SLF4J logger.
+   * <p>Public only because {@link org.pharmgkb.parser.vcf.InternalUtils} needs cross-package access; not part of
+   * this library's supported public API.
+   *
+   * @throws VcfFormatException if {@code value} is neither a normal decimal number nor one of the special values
+   * @hidden
+   */
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
+  public static VcfFloat parse(String value, VcfWarnings warnings) {
     if (value == null) {
       throw new VcfFormatException("Cannot parse a null Float value");
     }
@@ -83,7 +106,7 @@ public final class VcfFloat {
       return ofSpecial(value.startsWith("-") ? Special.NEGATIVE_INFINITY : Special.POSITIVE_INFINITY);
     }
     try {
-      return of(parseDecimal("Float", value));
+      return of(parseDecimal("Float", value, warnings));
     } catch (NumberFormatException e) {
       throw new VcfFormatException("Expected float; got " + value);
     }
@@ -103,10 +126,10 @@ public final class VcfFloat {
    *
    * @throws NumberFormatException if {@code value} is not a valid decimal number at all
    */
-  static BigDecimal parseDecimal(String fieldName, String value) {
+  static BigDecimal parseDecimal(String fieldName, String value, VcfWarnings warnings) {
     BigDecimal decimal = new BigDecimal(value);
     if (!FLOAT_PATTERN.matcher(value).matches()) {
-      VcfWarnings.warn("{} value '{}' does not match the VCF Float grammar (VCFv4.3.tex line 100); " +
+      warnings.warn("{} value '{}' does not match the VCF Float grammar (VCFv4.3.tex line 100); " +
           "accepting it anyway", fieldName, value);
     }
     return decimal;

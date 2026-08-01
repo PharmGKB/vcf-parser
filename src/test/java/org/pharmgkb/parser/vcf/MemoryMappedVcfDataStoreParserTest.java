@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.StringReader;
+import java.io.StringWriter;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -173,6 +174,24 @@ public class MemoryMappedVcfDataStoreParserTest {
       assertEquals(2, genotype.getAlleles().size());
       assertEquals("A", genotype.getAlleles().get(0));
       assertEquals(".", genotype.getAlleles().get(1));
+    }
+  }
+
+  @Test
+  public void testGenotypeWithEmptyAlleleWarnsToConfiguredSink() throws IOException {
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n" +
+        "chr1\t1\trsx\tA\tT\t.\tPASS\t.\tGT\t0/\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf))) {
+      MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+      new VcfParser.Builder()
+          .fromReader(reader)
+          .parseWith(lineParser)
+          .build().parse();
+      StringWriter sink = new StringWriter();
+      lineParser.getDataStore().setWarningsSink(new VcfWarnings(sink));
+      lineParser.getDataStore().getGenotypeForId("rsx", "sample1");
+      assertTrue(sink.toString().contains("empty allele"));
     }
   }
 

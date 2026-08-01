@@ -24,11 +24,13 @@ public class IdDescriptionMetadata extends IdMetadata {
   public IdDescriptionMetadata(String label, String id, String description) {
     super(label, id);
     putAndQuoteProperty(DESCRIPTION, description);
-    init();
+    // strict construction: no init() call. init()'s only check (Description must be quoted) can never fail here
+    // -- putAndQuoteProperty above always wraps description in quotes itself -- so there is no throw-equivalent
+    // to add; see this class's own init() for the warn-based check the lenient (Map-based) constructor still runs.
   }
 
-  public IdDescriptionMetadata(String label, Map<String, String> properties) {
-    super(label, properties);
+  public IdDescriptionMetadata(String label, Map<String, String> properties, VcfWarnings warnings) {
+    super(label, properties, warnings);
     init();
     checkAttributeOrder();
   }
@@ -54,7 +56,7 @@ public class IdDescriptionMetadata extends IdMetadata {
     String description = getPropertyRaw(DESCRIPTION);
     warnIfMissing(DESCRIPTION, description);
     if (description != null && (!description.startsWith("\"") || !description.endsWith("\""))) {
-      VcfWarnings.warn("{} metadata property \"{}\" should be quoted but was: {}", getLabel(),
+      m_warnings.warn("{} metadata property \"{}\" should be quoted but was: {}", getLabel(),
           DESCRIPTION, description);
     }
     // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included

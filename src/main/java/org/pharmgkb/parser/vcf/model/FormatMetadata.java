@@ -37,11 +37,27 @@ public class FormatMetadata extends IdDescriptionMetadata {
     // Description inserted last -- see InfoMetadata's identical constructor for why (matches canonical
     // ID, Number, Type, Description order per VCFv4.2.tex line 94).
     putAndQuoteProperty(DESCRIPTION, description);
-    init();
+    // strict construction: see InfoMetadata's identical constructor for why Description-quoting and
+    // Type-parse-failure have no throw-equivalent here.
+    if (number == null || !InternalUtils.NUMBER_PATTERN.matcher(number).matches()) {
+      throw new VcfFormatException("FORMAT Number is not a valid VCF number: '" + number + "'");
+    }
+    ReservedFormatProperty reserved = ReservedFormatProperty.fromId(id);
+    if (reserved != null) {
+      if (!reserved.getExpectedNumber().equals(number)) {
+        throw new VcfFormatException("FORMAT " + id + " has Number '" + number + "' but the reserved definition " +
+            "expects '" + reserved.getExpectedNumber() + "'");
+      }
+      if (!InternalUtils.toJavaType(type).equals(reserved.getType())) {
+        throw new VcfFormatException("FORMAT " + id + " has Type '" + type + "' but the reserved definition " +
+            "expects '" + reserved.getType().getSimpleName() + "'");
+      }
+    }
+    m_type = type;
   }
 
-  public FormatMetadata(Map<String, String> properties) {
-    super("FORMAT", properties);
+  public FormatMetadata(Map<String, String> properties, VcfWarnings warnings) {
+    super("FORMAT", properties, warnings);
     init();
   }
 
@@ -55,18 +71,18 @@ public class FormatMetadata extends IdDescriptionMetadata {
       try {
         m_type = FormatType.valueOf(type);
       } catch (IllegalArgumentException e) {
-        VcfWarnings.warn("{} {} '{}' is not a valid {} type", getLabel(), TYPE, type, getLabel());
+        m_warnings.warn("{} {} '{}' is not a valid {} type", getLabel(), TYPE, type, getLabel());
       }
     }
     String id = getId();
     ReservedFormatProperty reserved = ReservedFormatProperty.fromId(id);
     if (reserved != null) {
       if (number != null && !reserved.getExpectedNumber().equals(number)) {
-        VcfWarnings.warn("{} {} has Number '{}' but the reserved definition expects '{}'", getLabel(), getId(),
+        m_warnings.warn("{} {} has Number '{}' but the reserved definition expects '{}'", getLabel(), getId(),
             number, reserved.getExpectedNumber());
       }
       if (m_type != null && !InternalUtils.toJavaType(m_type).equals(reserved.getType())) {
-        VcfWarnings.warn("{} {} has Type '{}' but the reserved definition expects '{}'", getLabel(), getId(),
+        m_warnings.warn("{} {} has Type '{}' but the reserved definition expects '{}'", getLabel(), getId(),
             m_type, reserved.getType().getSimpleName());
       }
     }

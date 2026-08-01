@@ -18,6 +18,18 @@ import org.pharmgkb.parser.vcf.VcfWarnings;
 
 /**
  * This class captures all the VCF metadata from a VCF file.
+ * <p>
+ * Unlike every other class in this package that holds a {@link VcfWarnings} reference, this one has no
+ * {@code setWarningsSink} method: its own sink is fixed at {@link Builder#build()} time and is permanently
+ * {@code null} (strict -- warn sites throw {@link VcfFormatException} instead) unless the {@code Builder} was
+ * put in lenient mode. The consequence for a caller handing a {@code VcfMetadata} to a
+ * {@link org.pharmgkb.parser.vcf.VcfWriter}: the writer claims each individual <em>declaration</em>
+ * ({@link InfoMetadata}, {@link ContigMetadata}, etc.) for its own warnings destination, but it cannot re-route
+ * this container object's own warn sites ({@link #addInfo}, {@link #addAssembly}, and friends). Those always go
+ * wherever this {@code VcfMetadata} was originally built to send them -- for a parsed file, the parser's sink,
+ * which by write time may already be closed, in which case {@link VcfWarnings} falls back to its shared SLF4J
+ * logger. So a warning triggered by mutating a {@code VcfMetadata} after handing it to a writer will not appear
+ * in that writer's {@code warningsToFile()} destination.
  *
  * @author Mark Woon
  */
@@ -39,16 +51,18 @@ public class VcfMetadata {
   private final Map<String, ContigMetadata> m_contig;
   private final Map<String, IdDescriptionMetadata> m_sample;
   private final List<PedigreeMetadata> m_pedigree;
+  private final @Nullable VcfWarnings m_warnings;
 
 
   private VcfMetadata(String fileFormat, @Nullable Map<String, IdDescriptionMetadata> alt,
       @Nullable Map<String, InfoMetadata> info, @Nullable Map<String, IdDescriptionMetadata> filter,
       @Nullable Map<String, FormatMetadata> format, @Nullable Map<String, ContigMetadata> contig,
       @Nullable Map<String, IdDescriptionMetadata> sample, @Nullable List<PedigreeMetadata> pedigree,
-      List<String> columns, @Nullable ListMultimap<String, String> properties) {
+      List<String> columns, @Nullable ListMultimap<String, String> properties, @Nullable VcfWarnings warnings) {
     Preconditions.checkNotNull(fileFormat);
     Preconditions.checkNotNull(columns);
     m_fileFormat = fileFormat;
+    m_warnings = warnings;
     // fresh, independently-mutable copies -- NOT List.copyOf/Map.copyOf. getAlts()/getInfo()/getFilters()/
     // getFormats()/getContigs()/getSamples() returning a live, mutable backing map is an existing, tested,
     // intentional contract (e.g. TransformingVcfLineParserTest.java's metadata.getInfo().put(...) usage inside a
@@ -167,34 +181,38 @@ public class VcfMetadata {
   public void addAlt(IdDescriptionMetadata value) {
     requireNonNull(value, "ALT");
     if (value.getId() == null || value.getId().trim().isEmpty()) {
-      VcfWarnings.warn("ALT metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
+      warnOrThrow(m_warnings, "ALT metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
       return;
     }
-    if (warnIfDuplicate(m_alt, value.getId(), "ALT")) {
+    if (warnIfDuplicate(m_alt, value.getId(), "ALT", m_warnings)) {
       return;
     }
-    validateAlt(value);
+    validateAlt(value, m_warnings);
     m_alt.put(value.getId(), value);
   }
 
   /**
-   * Warns (does not throw -- matching this project's warn-and-preserve policy for metadata declarations) if
-   * {@code value}'s ID is not a valid ALT structural variant code, or if it declares a Number/Type extra property
-   * with a syntactically invalid value.
+   * Reports it if {@code value}'s ID is not a valid ALT structural variant code, or if it declares a Number/Type
+   * extra property with a syntactically invalid value. With a non-{@code null} {@code warnings} this warns and
+   * does not throw, matching this project's warn-and-preserve policy for metadata declarations; with
+   * {@code warnings == null} the same conditions throw {@link org.pharmgkb.parser.vcf.VcfFormatException}
+   * instead.
    * <p>Public only because {@link org.pharmgkb.parser.vcf.VcfWriter} needs cross-package access; not part of
    * this library's supported public API.
    *
+   * @param warnings where to route a detected problem, or {@code null} for strict mode -- rather than warning,
+   * every condition this method checks is thrown as {@link org.pharmgkb.parser.vcf.VcfFormatException}
    * @hidden
    */
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
-  public static void validateAlt(IdDescriptionMetadata value) {
+  public static void validateAlt(IdDescriptionMetadata value, @Nullable VcfWarnings warnings) {
     String id = value.getId();
     if (id != null) {
       // whitespace is already checked generically by IdMetadata.init() for every ID-based metadata type; angle
       // brackets are checked here since VCFv4.2.tex line 105's "or angle brackets" clause has only ever been
       // evidenced for ALT specifically, not extended to ##contig/##INFO/##FORMAT/##FILTER/##SAMPLE.
       if (id.chars().anyMatch(c -> c == '<' || c == '>')) {
-        VcfWarnings.warn("ALT {} must not contain angle brackets", id);
+        warnOrThrow(warnings, "ALT {} must not contain angle brackets", id);
       } else if (id.contains(":")) {
         // Only an ID containing ':' unambiguously invokes the structural-variant-code grammar (VCFv4.2.tex lines
         // 100-117: DEL/INS/DUP/INV/CNV and their colon-delimited subtypes, e.g. DEL:ME). A bare single-token ID
@@ -208,7 +226,7 @@ public class VcfMetadata {
         try {
           new AltStructuralVariant(id);
         } catch (VcfFormatException e) {
-          VcfWarnings.warn("ALT {} is not a valid structural variant code: {}", id, e.getMessage());
+          warnOrThrow(warnings, "ALT {} is not a valid structural variant code: {}", id, e.getMessage());
         }
       }
     }
@@ -218,14 +236,14 @@ public class VcfMetadata {
     // declared, they're still expected to be syntactically valid VCF Number/Type tokens.
     String number = value.getPropertyRaw(InfoMetadata.NUMBER);
     if (number != null && !InternalUtils.NUMBER_PATTERN.matcher(number).matches()) {
-      VcfWarnings.warn("ALT {} has Number '{}' but it is not a valid VCF number", id, number);
+      warnOrThrow(warnings, "ALT {} has Number '{}' but it is not a valid VCF number", id, number);
     }
     String type = value.getPropertyRaw(InfoMetadata.TYPE);
     if (type != null) {
       try {
         InfoType.valueOf(type);
       } catch (IllegalArgumentException e) {
-        VcfWarnings.warn("ALT {} has Type '{}' but it is not a recognized VCF type", id, type);
+        warnOrThrow(warnings, "ALT {} has Type '{}' but it is not a recognized VCF type", id, type);
       }
     }
   }
@@ -262,6 +280,18 @@ public class VcfMetadata {
   }
 
   /**
+   * Throws {@link VcfFormatException} with the formatted message if {@code warnings} is {@code null} (strict
+   * mode); otherwise warns to it. Shared by {@code VcfMetadata}'s own instance methods and {@code Builder}'s
+   * mirrors, each passing their own {@code m_warnings} field.
+   */
+  private static void warnOrThrow(@Nullable VcfWarnings warnings, String message, Object... args) {
+    if (warnings == null) {
+      throw new VcfFormatException(org.slf4j.helpers.MessageFormatter.arrayFormat(message, args).getMessage());
+    }
+    warnings.warn(message, args);
+  }
+
+  /**
    * Warns and returns {@code true} (does not throw) when {@code id} is already present in {@code map} -- the
    * caller must skip storing its value and keep the existing (first, or previously-added) entry. Shared by
    * {@code VcfMetadata}'s own instance {@code addXxx} methods and {@code VcfMetadata.Builder}'s {@code addXxx}
@@ -281,9 +311,9 @@ public class VcfMetadata {
    * declaration and silently drops each duplicate, with no warning, for all six -- see
    * DUPLICATE_METADATA_ID_HANDLING.md.
    */
-  private static boolean warnIfDuplicate(Map<String, ?> map, String id, String typeName) {
+  private static boolean warnIfDuplicate(Map<String, ?> map, String id, String typeName, @Nullable VcfWarnings warnings) {
     if (map.containsKey(id)) {
-      VcfWarnings.warn("Duplicate ID \"{}\" for {} metadata declaration ignored; keeping the first declaration",
+      warnOrThrow(warnings, "Duplicate ID \"{}\" for {} metadata declaration ignored; keeping the first declaration",
           id, typeName);
       return true;
     }
@@ -298,10 +328,10 @@ public class VcfMetadata {
   public void addInfo(InfoMetadata value) {
     requireNonNull(value, "INFO");
     if (value.getId() == null || value.getId().trim().isEmpty()) {
-      VcfWarnings.warn("INFO metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
+      warnOrThrow(m_warnings, "INFO metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
       return;
     }
-    if (warnIfDuplicate(m_info, value.getId(), "INFO")) {
+    if (warnIfDuplicate(m_info, value.getId(), "INFO", m_warnings)) {
       return;
     }
     m_info.put(value.getId(), value);
@@ -315,10 +345,10 @@ public class VcfMetadata {
   public void addFormat(FormatMetadata value) {
     requireNonNull(value, "FORMAT");
     if (value.getId() == null || value.getId().trim().isEmpty()) {
-      VcfWarnings.warn("FORMAT metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
+      warnOrThrow(m_warnings, "FORMAT metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
       return;
     }
-    if (warnIfDuplicate(m_format, value.getId(), "FORMAT")) {
+    if (warnIfDuplicate(m_format, value.getId(), "FORMAT", m_warnings)) {
       return;
     }
     m_format.put(value.getId(), value);
@@ -332,10 +362,10 @@ public class VcfMetadata {
   public void addContig(ContigMetadata value) {
     requireNonNull(value, "CONTIG");
     if (value.getId() == null || value.getId().trim().isEmpty()) {
-      VcfWarnings.warn("CONTIG metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
+      warnOrThrow(m_warnings, "CONTIG metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
       return;
     }
-    if (warnIfDuplicate(m_contig, value.getId(), "CONTIG")) {
+    if (warnIfDuplicate(m_contig, value.getId(), "CONTIG", m_warnings)) {
       return;
     }
     m_contig.put(value.getId(), value);
@@ -349,10 +379,10 @@ public class VcfMetadata {
   public void addFilter(IdDescriptionMetadata value) {
     requireNonNull(value, "FILTER");
     if (value.getId() == null || value.getId().trim().isEmpty()) {
-      VcfWarnings.warn("FILTER metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
+      warnOrThrow(m_warnings, "FILTER metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
       return;
     }
-    if (warnIfDuplicate(m_filter, value.getId(), "FILTER")) {
+    if (warnIfDuplicate(m_filter, value.getId(), "FILTER", m_warnings)) {
       return;
     }
     m_filter.put(value.getId(), value);
@@ -366,10 +396,10 @@ public class VcfMetadata {
   public void addSample(IdDescriptionMetadata value) {
     requireNonNull(value, "SAMPLE");
     if (value.getId() == null || value.getId().trim().isEmpty()) {
-      VcfWarnings.warn("SAMPLE metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
+      warnOrThrow(m_warnings, "SAMPLE metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
       return;
     }
-    if (warnIfDuplicate(m_sample, value.getId(), "SAMPLE")) {
+    if (warnIfDuplicate(m_sample, value.getId(), "SAMPLE", m_warnings)) {
       return;
     }
     m_sample.put(value.getId(), value);
@@ -387,7 +417,7 @@ public class VcfMetadata {
     }
     InternalUtils.checkNoLineTerminator("assembly", value);
     if (isEmptyMetadataValue(value)) {
-      VcfWarnings.warn("Metadata property \"assembly\" has an empty value and was dropped: {}", value);
+      warnOrThrow(m_warnings, "Metadata property \"assembly\" has an empty value and was dropped: {}", value);
       return;
     }
     m_properties.put("assembly", value);
@@ -414,7 +444,7 @@ public class VcfMetadata {
     }
     InternalUtils.checkNoLineTerminator("pedigreeDB", value);
     if (isEmptyMetadataValue(value)) {
-      VcfWarnings.warn("Metadata property \"pedigreeDB\" has an empty value and was dropped: {}", value);
+      warnOrThrow(m_warnings, "Metadata property \"pedigreeDB\" has an empty value and was dropped: {}", value);
       return;
     }
     m_properties.put("pedigreeDB", value);
@@ -432,7 +462,7 @@ public class VcfMetadata {
     String id = value.getPropertiesRaw().get("ID");
     if (id != null &&
         m_pedigree.stream().anyMatch(existing -> id.equals(existing.getPropertiesRaw().get("ID")))) {
-      VcfWarnings.warn("Duplicate ID \"{}\" for PEDIGREE metadata declaration ignored; keeping the first " +
+      warnOrThrow(m_warnings, "Duplicate ID \"{}\" for PEDIGREE metadata declaration ignored; keeping the first " +
           "declaration", id);
       return;
     }
@@ -612,6 +642,19 @@ public class VcfMetadata {
     private final List<PedigreeMetadata> m_pedigree = new ArrayList<>();
     private List<String> m_columns = new ArrayList<>();
     private final ListMultimap<String, String> m_properties = LinkedListMultimap.create();
+    private @Nullable VcfWarnings m_warnings;
+
+    /**
+     * Opts this builder into warn-and-keep-first behavior for every one of its own {@code addXxx} methods'
+     * existing checks (missing/duplicate ID, invalid ALT structural code, empty {@code assembly}/{@code
+     * pedigreeDB} value), matching this builder's pre-strict-split behavior exactly. Without calling this, the
+     * builder throws {@link VcfFormatException} at each of those checks instead. The built {@link VcfMetadata}
+     * inherits {@code warnings} for the rest of its own lifetime.
+     */
+    public Builder lenient(VcfWarnings warnings) {
+      m_warnings = Preconditions.checkNotNull(warnings, "warnings must not be null");
+      return this;
+    }
 
     /**
      * Sets the VCF version string.
@@ -633,13 +676,13 @@ public class VcfMetadata {
     public Builder addAlt(IdDescriptionMetadata md) {
       requireNonNull(md, "ALT");
       if (md.getId() == null || md.getId().trim().isEmpty()) {
-        VcfWarnings.warn("ALT metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
+        warnOrThrow(m_warnings, "ALT metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
       }
-      if (warnIfDuplicate(m_alt, md.getId(), "ALT")) {
+      if (warnIfDuplicate(m_alt, md.getId(), "ALT", m_warnings)) {
         return this;
       }
-      validateAlt(md);
+      validateAlt(md, m_warnings);
       m_alt.put(md.getId(), md);
       return this;
     }
@@ -647,10 +690,10 @@ public class VcfMetadata {
     public Builder addInfo(InfoMetadata md) {
       requireNonNull(md, "INFO");
       if (md.getId() == null || md.getId().trim().isEmpty()) {
-        VcfWarnings.warn("INFO metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
+        warnOrThrow(m_warnings, "INFO metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
       }
-      if (warnIfDuplicate(m_info, md.getId(), "INFO")) {
+      if (warnIfDuplicate(m_info, md.getId(), "INFO", m_warnings)) {
         return this;
       }
       m_info.put(md.getId(), md);
@@ -660,10 +703,10 @@ public class VcfMetadata {
     public Builder addFilter(IdDescriptionMetadata md) {
       requireNonNull(md, "FILTER");
       if (md.getId() == null || md.getId().trim().isEmpty()) {
-        VcfWarnings.warn("FILTER metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
+        warnOrThrow(m_warnings, "FILTER metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
       }
-      if (warnIfDuplicate(m_filter, md.getId(), "FILTER")) {
+      if (warnIfDuplicate(m_filter, md.getId(), "FILTER", m_warnings)) {
         return this;
       }
       m_filter.put(md.getId(), md);
@@ -673,10 +716,10 @@ public class VcfMetadata {
     public Builder addFormat(FormatMetadata md) {
       requireNonNull(md, "FORMAT");
       if (md.getId() == null || md.getId().trim().isEmpty()) {
-        VcfWarnings.warn("FORMAT metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
+        warnOrThrow(m_warnings, "FORMAT metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
       }
-      if (warnIfDuplicate(m_format, md.getId(), "FORMAT")) {
+      if (warnIfDuplicate(m_format, md.getId(), "FORMAT", m_warnings)) {
         return this;
       }
       m_format.put(md.getId(), md);
@@ -686,10 +729,10 @@ public class VcfMetadata {
     public Builder addContig(ContigMetadata md) {
       requireNonNull(md, "CONTIG");
       if (md.getId() == null || md.getId().trim().isEmpty()) {
-        VcfWarnings.warn("CONTIG metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
+        warnOrThrow(m_warnings, "CONTIG metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
       }
-      if (warnIfDuplicate(m_contig, md.getId(), "CONTIG")) {
+      if (warnIfDuplicate(m_contig, md.getId(), "CONTIG", m_warnings)) {
         return this;
       }
       m_contig.put(md.getId(), md);
@@ -699,10 +742,10 @@ public class VcfMetadata {
     public Builder addSample(IdDescriptionMetadata md) {
       requireNonNull(md, "SAMPLE");
       if (md.getId() == null || md.getId().trim().isEmpty()) {
-        VcfWarnings.warn("SAMPLE metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
+        warnOrThrow(m_warnings, "SAMPLE metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
       }
-      if (warnIfDuplicate(m_sample, md.getId(), "SAMPLE")) {
+      if (warnIfDuplicate(m_sample, md.getId(), "SAMPLE", m_warnings)) {
         return this;
       }
       m_sample.put(md.getId(), md);
@@ -726,7 +769,7 @@ public class VcfMetadata {
       String id = md.getPropertiesRaw().get("ID");
       if (id != null &&
           m_pedigree.stream().anyMatch(existing -> id.equals(existing.getPropertiesRaw().get("ID")))) {
-        VcfWarnings.warn("Duplicate ID \"{}\" for PEDIGREE metadata declaration ignored; keeping the first " +
+        warnOrThrow(m_warnings, "Duplicate ID \"{}\" for PEDIGREE metadata declaration ignored; keeping the first " +
             "declaration", id);
         return this;
       }
@@ -749,7 +792,7 @@ public class VcfMetadata {
         // this cannot currently be reached through normal parsing -- VcfParser.parseMetadata's switch routes
         // every reserved name to the structured path, never to addRawProperty -- but it closes the hole for
         // direct/programmatic Builder use, matching the empty-value case below's warn-and-drop style
-        VcfWarnings.warn("Metadata property name \"{}\" collides with a structured declaration keyword and was " +
+        warnOrThrow(m_warnings, "Metadata property name \"{}\" collides with a structured declaration keyword and was " +
             "dropped: {}", name, value);
         return this;
       }
@@ -761,7 +804,7 @@ public class VcfMetadata {
         // through "bcftools view -h" unmodified). Dropping it here is a deliberate stricter choice, the same way
         // this library is already stricter than bcftools for an empty ID/FILTER/ALT list entry -- see
         // EMPTY_FIELD_HANDLING.md's "position-independent list: drop" strategy, used there for the same reason.
-        VcfWarnings.warn("Metadata property \"{}\" has an empty value and was dropped: {}", name, value);
+        warnOrThrow(m_warnings, "Metadata property \"{}\" has an empty value and was dropped: {}", name, value);
         return this;
       }
       m_properties.put(name, value);
@@ -783,7 +826,7 @@ public class VcfMetadata {
         throw new VcfFormatException("Not a VCF file: no ##fileformat line");
       }
       return new VcfMetadata(m_fileFormat, m_alt, m_info, m_filter, m_format, m_contig, m_sample, m_pedigree,
-          m_columns, m_properties);
+          m_columns, m_properties, m_warnings);
     }
   }
 }

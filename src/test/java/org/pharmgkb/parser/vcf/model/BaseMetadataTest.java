@@ -1,10 +1,12 @@
 package org.pharmgkb.parser.vcf.model;
 
+import java.io.StringWriter;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.VcfFormatException;
+import org.pharmgkb.parser.vcf.VcfWarnings;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -200,5 +202,38 @@ public class BaseMetadataTest {
     metadata.getPropertiesRaw().put(null, "x");
     VcfFormatException e = assertThrows(VcfFormatException.class, metadata::checkAttributeOrder);
     assertTrue(e.getMessage().contains("null property name"));
+  }
+
+  @Test
+  public void testEnsureNoExtrasWarnsToConfiguredSink() {
+    BaseMetadata md = new BaseMetadata("TESTLABEL", Map.of("Extra", "value"));
+    StringWriter sink = new StringWriter();
+    md.setWarningsSink(new VcfWarnings(sink));
+    md.ensureNoExtras("ID");
+    assertTrue(sink.toString().contains("TESTLABEL metadata line contains unexpected property Extra"));
+  }
+
+  @Test
+  public void testSetWarningsSinkRejectsNull() {
+    BaseMetadata md = new BaseMetadata("TESTLABEL", Map.of());
+    assertThrows(NullPointerException.class, () -> md.setWarningsSink(null));
+  }
+
+  @Test
+  public void testDefaultWarningsSinkIsSharedLogger() {
+    // no setWarningsSink call at all -- must warn to the shared logger, not throw or silently no-op
+    BaseMetadata md = new BaseMetadata("TESTLABEL", Map.of("Extra", "value"));
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender = new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      md.ensureNoExtras("ID");
+      assertTrue(appender.anyMessageContains("unexpected property Extra"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
   }
 }

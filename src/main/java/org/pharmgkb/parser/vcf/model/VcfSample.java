@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.google.common.base.Preconditions;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.InternalUtils;
 import org.pharmgkb.parser.vcf.VcfFormatException;
@@ -30,6 +31,13 @@ public class VcfSample {
   private @Nullable List<String> m_values;
   // Materialized on demand (mutation / key or entry iteration), or supplied directly via the map constructor.
   private @Nullable LinkedHashMap<String, String> m_properties;
+  /** See {@link org.pharmgkb.parser.vcf.model.BaseMetadata#m_warnings}'s identical Javadoc -- same pattern, this
+   * class just isn't a {@code BaseMetadata} subclass so it needs its own copy of the field and setter. */
+  private VcfWarnings m_warnings = VcfWarnings.DEFAULT;
+
+  public void setWarningsSink(VcfWarnings warnings) {
+    m_warnings = Preconditions.checkNotNull(warnings, "warnings must not be null");
+  }
 
   /**
    * Takes ownership of {@code keys} and {@code values}: this constructor does not defensively copy either list,
@@ -119,7 +127,7 @@ public class VcfSample {
     for (Map.Entry<String, String> entry : properties().entrySet()) {
       checkNoStructuralDelimiter(entry.getKey(), entry.getValue());
       if (entry.getValue() != null && entry.getValue().isEmpty()) {
-        VcfWarnings.warn("Sample property {} has an empty value (VCF does not allow zero-length fields); treating " +
+        m_warnings.warn("Sample property {} has an empty value (VCF does not allow zero-length fields); treating " +
             "it as the missing value '.'", entry.getKey());
         entry.setValue(".");
       }
@@ -141,7 +149,7 @@ public class VcfSample {
           // matches getProperty()'s already-correct first-wins behavior, and this project's established
           // "warn and keep first" convention for every other recoverable duplicate-key case (see
           // DUPLICATE_METADATA_ID_HANDLING.md and VcfPosition's duplicate top-level INFO key)
-          VcfWarnings.warn("Sample contains duplicate FORMAT key \"{}\"; keeping only the first occurrence", key);
+          m_warnings.warn("Sample contains duplicate FORMAT key \"{}\"; keeping only the first occurrence", key);
           continue;
         }
         map.put(key, values.get(x));
@@ -183,7 +191,7 @@ public class VcfSample {
     if (key == null) {
       return null;
     }
-    return InternalUtils.convertProperty(key, getProperty(key.getId()));
+    return InternalUtils.convertProperty(key, getProperty(key.getId()), m_warnings);
   }
 
   public boolean containsProperty(@Nullable String key) {

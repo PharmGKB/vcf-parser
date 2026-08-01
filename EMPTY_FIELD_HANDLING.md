@@ -1,5 +1,11 @@
 # Empty ("zero-length") field handling
 
+This document describes the parser's (lenient) behavior -- reached via `VcfParser`, `VcfPosition.validate()`,
+or `VcfPosition`'s own 11-argument lenient constructor. `VcfPosition`'s 10-argument (default) constructor
+throws `VcfFormatException` immediately for an empty ID/ALT/FILTER entry or an empty FORMAT sub-field name
+instead of warning-and-normalizing per the table below; see `AGENTS.md`'s "Direct/Manual Construction vs.
+Parser Construction" section.
+
 The VCF spec (explicitly stated starting with VCFv4.3; VCFv4.1/4.2 are silent on it) says:
 
 > Zero length fields are not allowed, a dot (`.`) must be used instead.

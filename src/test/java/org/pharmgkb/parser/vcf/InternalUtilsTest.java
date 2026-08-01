@@ -1,7 +1,9 @@
 package org.pharmgkb.parser.vcf;
 
+import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.Test;
@@ -164,7 +166,7 @@ public class InternalUtilsTest {
   public void testExtractPropertiesWithEscapes() {
     // an escaped backslash (\\) and an escaped double-quote (\") inside a quoted Description must not crash and must be
     // preserved (the split must not treat the escaped quote as a real quote)
-    Map<String, String> props = InternalUtils.extractPropertiesFromLine("ID=X,Description=\"a \\\\ b \\\" c\"");
+    Map<String, String> props = InternalUtils.extractPropertiesFromLine("ID=X,Description=\"a \\\\ b \\\" c\"", VcfWarnings.DEFAULT);
     assertEquals("X", props.get("ID"));
     assertEquals("\"a \\\\ b \\\" c\"", props.get("Description"));
   }
@@ -174,7 +176,7 @@ public class InternalUtilsTest {
     // a backslash not followed by "\\" or "\"" has no defined escape meaning and must not consume/protect the following
     // delimiter; before the fix, the comma here was incorrectly treated as escaped, merging both properties into one
     // blob with two "=" signs, which then threw instead of parsing to two properties
-    Map<String, String> props = InternalUtils.extractPropertiesFromLine("Source=A\\,Number=1");
+    Map<String, String> props = InternalUtils.extractPropertiesFromLine("Source=A\\,Number=1", VcfWarnings.DEFAULT);
     assertEquals("A\\", props.get("Source"));
     assertEquals("1", props.get("Number"));
   }
@@ -184,7 +186,7 @@ public class InternalUtilsTest {
     // a declaration with a repeated attribute (e.g. ##INFO=<ID=X,Number=1,Number=2,...>) silently kept only the
     // last value with no diagnostic at all; must at least warn (VCF metadata-declaration policy is lenient, not a
     // structural violation, so this doesn't throw)
-    Map<String, String> props = InternalUtils.extractPropertiesFromLine("ID=X,Number=1,Number=2");
+    Map<String, String> props = InternalUtils.extractPropertiesFromLine("ID=X,Number=1,Number=2", VcfWarnings.DEFAULT);
     assertEquals("2", props.get("Number"));
   }
 
@@ -193,7 +195,7 @@ public class InternalUtilsTest {
     // a value literally containing the old "~~~~" placeholder must be preserved, and an escaped quote must not be
     // treated as a real quote (so the comma inside the quoted value is not a top-level delimiter)
     Map<String, String> props = InternalUtils.extractPropertiesFromLine(
-        "ID=X,Description=\"literal ~~~~ and \\\"q, v\\\"\"");
+        "ID=X,Description=\"literal ~~~~ and \\\"q, v\\\"\"", VcfWarnings.DEFAULT);
     assertEquals("X", props.get("ID"));
     assertEquals("\"literal ~~~~ and \\\"q, v\\\"\"", props.get("Description"));
   }
@@ -204,7 +206,7 @@ public class InternalUtilsTest {
     // Description,Genomes,Mixture on write because extractProperties built a plain HashMap (hash-bucket order),
     // not insertion order
     Map<String, String> props = InternalUtils.extractPropertiesFromLine(
-        "ID=Sample_ok,Genomes=G1_ID;G2_ID;GK_ID,Mixture=N1;N2;NK,Description=\"S1;S2;SK\"");
+        "ID=Sample_ok,Genomes=G1_ID;G2_ID;GK_ID,Mixture=N1;N2;NK,Description=\"S1;S2;SK\"", VcfWarnings.DEFAULT);
     assertEquals(Arrays.asList("ID", "Genomes", "Mixture", "Description"), new ArrayList<>(props.keySet()));
   }
 
@@ -223,7 +225,7 @@ public class InternalUtilsTest {
     Map<String, String> props;
     try {
       props = InternalUtils.extractPropertiesFromLine(
-          "ID=DEL,Number=1,Type=String,Description=\"Description with \"non-escaped quote\"");
+          "ID=DEL,Number=1,Type=String,Description=\"Description with \"non-escaped quote\"", VcfWarnings.DEFAULT);
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -244,7 +246,7 @@ public class InternalUtilsTest {
     appender.start();
     root.addAppender(appender);
     try {
-      InternalUtils.extractPropertiesFromLine("ID=X,Description=\"a \\\" b\"");
+      InternalUtils.extractPropertiesFromLine("ID=X,Description=\"a \\\" b\"", VcfWarnings.DEFAULT);
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -261,7 +263,7 @@ public class InternalUtilsTest {
     appender.start();
     root.addAppender(appender);
     try {
-      InternalUtils.extractPropertiesFromLine("ID=X,Description=\"\"");
+      InternalUtils.extractPropertiesFromLine("ID=X,Description=\"\"", VcfWarnings.DEFAULT);
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -278,7 +280,7 @@ public class InternalUtilsTest {
     appender.start();
     root.addAppender(appender);
     try {
-      InternalUtils.extractPropertiesFromLine("ID=X,Number=1,Type=String");
+      InternalUtils.extractPropertiesFromLine("ID=X,Number=1,Type=String", VcfWarnings.DEFAULT);
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -341,7 +343,7 @@ public class InternalUtilsTest {
   public void testConvertPropertyCharacterReturnsCharacterNotString() {
     // convertElement's Character.class branch previously returned the raw String; type erasure let that past
     // convertProperty() itself, but it then threw ClassCastException at the caller's assignment site below
-    Character value = InternalUtils.convertProperty(InfoType.Character, "A");
+    Character value = InternalUtils.convertProperty(InfoType.Character, "A", VcfWarnings.DEFAULT);
     assertEquals(Character.valueOf('A'), value);
   }
 
@@ -350,12 +352,12 @@ public class InternalUtilsTest {
     // FT's grammar (PASS/./semicolon-separated codes, no whitespace, PASS/'.' not combined with other codes) isn't
     // expressible through its declared Type=String, so it's checked separately; this is non-structural sample
     // content, so an invalid value warns rather than throws
-    assertEquals("PASS", InternalUtils.checkReservedFormatConstraints("FT", "PASS")); // valid: does not throw
-    assertEquals("q10;q20", InternalUtils.checkReservedFormatConstraints("FT", "q10;q20")); // valid: does not throw
-    assertEquals("q10 q20", InternalUtils.checkReservedFormatConstraints("FT", "q10 q20")); // whitespace in a code: warns
-    assertEquals("PASS;q10", InternalUtils.checkReservedFormatConstraints("FT", "PASS;q10")); // PASS + code: warns
-    assertNull(InternalUtils.checkReservedFormatConstraints("FT", null)); // no value set: nothing to check
-    assertEquals(".", InternalUtils.checkReservedFormatConstraints("FT", ".")); // missing value: nothing to check
+    assertEquals("PASS", InternalUtils.checkReservedFormatConstraints("FT", "PASS", VcfWarnings.DEFAULT)); // valid: does not throw
+    assertEquals("q10;q20", InternalUtils.checkReservedFormatConstraints("FT", "q10;q20", VcfWarnings.DEFAULT)); // valid: does not throw
+    assertEquals("q10 q20", InternalUtils.checkReservedFormatConstraints("FT", "q10 q20", VcfWarnings.DEFAULT)); // whitespace in a code: warns
+    assertEquals("PASS;q10", InternalUtils.checkReservedFormatConstraints("FT", "PASS;q10", VcfWarnings.DEFAULT)); // PASS + code: warns
+    assertNull(InternalUtils.checkReservedFormatConstraints("FT", null, VcfWarnings.DEFAULT)); // no value set: nothing to check
+    assertEquals(".", InternalUtils.checkReservedFormatConstraints("FT", ".", VcfWarnings.DEFAULT)); // missing value: nothing to check
   }
 
   @Test
@@ -364,12 +366,12 @@ public class InternalUtilsTest {
     // used for an empty entry in FILTER (FT's grammar is explicitly modeled on FILTER's) and every other
     // position-independent list in this library -- unlike PASS/'.' combined with a genuine other code (see above),
     // which is a real grammar violation and must not be silently rewritten away
-    assertEquals("q10;q20", InternalUtils.checkReservedFormatConstraints("FT", "q10;;q20"));
-    assertEquals("q10", InternalUtils.checkReservedFormatConstraints("FT", "q10;"));
-    assertEquals("q10", InternalUtils.checkReservedFormatConstraints("FT", ";q10"));
+    assertEquals("q10;q20", InternalUtils.checkReservedFormatConstraints("FT", "q10;;q20", VcfWarnings.DEFAULT));
+    assertEquals("q10", InternalUtils.checkReservedFormatConstraints("FT", "q10;", VcfWarnings.DEFAULT));
+    assertEquals("q10", InternalUtils.checkReservedFormatConstraints("FT", ";q10", VcfWarnings.DEFAULT));
     // dropping the empty artifacts must not leave a false "combined with PASS" warning when PASS is the only
     // remaining real content (e.g. a trailing ';' after PASS)
-    assertEquals("PASS", InternalUtils.checkReservedFormatConstraints("FT", "PASS;"));
+    assertEquals("PASS", InternalUtils.checkReservedFormatConstraints("FT", "PASS;", VcfWarnings.DEFAULT));
   }
 
   @Test
@@ -377,17 +379,17 @@ public class InternalUtilsTest {
     // PS must be a non-negative 32-bit integer, but that constraint isn't expressible through its declared
     // Type=Integer (which maps to a 64-bit Long), so it's checked separately; this is non-structural sample
     // content, so an out-of-range value warns rather than throws
-    InternalUtils.checkReservedFormatConstraints("PS", "0"); // valid: does not throw
-    InternalUtils.checkReservedFormatConstraints("PS", String.valueOf(Integer.MAX_VALUE)); // valid: does not throw
-    InternalUtils.checkReservedFormatConstraints("PS", "-5"); // negative: warns, does not throw
-    InternalUtils.checkReservedFormatConstraints("PS", String.valueOf(Integer.MAX_VALUE + 1L)); // out of 32-bit range: warns
+    InternalUtils.checkReservedFormatConstraints("PS", "0", VcfWarnings.DEFAULT); // valid: does not throw
+    InternalUtils.checkReservedFormatConstraints("PS", String.valueOf(Integer.MAX_VALUE), VcfWarnings.DEFAULT); // valid: does not throw
+    InternalUtils.checkReservedFormatConstraints("PS", "-5", VcfWarnings.DEFAULT); // negative: warns, does not throw
+    InternalUtils.checkReservedFormatConstraints("PS", String.valueOf(Integer.MAX_VALUE + 1L), VcfWarnings.DEFAULT); // out of 32-bit range: warns
   }
 
   @Test
   public void testConvertPropertyPhaseSetPreservesOutOfRangeValue() {
     // the typed accessor still returns the parsed Long even when it violates PS's non-negative-32-bit constraint,
     // consistent with the "warn and preserve" policy for non-structural sample content
-    Long value = InternalUtils.convertProperty(ReservedFormatProperty.PhaseSet, "-5");
+    Long value = InternalUtils.convertProperty(ReservedFormatProperty.PhaseSet, "-5", VcfWarnings.DEFAULT);
     assertEquals(-5L, value);
   }
 
@@ -395,7 +397,7 @@ public class InternalUtilsTest {
   public void testConvertPropertyFilterDropsEmptyCodes() {
     // unlike PS, the typed FT accessor returns a normalized value: an empty semicolon-separated code is dropped,
     // matching the "warn and drop" convention used for FILTER's own empty entries
-    String value = InternalUtils.convertProperty(ReservedFormatProperty.Filter, "q10;;q20");
+    String value = InternalUtils.convertProperty(ReservedFormatProperty.Filter, "q10;;q20", VcfWarnings.DEFAULT);
     assertEquals("q10;q20", value);
   }
 
@@ -438,7 +440,7 @@ public class InternalUtilsTest {
     root.addAppender(appender);
     String result;
     try {
-      result = InternalUtils.convertProperty(new FakeFormatIdReservedProperty(), "PASS;other");
+      result = InternalUtils.convertProperty(new FakeFormatIdReservedProperty(), "PASS;other", VcfWarnings.DEFAULT);
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -457,7 +459,7 @@ public class InternalUtilsTest {
     appender.start();
     root.addAppender(appender);
     try {
-      InternalUtils.convertProperty(ReservedFormatProperty.Filter, "PASS;other");
+      InternalUtils.convertProperty(ReservedFormatProperty.Filter, "PASS;other", VcfWarnings.DEFAULT);
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -470,13 +472,13 @@ public class InternalUtilsTest {
     // a null entry can only reach here through a caller-mutated list (e.g. VcfPosition.getIds().add(null)), never
     // through parsing; it must be rejected with VcfFormatException, not a raw NullPointerException from isEmpty()
     assertThrows(VcfFormatException.class,
-        () -> InternalUtils.dropEmptyEntries("ID", new ArrayList<>(Arrays.asList("rs1", null))));
+        () -> InternalUtils.dropEmptyEntries("ID", new ArrayList<>(Arrays.asList("rs1", null)), null));
   }
 
   @Test
   public void testFillEmptyEntriesWithDotRejectsNullEntry() {
     assertThrows(VcfFormatException.class,
-        () -> InternalUtils.fillEmptyEntriesWithDot("ALT", new ArrayList<>(Arrays.asList("A", null))));
+        () -> InternalUtils.fillEmptyEntriesWithDot("ALT", new ArrayList<>(Arrays.asList("A", null)), null));
   }
 
   @Test
@@ -514,6 +516,45 @@ public class InternalUtilsTest {
     public String getExpectedNumber() {
       return "1";
     }
+  }
+
+  @Test
+  public void testDropEmptyEntriesWithNullWarningsThrowsInsteadOfWarning() {
+    List<String> list = new java.util.ArrayList<>(List.of("rs1", "", "rs2"));
+    assertThrows(VcfFormatException.class, () -> InternalUtils.dropEmptyEntries("ID", list, null));
+  }
+
+  @Test
+  public void testDropEmptyEntriesWithWarningsWarnsAndDrops() {
+    List<String> list = new java.util.ArrayList<>(List.of("rs1", "", "rs2"));
+    StringWriter sink = new StringWriter();
+    List<String> result = InternalUtils.dropEmptyEntries("ID", list, new VcfWarnings(sink));
+    assertEquals(List.of("rs1", "rs2"), result);
+    assertTrue(sink.toString().contains("ID contains an empty entry"));
+  }
+
+  @Test
+  public void testFillEmptyEntriesWithDotWithNullWarningsThrows() {
+    List<String> list = new java.util.ArrayList<>(List.of("A", "", "C"));
+    assertThrows(VcfFormatException.class, () -> InternalUtils.fillEmptyEntriesWithDot("ALT", list, null));
+  }
+
+  @Test
+  public void testFillEmptyEntriesWithDotWithWarningsWarnsAndFills() {
+    List<String> list = new java.util.ArrayList<>(List.of("A", "", "C"));
+    StringWriter sink = new StringWriter();
+    InternalUtils.fillEmptyEntriesWithDot("ALT", list, new VcfWarnings(sink));
+    assertEquals(List.of("A", ".", "C"), list);
+    assertTrue(sink.toString().contains("ALT contains an empty entry"));
+  }
+
+  @Test
+  public void testExtractPropertiesRoutesDuplicateAttributeWarningToSuppliedInstance() {
+    StringWriter sink = new StringWriter();
+    Map<String, String> props = InternalUtils.extractProperties(
+        new String[] {"ID=X", "Type=Integer", "Type=String"}, new VcfWarnings(sink));
+    assertEquals("String", props.get("Type"));
+    assertTrue(sink.toString().contains("duplicate attribute"));
   }
 
 }

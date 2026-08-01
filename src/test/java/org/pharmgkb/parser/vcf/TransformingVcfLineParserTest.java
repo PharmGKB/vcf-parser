@@ -301,12 +301,12 @@ public class TransformingVcfLineParserTest {
         if (callCount[0] == 1) {
           // makes VcfWriter.writeHeader() throw VcfFormatException via validateBeforeWrite()'s content checks:
           // an INFO entry whose own ID no longer matches the map key it's stored under
-          metadata.addInfo(new InfoMetadata("AF", "d", InfoType.String, "1", null, null));
+          metadata.addInfo(new InfoMetadata("AF", "d", InfoType.Float, "A", null, null));
           metadata.getInfo().get("AF").putPropertyRaw("ID", "MISMATCHED");
         } else {
           // On retry, fix the mismatch: remove and re-add with correct ID
           metadata.getInfo().remove("AF");
-          metadata.addInfo(new InfoMetadata("AF", "d", InfoType.String, "1", null, null));
+          metadata.addInfo(new InfoMetadata("AF", "d", InfoType.Float, "A", null, null));
         }
       }
     };

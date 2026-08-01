@@ -22,12 +22,18 @@ public abstract class IdMetadata extends BaseMetadata {
     if (id == null || id.trim().isEmpty()) {
       throw new VcfFormatException("ID is required and must not be blank");
     }
+    // strict construction: throws immediately instead of deferring to init()'s warn-based whitespace check (see
+    // that method's own comment, cited from VCFv4.2.tex/VCFv4.3.tex line 105/200 and the hts-specs fixtures named
+    // there) -- init() remains warn-based for the Map-based (lenient) constructor below
+    if (InternalUtils.containsWhitespace(id)) {
+      throw new VcfFormatException(label + " metadata ID \"" + id + "\" must not contain whitespace");
+    }
     putPropertyRaw(ID, id);
-    init();
   }
 
-  protected IdMetadata(String label, Map<String, String> properties) {
+  protected IdMetadata(String label, Map<String, String> properties, VcfWarnings warnings) {
     super(label, properties);
+    setWarningsSink(warnings);
     init();
   }
 
@@ -51,7 +57,7 @@ public abstract class IdMetadata extends BaseMetadata {
     // treated as a bcftools coverage gap rather than a considered position, so the hts-specs fixture and
     // vcf_validator's uniform treatment govern instead, per this project's decision hierarchy.
     if (id != null && InternalUtils.containsWhitespace(id)) {
-      VcfWarnings.warn("{} metadata ID \"{}\" must not contain whitespace", getLabel(), id);
+      m_warnings.warn("{} metadata ID \"{}\" must not contain whitespace", getLabel(), id);
     }
   }
 

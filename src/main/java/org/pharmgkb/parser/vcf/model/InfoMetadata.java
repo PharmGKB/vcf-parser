@@ -39,17 +39,10 @@ public class InfoMetadata extends IdDescriptionMetadata {
       @Nullable String source, @Nullable String version) {
     super("INFO", id);
     putPropertyRaw(NUMBER, number);
-    // type is typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting
-    // type.name() below throw a raw NullPointerException
     if (type == null) {
       throw new VcfFormatException("INFO type is null");
     }
     putPropertyRaw(TYPE, type.name());
-    // Description is inserted here, before Source/Version and not immediately after ID, so this constructor's
-    // property-insertion order matches the canonical ID, Number, Type, Description, Source, Version order that
-    // BaseMetadata.checkAttributeOrder() checks (VCFv4.2.tex line 69) -- inserting it via the (id, description)
-    // super constructor instead would produce ID, Description, Number, Type, ..., which fails that
-    // check on any parse of this constructor's own written-out output.
     putAndQuoteProperty(DESCRIPTION, description);
     if (source != null) {
       putAndQuoteProperty(SOURCE, source);
@@ -57,11 +50,32 @@ public class InfoMetadata extends IdDescriptionMetadata {
     if (version != null) {
       putAndQuoteProperty(VERSION, version);
     }
-    init();
+    // strict construction: throws immediately instead of deferring to init()'s warn-based checks below. The
+    // Source/Version-quoting and Type-parse-failure checks init() also performs are structurally unreachable here
+    // (putAndQuoteProperty always quotes; type is already a real InfoType enum, not a raw string) and have no
+    // throw-equivalent added, per this project's "no error handling for impossible scenarios" convention.
+    if (number == null || !InternalUtils.NUMBER_PATTERN.matcher(number).matches()) {
+      throw new VcfFormatException("INFO Number is not a valid VCF number: '" + number + "'");
+    }
+    if (type == InfoType.Flag && !"0".equals(number)) {
+      throw new VcfFormatException("INFO " + id + " has Type=Flag but Number is '" + number + "' (should be 0)");
+    }
+    ReservedInfoProperty reserved = ReservedInfoProperty.fromId(id);
+    if (reserved != null) {
+      if (!reserved.getExpectedNumber().equals(number)) {
+        throw new VcfFormatException("INFO " + id + " has Number '" + number + "' but the reserved definition " +
+            "expects '" + reserved.getExpectedNumber() + "'");
+      }
+      if (!InternalUtils.toJavaType(type).equals(reserved.getType())) {
+        throw new VcfFormatException("INFO " + id + " has Type '" + type + "' but the reserved definition " +
+            "expects '" + reserved.getType().getSimpleName() + "'");
+      }
+    }
+    m_type = type;
   }
 
-  public InfoMetadata(Map<String, String> properties) {
-    super("INFO", properties);
+  public InfoMetadata(Map<String, String> properties, VcfWarnings warnings) {
+    super("INFO", properties, warnings);
     init();
   }
 
@@ -75,35 +89,30 @@ public class InfoMetadata extends IdDescriptionMetadata {
       try {
         m_type = InfoType.valueOf(type);
       } catch (IllegalArgumentException e) {
-        VcfWarnings.warn("{} {} '{}' is not a valid {} type", getLabel(), TYPE, type, getLabel());
+        m_warnings.warn("{} {} '{}' is not a valid {} type", getLabel(), TYPE, type, getLabel());
       }
     }
-    // number == null means the property is simply absent, already covered by checkNumberProperty's own
-    // "required metadata property \"Number\" is missing" warning above -- guard here so this check doesn't
-    // also fire a second, redundant warning containing the confusing literal text "Number is 'null'"
     if (m_type == InfoType.Flag && number != null && !"0".equals(number)) {
-      VcfWarnings.warn("{} {} has Type=Flag but Number is '{}' (should be 0)", getLabel(), getId(), number);
+      m_warnings.warn("{} {} has Type=Flag but Number is '{}' (should be 0)", getLabel(), getId(), number);
     }
     for (String optional : new String[] { SOURCE, VERSION }) {
       String value = getPropertyRaw(optional);
       if (value != null && (!value.startsWith("\"") || !value.endsWith("\""))) {
-        VcfWarnings.warn("{} metadata property \"{}\" should be quoted but was: {}", getLabel(), optional, value);
+        m_warnings.warn("{} metadata property \"{}\" should be quoted but was: {}", getLabel(), optional, value);
       }
     }
     String id = getId();
     ReservedInfoProperty reserved = ReservedInfoProperty.fromId(id);
     if (reserved != null) {
       if (number != null && !reserved.getExpectedNumber().equals(number)) {
-        VcfWarnings.warn("{} {} has Number '{}' but the reserved definition expects '{}'", getLabel(), getId(),
+        m_warnings.warn("{} {} has Number '{}' but the reserved definition expects '{}'", getLabel(), getId(),
             number, reserved.getExpectedNumber());
       }
       if (m_type != null && !InternalUtils.toJavaType(m_type).equals(reserved.getType())) {
-        VcfWarnings.warn("{} {} has Type '{}' but the reserved definition expects '{}'", getLabel(), getId(),
+        m_warnings.warn("{} {} has Type '{}' but the reserved definition expects '{}'", getLabel(), getId(),
             m_type, reserved.getType().getSimpleName());
       }
     }
-    // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included
-    // after the default fields" -- so an unrecognized property here is not itself non-compliant and must not warn
   }
 
   @Override

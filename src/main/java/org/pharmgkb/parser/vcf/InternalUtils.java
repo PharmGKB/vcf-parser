@@ -150,18 +150,18 @@ public class InternalUtils {
     return sf_whitespacePattern.matcher(s).find();
   }
 
-  static Map<String, String> extractPropertiesFromLine(String value) {
+  static Map<String, String> extractPropertiesFromLine(String value, VcfWarnings warnings) {
     if (hasUnbalancedQuotes(value)) {
       // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_001.vcf (##CauseOfFailure=Description contains
       // non-escaped quotes). Checked on the raw, unsplit string rather than per-attribute after splitTopLevel:
       // an unescaped quote can make splitTopLevel itself mis-split at the wrong comma (its open/close toggle
       // flips on every unescaped '"', so a stray one can make a comma meant to stay inside a value look
       // top-level), so checking post-split could miss or misattribute the very problem being detected here.
-      VcfWarnings.warn("Metadata declaration attribute list \"{}\" contains an unescaped quote, making attribute " +
+      warnings.warn("Metadata declaration attribute list \"{}\" contains an unescaped quote, making attribute " +
           "boundaries ambiguous; parsing it best-effort", value);
     }
     // split on top-level commas (those not inside a double-quoted value); splitTopLevel preserves escaped characters
-    return extractProperties(splitTopLevel(value, ',').toArray(new String[0]));
+    return extractProperties(splitTopLevel(value, ',').toArray(new String[0]), warnings);
   }
 
   /**
@@ -187,10 +187,10 @@ public class InternalUtils {
 
   // public only because ~57 test call sites across org.pharmgkb.parser.vcf.model (InfoMetadataTest,
   // FormatMetadataTest, IdDescriptionMetadataTest, VcfMetadataTest, ContigMetadataTest) call this directly
-  // to build a Map<String,String> from "key=value" varargs -- its only PRODUCTION caller is
+  // to build a Map<String,String> from "key=value" arrays -- its only PRODUCTION caller is
   // extractPropertiesFromLine, in this same class
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
-  public static Map<String, String> extractProperties(String... props) {
+  public static Map<String, String> extractProperties(String[] props, VcfWarnings warnings) {
     Map<String, String> map = new LinkedHashMap<>();
     for (String prop : props) {
       Pair<String, String> pair;
@@ -212,7 +212,7 @@ public class InternalUtils {
         // silently coerces the same non-numeric value to the missing sentinel. vcf_validator 0.10.2 rejects this
         // case outright, but per this project's tie-breaker hierarchy its stricter structural-field behavior is
         // non-authoritative when it disagrees with bcftools.
-        VcfWarnings.warn("Metadata declaration contains duplicate attribute \"{}\"; keeping the last value", pair.getKey());
+        warnings.warn("Metadata declaration contains duplicate attribute \"{}\"; keeping the last value", pair.getKey());
       }
       map.put(pair.getKey(), pair.getValue());
     }
@@ -341,10 +341,12 @@ public class InternalUtils {
    * Warns about and drops any empty string in {@code list}, for a position-independent delimited field (e.g. ID,
    * FILTER) where an empty entry has nothing salvageable. See {@code EMPTY_FIELD_HANDLING.md} for the rationale.
    *
+   * @param warnings where to route the warning, or {@code null} for strict mode -- an empty entry throws
+   * {@link VcfFormatException} instead of being warned about and dropped
    * @return {@code list} unchanged if it contained no empty entries, or a new list with them removed
    */
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
-  public static List<String> dropEmptyEntries(String fieldName, List<String> list) {
+  public static List<String> dropEmptyEntries(String fieldName, List<String> list, @Nullable VcfWarnings warnings) {
     List<String> result = list;
     for (int i = 0; i < result.size(); i++) {
       if (result.get(i) == null) {
@@ -354,7 +356,10 @@ public class InternalUtils {
         if (result == list) {
           result = new ArrayList<>(list);
         }
-        VcfWarnings.warn("{} contains an empty entry (VCF does not allow zero-length fields); dropping it", fieldName);
+        if (warnings == null) {
+          throw new VcfFormatException(fieldName + " contains an empty entry (VCF does not allow zero-length fields)");
+        }
+        warnings.warn("{} contains an empty entry (VCF does not allow zero-length fields); dropping it", fieldName);
         result.remove(i);
         i--;
       }
@@ -366,15 +371,21 @@ public class InternalUtils {
    * Warns about and replaces, in place, any empty string in {@code list} with {@code "."} (the VCF missing-value
    * sentinel), for a position-dependent delimited field (e.g. a sample's FORMAT-keyed values) where dropping an
    * entry would misalign it with its corresponding key. See {@code EMPTY_FIELD_HANDLING.md} for the rationale.
+   *
+   * @param warnings where to route the warning, or {@code null} for strict mode -- an empty entry throws
+   * {@link VcfFormatException} instead of being warned about and replaced
    */
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
-  public static void fillEmptyEntriesWithDot(String fieldName, List<String> list) {
+  public static void fillEmptyEntriesWithDot(String fieldName, List<String> list, @Nullable VcfWarnings warnings) {
     for (int i = 0; i < list.size(); i++) {
       if (list.get(i) == null) {
         throw new VcfFormatException(fieldName + " contains a null entry");
       }
       if (list.get(i).isEmpty()) {
-        VcfWarnings.warn("{} contains an empty entry (VCF does not allow zero-length fields); treating it as the " +
+        if (warnings == null) {
+          throw new VcfFormatException(fieldName + " contains an empty entry (VCF does not allow zero-length fields)");
+        }
+        warnings.warn("{} contains an empty entry (VCF does not allow zero-length fields); treating it as the " +
             "missing value '.'", fieldName);
         list.set(i, ".");
       }
@@ -393,12 +404,12 @@ public class InternalUtils {
    * </ul>
    */
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
-  public static @Nullable <T> T convertProperty(ReservedProperty key, @Nullable String value) {
+  public static @Nullable <T> T convertProperty(ReservedProperty key, @Nullable String value, VcfWarnings warnings) {
     // FT/PS are FORMAT-only reserved IDs (see checkReservedFormatConstraints's Javadoc) -- a future
     // ReservedInfoProperty whose ID happens to collide with one must not get FORMAT-only semantics applied
-    String normalized = key instanceof ReservedFormatProperty ? checkReservedFormatConstraints(key.getId(), value)
+    String normalized = key instanceof ReservedFormatProperty ? checkReservedFormatConstraints(key.getId(), value, warnings)
         : value;
-    return convertProperty(key.getType(), normalized, key.isList());
+    return convertProperty(key.getType(), normalized, key.isList(), warnings);
   }
 
   /**
@@ -417,30 +428,30 @@ public class InternalUtils {
    * library. A caller that only wants the validation side effect (e.g. a writer in diagnostics mode, which preserves
    * raw content rather than rewriting it) may discard the return value.
    */
-  static @Nullable String checkReservedFormatConstraints(String key, @Nullable String value) {
+  static @Nullable String checkReservedFormatConstraints(String key, @Nullable String value, VcfWarnings warnings) {
     if (value == null || value.equals(".")) {
       return value;
     }
     if (key.equals(ReservedFormatProperty.Filter.getId())) {
-      return checkFilterLikeValue(key, value);
+      return checkFilterLikeValue(key, value, warnings);
     } else if (key.equals(ReservedFormatProperty.PhaseSet.getId())) {
-      checkNonNegative32BitInteger(key, value);
+      checkNonNegative32BitInteger(key, value, warnings);
     }
     return value;
   }
 
-  private static String checkFilterLikeValue(String key, String value) {
+  private static String checkFilterLikeValue(String key, String value, VcfWarnings warnings) {
     String[] codes = value.split(";", -1);
     List<String> kept = new ArrayList<>(codes.length);
     boolean hasPassOrMissing = false;
     for (String code : codes) {
       if (code.isEmpty()) {
-        VcfWarnings.warn("FORMAT {} value \"{}\" contains an empty filter code (VCF does not allow zero-length " +
+        warnings.warn("FORMAT {} value \"{}\" contains an empty filter code (VCF does not allow zero-length " +
             "fields); dropping it", key, value);
         continue;
       }
       if (containsWhitespace(code)) {
-        VcfWarnings.warn("FORMAT {} value \"{}\" contains whitespace in filter code \"{}\"", key, value, code);
+        warnings.warn("FORMAT {} value \"{}\" contains whitespace in filter code \"{}\"", key, value, code);
       }
       if (code.equals("PASS") || code.equals(".")) {
         hasPassOrMissing = true;
@@ -448,12 +459,12 @@ public class InternalUtils {
       kept.add(code);
     }
     if (kept.size() > 1 && hasPassOrMissing) {
-      VcfWarnings.warn("FORMAT {} value \"{}\" combines PASS or '.' with other filter codes", key, value);
+      warnings.warn("FORMAT {} value \"{}\" combines PASS or '.' with other filter codes", key, value);
     }
     return String.join(";", kept);
   }
 
-  private static void checkNonNegative32BitInteger(String key, String value) {
+  private static void checkNonNegative32BitInteger(String key, String value, VcfWarnings warnings) {
     long parsed;
     try {
       parsed = Long.parseLong(value);
@@ -462,7 +473,7 @@ public class InternalUtils {
       return;
     }
     if (parsed < 0 || parsed > Integer.MAX_VALUE) {
-      VcfWarnings.warn("FORMAT {} value \"{}\" is not a non-negative 32-bit integer", key, value);
+      warnings.warn("FORMAT {} value \"{}\" is not a non-negative 32-bit integer", key, value);
     }
   }
 
@@ -476,7 +487,7 @@ public class InternalUtils {
    * non-reserved property's raw value should do their own conversion instead.
    */
   @SuppressWarnings("unchecked")
-  private static @Nullable <T> T convertProperty(Class<?> clas, @Nullable String value, boolean isList) {
+  private static @Nullable <T> T convertProperty(Class<?> clas, @Nullable String value, boolean isList, VcfWarnings warnings) {
     if (value == null || ".".equals(value)) {
       return null;
     }
@@ -484,18 +495,18 @@ public class InternalUtils {
       // an unchecked cast to this method's own unbounded generic type parameter T is erased to a no-op by javac
       // (no checkcast bytecode is emitted), so it can never throw ClassCastException here -- a real type mismatch
       // only surfaces later, in the caller's own stack frame when the value is used as the wrong type
-      return (T) convertElement(clas, value);
+      return (T) convertElement(clas, value, warnings);
     }
     List<Object> list = new ArrayList<>();
     // limit -1 preserves an empty entry (e.g. a trailing ','), handled below rather than silently dropped; VCF does
     // not allow zero-length fields. See EMPTY_FIELD_HANDLING.md.
     for (String part : value.split(",", -1)) {
       if (part.isEmpty()) {
-        VcfWarnings.warn("List value \"{}\" contains an empty entry (VCF does not allow zero-length fields); " +
+        warnings.warn("List value \"{}\" contains an empty entry (VCF does not allow zero-length fields); " +
             "treating it as the missing value '.'", value);
         list.add(null);
       } else {
-        list.add(convertElement(clas, part));
+        list.add(convertElement(clas, part, warnings));
       }
     }
     return (T) list;
@@ -517,8 +528,8 @@ public class InternalUtils {
     }
   }
 
-  static @Nullable <T> T convertProperty(FormatType type, @Nullable String value) {
-    return convertProperty(toJavaType(type), value, false);
+  static @Nullable <T> T convertProperty(FormatType type, @Nullable String value, VcfWarnings warnings) {
+    return convertProperty(toJavaType(type), value, false, warnings);
   }
 
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
@@ -539,11 +550,11 @@ public class InternalUtils {
     }
   }
 
-  static @Nullable <T> T convertProperty(InfoType type, @Nullable String value) {
-    return convertProperty(toJavaType(type), value, false);
+  static @Nullable <T> T convertProperty(InfoType type, @Nullable String value, VcfWarnings warnings) {
+    return convertProperty(toJavaType(type), value, false, warnings);
   }
 
-  private static @Nullable Object convertElement(Class<?> clas, @Nullable String value) {
+  private static @Nullable Object convertElement(Class<?> clas, @Nullable String value, VcfWarnings warnings) {
     if (value == null || ".".equals(value)) {
       return null;
     }
@@ -571,7 +582,7 @@ public class InternalUtils {
     } else if (clas == VcfFloat.class) {
       // unlike plain BigDecimal, this also accepts NAN/INF/INFINITY (case-insensitive, optionally signed), which
       // VCFv4.2 leaves undefined but VCFv4.5 clarifies are valid Float literals
-      return VcfFloat.parse(value);
+      return VcfFloat.parse(value, warnings);
     } else if (clas == Long.class) {
       try {
         return Long.parseLong(value);

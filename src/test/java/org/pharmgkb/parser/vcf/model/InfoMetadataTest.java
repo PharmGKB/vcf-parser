@@ -1,8 +1,10 @@
 package org.pharmgkb.parser.vcf.model;
 
+import java.io.StringWriter;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.InternalUtils;
 import org.pharmgkb.parser.vcf.VcfFormatException;
+import org.pharmgkb.parser.vcf.VcfWarnings;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -23,7 +25,7 @@ public class InfoMetadataTest {
     props[2] = "Type=String";
     String desc = "Ancestral Allele, test";
     props[3] = "Description=\"" + desc + "\"";
-    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(props));
+    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(props, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
     assertEquals(InfoType.String, md.getType());
     assertEquals(desc, md.getDescription());
 
@@ -32,7 +34,7 @@ public class InfoMetadataTest {
     };
     for (String n : nums) {
       props[1] = "Number=" + n;
-      md = new InfoMetadata(InternalUtils.extractProperties(props));
+      md = new InfoMetadata(InternalUtils.extractProperties(props, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
       assertEquals(n, md.getNumber());
     }
 
@@ -41,7 +43,7 @@ public class InfoMetadataTest {
     };
     for (String n : nums) {
       props[1] = "Number=" + n;
-      new InfoMetadata(InternalUtils.extractProperties(props));
+      new InfoMetadata(InternalUtils.extractProperties(props, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
     }
   }
 
@@ -56,7 +58,7 @@ public class InfoMetadataTest {
   public void testFlagWithNonZeroNumberWarns() {
     // Type=Flag with Number != 0 is malformed; it should warn, not throw
     InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
-        "ID=X", "Number=1", "Type=Flag", "Description=\"d\""));
+        new String[]{"ID=X", "Number=1", "Type=Flag", "Description=\"d\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
     assertEquals("1", md.getNumber());
     assertEquals(InfoType.Flag, md.getType());
   }
@@ -67,28 +69,20 @@ public class InfoMetadataTest {
     // "required metadata property \"Number\" is missing" warning from checkNumberProperty AND a second,
     // redundant, confusingly worded one containing the literal string "Number is 'null'" -- only the first
     // should fire
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
-        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
-    appender.start();
-    root.addAppender(appender);
-    try {
-      InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties("ID=X", "Type=Flag", "Description=\"d\""));
-      assertEquals(InfoType.Flag, md.getType());
-      assertTrue(appender.anyMessageContains("required metadata property \"Number\" is missing"));
-      assertFalse(appender.anyMessageContains("'null'"));
-    } finally {
-      root.detachAppender(appender);
-      appender.stop();
-    }
+    StringWriter sink = new StringWriter();
+    VcfWarnings warnings = new VcfWarnings(sink);
+    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
+        new String[]{"ID=X", "Type=Flag", "Description=\"d\""}, warnings), warnings);
+    assertEquals(InfoType.Flag, md.getType());
+    assertTrue(sink.toString().contains("required metadata property \"Number\" is missing"));
+    assertFalse(sink.toString().contains("'null'"));
   }
 
   @Test
   public void testUnquotedDescriptionWarns() {
     // an unquoted Description is malformed; it should warn, not throw
     InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
-        "ID=X", "Number=1", "Type=String", "Description=unquoted"));
+        new String[]{"ID=X", "Number=1", "Type=String", "Description=unquoted"}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
     assertEquals("X", md.getId());
   }
 
@@ -96,7 +90,7 @@ public class InfoMetadataTest {
   public void testInvalidTypeWarns() {
     // an invalid Type should warn (not throw); the type is left null
     InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
-        "ID=X", "Number=1", "Type=NotAType", "Description=\"d\""));
+        new String[]{"ID=X", "Number=1", "Type=NotAType", "Description=\"d\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
     assertNull(md.getType());
   }
 
@@ -104,7 +98,7 @@ public class InfoMetadataTest {
   public void testMissingTypeWarns() {
     // a missing Type should warn (not throw); the type is left null
     InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
-        "ID=X", "Number=1", "Description=\"d\""));
+        new String[]{"ID=X", "Number=1", "Description=\"d\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
     assertNull(md.getType());
   }
 
@@ -131,104 +125,64 @@ public class InfoMetadataTest {
     // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included
     // after the default fields" -- an unrecognized property is compliant, not just tolerated, and must be preserved
     InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
-        "ID=X", "Number=1", "Type=String", "Description=\"d\"", "Custom=extra"));
+        new String[]{"ID=X", "Number=1", "Type=String", "Description=\"d\"", "Custom=extra"}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
     assertEquals("extra", md.getPropertyRaw("Custom"));
   }
 
   @Test
   public void testReservedNumberMismatchWarnsAndPreservesValue() {
     // AC's reserved Number is "A" (VCFv4.3's Reserved INFO Keys table); declaring it "1" is a mismatch
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
-        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
-    appender.start();
-    root.addAppender(appender);
-    InfoMetadata md;
-    try {
-      md = new InfoMetadata(InternalUtils.extractProperties(
-          "ID=AC", "Number=1", "Type=Integer", "Description=\"d\""));
-      assertTrue(appender.hasWarnOrHigher());
-    } finally {
-      root.detachAppender(appender);
-      appender.stop();
-    }
+    StringWriter sink = new StringWriter();
+    VcfWarnings warnings = new VcfWarnings(sink);
+    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
+        new String[]{"ID=AC", "Number=1", "Type=Integer", "Description=\"d\""}, warnings), warnings);
     // warn-and-preserve, not reject-and-rewrite: the declared (non-compliant) value is unchanged
     assertEquals("1", md.getNumber());
+    assertTrue(sink.toString().contains("reserved definition expects"));
   }
 
   @Test
   public void testReservedTypeMismatchWarns() {
     // AC's reserved Type is Integer; declaring it String is a mismatch
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
-        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
-    appender.start();
-    root.addAppender(appender);
-    try {
-      new InfoMetadata(InternalUtils.extractProperties("ID=AC", "Number=A", "Type=String", "Description=\"d\""));
-      assertTrue(appender.hasWarnOrHigher());
-    } finally {
-      root.detachAppender(appender);
-      appender.stop();
-    }
+    StringWriter sink = new StringWriter();
+    VcfWarnings warnings = new VcfWarnings(sink);
+    new InfoMetadata(InternalUtils.extractProperties(
+        new String[]{"ID=AC", "Number=A", "Type=String", "Description=\"d\""}, warnings), warnings);
+    assertTrue(sink.toString().contains("reserved definition expects"));
   }
 
   @Test
   public void testCorrectlyDeclaredReservedKeyDoesNotWarn() {
     // AC declared exactly as the reserved definition expects (Number=A, Type=Integer) must not warn
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
-        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
-    appender.start();
-    root.addAppender(appender);
-    try {
-      new InfoMetadata(InternalUtils.extractProperties("ID=AC", "Number=A", "Type=Integer", "Description=\"d\""));
-      assertFalse(appender.hasWarnOrHigher());
-    } finally {
-      root.detachAppender(appender);
-      appender.stop();
-    }
+    StringWriter sink = new StringWriter();
+    VcfWarnings warnings = new VcfWarnings(sink);
+    new InfoMetadata(InternalUtils.extractProperties(
+        new String[]{"ID=AC", "Number=A", "Type=Integer", "Description=\"d\""}, warnings), warnings);
+    // VcfWarnings.warn writes only the formatted message text (plus a newline) to its sink -- no level name --
+    // so an empty sink is the only sound "nothing warned" assertion
+    assertEquals("", sink.toString());
   }
 
   @Test
   public void testCorrectlyDeclaredStructuralVariantKeyDoesNotWarn() {
     // END is declared natively in VCFv4.2.tex itself (Number=1, Type=Integer) -- exercises the "no 4.3
     // clarification needed" sourcing path, not just the "standard" 4.3-table path
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
-        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
-    appender.start();
-    root.addAppender(appender);
-    try {
-      new InfoMetadata(InternalUtils.extractProperties("ID=END", "Number=1", "Type=Integer", "Description=\"d\""));
-      assertFalse(appender.hasWarnOrHigher());
-    } finally {
-      root.detachAppender(appender);
-      appender.stop();
-    }
+    StringWriter sink = new StringWriter();
+    VcfWarnings warnings = new VcfWarnings(sink);
+    new InfoMetadata(InternalUtils.extractProperties(
+        new String[]{"ID=END", "Number=1", "Type=Integer", "Description=\"d\""}, warnings), warnings);
+    assertEquals("", sink.toString());
   }
 
   @Test
   public void testNonReservedKeyIsNotChecked() {
     // a custom/non-reserved ID has no canonical Number/Type to check against -- VCFv4.2 explicitly allows extra
     // fields, so this must not warn regardless of what Number/Type it declares
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
-        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
-    appender.start();
-    root.addAppender(appender);
-    try {
-      new InfoMetadata(InternalUtils.extractProperties("ID=MYCUSTOM", "Number=3", "Type=String", "Description=\"d\""));
-      assertFalse(appender.hasWarnOrHigher());
-    } finally {
-      root.detachAppender(appender);
-      appender.stop();
-    }
+    StringWriter sink = new StringWriter();
+    VcfWarnings warnings = new VcfWarnings(sink);
+    new InfoMetadata(InternalUtils.extractProperties(
+        new String[]{"ID=MYCUSTOM", "Number=3", "Type=String", "Description=\"d\""}, warnings), warnings);
+    assertEquals("", sink.toString());
   }
 
   @Test
@@ -247,20 +201,11 @@ public class InfoMetadataTest {
   @Test
   public void testAttributeOrderWarnsWhenOutOfCanonicalOrder() {
     // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_info_003.vcf's ##CauseOfFailure=Incorrect order of INFO fields
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
-        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
-    appender.start();
-    root.addAppender(appender);
-    try {
-      new InfoMetadata(InternalUtils.extractProperties(
-          "Number=1", "Type=Integer", "Description=\"Raw read depth\"", "ID=DP"));
-      assertTrue(appender.hasWarnOrHigher());
-    } finally {
-      root.detachAppender(appender);
-      appender.stop();
-    }
+    StringWriter sink = new StringWriter();
+    VcfWarnings warnings = new VcfWarnings(sink);
+    new InfoMetadata(InternalUtils.extractProperties(
+        new String[]{"Number=1", "Type=Integer", "Description=\"Raw read depth\"", "ID=DP"}, warnings), warnings);
+    assertTrue(sink.toString().contains("order") || sink.toString().contains("ORDER"));
   }
 
   @Test
@@ -289,6 +234,52 @@ public class InfoMetadataTest {
   }
 
   @Test
+  public void testTypedConstructorRejectsInvalidNumber() {
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> new InfoMetadata("AN", "desc", InfoType.Integer, "not-a-number", null, null));
+    assertTrue(ex.getMessage().contains("Number is not a valid VCF number"));
+  }
+
+  @Test
+  public void testTypedConstructorRejectsFlagWithNonZeroNumber() {
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> new InfoMetadata("DB", "desc", InfoType.Flag, "1", null, null));
+    assertTrue(ex.getMessage().contains("has Type=Flag but Number is '1'"));
+  }
+
+  @Test
+  public void testTypedConstructorRejectsReservedNumberMismatch() {
+    // AC is reserved with expected Number "A" (VCFv4.2.tex reserved INFO table)
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> new InfoMetadata("AC", "desc", InfoType.Integer, "1", null, null));
+    assertTrue(ex.getMessage().contains("reserved definition expects"));
+  }
+
+  @Test
+  public void testTypedConstructorAcceptsValidInfo() {
+    InfoMetadata md = new InfoMetadata("AF", "allele freq", InfoType.Float, "A", null, null);
+    assertEquals(InfoType.Float, md.getType());
+    assertEquals("A", md.getNumber());
+  }
+
+  @Test
+  public void testMapConstructorRequiresWarningsInstance() {
+    java.util.Map<String, String> props = InternalUtils.extractProperties(
+        new String[] {"ID=X", "Number=bad", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT);
+    assertThrows(NullPointerException.class, () -> new InfoMetadata(props, null));
+  }
+
+  @Test
+  public void testMapConstructorWarnsInsteadOfThrowingForInvalidNumber() {
+    java.util.Map<String, String> props = InternalUtils.extractProperties(
+        new String[] {"ID=X", "Number=bad", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT);
+    StringWriter sink = new StringWriter();
+    InfoMetadata md = new InfoMetadata(props, new VcfWarnings(sink));
+    assertEquals("bad", md.getNumber());
+    assertTrue(sink.toString().contains("Number is not a valid VCF number"));
+  }
+
+  @Test
   public void testTypedConstructorRejectsNullOrBlankId() {
     assertThrows(VcfFormatException.class, () -> new InfoMetadata(null, "d", InfoType.String, "1", null, null));
     assertThrows(VcfFormatException.class, () -> new InfoMetadata("", "d", InfoType.String, "1", null, null));
@@ -301,45 +292,28 @@ public class InfoMetadataTest {
     // set via the required label constructor parameter, in the message text -- otherwise an InfoMetadata's
     // Description warning is indistinguishable from an IdDescriptionMetadata one, since both now route through
     // the same shared VcfWarnings logger
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
-        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
-    appender.start();
-    root.addAppender(appender);
-    try {
-      new InfoMetadata(InternalUtils.extractProperties("ID=AA", "Number=1", "Type=String", "Description=unquoted"));
-      assertTrue(appender.hasWarnOrHigher());
-      assertTrue(appender.anyMessageContains("INFO"));
-    } finally {
-      root.detachAppender(appender);
-      appender.stop();
-    }
+    StringWriter sink = new StringWriter();
+    VcfWarnings warnings = new VcfWarnings(sink);
+    new InfoMetadata(InternalUtils.extractProperties(
+        new String[]{"ID=AA", "Number=1", "Type=String", "Description=unquoted"}, warnings), warnings);
+    assertTrue(sink.toString().contains("INFO"));
   }
 
   @Test
   public void testIdWithWhitespaceWarns() {
     // regression test: an INFO ID containing whitespace was previously silently accepted -- bcftools 1.23.1
     // warns "Invalid tag name" for this exact case
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
-        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
-    appender.start();
-    root.addAppender(appender);
-    try {
-      new InfoMetadata(InternalUtils.extractProperties("ID=A B", "Number=1", "Type=String", "Description=\"d\""));
-      assertTrue(appender.anyMessageContains("must not contain whitespace"));
-    } finally {
-      root.detachAppender(appender);
-      appender.stop();
-    }
+    StringWriter sink = new StringWriter();
+    VcfWarnings warnings = new VcfWarnings(sink);
+    new InfoMetadata(InternalUtils.extractProperties(
+        new String[]{"ID=A B", "Number=1", "Type=String", "Description=\"d\""}, warnings), warnings);
+    assertTrue(sink.toString().contains("must not contain whitespace"));
   }
 
   @Test
   public void testGetReservedNumberReturnsReservedCode() {
     InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
-        "ID=X", "Number=A", "Type=String", "Description=\"d\""));
+        new String[]{"ID=X", "Number=A", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
     assertEquals(SpecialVcfNumber.ONE_PER_ALT, md.getReservedNumber());
   }
 
@@ -348,7 +322,7 @@ public class InfoMetadataTest {
     // regression test: getReservedNumber() used to throw NullPointerException here instead of returning null,
     // because SpecialVcfNumber.fromId previously had no null guard; it now returns null for a null id.
     InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
-        "ID=X", "Type=String", "Description=\"d\""));
+        new String[]{"ID=X", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
     assertNull(md.getNumber());
     assertNull(md.getReservedNumber());
   }
@@ -360,7 +334,7 @@ public class InfoMetadataTest {
     // real quoted-value bug closed in docs/issues/findings21.md Batch 21.3) -- verify the quote-stripping
     // actually round-trips, not just that construction doesn't throw
     InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
-        "ID=X", "Number=1", "Type=String", "Description=\"d\"", "Source=\"dbSNP\"", "Version=\"138\""));
+        new String[]{"ID=X", "Number=1", "Type=String", "Description=\"d\"", "Source=\"dbSNP\"", "Version=\"138\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
     assertEquals("dbSNP", md.getSource());
     assertEquals("138", md.getVersion());
   }
@@ -377,7 +351,7 @@ public class InfoMetadataTest {
   @Test
   public void testGetSourceAndVersionReturnNullWhenAbsent() {
     InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
-        "ID=X", "Number=1", "Type=String", "Description=\"d\""));
+        new String[]{"ID=X", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
     assertNull(md.getSource());
     assertNull(md.getVersion());
   }

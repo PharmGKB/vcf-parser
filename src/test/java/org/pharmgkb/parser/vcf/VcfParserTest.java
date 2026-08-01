@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.pharmgkb.common.util.PathUtils;
 import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
@@ -1074,5 +1075,118 @@ public class VcfParserTest {
       root.detachAppender(appender);
       appender.stop();
     }
+  }
+
+  @Test
+  public void testWarningsToFileCapturesLazyGetterFiredFromAnotherThreadDuringParse(@TempDir Path tempDir)
+      throws IOException, InterruptedException {
+    // this is the concrete improvement the redesign delivers: with the old ThreadLocal design, a lazy getter
+    // (getQuality()) called from a thread OTHER than the one running parse() would never see the active file --
+    // ThreadLocal is, by definition, thread-local. With m_warnings passed directly into each VcfPosition, any
+    // thread holding that position now correctly routes to the same destination the parsing thread configured.
+    //
+    // Correction from this plan's external review (finding #1): calling parser.parse() to completion FIRST and
+    // only then starting the other thread does not actually test "during parse" -- parse() has already closed
+    // the warnings file by the time the other thread runs, so that shape only re-tests the after-close fallback
+    // (the second test below). Genuinely exercising "during parse, from another thread" requires the parsing
+    // thread to still be inside parse() -- i.e. inside parseLine() -- when the other thread fires the getter, so
+    // a latch blocks parseLine() from returning (and thus blocks parse()'s finally-block close()) until the
+    // getter thread has run.
+    //
+    // Second-round correction (finding #2): the first version used raw Thread + join(), which never
+    // propagates an exception (including a failed assertTrue inside parseLine(), or an IOException from
+    // parse()) back to the JUnit test -- an uncaught exception on a raw Thread only prints to stderr, so a
+    // genuine bug here could go undetected while the test still reports green. Using ExecutorService/Future
+    // makes get() re-throw whatever either task threw, with a bounded timeout so a real deadlock fails fast
+    // instead of hanging the suite.
+    //
+    // Third-round correction (finding #3): the second version's cleanup only released getterDone (letting the
+    // still-blocked parse thread proceed) on the success path -- if getterTask.get() itself threw or timed
+    // out, the outer finally called only pool.shutdown(), which does not interrupt a thread already blocked
+    // inside parseLine()'s own latch.await(); the parse thread would then sit blocked for its own 5-second
+    // timeout on every such failure, and the pool could still be running when the test method returned. Now
+    // getterDone is released in an inner finally (so a getter failure doesn't strand the parse thread) and
+    // released again in the outer finally as a second safety net, and shutdownNow() + awaitTermination()
+    // replace the bare shutdown() so a failed run can't leak a running thread into later tests.
+    Path vcfFile = tempDir.resolve("test.vcf");
+    Files.writeString(vcfFile, "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT\tnotanumber\t.\t.\n");
+    Path warningsFile = tempDir.resolve("warnings.log");
+    java.util.concurrent.CountDownLatch positionReady = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.CountDownLatch getterDone = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.atomic.AtomicReference<VcfPosition> positionRef = new java.util.concurrent.atomic.AtomicReference<>();
+    VcfParser parser = new VcfParser.Builder()
+        .fromFile(vcfFile)
+        .warningsToFile(warningsFile)
+        .parseWith(new VcfLineParser() {
+          @Override public void parseMetadata(VcfMetadata metadata) {}
+          @Override public void parseLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> samples) {
+            positionRef.set(position);
+            positionReady.countDown();
+            try {
+              // block the parsing thread here -- keeping the warnings file open -- until the other thread has
+              // fired the lazy getter; this is what actually exercises "during parse", not just "before close()"
+              if (!getterDone.await(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                throw new AssertionError("getterThread did not signal completion within 5 seconds");
+              }
+            } catch (InterruptedException e) {
+              throw new RuntimeException(e);
+            }
+          }
+        })
+        .build();
+    java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+    try {
+      java.util.concurrent.Future<?> parseTask = pool.submit(() -> {
+        try {
+          parser.parse();
+        } catch (IOException e) {
+          throw new java.io.UncheckedIOException(e);
+        }
+      });
+      assertTrue(positionReady.await(5, java.util.concurrent.TimeUnit.SECONDS));
+      java.util.concurrent.Future<?> getterTask = pool.submit(() -> positionRef.get().getQuality());
+      try {
+        // getterTask completing proves the lazy getter ran and returned without throwing
+        assertDoesNotThrow(() -> getterTask.get(5, java.util.concurrent.TimeUnit.SECONDS));
+      } finally {
+        // release the parse thread regardless of whether the getter succeeded, failed, or timed out --
+        // otherwise a getter failure leaves the parse thread blocked in parseLine() needlessly
+        getterDone.countDown();
+      }
+      // separately confirm the parse thread itself also completed cleanly
+      assertDoesNotThrow(() -> parseTask.get(5, java.util.concurrent.TimeUnit.SECONDS));
+    } finally {
+      getterDone.countDown(); // second safety net -- countDown() past zero is a no-op, never harmful
+      pool.shutdownNow();
+      assertTrue(pool.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS));
+    }
+    assertTrue(Files.readString(warningsFile).contains("is not a number"));
+  }
+
+  @Test
+  public void testLazyGetterFiredAfterParseReturnsFallsBackToSharedLoggerNotClosedFileWrite(@TempDir Path tempDir)
+      throws IOException {
+    // documented behavior, preserved: a lazy warning after parse() has returned (and its warnings file closed)
+    // does not throw and does not write to the closed file -- it falls back to the shared logger, via
+    // VcfWarnings's own closed-flag fallback
+    Path vcfFile = tempDir.resolve("test.vcf");
+    Files.writeString(vcfFile, "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT\tnotanumber\t.\t.\n");
+    Path warningsFile = tempDir.resolve("warnings.log");
+    List<VcfPosition> captured = new ArrayList<>();
+    VcfParser parser = new VcfParser.Builder()
+        .fromFile(vcfFile)
+        .warningsToFile(warningsFile)
+        .parseWith(new VcfLineParser() {
+          @Override public void parseMetadata(VcfMetadata metadata) {}
+          @Override public void parseLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> samples) {
+            captured.add(position);
+          }
+        })
+        .build();
+    parser.parse();
+    assertDoesNotThrow(() -> captured.get(0).getQuality());
+    assertFalse(Files.readString(warningsFile).contains("is not a number"));
   }
 }

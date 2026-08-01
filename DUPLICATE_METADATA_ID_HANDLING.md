@@ -1,5 +1,11 @@
 # Duplicate metadata declaration ID handling
 
+This document describes `VcfMetadata.Builder`'s/`VcfMetadata`'s lenient-mode behavior (`Builder.lenient(VcfWarnings)`,
+or `VcfMetadata`'s own instance `addXxx` methods when constructed with a `VcfWarnings` sink) -- the mode
+`VcfParser` always uses internally, so a parsed file's behavior is exactly as described below. `Builder`'s
+*default* (non-lenient) mode instead throws `VcfFormatException` immediately for a duplicate or missing/empty
+declaration ID; see `AGENTS.md`'s "Direct/Manual Construction vs. Parser Construction" section.
+
 VCF metadata declarations (`##contig`, `##INFO`, `##FORMAT`, `##FILTER`, `##ALT`, `##SAMPLE`) are each keyed by an
 `ID` attribute. Neither [VCFv4.2.tex](https://github.com/samtools/hts-specs) nor VCFv4.3.tex states what happens
 when the same `ID` is declared twice for the same type within one file — the spec is simply silent on it.

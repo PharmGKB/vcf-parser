@@ -6,7 +6,8 @@
 
 This is a streaming parser and writer for [VCF](http://en.wikipedia.org/wiki/Variant_Call_Format). It validates record
 structure strictly but defers validation of non-structural content for performance — see
-[Validation: strict vs. lenient](#validation-strict-vs-lenient) below.
+[Validation: strict vs. lenient](#validation-strict-vs-lenient) below; lenient (warn-and-recover) paths route their
+warnings through an explicit sink — see [`VcfWarnings`](#vcfwarnings-explicit-warning-routing) below.
 
 The main parser class ([`VcfParser`](src/main/java/org/pharmgkb/parser/vcf/VcfParser.java)) is responsible for reading all metadata and initial position data.  Then actual handling of each position line is delegated to an implementation of `VcfLineParser`.
 
@@ -63,11 +64,34 @@ invalid:
 - `VcfWriter.writeLine` is given a number of samples that disagrees with the header's declared sample count, any
   FORMAT/sample data at all when the header declares no samples, or an empty `REF` (which has no missing-value
   sentinel in the spec, unlike `ALT`/`ID`/`FILTER`): in every case the output would not be valid, re-parseable VCF.
-- A typed metadata constructor given directly (e.g. `new InfoMetadata(id, ...)`, `new ContigMetadata(id, ...)`,
-  `new IdDescriptionMetadata(label, id, description)`) with a missing, empty, or whitespace-only `ID` — every VCF
-  structured metadata line requires an ID (VCFv4.3.tex line 121). This only applies to direct/programmatic
-  construction; a file parsed by `VcfParser` with a malformed declaration is handled per the lenient section below,
-  not rejected outright.
+- A typed metadata constructor given directly (e.g. `new InfoMetadata(id, ...)`, `new FormatMetadata(id,
+  ...)`, `new ContigMetadata(id, ...)`, `new IdDescriptionMetadata(label, id, description)`) throws, *at
+  construction time*, for every condition that class's own declaration-level checks would otherwise flag -- a
+  missing/empty/whitespace-only `ID` (VCFv4.3.tex line 121), an invalid `Number`, a `Type=Flag`/non-zero-
+  `Number` mismatch, a reserved property's Number/Type mismatch, or a malformed `##contig` URL. This is a
+  property of the constructor only, not of the resulting object: calling `validate()` later on that same
+  object (e.g. after mutating it through `getPropertiesRaw()`) always warns instead of throwing, the same as
+  an object built via the lenient constructor -- see [`VcfWarnings`](#vcfwarnings-explicit-warning-routing)
+  below for why. `VcfPosition`'s own constructor (see below) follows the identical construction-time-only
+  rule for FILTER/INFO/FORMAT declaration-level mistakes. This only applies to direct/programmatic
+  construction; a file parsed by `VcfParser` with the same malformed content is handled per the lenient
+  section below, not rejected outright. A caller that wants today's warn-and-recover behavior for direct
+  construction instead of a throw can use each metadata class's lenient `Map`-based constructor (or, for
+  `VcfPosition`, its 11-argument lenient overload described below), which takes an explicit
+  [`VcfWarnings`](#vcfwarnings-explicit-warning-routing) instance to route the warnings to (see that section
+  below).
+- `new VcfPosition(...)`'s 10-argument constructor throws, at construction time, for FILTER combining `PASS`
+  with another code, an INFO value containing `=`, an empty FORMAT sub-field name, or an empty ID/ALT/FILTER
+  entry -- the same conditions the lenient section below describes as warned-and-recovered when parsed; its
+  own `validate()` method always warns instead, matching the metadata classes above. A separate 11-argument
+  overload, taking an explicit [`VcfWarnings`](#vcfwarnings-explicit-warning-routing) instance as its last
+  parameter, restores exactly that warn-and-recover behavior; this is the overload `VcfParser` itself uses.
+- `VcfMetadata.Builder` throws for a missing/duplicate declaration ID, an invalid `##ALT` structural code, or
+  an empty `assembly`/`pedigreeDB` value, unless built with `.lenient(VcfWarnings)`, which restores today's
+  warn-and-keep-first behavior (matching bcftools; see
+  [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md)) routed to the supplied instance.
+  `VcfParser`'s own internal use always calls `.lenient(...)`, so parsing a file's behavior is unchanged by
+  any of this.
 
 These checks run when a `VcfPosition` is constructed (including by the parser). Its setters and mutations made
 through its accessors (e.g. `getAltBases()`, `getFilters()`) do *not* re-run them, to support transformation
@@ -184,6 +208,22 @@ genotype information is present" — but bcftools 1.23.1 accepts and correctly i
 `bcftools query` returns the missing value for such a sample's `GT` regardless of that sample's own raw column
 content, and `bcftools view` round-trips it as `.`), so this parser and writer both treat it as valid, matching
 bcftools 1.23.1 behavior.
+
+
+## `VcfWarnings`: explicit warning routing
+
+Every lenient (warn-and-recover) code path above needs somewhere to send its warning. By default, that's
+this library's shared SLF4J logger (`org.pharmgkb.parser.vcf.VcfWarnings`) -- but a caller can redirect it
+explicitly by constructing a [`VcfWarnings`](src/main/java/org/pharmgkb/parser/vcf/VcfWarnings.java) instance
+(backed by any `Writer`, or via the `openFile(Path)` convenience factory) and passing it into whichever
+lenient constructor/`Builder.lenient(...)` call it's using. `VcfParser.Builder.warningsToFile()` and
+`VcfWriter.Builder.warningsToFile()` build and manage one of these internally for their own parse/write call --
+most callers never need to construct a `VcfWarnings` by hand at all.
+
+A `VcfPosition`/`VcfSample`/metadata declaration's own warning destination can be redirected after
+construction via `setWarningsSink(VcfWarnings)` -- `VcfWriter` uses this itself, claiming each object for its
+own destination immediately before writing it, so a lazy warning fired during that write is captured even if
+the object was originally parsed or built under a different destination (or none at all).
 
 
 ## hts-specs conformance test

@@ -44,6 +44,23 @@ The parser is intentionally permissive for non-structural VCF violations in perf
 
 
 
+### Direct/Manual Construction vs. Parser Construction
+
+A class with both a typed constructor (fixed, compiler-checked parameters) and a `Map`-based constructor (or,
+for `VcfMetadata`, `Builder`'s default vs. `.lenient(VcfWarnings)`) makes the typed/default path throw
+`VcfFormatException` immediately for a condition its own declaration-level checks would otherwise flag, while
+the `Map`-based/lenient path keeps today's warn-and-recover behavior, routed to an explicitly required
+`VcfWarnings` instance. `VcfParser` always uses the lenient path internally, so this does not change what a
+parsed file accepts, warns about, or rejects -- only the default for direct/manual construction, and how the
+resulting diagnostic is routed. This was previously stated only for `IdMetadata`'s ID-null case (see
+`WONT_FIX.md`'s corresponding entry); it is now a systematic rule applied to every class that has such a
+constructor pair: `IdMetadata`, `IdDescriptionMetadata`, `InfoMetadata`, `FormatMetadata`, `ContigMetadata`,
+`VcfPosition` (its 10-arg constructor is the strict one, its 11-arg `VcfWarnings`-taking overload the lenient
+one), and `VcfMetadata` (`Builder`'s default vs. `.lenient(VcfWarnings)`, as above). `PedigreeMetadata` and
+`VcfSample` are deliberately *not* part of this split -- their constructors are unchanged, because neither has
+a construction-time warn site to route in the first place.
+
+
 ### Writer Validation and Round-Trip Policy
 
 Writer output is governed by the semantics of the target VCF specification. A writer must not emit a `fileformat` declaration for another VCF version unless the emitted output is also valid under that declared version.
@@ -87,6 +104,9 @@ compile-time or runtime enforcement), so a caller can always pass `null` regardl
   code constructs and passes in before parsing/writing starts). `Preconditions.checkNotNull`'s raw
   `NullPointerException` remains the correct, established convention there -- see `WONT_FIX.md`'s
   `VcfParser.Builder` entries for the full reasoning and the exact boundary between the two cases.
+  The `VcfWarnings` instance a lenient constructor or `VcfMetadata.Builder.lenient(...)` requires is the same
+  category of caller-configuration object, not VCF content -- it is rejected the same way (raw
+  `NullPointerException` via `Preconditions.checkNotNull`), not with `VcfFormatException`.
 - A class or method explicitly documented as not part of this library's supported public API -- currently
   `InternalUtils` (renamed from `VcfUtils`; most of its members are `public` only because Java has no
   cross-package-within-a-library visibility modifier, not because they're designed for external callers)

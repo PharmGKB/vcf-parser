@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import com.google.common.base.Joiner;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.LinkedListMultimap;
 import com.google.common.collect.ListMultimap;
 import org.jspecify.annotations.Nullable;
@@ -54,6 +55,7 @@ public class VcfPosition {
   // VcfFormatException this instance's own validation throws, guarded so a lineNumber of -1 (not produced by
   // parsing) leaves exception behavior unchanged.
   private int m_lineNumber = -1;
+  private VcfWarnings m_warnings = VcfWarnings.DEFAULT;
 
 
   /**
@@ -65,6 +67,9 @@ public class VcfPosition {
    * returned list/multimap may be immutable if one was passed to this constructor and did not need normalizing --
    * pass a mutable {@code List}/{@code ListMultimap} (not e.g. {@code List.of(...)}) if you intend to mutate a
    * position's IDs, ALT bases, filters, format, or INFO after construction.
+   * <p>This is the strict constructor: it throws {@link VcfFormatException} for every recoverable condition the
+   * lenient {@code VcfWarnings}-taking overload below instead warns about and recovers from (an empty ID/FILTER/
+   * ALT/FORMAT entry, an INFO value containing {@code '='}, PASS combined with other filters).
    *
    * @param lineNumber the originating line number in the source VCF file, or {@code -1} if this position was not
    * produced by parsing a real file (e.g. constructed directly by a caller or test)
@@ -78,28 +83,62 @@ public class VcfPosition {
       @Nullable ListMultimap<String, String> info,
       @Nullable List<String> format,
       int lineNumber) {
+    this(chr, pos, ids, ref, altBases, qual, filter, info, format, lineNumber, VcfWarnings.DEFAULT, true);
+  }
+
+  /**
+   * Lenient counterpart to the strict constructor above: every check that constructor throws for instead warns
+   * to {@code warnings}. This is the constructor {@code VcfParser} uses.
+   */
+  public VcfPosition(String chr, long pos,
+      @Nullable List<String> ids,
+      String ref,
+      @Nullable List<String> altBases,
+      @Nullable BigDecimal qual,
+      @Nullable List<String> filter,
+      @Nullable ListMultimap<String, String> info,
+      @Nullable List<String> format,
+      int lineNumber,
+      VcfWarnings warnings) {
+    this(chr, pos, ids, ref, altBases, qual, filter, info, format, lineNumber,
+        Preconditions.checkNotNull(warnings, "warnings must not be null"), false);
+  }
+
+  private VcfPosition(String chr, long pos,
+      @Nullable List<String> ids,
+      String ref,
+      @Nullable List<String> altBases,
+      @Nullable BigDecimal qual,
+      @Nullable List<String> filter,
+      @Nullable ListMultimap<String, String> info,
+      @Nullable List<String> format,
+      int lineNumber,
+      VcfWarnings warnings,
+      boolean strict) {
 
     /*
-      1. Check the arguments, in order
+      1. Check the arguments, in order. `checkWarnings` is null for the strict constructor -- every check method
+      below throws instead of warning when it receives null; see each one's own updated signature.
      */
+    VcfWarnings checkWarnings = strict ? null : warnings;
 
     checkChromosome(chr);
     checkPosition(pos);
     if (ids != null) {
-      ids = checkIds(ids);
+      ids = checkIds(ids, checkWarnings);
     }
     checkRef(ref);
     if (altBases != null) {
-      altBases = checkAltBases(altBases);
+      altBases = checkAltBases(altBases, checkWarnings);
     }
     if (filter != null) {
-      filter = checkFilters(filter);
+      filter = checkFilters(filter, checkWarnings);
     }
     if (info != null) {
-      checkInfoEntries(info.entries());
+      checkInfoEntries(info.entries(), checkWarnings);
     }
     if (format != null) {
-      format = checkFormat(format);
+      format = checkFormat(format, checkWarnings);
     }
 
     /*
@@ -110,6 +149,7 @@ public class VcfPosition {
     m_chromosome = chr; // required
     m_position = pos; // required
     m_lineNumber = lineNumber; // required (-1 if not produced by parsing a real line)
+    m_warnings = warnings;
 
     if (ids != null) {
       m_ids = ids;
@@ -192,11 +232,12 @@ public class VcfPosition {
   }
 
   /**
-   * @return {@code ids} unchanged, or a new list with any empty entry dropped (with a warning); see
+   * @return {@code ids} unchanged, or a new list with any empty entry dropped (with a warning, or a thrown
+   * {@link VcfFormatException} if {@code warnings} is {@code null} -- strict mode); see
    * {@code EMPTY_FIELD_HANDLING.md}
    */
-  private static List<String> checkIds(List<String> ids) {
-    ids = InternalUtils.dropEmptyEntries("ID", ids);
+  private static List<String> checkIds(List<String> ids, @Nullable VcfWarnings warnings) {
+    ids = InternalUtils.dropEmptyEntries("ID", ids, warnings);
     Set<String> seenIds = new HashSet<>();
     for (String id : ids) {
       if (InternalUtils.containsWhitespace(id) || id.contains(";")) {
@@ -211,9 +252,10 @@ public class VcfPosition {
 
   /**
    * @return {@code altBases} unchanged, or a new list derived from it with any empty entry substituted with
-   * {@code "."} (with a warning); see {@code EMPTY_FIELD_HANDLING.md}
+   * {@code "."} (with a warning, or a thrown {@link VcfFormatException} if {@code warnings} is {@code null} --
+   * strict mode); see {@code EMPTY_FIELD_HANDLING.md}
    */
-  private static List<String> checkAltBases(List<String> altBases) {
+  private static List<String> checkAltBases(List<String> altBases, @Nullable VcfWarnings warnings) {
     // ALT is position-dependent: GT genotype values index into it positionally (VCFv4.2.tex line 217: "1 for the
     // first allele listed in ALT, 2 for the second allele listed in ALT and so on"; see getAllele(int)). Dropping
     // an empty entry (the previous behavior) would shift every subsequent allele's index down by one, silently
@@ -227,7 +269,7 @@ public class VcfPosition {
       // copying when an empty entry actually needs substituting avoids an allocation on the common case (no
       // empty ALT entry), matching checkIds()/checkFilters()'s existing lazy-copy style.
       altBases = new ArrayList<>(altBases);
-      InternalUtils.fillEmptyEntriesWithDot("ALT", altBases);
+      InternalUtils.fillEmptyEntriesWithDot("ALT", altBases, warnings);
     }
     for (String base : altBases) {
       if (base == null) {
@@ -244,11 +286,12 @@ public class VcfPosition {
    * Checks the given FILTER values for validity. This does not perform the construction-time normalization of a lone
    * {@code "PASS"} or {@code "."} value (see the constructor); those are legal single-element lists on their own.
    *
-   * @return {@code filters} unchanged, or a new list with any empty entry dropped (with a warning); see
-   * {@code EMPTY_FIELD_HANDLING.md}
+   * @return {@code filters} unchanged, or a new list with any empty entry dropped (with a warning, or a thrown
+   * {@link VcfFormatException} if {@code warnings} is {@code null} -- strict mode, which likewise throws rather
+   * than warns for PASS combined with other filters); see {@code EMPTY_FIELD_HANDLING.md}
    */
-  private static List<String> checkFilters(List<String> filters) {
-    filters = InternalUtils.dropEmptyEntries("FILTER", filters);
+  private static List<String> checkFilters(List<String> filters, @Nullable VcfWarnings warnings) {
+    filters = InternalUtils.dropEmptyEntries("FILTER", filters, warnings);
     for (String f : filters) {
       if (InternalUtils.containsWhitespace(f)) {
         throw new VcfFormatException("FILTER column entry \"" + f + "\" contains whitespace");
@@ -265,7 +308,10 @@ public class VcfPosition {
         // hard rule. hts-specs' own test/vcf/{4.1,4.2,4.3}/passed/complexfile_passed_000.vcf fixture combines PASS
         // with another code (line 61: "STD_FILTER;PASS") and is expected to parse. Confirmed valid by
         // vcf_validator 0.10.2 and accepted silently by bcftools 1.23.1 (htslib 1.23.1).
-        VcfWarnings.warn("FILTER contains PASS along with other filters: {}", filters);
+        if (warnings == null) {
+          throw new VcfFormatException("FILTER contains PASS along with other filters: " + filters);
+        }
+        warnings.warn("FILTER contains PASS along with other filters: {}", filters);
       }
       if (f.equals(".") && filters.size() > 1) {
         throw new VcfFormatException("FILTER contains '.' (missing value) along with other filters!");
@@ -274,7 +320,7 @@ public class VcfPosition {
     return filters;
   }
 
-  private static void checkInfoEntries(Iterable<Map.Entry<String, String>> entries) {
+  private static void checkInfoEntries(Iterable<Map.Entry<String, String>> entries, @Nullable VcfWarnings warnings) {
     for (Map.Entry<String, String> entry : entries) {
       String key = entry.getKey();
       String value = entry.getValue();
@@ -305,7 +351,10 @@ public class VcfPosition {
       // with this project's policy of not being stricter than bcftools on input it demonstrably tolerates (see
       // EMPTY_FIELD_HANDLING.md).
       if (value.contains("=")) {
-        VcfWarnings.warn("INFO value \"{}\" for key \"{}\" contains '='; VCFv4.2's grammar doesn't permit this, but " +
+        if (warnings == null) {
+          throw new VcfFormatException("INFO value \"" + value + "\" for key \"" + key + "\" contains '='");
+        }
+        warnings.warn("INFO value \"{}\" for key \"{}\" contains '='; VCFv4.2's grammar doesn't permit this, but " +
             "bcftools 1.23.1 accepts it silently, so it is preserved as-is", value, key);
       }
     }
@@ -319,9 +368,10 @@ public class VcfPosition {
    * '[%GT]'} against a FORMAT=. record returns the missing value regardless of that sample's own raw column
    * content, and {@code bcftools view} round-trips such a sample as "." even given other input text there.
    * Verified live against bcftools 1.23.1; per this project's policy of falling back to bcftools when the spec is
-   * silent, this is treated as valid here too.
+   * silent, this is treated as valid here too. An empty sub-field name is warned about and kept as-is, or -- if
+   * {@code warnings} is {@code null} (strict mode) -- throws {@link VcfFormatException} instead.
    */
-  private static List<String> checkFormat(List<String> format) {
+  private static List<String> checkFormat(List<String> format, @Nullable VcfWarnings warnings) {
     if (format.size() == 1 && ".".equals(format.get(0))) {
       return new ArrayList<>();
     }
@@ -336,7 +386,10 @@ public class VcfPosition {
       // FORMAT keys by index, and dropping this key would misalign every sample's values with the wrong key. See
       // EMPTY_FIELD_HANDLING.md.
       if (f.isEmpty()) {
-        VcfWarnings.warn("FORMAT contains an empty sub-field name (VCF does not allow zero-length fields); keeping " +
+        if (warnings == null) {
+          throw new VcfFormatException("FORMAT contains an empty sub-field name (VCF does not allow zero-length fields)");
+        }
+        warnings.warn("FORMAT contains an empty sub-field name (VCF does not allow zero-length fields); keeping " +
             "it as-is, but it cannot be looked up in metadata");
         continue;
       }
@@ -400,13 +453,13 @@ public class VcfPosition {
     try {
       checkChromosome(m_chromosome);
       checkPosition(m_position);
-      m_ids = checkIds(m_ids);
+      m_ids = checkIds(m_ids, m_warnings);
       checkRef(m_refBases);
-      m_altBases = checkAltBases(m_altBases);
-      m_filter = checkFilters(m_filter);
+      m_altBases = checkAltBases(m_altBases, m_warnings);
+      m_filter = checkFilters(m_filter, m_warnings);
       normalizeFilters();
-      checkInfoEntries(info().entries());
-      m_format = checkFormat(m_format);
+      checkInfoEntries(info().entries(), m_warnings);
+      m_format = checkFormat(m_format, m_warnings);
     } catch (VcfFormatException ex) {
       if (m_lineNumber >= 0) {
         ex.addMetadata(m_lineNumber, "data");
@@ -488,12 +541,12 @@ public class VcfPosition {
           // unparseable-input handling differs (warn-and-fall-back-to-missing here, vs. VcfFormatException
           // in VcfFloat.parse()), which is exactly why that's a bare NumberFormatException below, not thrown
           // from inside parseDecimal itself
-          m_quality = VcfFloat.parseDecimal("QUAL", raw);
+          m_quality = VcfFloat.parseDecimal("QUAL", raw, m_warnings);
         } catch (NumberFormatException e) {
           // a non-numeric QUAL is a value-quality issue, not a structural one (the column itself is well-formed);
           // warn and recover as the missing value, consistent with how other non-structural content issues are
           // handled, rather than throwing
-          VcfWarnings.warn("QUAL '{}' is not a number; treating it as the missing value", raw);
+          m_warnings.warn("QUAL '{}' is not a number; treating it as the missing value", raw);
         }
       }
     }
@@ -512,6 +565,11 @@ public class VcfPosition {
   public void setQuality(@Nullable BigDecimal quality) {
     m_quality = quality;
     m_rawQuality = null;
+  }
+
+  /** See {@link org.pharmgkb.parser.vcf.model.BaseMetadata#setWarningsSink}'s identical Javadoc. */
+  public void setWarningsSink(VcfWarnings warnings) {
+    m_warnings = Preconditions.checkNotNull(warnings, "warnings must not be null");
   }
 
   /**
@@ -585,7 +643,7 @@ public class VcfPosition {
         List<String> props = new ArrayList<>();
         for (String prop : raw.split(";", -1)) {
           if (prop.isEmpty()) {
-            VcfWarnings.warn("INFO contains an empty entry between ';'s (VCF does not allow zero-length fields); " +
+            m_warnings.warn("INFO contains an empty entry between ';'s (VCF does not allow zero-length fields); " +
                 "dropping it");
             continue;
           }
@@ -621,12 +679,12 @@ public class VcfPosition {
           int idx = prop.indexOf('=');
           String key = idx == -1 ? prop : prop.substring(0, idx);
           if (idx != -1 && key.isEmpty()) {
-            VcfWarnings.warn("INFO entry \"{}\" has an empty key (VCF does not allow zero-length fields); " +
+            m_warnings.warn("INFO entry \"{}\" has an empty key (VCF does not allow zero-length fields); " +
                 "dropping it", prop);
             continue;
           }
           if (!seenKeys.add(key)) {
-            VcfWarnings.warn("INFO contains duplicate key \"{}\"; keeping only the first occurrence, matching " +
+            m_warnings.warn("INFO contains duplicate key \"{}\"; keeping only the first occurrence, matching " +
                 "bcftools 1.23.1 behavior", key);
             continue;
           }
@@ -635,7 +693,7 @@ public class VcfPosition {
           } else {
             for (String value : prop.substring(idx + 1).split(",", -1)) {
               if (value.isEmpty()) {
-                VcfWarnings.warn("INFO value for key \"{}\" contains an empty entry (VCF does not allow zero-length " +
+                m_warnings.warn("INFO value for key \"{}\" contains an empty entry (VCF does not allow zero-length " +
                     "fields); treating it as the missing value '.'", key);
                 value = ".";
               }
@@ -644,7 +702,7 @@ public class VcfPosition {
           }
         }
         try {
-          checkInfoEntries(info.entries());
+          checkInfoEntries(info.entries(), m_warnings);
         } catch (VcfFormatException ex) {
           if (m_lineNumber >= 0) {
             ex.addMetadata(m_lineNumber, "data");
@@ -707,7 +765,7 @@ public class VcfPosition {
       return null;
     }
     try {
-      return InternalUtils.convertProperty(key, sf_commaJoiner.join(list));
+      return InternalUtils.convertProperty(key, sf_commaJoiner.join(list), m_warnings);
     } catch (VcfFormatException ex) {
       if (m_lineNumber >= 0) {
         ex.addMetadata(m_lineNumber, "data");

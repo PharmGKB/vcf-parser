@@ -1,5 +1,6 @@
 package org.pharmgkb.parser.vcf;
 
+import java.io.StringWriter;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -357,60 +358,56 @@ public class VcfPositionTest {
 
   @Test
   public void testBadFilter2() {
-    // PASS combined with another code now warns, not throws (see VcfPosition.checkFilters) -- hts-specs' own
-    // passed/complexfile_passed_000.vcf fixture (all versions) does exactly this and is expected to parse
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
-        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
-    appender.start();
-    root.addAppender(appender);
-    VcfPosition position;
-    try {
-      position = new VcfPosition("chr", 1, null, "C", null, null, Arrays.asList("bad", "PASS"),
-          null, null, -1);
-      assertTrue(appender.hasWarnOrHigher());
-    } finally {
-      root.detachAppender(appender);
-      appender.stop();
-    }
+    // PASS combined with another code now warns, not throws -- but only via the lenient 11-arg constructor
+    // overload (see VcfPosition.checkFilters); the bare 10-arg constructor is now strict and throws for this.
+    // hts-specs' own passed/complexfile_passed_000.vcf fixture (all versions) does exactly this and is expected
+    // to parse.
+    StringWriter sink = new StringWriter();
+    VcfPosition position = new VcfPosition("chr", 1, null, "C", null, null, Arrays.asList("bad", "PASS"),
+        null, null, -1, new VcfWarnings(sink));
+    assertTrue(sink.toString().contains("PASS along with other filters"));
     assertEquals(Arrays.asList("bad", "PASS"), position.getFilters());
   }
 
   @Test
   public void testEmptyIdEntriesDropped() {
     // VCF does not allow zero-length fields; ID is a position-independent list, so an empty entry is dropped rather
-    // than throwing (see EMPTY_FIELD_HANDLING.md)
+    // than throwing (see EMPTY_FIELD_HANDLING.md). Uses the lenient 11-arg constructor overload -- the bare 10-arg
+    // constructor is now strict and throws for an empty entry instead of dropping it.
     VcfPosition interior = new VcfPosition("chr", 1, new ArrayList<>(Arrays.asList("rs1", "", "rs2")), "C", null, null,
-        null, null, null, -1);
+        null, null, null, -1, VcfWarnings.DEFAULT);
     assertEquals(Arrays.asList("rs1", "rs2"), interior.getIds());
 
     VcfPosition trailing = new VcfPosition("chr", 1, new ArrayList<>(Arrays.asList("rs3", "")), "C", null, null,
-        null, null, null, -1);
+        null, null, null, -1, VcfWarnings.DEFAULT);
     assertEquals(Collections.singletonList("rs3"), trailing.getIds());
   }
 
   @Test
   public void testEmptyFilterEntriesDropped() {
+    // Uses the lenient 11-arg constructor overload -- the bare 10-arg constructor is now strict and throws for
+    // an empty entry instead of dropping it.
     VcfPosition interior = new VcfPosition("chr", 1, null, "C", null, null,
-        new ArrayList<>(Arrays.asList("q10", "", "q20")), null, null, -1);
+        new ArrayList<>(Arrays.asList("q10", "", "q20")), null, null, -1, VcfWarnings.DEFAULT);
     assertEquals(Arrays.asList("q10", "q20"), interior.getFilters());
 
     VcfPosition trailing = new VcfPosition("chr", 1, null, "C", null, null,
-        new ArrayList<>(Arrays.asList("q10", "")), null, null, -1);
+        new ArrayList<>(Arrays.asList("q10", "")), null, null, -1, VcfWarnings.DEFAULT);
     assertEquals(Collections.singletonList("q10"), trailing.getFilters());
   }
 
   @Test
   public void testEmptyAltEntriesSubstitutedWithDot() {
     // ALT is position-dependent (GT indexes into it -- see testGetAlleleAfterAltDotSubstitutionPreservesIndex),
-    // so an empty entry is substituted with '.', not dropped, unlike ID/FILTER above
+    // so an empty entry is substituted with '.', not dropped, unlike ID/FILTER above. Uses the lenient 11-arg
+    // constructor overload -- the bare 10-arg constructor is now strict and throws for an empty entry instead of
+    // substituting it.
     VcfPosition interior = new VcfPosition("chr", 1, null, "C",
-        new ArrayList<>(Arrays.asList("T", "", "G")), null, null, null, null, -1);
+        new ArrayList<>(Arrays.asList("T", "", "G")), null, null, null, null, -1, VcfWarnings.DEFAULT);
     assertEquals(Arrays.asList("T", ".", "G"), interior.getAltBases());
 
     VcfPosition trailing = new VcfPosition("chr", 1, null, "C",
-        new ArrayList<>(Arrays.asList("T", "")), null, null, null, null, -1);
+        new ArrayList<>(Arrays.asList("T", "")), null, null, null, null, -1, VcfWarnings.DEFAULT);
     assertEquals(Arrays.asList("T", "."), trailing.getAltBases());
   }
 
@@ -419,9 +416,11 @@ public class VcfPositionTest {
     // regression test for the actual bug: dropping an empty ALT entry (the old behavior) shifted every subsequent
     // allele's index down by one, so GT=4 (meaning "G") would silently resolve to the wrong allele after
     // normalization instead of throwing or staying correct. Substituting '.' instead preserves every index --
-    // confirmed against bcftools 1.23.1, which does the same thing (see EMPTY_FIELD_HANDLING.md)
+    // confirmed against bcftools 1.23.1, which does the same thing (see EMPTY_FIELD_HANDLING.md). Uses the
+    // lenient 11-arg constructor overload -- the bare 10-arg constructor is now strict and throws for an empty
+    // entry instead of substituting it.
     VcfPosition position = new VcfPosition("chr1", 1, null, "C",
-        new ArrayList<>(Arrays.asList("T", "C", "", "G")), null, null, null, null, -1);
+        new ArrayList<>(Arrays.asList("T", "C", "", "G")), null, null, null, null, -1, VcfWarnings.DEFAULT);
     assertEquals(Arrays.asList("T", "C", ".", "G"), position.getAltBases());
     assertEquals("C", position.getAllele(0));
     assertEquals("T", position.getAllele(1));
@@ -433,9 +432,11 @@ public class VcfPositionTest {
   @Test
   public void testEmptyFormatSubFieldKeptAsIs() {
     // unlike ID/FILTER/ALT, an empty FORMAT key is kept (not dropped): every sample's colon-split values are matched
-    // to FORMAT keys by index, and dropping this key would misalign every sample's values with the wrong key
+    // to FORMAT keys by index, and dropping this key would misalign every sample's values with the wrong key. Uses
+    // the lenient 11-arg constructor overload -- the bare 10-arg constructor is now strict and throws for an empty
+    // sub-field name instead of keeping it.
     VcfPosition position = new VcfPosition("chr", 1, null, "C", null, null, null, null,
-        new ArrayList<>(Arrays.asList("GT", "", "GQ")), -1);
+        new ArrayList<>(Arrays.asList("GT", "", "GQ")), -1, VcfWarnings.DEFAULT);
     assertEquals(Arrays.asList("GT", "", "GQ"), position.getFormat());
   }
 
@@ -449,9 +450,10 @@ public class VcfPositionTest {
   @Test
   public void testMultipleEmptyFormatKeysNotTreatedAsDuplicates() {
     // an empty FORMAT key is already handled (kept as-is, warned about) separately; two of them are not a "duplicate"
-    // in the sense the spec means
+    // in the sense the spec means. Uses the lenient 11-arg constructor overload -- the bare 10-arg constructor is
+    // now strict and throws for an empty sub-field name instead of keeping it.
     VcfPosition position = new VcfPosition("chr", 1, null, "C", null, null, null, null,
-        new ArrayList<>(Arrays.asList("GT", "", "")), -1);
+        new ArrayList<>(Arrays.asList("GT", "", "")), -1, VcfWarnings.DEFAULT);
     assertEquals(Arrays.asList("GT", "", ""), position.getFormat());
   }
 
@@ -806,9 +808,11 @@ public class VcfPositionTest {
   public void testCheckAltBasesDoesNotMutateCallersImmutableList() {
     // fillEmptyEntriesWithDot mutates its argument in place; checkAltBases must defensively copy first so an
     // immutable or caller-owned list passed to the constructor is never mutated or rejected with
-    // UnsupportedOperationException
+    // UnsupportedOperationException. Uses the lenient 11-arg constructor overload -- the bare 10-arg constructor
+    // is now strict and throws for an empty entry instead of substituting it.
     List<String> immutable = List.of("T", "");
-    VcfPosition position = new VcfPosition("chr1", 1, null, "C", immutable, null, null, null, null, -1);
+    VcfPosition position = new VcfPosition("chr1", 1, null, "C", immutable, null, null, null, null, -1,
+        VcfWarnings.DEFAULT);
     assertEquals(Arrays.asList("T", "."), position.getAltBases());
     assertEquals(Arrays.asList("T", ""), immutable);
   }
@@ -823,6 +827,77 @@ public class VcfPositionTest {
     VcfPosition position = new VcfPosition("chr1", 1, null, "C", immutable, null, null, null, null, -1);
     assertEquals(Arrays.asList("T", "C"), position.getAltBases());
     assertThrows(UnsupportedOperationException.class, () -> position.getAltBases().add("G"));
+  }
+
+  @Test
+  public void testStrictConstructorThrowsForPassCombinedWithOtherFilters() {
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new VcfPosition(
+        "1", 100, null, "A", null, null, List.of("PASS", "q10"), null, null, -1));
+    assertTrue(ex.getMessage().contains("PASS along with other filters"));
+  }
+
+  @Test
+  public void testStrictConstructorThrowsForInfoValueContainingEquals() {
+    com.google.common.collect.ListMultimap<String, String> info = com.google.common.collect.LinkedListMultimap.create();
+    info.put("DP", "1=2");
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new VcfPosition(
+        "1", 100, null, "A", null, null, null, info, null, -1));
+    assertTrue(ex.getMessage().contains("contains '='"));
+  }
+
+  @Test
+  public void testStrictConstructorThrowsForEmptyFormatSubfield() {
+    List<String> format = new java.util.ArrayList<>(List.of("GT", "", "DP"));
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new VcfPosition(
+        "1", 100, null, "A", null, null, null, null, format, -1));
+    assertTrue(ex.getMessage().contains("empty sub-field name"));
+  }
+
+  @Test
+  public void testStrictConstructorThrowsForEmptyIdEntry() {
+    List<String> ids = new java.util.ArrayList<>(List.of("rs1", ""));
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new VcfPosition(
+        "1", 100, ids, "A", null, null, null, null, null, -1));
+    assertTrue(ex.getMessage().contains("empty entry"));
+  }
+
+  @Test
+  public void testLenientConstructorRejectsNullWarnings() {
+    assertThrows(NullPointerException.class, () -> new VcfPosition(
+        "1", 100, null, "A", null, null, List.of("PASS", "q10"), null, null, -1, null));
+  }
+
+  @Test
+  public void testLenientConstructorWarnsInsteadOfThrowingForPassCombinedWithOtherFilters() {
+    StringWriter sink = new StringWriter();
+    VcfPosition position = new VcfPosition(
+        "1", 100, null, "A", null, null, List.of("PASS", "q10"), null, null, -1, new VcfWarnings(sink));
+    assertEquals(List.of("PASS", "q10"), position.getFilters());
+    assertTrue(sink.toString().contains("PASS along with other filters"));
+  }
+
+  @Test
+  public void testValidateAlwaysWarnsRegardlessOfOriginalConstructor() {
+    // built via the STRICT constructor with a valid FILTER list, then mutated to the ambiguous case, then
+    // validate()'d -- must warn (via whatever m_warnings currently is), never throw, since validate() is
+    // re-validation, not construction
+    VcfPosition position = new VcfPosition("1", 100, null, "A", null, null,
+        new java.util.ArrayList<>(List.of("q10")), null, null, -1);
+    StringWriter sink = new StringWriter();
+    position.setWarningsSink(new VcfWarnings(sink));
+    position.getFilters().add(0, "PASS");
+    assertDoesNotThrow(position::validate);
+    assertTrue(sink.toString().contains("PASS along with other filters"));
+  }
+
+  @Test
+  public void testGetQualityWarnsToConfiguredSinkForNonNumericValue() {
+    VcfPosition position = new VcfPosition("1", 100, "A", null, -1);
+    position.setRawQuality("not-a-number");
+    StringWriter sink = new StringWriter();
+    position.setWarningsSink(new VcfWarnings(sink));
+    assertNull(position.getQuality());
+    assertTrue(sink.toString().contains("is not a number"));
   }
 
 }

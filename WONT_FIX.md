@@ -23,8 +23,9 @@ doesn't fire because there are no characters to contain whitespace). This is rea
 building metadata objects outside the normal `VcfParser`/`VcfMetadata.Builder` construction paths, which is
 not how any current caller in this library operates.
 
-**Decision: won't fix.** The typed-constructor-throws / parse-path-warns split is an intentional design
-(permissive parser, strict direct construction), and the residual gap only affects hand-built objects that
+**Decision: won't fix.** The typed-constructor-throws / lenient-Map-constructor-warns split is now a named,
+systematic policy (see `AGENTS.md`'s "Direct/Manual Construction vs. Parser Construction" section), not a
+one-off case for this class specifically; the residual gap described above only affects hand-built objects that
 bypass the library's own dedup/validation entry points. Revisit if a real caller starts constructing
 metadata subclasses directly from untrusted data outside `VcfParser`/`VcfMetadata.Builder`.
 

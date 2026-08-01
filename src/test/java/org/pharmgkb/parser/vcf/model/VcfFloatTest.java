@@ -1,8 +1,10 @@
 package org.pharmgkb.parser.vcf.model;
 
+import java.io.StringWriter;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.VcfFormatException;
+import org.pharmgkb.parser.vcf.VcfWarnings;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -123,6 +125,30 @@ public class VcfFloatTest {
     assertEquals(VcfFloat.ofSpecial(VcfFloat.Special.NAN), VcfFloat.ofSpecial(VcfFloat.Special.NAN));
     assertFalse(VcfFloat.of(new BigDecimal("1.5")).equals(VcfFloat.ofSpecial(VcfFloat.Special.NAN)));
     assertFalse(VcfFloat.ofSpecial(VcfFloat.Special.NAN).equals(VcfFloat.ofSpecial(VcfFloat.Special.POSITIVE_INFINITY)));
+  }
+
+  @Test
+  public void testParseWithWarningsRoutesGrammarMismatchToSuppliedSink() {
+    StringWriter sink = new StringWriter();
+    VcfFloat result = VcfFloat.parse("5.", new VcfWarnings(sink));
+    assertEquals(new BigDecimal("5."), result.getValue());
+    assertTrue(sink.toString().contains("does not match the VCF Float grammar"));
+  }
+
+  @Test
+  public void testPublicParseStillWarnsToSharedLoggerForGrammarMismatch() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender = new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      VcfFloat.parse("5.");
+      assertTrue(appender.anyMessageContains("does not match the VCF Float grammar"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
   }
 
 }

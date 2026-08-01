@@ -38,11 +38,19 @@ public class ContigMetadata extends IdMetadata {
     if (url != null) {
       putPropertyRaw(URL, url);
     }
-    init();
+    // strict construction: length's not-a-number check in init() is structurally unreachable here (length is a
+    // primitive long, always a valid number when stringified) -- no throw-equivalent added for it.
+    if (url != null) {
+      try {
+        URI.create(url).toURL();
+      } catch (IllegalArgumentException | MalformedURLException e) {
+        throw new VcfFormatException(getLabel() + " URL " + url + " is malformed: " + e.getMessage(), e);
+      }
+    }
   }
 
-  public ContigMetadata(Map<String, String> properties) {
-    super("CONTIG", properties);
+  public ContigMetadata(Map<String, String> properties, VcfWarnings warnings) {
+    super("CONTIG", properties, warnings);
     init();
   }
 
@@ -104,7 +112,7 @@ public class ContigMetadata extends IdMetadata {
         //noinspection ResultOfMethodCallIgnored
         Long.parseLong(length);
       } catch (NumberFormatException e) {
-        VcfWarnings.warn("{} length \"{}\" is not a number", getLabel(), length);
+        m_warnings.warn("{} length \"{}\" is not a number", getLabel(), length);
       }
     }
     // HTS_SPECS_BASELINE_STATUS.md's "Non-valid URL fixtures" section: "Neither VCFv4.1, VCFv4.2, nor VCFv4.3
@@ -116,7 +124,7 @@ public class ContigMetadata extends IdMetadata {
       try {
         URI.create(url).toURL();
       } catch (IllegalArgumentException | MalformedURLException e) {
-        VcfWarnings.warn("{} URL {} is malformed: {}", getLabel(), url, e.getMessage());
+        m_warnings.warn("{} URL {} is malformed: {}", getLabel(), url, e.getMessage());
       }
     }
     // No ensureNoExtras() call here, matching InfoMetadata/FormatMetadata/IdDescriptionMetadata's identical

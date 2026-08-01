@@ -215,7 +215,7 @@ public class VcfWriterTest {
     props.put("Number", "1");
     props.put("Type", "NotARealType");
     props.put("Description", "\"d\"");
-    InfoMetadata info = new InfoMetadata(props);
+    InfoMetadata info = new InfoMetadata(props, VcfWarnings.DEFAULT);
     assertNull(info.getType());
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
     writer.writeHeader(metadata);
@@ -604,7 +604,7 @@ public class VcfWriterTest {
     props.put("Description", "\"d\"");
     props.put("AAAA", "\"abc\"def\"");
     props.put("BBBB", "\"has,a,comma\"");
-    InfoMetadata info = new InfoMetadata(props);
+    InfoMetadata info = new InfoMetadata(props, VcfWarnings.DEFAULT);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
@@ -764,7 +764,16 @@ public class VcfWriterTest {
 
   @Test
   public void testValidateBeforeWriteHandlesOversizedNumberAsDiagnostic() throws Exception {
-    InfoMetadata info = new InfoMetadata("NS", "d", InfoType.Integer, "999999999999999999999", null, null);
+    // an oversized/unparseable Number can't be constructed via the typed constructor (it throws immediately on
+    // a bad reserved cardinality), so this builds the same raw properties the typed constructor would have
+    // produced via the Map-based constructor instead -- matching how real VCF header parsing constructs
+    // InfoMetadata (VcfParser always uses this constructor, which still warns rather than throws)
+    Map<String, String> props = new LinkedHashMap<>();
+    props.put("ID", "NS");
+    props.put("Description", "\"d\"");
+    props.put("Type", "Integer");
+    props.put("Number", "999999999999999999999");
+    InfoMetadata info = new InfoMetadata(props, VcfWarnings.DEFAULT);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
     VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
     position.getAltBases().add("T");
@@ -926,10 +935,10 @@ public class VcfWriterTest {
 
   @Test
   public void testSpecialNumberCardinality() {
-    assertEquals(2L, VcfWriter.getExpectedCardinality("A", 2, 2));
-    assertEquals(3L, VcfWriter.getExpectedCardinality("R", 2, 2));
-    assertEquals(6L, VcfWriter.getExpectedCardinality("G", 2, 2));
-    assertEquals(10L, VcfWriter.getExpectedCardinality("G", 2, 3));
+    assertEquals(2L, VcfWriter.getExpectedCardinality("A", 2, 2, VcfWarnings.DEFAULT));
+    assertEquals(3L, VcfWriter.getExpectedCardinality("R", 2, 2, VcfWarnings.DEFAULT));
+    assertEquals(6L, VcfWriter.getExpectedCardinality("G", 2, 2, VcfWarnings.DEFAULT));
+    assertEquals(10L, VcfWriter.getExpectedCardinality("G", 2, 3, VcfWarnings.DEFAULT));
   }
 
   @Test
@@ -937,7 +946,7 @@ public class VcfWriterTest {
     // an astronomically large ploidy/allele-count combination overflows long; this must return null (skip
     // validation), consistent with how the numeric-Number branch already skips validation when Number is too large
     // to parse, rather than returning Long.MAX_VALUE as a bogus expected count
-    assertNull(VcfWriter.getExpectedCardinality("G", 1000, 1000));
+    assertNull(VcfWriter.getExpectedCardinality("G", 1000, 1000, VcfWarnings.DEFAULT));
   }
 
   @Test
@@ -949,12 +958,12 @@ public class VcfWriterTest {
     // sample's ploidy at all (previously hardcoded to 2, which would have falsely flagged a correctly-formed
     // haploid record's Number=G INFO field -- e.g. combinationsWithRepetition(2 alleles, 1 ploidy) = 2 actual
     // values, but the hardcoded ploidy=2 assumption expects combinationsWithRepetition(2, 2) = 3).
-    assertNull(VcfWriter.getExpectedCardinality("G", 2, null));
+    assertNull(VcfWriter.getExpectedCardinality("G", 2, null, VcfWarnings.DEFAULT));
     // Number=A/R/an explicit integer don't depend on ploidy at all, so they must still validate normally even when
     // ploidy is unknown
-    assertEquals(2L, VcfWriter.getExpectedCardinality("A", 2, null));
-    assertEquals(3L, VcfWriter.getExpectedCardinality("R", 2, null));
-    assertEquals(5L, VcfWriter.getExpectedCardinality("5", 2, null));
+    assertEquals(2L, VcfWriter.getExpectedCardinality("A", 2, null, VcfWarnings.DEFAULT));
+    assertEquals(3L, VcfWriter.getExpectedCardinality("R", 2, null, VcfWarnings.DEFAULT));
+    assertEquals(5L, VcfWriter.getExpectedCardinality("5", 2, null, VcfWarnings.DEFAULT));
   }
 
   @Test
@@ -1008,7 +1017,8 @@ public class VcfWriterTest {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     // INFO metadata with no Type -> getType() is null; the writer must not NPE
-    InfoMetadata info = new InfoMetadata(InternalUtils.extractProperties("ID=NS", "Number=1", "Description=\"n\""));
+    InfoMetadata info = new InfoMetadata(InternalUtils.extractProperties(
+        new String[]{"ID=NS", "Number=1", "Description=\"n\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
     writer.writeHeader(metadata);
     VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
@@ -1368,7 +1378,7 @@ public class VcfWriterTest {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-        .addInfo(new InfoMetadata("AF", "d", InfoType.String, "1", null, null))
+        .addInfo(new InfoMetadata("AF", "d", InfoType.Float, "A", null, null))
         .build();
     metadata.getInfo().get("AF").putPropertyRaw("ID", "MISMATCHED"); // now stored under key "AF" but own ID differs
     assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
@@ -1415,7 +1425,7 @@ public class VcfWriterTest {
 
   @Test
   public void testPeriodicCheckDetectsErrorDuringWriteLineWithoutClose() throws Exception {
-    // writeLine() no longer flushes/checks on every call (Task 1 removes that); this proves the periodic
+    // writeLine() no longer flushes/checks on every call; this proves the periodic
     // (every-1000-line) check inside printLine() still catches a failure introduced mid-stream, rather than
     // only close() ever detecting it -- and (regression) that this also releases the underlying resource
     // immediately, without the caller ever calling close() themselves
@@ -1746,6 +1756,131 @@ public class VcfWriterTest {
     // and the emitted header genuinely does not reflect the post-header mutation, since it happened too late to be
     // written -- this default-mode path doesn't detect or care
     assertFalse(sw.toString().contains("##INFO=<ID=NS"));
+  }
+
+  @Test
+  public void testWarningsToFileCapturesLazyQualityGetterFiredDuringWriteLine(
+      @org.junit.jupiter.api.io.TempDir Path tempDir) throws IOException {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").setColumns(List.of("#CHROM", "POS",
+        "ID", "REF", "ALT", "QUAL", "FILTER", "INFO")).build();
+    VcfPosition position = new VcfPosition("1", 100, "A", null, -1);
+    position.setRawQuality("notanumber"); // never accessed yet -- writeLine() must be what fires the lazy parse
+    Path outFile = tempDir.resolve("out.vcf");
+    Path warningsFile = tempDir.resolve("warnings.log");
+    try (VcfWriter writer = new VcfWriter.Builder().toFile(outFile).warningsToFile(warningsFile).build()) {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, List.of());
+    }
+    assertTrue(java.nio.file.Files.readString(warningsFile).contains("is not a number"));
+  }
+
+  @Test
+  public void testWarningsToFileCapturesLazyDuplicateFormatKeyWarningDuringWriteLine(
+      @org.junit.jupiter.api.io.TempDir Path tempDir) throws IOException {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addFormat(new FormatMetadata("DP", "depth", "1", FormatType.Integer))
+        .setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .build();
+    VcfPosition position = new VcfPosition("1", 100, null, "A", null, null, null, null, List.of("DP"), -1);
+    VcfSample sample = new VcfSample(List.of("DP", "DP"), List.of("1", "2")); // duplicate key, never accessed yet
+    Path outFile = tempDir.resolve("out.vcf");
+    Path warningsFile = tempDir.resolve("warnings.log");
+    try (VcfWriter writer = new VcfWriter.Builder().toFile(outFile).warningsToFile(warningsFile).build()) {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, List.of(sample));
+    }
+    assertTrue(java.nio.file.Files.readString(warningsFile).contains("duplicate FORMAT key"));
+  }
+
+  @Test
+  public void testWarningsToFileCapturesMetadataDeclarationWarningDuringWriteHeaderValidation(
+      @org.junit.jupiter.api.io.TempDir Path tempDir) throws IOException {
+    // finding #7 of this plan's external review: the design says writeHeader() claims metadata declarations
+    // before validating them, but the tests above only cover writeLine() -- this exercises the writeHeader()
+    // side specifically. Build a valid ContigMetadata via the strict constructor, then mutate its raw URL
+    // property directly (bypassing the constructor's own throw-on-malformed-URL check, the same way a caller
+    // mutating a live view always can), so the warning is only reachable via validateBeforeWrite()'s
+    // entry.validate() call inside writeHeader() -- not at construction time.
+    org.pharmgkb.parser.vcf.model.ContigMetadata contig =
+        new org.pharmgkb.parser.vcf.model.ContigMetadata("1", 1000L, "GRCh38", null, null, null, null);
+    contig.getPropertiesRaw().put(org.pharmgkb.parser.vcf.model.ContigMetadata.URL, "not a url");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addContig(contig)
+        .setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
+        .build();
+    Path outFile = tempDir.resolve("out.vcf");
+    Path warningsFile = tempDir.resolve("warnings.log");
+    try (VcfWriter writer = new VcfWriter.Builder().toFile(outFile).warningsToFile(warningsFile)
+        .validateBeforeWrite().build()) {
+      writer.writeHeader(metadata);
+    }
+    assertTrue(java.nio.file.Files.readString(warningsFile).contains("is malformed"));
+  }
+
+  @Test
+  public void testDefaultWriteHeaderClaimsMetadataDeclarationsEvenWithoutValidateBeforeWrite(
+      @org.junit.jupiter.api.io.TempDir Path tempDir) throws IOException {
+    // finding #1 of this plan's second-round external review (blocking): writeHeader() must claim every
+    // metadata declaration's warning sink unconditionally, not only inside validateBeforeWrite()'s own
+    // validation. Metadata declarations have no lazy getters of their own today, so there's no
+    // automatically-triggered warning to observe in the default path -- this demonstrates the claim happened
+    // by manually calling validate() on the SAME object after a default-mode writeHeader() call and confirming
+    // it now warns to the writer's own sink instead of the shared logger, proving setWarningsSink was called.
+    org.pharmgkb.parser.vcf.model.ContigMetadata contig =
+        new org.pharmgkb.parser.vcf.model.ContigMetadata("1", 1000L, "GRCh38", null, null, null, null);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addContig(contig)
+        .setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
+        .build();
+    Path outFile = tempDir.resolve("out.vcf");
+    Path warningsFile = tempDir.resolve("warnings.log");
+    try (VcfWriter writer = new VcfWriter.Builder().toFile(outFile).warningsToFile(warningsFile).build()) {
+      writer.writeHeader(metadata); // default mode -- no validateBeforeWrite()
+      contig.getPropertiesRaw().put(org.pharmgkb.parser.vcf.model.ContigMetadata.URL, "not a url");
+      contig.validate();
+    }
+    assertTrue(java.nio.file.Files.readString(warningsFile).contains("is malformed"));
+  }
+
+  @Test
+  public void testSecondWriterReclaimsAnAlreadyClaimedObjectAndOverridesTheFirstsDestination(
+      @org.junit.jupiter.api.io.TempDir Path tempDir) throws IOException {
+    // the design's Testing Plan requires proving a re-claim genuinely OVERRIDES a prior destination, not just
+    // that a fresh object gets claimed once: the same ContigMetadata is claimed by two different VcfWriters in
+    // sequence, and the warning fired after the second claim must reach only the second writer's destination.
+    // Both writers stay open across the whole test, so a failed re-claim would be observable as a second
+    // "is malformed" line in the FIRST writer's still-open warnings file rather than as a silent SLF4J
+    // fallback (a closed VcfWarnings falls back to the shared logger, which would mask the failure).
+    org.pharmgkb.parser.vcf.model.ContigMetadata contig =
+        new org.pharmgkb.parser.vcf.model.ContigMetadata("1", 1000L, "GRCh38", null, null, null, null);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addContig(contig)
+        .setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
+        .build();
+    Path firstWarningsFile = tempDir.resolve("first-warnings.log");
+    Path secondWarningsFile = tempDir.resolve("second-warnings.log");
+    try (VcfWriter firstWriter = new VcfWriter.Builder().toFile(tempDir.resolve("first.vcf"))
+        .warningsToFile(firstWarningsFile).build()) {
+      firstWriter.writeHeader(metadata); // claims contig for firstWriter
+      contig.getPropertiesRaw().put(org.pharmgkb.parser.vcf.model.ContigMetadata.URL, "not a url");
+      contig.validate(); // warning #1 -> firstWarningsFile
+
+      try (VcfWriter secondWriter = new VcfWriter.Builder().toFile(tempDir.resolve("second.vcf"))
+          .warningsToFile(secondWarningsFile).build()) {
+        secondWriter.writeHeader(metadata); // re-claims the SAME contig for secondWriter
+        contig.validate(); // warning #2 -> must go to secondWarningsFile, not firstWarningsFile
+      }
+    }
+    assertEquals(1, countMalformedUrlWarnings(firstWarningsFile),
+        "the first writer's destination must have received only the pre-re-claim warning");
+    assertEquals(1, countMalformedUrlWarnings(secondWarningsFile),
+        "the post-re-claim warning must have been routed to the second writer's destination");
+  }
+
+  private static long countMalformedUrlWarnings(Path warningsFile) throws IOException {
+    return java.nio.file.Files.readAllLines(warningsFile).stream()
+        .filter(line -> line.contains("is malformed"))
+        .count();
   }
 
 }
