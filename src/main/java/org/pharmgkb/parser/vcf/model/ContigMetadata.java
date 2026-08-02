@@ -3,7 +3,9 @@ package org.pharmgkb.parser.vcf.model;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.util.Map;
+import java.util.regex.Matcher;
 import org.jspecify.annotations.Nullable;
+import org.pharmgkb.parser.vcf.InternalUtils;
 import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfWarnings;
 
@@ -58,6 +60,23 @@ public class ContigMetadata extends IdMetadata {
       } catch (IllegalArgumentException | MalformedURLException e) {
         throw new VcfFormatException(getLabel() + " URL " + url + " is malformed: " + e.getMessage(), e);
       }
+    }
+    // VCFv4.2.tex doesn't table a character-set grammar for ##contig IDs beyond IdMetadata's own shared
+    // whitespace/comma checks above; this fuller grammar is VCFv4.2-silent clarifying guidance from
+    // VCFv4.3.tex's own "Changes to VCFv4.3" errata (~line 2129-2144, unchanged in 4.4/4.5), which states the
+    // rule for "VCF contig names" specifically -- confirmed by direct bcftools 1.23.1 testing that this does
+    // NOT extend to INFO/FORMAT tag names, which bcftools validates under a different, stricter rule (see
+    // findings24.md item 20). Comma is already covered by IdMetadata's own dedicated check above (which fires
+    // first for any comma-containing ID), so this pattern's own comma coverage is confirmed-redundant here,
+    // not a double-check risk.
+    char first = id.charAt(0);
+    if (first == '*' || first == '=') {
+      throw new VcfFormatException(getLabel() + " ID \"" + id + "\" must not start with '" + first + "'");
+    }
+    Matcher matcher = InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN.matcher(id);
+    if (matcher.find()) {
+      throw new VcfFormatException(getLabel() + " ID \"" + id + "\" contains the invalid character '" +
+          matcher.group() + "'");
     }
   }
 
@@ -137,6 +156,17 @@ public class ContigMetadata extends IdMetadata {
         URI.create(url).toURL();
       } catch (IllegalArgumentException | MalformedURLException e) {
         m_warnings.warn("{} URL {} is malformed: {}", getLabel(), url, e.getMessage());
+      }
+    }
+    String id = getId();
+    if (id != null && !id.isEmpty()) {
+      char first = id.charAt(0);
+      if (first == '*' || first == '=') {
+        m_warnings.warn("{} ID \"{}\" must not start with '{}'", getLabel(), id, first);
+      }
+      Matcher matcher = InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN.matcher(id);
+      if (matcher.find()) {
+        m_warnings.warn("{} ID \"{}\" contains the invalid character '{}'", getLabel(), id, matcher.group());
       }
     }
     // No ensureNoExtras() call here, matching InfoMetadata/FormatMetadata/IdDescriptionMetadata's identical

@@ -121,6 +121,84 @@ public class ContigMetadataTest {
   }
 
   @Test
+  public void testTypedConstructorRejectsLeadingAsteriskOrEquals() {
+    // VCFv4.3.tex's "Changes to VCFv4.3" errata: "*"/"=" "were already invalid and remain so" as the first
+    // character of a VCF contig name
+    assertThrows(VcfFormatException.class,
+        () -> new ContigMetadata("*chr1", 100L, null, null, null, null, null));
+    assertThrows(VcfFormatException.class,
+        () -> new ContigMetadata("=chr1", 100L, null, null, null, null, null));
+  }
+
+  @Test
+  public void testTypedConstructorAcceptsAsteriskWhenNotFirstCharacter() {
+    // regression guard: VCFv4.3.tex's errata says "* is now valid when not the first character" -- must not
+    // regress to rejecting it everywhere
+    ContigMetadata contig = new ContigMetadata("chr*1", 100L, null, null, null, null, null);
+    assertEquals("chr*1", contig.getId());
+  }
+
+  @Test
+  public void testTypedConstructorAcceptsColonAnywhere() {
+    // regression guard: matches VcfPosition's own testColonInChromosomeAllowed -- VCFv4.3.tex's errata
+    // explicitly confirms colon was wrongly disallowed in the past and remains valid
+    ContigMetadata contig = new ContigMetadata("chr:1", 100L, null, null, null, null, null);
+    assertEquals("chr:1", contig.getId());
+  }
+
+  @Test
+  public void testTypedConstructorRejectsInvalidCharactersAnywhere() {
+    // the 12 characters VCFv4.3.tex's errata newly disallows in a VCF contig name (comma is already covered
+    // by IdMetadata's own dedicated check, exercised separately by this class's existing whitespace/comma
+    // tests)
+    char[] invalidChars = { '\\', '"', '`', '\'', '(', ')', '{', '}', '[', ']', '<', '>' };
+    for (char c : invalidChars) {
+      String id = "chr" + c + "1";
+      assertThrows(VcfFormatException.class,
+          () -> new ContigMetadata(id, 100L, null, null, null, null, null),
+          () -> "Contig ID \"" + id + "\" containing '" + c + "' should have been rejected");
+    }
+  }
+
+  @Test
+  public void testMapConstructorWarnsForLeadingAsterisk() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      Map<String, String> map = new HashMap<>();
+      map.put(ContigMetadata.ID, "*chr1");
+      new ContigMetadata(map, VcfWarnings.DEFAULT);
+      assertTrue(appender.anyMessageContains("must not start with"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testMapConstructorWarnsForInvalidCharacter() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      Map<String, String> map = new HashMap<>();
+      map.put(ContigMetadata.ID, "chr(1)");
+      new ContigMetadata(map, VcfWarnings.DEFAULT);
+      assertTrue(appender.anyMessageContains("contains the invalid character"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testBadLength() {
     // ContigMetadata.init()'s catch (NumberFormatException) block should warn on a non-numeric length
     ch.qos.logback.classic.Logger root =
