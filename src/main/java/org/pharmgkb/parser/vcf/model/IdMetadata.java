@@ -53,6 +53,15 @@ public abstract class IdMetadata extends BaseMetadata {
   private void init() {
     String id = getPropertyRaw(ID);
     warnIfMissing(ID, id);
+    // warnIfMissing only tests for null; a present-but-blank ID (id.equals("")) previously got no diagnostic at
+    // all here -- containsWhitespace(id) below doesn't fire either, since an empty string has no characters to
+    // contain whitespace. This class's own typed (label, id) constructor already rejects both null and blank
+    // (VCFv4.3.tex line 121: "All structured lines require an ID..."); this closes the identical gap for the
+    // Map-based constructor and for validate() re-running on a live-mutated blank ID, via the same
+    // already-active validate()/VcfWriter.validateBeforeWrite() mechanism the checks below rely on.
+    if (id != null && id.isEmpty()) {
+      m_warnings.warn("{} metadata ID is blank", getLabel());
+    }
     // VCFv4.2.tex/VCFv4.3.tex line 105/200 only states this rule for ##ALT's own ID explicitly, but hts-specs'
     // own conformance fixtures (test/vcf/{4.1,4.2,4.3}/failed/failed_meta_contig_001.vcf,
     // test/vcf/4.3/failed/failed_meta_sample_001.vcf) extend it to ##contig and ##SAMPLE, bcftools 1.23.1

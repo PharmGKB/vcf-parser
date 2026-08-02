@@ -176,8 +176,13 @@ still throws -- see the strict section above):
   ID (e.g. an IUPAC ambiguity code, or a `CN0`-through-`CN124`-style copy-number allele used by 1000 Genomes) is not
   checked against that hierarchy at all, since colon-less custom codes have other spec-sanctioned, non-structural-
   variant uses this parser must not reject.
+- Any of those same six types' `ID` that is present but blank (`ID=`) on an object that already exists in
+  storage — as opposed to a declaration still being parsed, which is dropped before storage per the missing/
+  blank-ID bullet above: warns (VCFv4.3.tex line 121, the same citation as that bullet). This covers a
+  declaration built directly or live-mutated after construction, which the parser's own drop-before-storage
+  check never sees.
 - A `##contig`/`##INFO`/`##FORMAT`/`##FILTER`/`##SAMPLE`/`##ALT` declaration's `ID` containing whitespace (as
-  opposed to being entirely blank/missing, handled separately above): warns. VCFv4.2/4.3 state this explicitly
+  opposed to being entirely blank/missing, handled by the two bullets above): warns. VCFv4.2/4.3 state this explicitly
   only for `##ALT` (VCFv4.2.tex line 105); hts-specs' own `failed_meta_contig_001.vcf` (4.1/4.2/4.3) and
   `failed_meta_sample_001.vcf` (4.3 only) fixtures extend it to `##contig`/`##SAMPLE`, bcftools 1.23.1 warns
   (`Invalid tag name`/`Invalid contig name`) for `##INFO`/`##FORMAT`/`##contig` specifically, and vcf_validator

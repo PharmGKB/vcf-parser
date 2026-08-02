@@ -5,30 +5,6 @@ unaddressed, along with the reasoning, so they aren't rediscovered and re-propos
 entry is self-contained: it names the exact code location and behavior, explains why it's not being fixed,
 and states what would change that decision.
 
-## IdMetadata subclasses built directly with an empty (not null) ID get no diagnostic
-
-`IdMetadata`'s `(label, id)` typed constructor (`IdMetadata.java:21-23`) throws for a null/blank `id`, but
-the `Map`-based constructor (and `init()`) never re-check it.
-
-This is not a gap in normal VCF parsing: `VcfMetadata`'s `addAlt`/`addFilter`/`addInfo`/`addFormat`/
-`addContig`/`addSample` methods (`VcfMetadata.java:141,249,265,281,297`) each independently check
-`getId() == null || getId().trim().isEmpty()` and warn-and-drop before storing, and
-`VcfParser.parseMetadataProperty` (`VcfParser.java:405-423`) always routes a parsed declaration through one
-of those methods. Every declaration that reaches storage via real parsing is already checked there.
-
-The one residual gap: constructing a subclass directly (e.g. `new ContigMetadata(someMap)`) with `ID=""`
-and never passing it through one of `VcfMetadata`'s `addXxx` methods produces a blank-ID object with zero
-diagnostic emitted (`warnIfMissing` doesn't fire because the value is non-null; the whitespace check
-doesn't fire because there are no characters to contain whitespace). This is reachable only by hand-
-building metadata objects outside the normal `VcfParser`/`VcfMetadata.Builder` construction paths, which is
-not how any current caller in this library operates.
-
-**Decision: won't fix.** The typed-constructor-throws / lenient-Map-constructor-warns split is now a named,
-systematic policy (see `AGENTS.md`'s "Direct/Manual Construction vs. Parser Construction" section), not a
-one-off case for this class specifically; the residual gap described above only affects hand-built objects that
-bypass the library's own dedup/validation entry points. Revisit if a real caller starts constructing
-metadata subclasses directly from untrusted data outside `VcfParser`/`VcfMetadata.Builder`.
-
 ## BaseMetadata tolerates a null property value inserted via getPropertiesRaw()
 
 `BaseMetadata.putPropertyRaw`/`putAndQuoteProperty` (`BaseMetadata.java:92,99`) throw `VcfFormatException`

@@ -99,6 +99,20 @@ public class IdDescriptionMetadataTest {
   }
 
   @Test
+  public void testBlankIdWarns() {
+    // regression test: a present-but-blank ID (ID="") was previously silently accepted for this class (shared
+    // by ##ALT, ##FILTER, and ##SAMPLE) -- warnIfMissing only tests for null, and the whitespace check below it
+    // doesn't fire either, since an empty string has no characters to contain whitespace. Only reachable via the
+    // Map-based constructor or live mutation, since the typed (label, id) constructor already throws for both
+    // null and blank.
+    Map<String, String> props = InternalUtils.extractProperties(
+        new String[] {"ID=", "Description=\"d\""}, VcfWarnings.DEFAULT);
+    StringWriter sink = new StringWriter();
+    new IdDescriptionMetadata("TEST", props, new VcfWarnings(sink));
+    assertTrue(sink.toString().contains("metadata ID is blank"));
+  }
+
+  @Test
   public void testIdWithWhitespaceWarns() {
     // regression test: an ID containing whitespace was previously silently accepted for this class (shared by
     // ##ALT, ##FILTER, and ##SAMPLE -- the underlying code path is identical regardless of which of the three
