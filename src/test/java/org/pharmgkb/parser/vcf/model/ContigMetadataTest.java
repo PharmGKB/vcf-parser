@@ -172,7 +172,7 @@ public class ContigMetadataTest {
   @Test
   public void testNullUrlNotSerialized() {
     // a null URL argument must not be stored (it would otherwise serialize as the literal "URL=null")
-    ContigMetadata contig = new ContigMetadata("chr1", 10, "asm", null, null, null, null);
+    ContigMetadata contig = new ContigMetadata("chr1", 10L, "asm", null, null, null, null);
     assertNull(contig.getUrl());
     assertFalse(contig.getPropertyKeys().contains(ContigMetadata.URL));
   }
@@ -237,6 +237,42 @@ public class ContigMetadataTest {
     assertEquals("d7d0c95cd23db914d68f9ce9e2d0c7c8", contig.getMd5());
     assertEquals("9606", contig.getTaxonomy());
     assertEquals("Homo sapiens", contig.getSpecies());
+  }
+
+  @Test
+  public void testTypedConstructorAcceptsNullAssembly() {
+    // assembly is spec-optional (VCFv4.2.tex line 121: "all tags are optional"); a caller building a minimal
+    // declaration must be able to omit it via the typed constructor, not only the Map-based one. A null
+    // argument must not be stored (it would otherwise serialize as the literal "assembly=null").
+    ContigMetadata contig = new ContigMetadata("chr1", 100L, null, null, null, null, null);
+    assertNull(contig.getAssembly());
+    assertFalse(contig.getPropertyKeys().contains(ContigMetadata.ASSEMBLY));
+    assertEquals(100L, contig.getLength());
+  }
+
+  @Test
+  public void testTypedConstructorAcceptsNullLength() {
+    // length is spec-optional too (VCFv4.2.tex line 138: "highly recommended (but not required)"); a null
+    // argument must not be stored (it would otherwise serialize as the literal "length=null"), and
+    // getLength() must still throw VcfFormatException afterward, matching its own documented contract for an
+    // absent length regardless of how the object was constructed.
+    ContigMetadata contig = new ContigMetadata("chr1", null, "GRCh38", null, null, null, null);
+    assertFalse(contig.getPropertyKeys().contains(ContigMetadata.LENGTH));
+    assertThrows(VcfFormatException.class, contig::getLength);
+    assertEquals("GRCh38", contig.getAssembly());
+  }
+
+  @Test
+  public void testTypedConstructorAcceptsMinimalSpecCompliantContig() {
+    // VCFv4.2.tex line 121 ("all tags are optional") and line 138 ("highly recommended (but not required)"
+    // for length specifically) establish that ID alone is a spec-compliant ##contig declaration; the spec's
+    // own worked examples (line 33, line 140) all include additional tags, but the prose does not require
+    // them. Before this fix, only the Map-based constructor could represent an ID-only declaration; the
+    // typed constructor required both assembly and length.
+    ContigMetadata contig = new ContigMetadata("ctg1", null, null, null, null, null, null);
+    assertEquals("ctg1", contig.getId());
+    assertNull(contig.getAssembly());
+    assertThrows(VcfFormatException.class, contig::getLength);
   }
 
   @Test

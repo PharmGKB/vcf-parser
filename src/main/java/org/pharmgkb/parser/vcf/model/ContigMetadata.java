@@ -21,11 +21,22 @@ public class ContigMetadata extends IdMetadata {
   public static final String TAXONOMY = "taxonomy";
   public static final String URL = "URL";
 
-  public ContigMetadata(String id, long length, String assembly, @Nullable String md5,
+  /**
+   * @param length {@code null} if absent -- VCFv4.2.tex line 138 documents {@code length} as "highly
+   * recommended (but not required)" for {@code ##contig}, so a caller building a minimal, spec-compliant
+   * declaration must be able to omit it, the same as {@code assembly}/{@code md5}/{@code species}/
+   * {@code taxonomy}/{@code url}
+   * @param assembly {@code null} if absent (see VCFv4.2.tex line 121, "all tags are optional")
+   */
+  public ContigMetadata(String id, @Nullable Long length, @Nullable String assembly, @Nullable String md5,
       @Nullable String species, @Nullable String taxonomy, @Nullable String url) {
     super("CONTIG", id);
-    putPropertyRaw(LENGTH, String.valueOf(length));
-    putPropertyRaw(ASSEMBLY, assembly);
+    if (length != null) {
+      putPropertyRaw(LENGTH, String.valueOf(length));
+    }
+    if (assembly != null) {
+      putPropertyRaw(ASSEMBLY, assembly);
+    }
     if (md5 != null) {
       putPropertyRaw(MD5, md5);
     }
@@ -38,8 +49,9 @@ public class ContigMetadata extends IdMetadata {
     if (url != null) {
       putPropertyRaw(URL, url);
     }
-    // strict construction: length's not-a-number check in init() is structurally unreachable here (length is a
-    // primitive long, always a valid number when stringified) -- no throw-equivalent added for it.
+    // strict construction: length's not-a-number check in init() is structurally unreachable here (length, if
+    // present, is already a parsed Long, never a malformed string) -- no throw-equivalent added for it; a null
+    // length is legitimately absent per VCFv4.2.tex line 138, not malformed.
     if (url != null) {
       try {
         URI.create(url).toURL();
