@@ -164,3 +164,25 @@ Affected fixture:
 | Fixture | Version(s) | `##CauseOfFailure=` |
 |---|---|---|
 | `failed_body_chrom_001.vcf` | 4.1, 4.2 | `contig ID contains a colon` |
+
+## Contig ID asterisk fixture (4.3-only, out of automated scope): why not tracked, and why it's also stale
+
+`test/vcf/4.3/failed/failed_meta_contig_003.vcf` declares `##contig=<ID=1.*,length=123456>` with
+`##CauseOfFailure=contig ID contains illegal character`. This fixture only exists under `4.3/failed/` (no
+4.1/4.2 counterpart), so `HtsSpecsConformanceTest`'s automated check -- which only examines `failed/`
+fixtures for `FAILED_VERSIONS = List.of("4.1", "4.2")` -- never examines it, and it has no row in
+`hts-specs-baseline.tsv`. Confirmed: regenerating the baseline after `ContigMetadata`'s character-set fix
+produces an empty diff.
+
+Independent of the automated-scope question, this fixture's claimed defect is also stale, per the same
+`VCFv4.3.tex` errata cited in the "CHROM colon fixture" section above: `*` is invalid only as the first
+character of a contig name, and in `1.*` it's the third. This isn't just spec-text-vs-one-fixture --
+hts-specs' own suite disagrees with itself on the identical ID string: the 4.1 and 4.2 copies of
+`passed/passed_meta_contig.vcf` (fixtures expected to parse cleanly) both contain the literal line
+`##contig=<ID=1.*,length=123456>`, while the 4.3 `failed/` fixture added in the same original commit claims
+that exact string is invalid. Confirmed with direct `bcftools 1.23.1` testing that bcftools accepts a
+contig ID with `*` in a non-leading position silently, and only warns when `*` (or `=`) is the leading
+character -- matching the amended rule, not the fixture's claim.
+
+This is not tracked as a baseline gap (per the automated-scope point above), but is documented here so a
+future reader who greps for "contig"/"asterisk" finds the reasoning.

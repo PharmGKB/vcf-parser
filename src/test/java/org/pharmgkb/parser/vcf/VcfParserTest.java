@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.pharmgkb.common.util.PathUtils;
+import org.pharmgkb.parser.vcf.model.ContigMetadata;
 import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
 import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
@@ -1179,6 +1180,39 @@ public class VcfParserTest {
         .build()) {
       parser.parse(); // must not throw
     }
+  }
+
+  @Tag("hts-specs")
+  @Test
+  void testHtsSpecsContigIdAsteriskFixtureIsActuallyValid() throws IOException {
+    // failed_meta_contig_003.vcf (4.3-only) claims "##contig=<ID=1.*,length=123456>" is invalid
+    // ("contig ID contains illegal character"), but VCFv4.3.tex's own "Changes to VCFv4.3" errata says '*' is
+    // only invalid as the first character -- it's the third character here, so this file must parse cleanly.
+    // See HTS_SPECS_BASELINE_STATUS.md's "Contig ID asterisk fixture" section for the full cross-version
+    // hts-specs self-contradiction this reproduces.
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.3/failed/failed_meta_contig_003.vcf"))
+        .parseWith((metadata, position, sampleData) -> { })
+        .build()) {
+      parser.parse(); // must not throw
+    }
+    // passed_meta_contig.vcf (4.2) independently declares the identical "1.*" ID as part of a fixture that's
+    // expected to parse without incident -- corroborating evidence, checked concretely (not just "didn't
+    // throw") by confirming the parsed metadata actually contains this contig declaration.
+    List<VcfMetadata> capturedMetadata = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.2/passed/passed_meta_contig.vcf"))
+        .parseWith((metadata, position, sampleData) -> {
+          if (capturedMetadata.isEmpty()) {
+            capturedMetadata.add(metadata);
+          }
+        })
+        .build()) {
+      parser.parse();
+    }
+    assertFalse(capturedMetadata.isEmpty());
+    ContigMetadata contig1Star = capturedMetadata.get(0).getContigs().get("1.*");
+    assertNotNull(contig1Star, "passed_meta_contig.vcf's \"1.*\" contig declaration should be present");
   }
 
   private static void assertHtsSpecsFixtureWarns(String fixtureName, String expectedMessageFragment)
