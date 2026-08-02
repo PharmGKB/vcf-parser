@@ -67,15 +67,13 @@ public class ContigMetadata extends IdMetadata {
     // rule for "VCF contig names" specifically -- confirmed by direct bcftools 1.23.1 testing that this does
     // NOT extend to INFO/FORMAT tag names, which bcftools validates under a different, stricter rule (see
     // findings24.md item 20). InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN itself has 13 characters,
-    // including a comma, so its coverage overlaps IdMetadata's own dedicated comma check above. On this
-    // strict/throw path the overlap is harmless: IdMetadata's own constructor (the super("CONTIG", id) call
-    // above) already throws on any comma-containing ID before this pattern check ever runs. On the
-    // lenient/warn path (the Map-based constructor below, via init()), both checks run independently, so a
-    // comma-containing ID produces two separate warnings for the same defect -- "must not contain a comma"
-    // from IdMetadata, then "contains the invalid character ','" from this pattern. That double warning is
-    // accepted, cosmetic redundancy, not a correctness issue, and is deliberately not special-cased away here
-    // to avoid forking a second near-duplicate pattern in InternalUtils just to exclude one character for this
-    // one call site.
+    // including a comma, so its coverage overlaps IdMetadata's own dedicated comma check above. This overlap
+    // is harmless on this strict/throw path regardless: IdMetadata's own constructor (the super("CONTIG", id)
+    // call above) already throws on any comma-containing ID before this pattern check ever runs, so the
+    // single (non-looping) matcher.find() below never actually needs to special-case a comma match here --
+    // unlike init()'s own version of this check just below (the lenient/warn path, reached by the Map-based
+    // constructor), which DOES reach a comma-containing id and explicitly skips re-warning about it there,
+    // deferring to IdMetadata's own warning -- see that loop's own comment for why.
     char first = id.charAt(0);
     if (first == '*' || first == '=') {
       throw new VcfFormatException(getLabel() + " ID \"" + id + "\" must not start with '" + first + "'");
@@ -172,8 +170,16 @@ public class ContigMetadata extends IdMetadata {
         m_warnings.warn("{} ID \"{}\" must not start with '{}'", getLabel(), id, first);
       }
       Matcher matcher = InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN.matcher(id);
-      if (matcher.find()) {
-        m_warnings.warn("{} ID \"{}\" contains the invalid character '{}'", getLabel(), id, matcher.group());
+      while (matcher.find()) {
+        // a comma match is skipped (searching continues past it, rather than stopping) because IdMetadata's
+        // own dedicated comma check already warned about it earlier during construction (via super(...),
+        // before this init() ever runs) -- without "continue searching" here, an id
+        // containing both a comma and a genuinely new defect (e.g. "1,(2)") would never reach the defect this
+        // check exists to catch, since the comma would be the first match found
+        if (!matcher.group().equals(",")) {
+          m_warnings.warn("{} ID \"{}\" contains the invalid character '{}'", getLabel(), id, matcher.group());
+          break;
+        }
       }
     }
     // No ensureNoExtras() call here, matching InfoMetadata/FormatMetadata/IdDescriptionMetadata's identical

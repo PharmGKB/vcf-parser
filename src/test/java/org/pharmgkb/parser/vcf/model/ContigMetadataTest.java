@@ -151,7 +151,8 @@ public class ContigMetadataTest {
     // the 12 non-comma characters VCFv4.3.tex's errata newly disallows in a VCF contig name (comma is the
     // 13th character in InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN, but it's already covered by
     // IdMetadata's own dedicated check, exercised separately by this class's existing whitespace/comma tests
-    // and by testMapConstructorWarnsForCommaProducesTwoWarnings below)
+    // and by testMapConstructorWarnsOnceForCommaOnlyId/testMapConstructorWarnsForBothCommaAndOtherInvalidCharacter
+    // below)
     char[] invalidChars = { '\\', '"', '`', '\'', '(', ')', '{', '}', '[', ']', '<', '>' };
     for (char c : invalidChars) {
       String id = "chr" + c + "1";
@@ -200,12 +201,10 @@ public class ContigMetadataTest {
   }
 
   @Test
-  public void testMapConstructorWarnsForCommaProducesTwoWarnings() {
-    // documents accepted, intentional redundancy (see the typed constructor's comment right before its
-    // "char first = id.charAt(0);" line): InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN has 13 characters,
-    // one of which is a comma, so on the lenient/warn Map-based path a comma-containing ID trips both
-    // IdMetadata's own dedicated comma check AND this newer character-set check, producing two separate
-    // warnings for the same defect. This is cosmetic, not a bug, and is deliberately not special-cased away.
+  public void testMapConstructorWarnsOnceForCommaOnlyId() {
+    // regression guard: a comma-containing id must warn only once (IdMetadata's own dedicated comma check),
+    // not also trigger this class's own character-set warning for the same comma -- init()'s pattern-match
+    // loop explicitly skips a comma match and keeps searching, rather than reporting it a second time
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -217,7 +216,30 @@ public class ContigMetadataTest {
       map.put(ContigMetadata.ID, "chr,1");
       new ContigMetadata(map, VcfWarnings.DEFAULT);
       assertTrue(appender.anyMessageContains("must not contain a comma"));
-      assertTrue(appender.anyMessageContains("contains the invalid character"));
+      assertEquals(0, appender.countMessagesContaining("contains the invalid character"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testMapConstructorWarnsForBothCommaAndOtherInvalidCharacter() {
+    // regression guard: skipping a comma match in init()'s loop must not skip searching for a DIFFERENT,
+    // genuine defect later in the same id -- "chr,(1)" has both a comma (already covered by IdMetadata) and
+    // a paren (not covered by anything else), so both warnings must still fire
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      Map<String, String> map = new HashMap<>();
+      map.put(ContigMetadata.ID, "chr,(1)");
+      new ContigMetadata(map, VcfWarnings.DEFAULT);
+      assertTrue(appender.anyMessageContains("must not contain a comma"));
+      assertTrue(appender.anyMessageContains("contains the invalid character '('"));
     } finally {
       root.detachAppender(appender);
       appender.stop();
