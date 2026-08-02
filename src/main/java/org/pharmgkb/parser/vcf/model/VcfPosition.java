@@ -223,7 +223,7 @@ public class VcfPosition {
     if (first == '*' || first == '=') {
       throw new VcfFormatException("CHROM column \"" + chr + "\" must not start with '" + first + "'");
     }
-    Matcher matcher = InternalUtils.INVALID_CHROM_CHAR_PATTERN.matcher(content);
+    Matcher matcher = InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN.matcher(content);
     if (matcher.find()) {
       throw new VcfFormatException("CHROM column \"" + chr + "\" contains the invalid character '" +
           matcher.group() + "'");

@@ -131,12 +131,15 @@ public class InternalUtils {
   // VCF 4.x only; also rejects malformed versions like VCFv4..2
   public static final Pattern FILE_FORMAT_PATTERN = Pattern.compile("VCFv4\\.\\d+");
 
-  // VCFv4.2.tex line 179 only states "no whitespace permitted" for CHROM; this fuller grammar is VCFv4.2-silent
-  // clarifying guidance from VCFv4.3.tex's own "changes since previous version" appendix (~line 2135-2141,
-  // unchanged in 4.4/4.5): VCF contig names must match SAM reference-sequence-name rules. Colon is deliberately
-  // NOT in this set -- the same appendix explicitly confirms it's valid ("this was unnecessary" to have
-  // disallowed it); see HTS_SPECS_BASELINE_STATUS.md for the fixture this knowingly diverges from.
-  public static final Pattern INVALID_CHROM_CHAR_PATTERN = Pattern.compile("[\\\\,\"`'(){}\\[\\]<>]");
+  // VCFv4.2.tex line 179 only states "no whitespace permitted" for CHROM, and doesn't mention ##contig IDs'
+  // character set at all; this fuller grammar is VCFv4.2-silent clarifying guidance from VCFv4.3.tex's own
+  // "Changes to VCFv4.3" errata (~line 2129-2144, unchanged in 4.4/4.5): VCF contig names must match SAM
+  // reference-sequence-name rules. Used by both VcfPosition.checkChromosome (CHROM values) and
+  // ContigMetadata (##contig IDs) -- both are "VCF contig names" per that same errata text, which is why this
+  // constant isn't named after either specific call site. Colon is deliberately NOT in this set -- the same
+  // errata explicitly confirms it's valid ("this was unnecessary" to have disallowed it); see
+  // HTS_SPECS_BASELINE_STATUS.md for the fixtures this knowingly diverges from.
+  public static final Pattern INVALID_CONTIG_NAME_CHAR_PATTERN = Pattern.compile("[\\\\,\"`'(){}\\[\\]<>]");
 
   private static final Pattern sf_whitespacePattern = Pattern.compile("\\s");
 
