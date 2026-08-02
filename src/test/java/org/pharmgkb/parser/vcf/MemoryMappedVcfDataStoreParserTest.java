@@ -90,6 +90,39 @@ public class MemoryMappedVcfDataStoreParserTest {
   }
 
   @Test
+  public void testByNameLookupsReturnNullInsteadOfCrashingWhenARecordHasFewerSamplesThanMetadataDeclares() {
+    // regression test: MemoryMappedVcfLineParser.parseLine() can be called directly (its own comment
+    // anticipates this, "not through VcfParser"), so a record's sample list can legitimately be shorter than
+    // VcfMetadata.getNumSamples() -- e.g. a caller re-using one MemoryMappedVcfDataStore across files with
+    // different sample columns. Before this fix, every by-sample-NAME lookup indexed straight into that
+    // record's own (possibly-short) list with no bounds check, unlike its by-index siblings, and crashed with
+    // IndexOutOfBoundsException instead of returning null.
+    VcfMetadata metadata = new VcfMetadata.Builder()
+        .setFileFormat("VCFv4.2")
+        .setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1", "S2"))
+        .build();
+    VcfPosition position = new VcfPosition("1", 100, List.of("rs1"), "A", List.of("T"), null, null, null, null, -1);
+    VcfSample onlySample = new VcfSample(List.of("GT"), List.of("0/1"));
+
+    MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+    lineParser.parseLine(metadata, position, List.of(onlySample)); // only 1 sample, though metadata declares 2
+
+    MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
+    // "S1" (index 0) is present and resolves normally through all four fixed methods -- confirms the fix
+    // didn't just make every by-name lookup unconditionally return null
+    assertNotNull(dataStore.getSampleForId("rs1", "S1"));
+    assertNotNull(dataStore.getGenotypeForId("rs1", "S1"));
+    assertNotNull(dataStore.getSampleAtLocus("1", 100, 0, "S1"));
+    assertNotNull(dataStore.getGenotypeAtLocus("1", 100, 0, "S1"));
+    // "S2" (index 1) is a real, declared sample column -- getSampleIndex("S2") returns 1, not -1 -- but this
+    // record's own sample list only has 1 element. Must return null, not throw.
+    assertNull(dataStore.getSampleForId("rs1", "S2"));
+    assertNull(dataStore.getGenotypeForId("rs1", "S2"));
+    assertNull(dataStore.getSampleAtLocus("1", 100, 0, "S2"));
+    assertNull(dataStore.getGenotypeAtLocus("1", 100, 0, "S2"));
+  }
+
+  @Test
   public void testGetPositionForId() throws IOException {
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream(
         "/vcfposition.vcf")))) {

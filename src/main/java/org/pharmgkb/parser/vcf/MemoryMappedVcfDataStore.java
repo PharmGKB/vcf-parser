@@ -108,7 +108,7 @@ public class MemoryMappedVcfDataStore {
       return null;
     }
     int idx = m_metadata.getSampleIndex(sampleId);
-    return idx < 0 ? null : samples.get(idx);
+    return idx < 0 || idx >= samples.size() ? null : samples.get(idx);
   }
 
   public @Nullable VcfSample getSampleForId(String positionId, int sampleIndex) {
@@ -124,8 +124,9 @@ public class MemoryMappedVcfDataStore {
     if (samplesList == null || recordIndex < 0 || recordIndex >= samplesList.size()) {
       return null;
     }
+    List<VcfSample> samples = samplesList.get(recordIndex);
     int idx = m_metadata.getSampleIndex(sampleId);
-    return idx < 0 ? null : samplesList.get(recordIndex).get(idx);
+    return idx < 0 || idx >= samples.size() ? null : samples.get(idx);
   }
 
   public @Nullable VcfSample getSampleAtLocus(String chromosome, long position, int recordIndex, int sampleIndex) {
@@ -144,7 +145,7 @@ public class MemoryMappedVcfDataStore {
       return null;
     }
     int idx = m_metadata.getSampleIndex(sampleId);
-    if (idx < 0) {
+    if (idx < 0 || idx >= samples.size()) {
       return null;
     }
     return doGetGenotype(position, samples.get(idx));
@@ -160,11 +161,12 @@ public class MemoryMappedVcfDataStore {
     if (positions == null || samplesList == null || recordIndex < 0 || recordIndex >= samplesList.size()) {
       return null;
     }
+    List<VcfSample> samples = samplesList.get(recordIndex);
     int idx = m_metadata.getSampleIndex(sampleId);
-    if (idx < 0) {
+    if (idx < 0 || idx >= samples.size()) {
       return null;
     }
-    return doGetGenotype(positions.get(recordIndex), samplesList.get(recordIndex).get(idx));
+    return doGetGenotype(positions.get(recordIndex), samples.get(idx));
   }
 
   public @Nullable Genotype getGenotypeForId(String positionId, int sampleIndex) {
