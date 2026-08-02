@@ -1152,6 +1152,35 @@ public class VcfParserTest {
     assertHtsSpecsFixtureWarns("failed_body_unsorted_000.vcf", "is out of order for CHROM 1");
   }
 
+  @Tag("hts-specs")
+  @Test
+  void testHtsSpecsChromCharacterSetFixturesMatchExpectedBehavior() throws IOException {
+    // failed_body_chrom_000.vcf's CHROM is the unclosed "<1" (missing closing '>'); failed_body_chrom_003.vcf's
+    // CHROM is "chr,1" -- VCFv4.3.tex's "changes since previous version" appendix confirms both an
+    // unwrapped/malformed '<' and a ',' are invalid anywhere in CHROM, so both now throw.
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.2/failed/failed_body_chrom_000.vcf"))
+        .parseWith((metadata, position, sampleData) -> { })
+        .build()) {
+      assertThrows(VcfFormatException.class, parser::parse);
+    }
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.2/failed/failed_body_chrom_003.vcf"))
+        .parseWith((metadata, position, sampleData) -> { })
+        .build()) {
+      assertThrows(VcfFormatException.class, parser::parse);
+    }
+    // failed_body_chrom_001.vcf's CHROM is "chr:1" -- the same appendix explicitly says disallowing colon "was
+    // unnecessary"; this fixture must keep parsing cleanly. See HTS_SPECS_BASELINE_STATUS.md's "CHROM colon
+    // fixture" subsection (added in Task 3) for the full citation.
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.2/failed/failed_body_chrom_001.vcf"))
+        .parseWith((metadata, position, sampleData) -> { })
+        .build()) {
+      parser.parse(); // must not throw
+    }
+  }
+
   private static void assertHtsSpecsFixtureWarns(String fixtureName, String expectedMessageFragment)
       throws IOException {
     Path fixture = Path.of("build/hts-specs-checkout/test/vcf/4.2/failed", fixtureName);
