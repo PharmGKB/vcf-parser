@@ -2,8 +2,6 @@ fixture_path	check_type	category	reason
 test/vcf/4.1/failed/failed_body_chrom_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: contig ID contains an angle bracket
 test/vcf/4.1/failed/failed_body_chrom_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: contig ID contains a colon
 test/vcf/4.1/failed/failed_body_chrom_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: contig ID contains a comma
-test/vcf/4.1/failed/failed_body_contiguous_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: non-contiguous chromosome 1
-test/vcf/4.1/failed/failed_body_contiguous_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: non-contiguous chromosome 2
 test/vcf/4.1/failed/failed_body_duplicated_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: duplicated variant
 test/vcf/4.1/failed/failed_body_duplicated_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: triplicated variant
 test/vcf/4.1/failed/failed_body_duplicated_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: duplicated variant due to multiallelic
@@ -61,7 +59,6 @@ test/vcf/4.1/failed/failed_body_samples_ploidy_000.vcf	parser-throw-or-warn	sile
 test/vcf/4.1/failed/failed_body_samples_ploidy_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: cardinality in PL does not match the cardinality derived from allele number and GT ploidy
 test/vcf/4.1/failed/failed_body_samples_ploidy_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: cardinality in PL does not match the cardinality derived from allele number and GT ploidy
 test/vcf/4.1/failed/failed_body_samples_ploidy_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: cardinality in PL does not match the cardinality derived from allele number and GT ploidy
-test/vcf/4.1/failed/failed_body_unsorted_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: non-sorted vcf
 test/vcf/4.1/failed/failed_meta_alt_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect ALT ID value
 test/vcf/4.1/failed/failed_meta_assembly_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Non-valid URL
 test/vcf/4.1/failed/failed_meta_pedigree_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Genome ID with whitespace
@@ -72,8 +69,6 @@ test/vcf/4.1/failed/failed_meta_sample_001.vcf	parser-throw-or-warn	silently-acc
 test/vcf/4.2/failed/failed_body_chrom_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: contig ID contains an angle bracket
 test/vcf/4.2/failed/failed_body_chrom_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: contig ID contains a colon
 test/vcf/4.2/failed/failed_body_chrom_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: contig ID contains a comma
-test/vcf/4.2/failed/failed_body_contiguous_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: non-contiguous chromosome 1
-test/vcf/4.2/failed/failed_body_contiguous_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: non-contiguous chromosome 2
 test/vcf/4.2/failed/failed_body_duplicated_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: duplicated variant
 test/vcf/4.2/failed/failed_body_duplicated_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: triplicated variant
 test/vcf/4.2/failed/failed_body_duplicated_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: duplicated variant due to multiallelic
@@ -130,7 +125,6 @@ test/vcf/4.2/failed/failed_body_samples_ploidy_000.vcf	parser-throw-or-warn	sile
 test/vcf/4.2/failed/failed_body_samples_ploidy_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: cardinality in PL does not match the cardinality derived from allele number and GT ploidy
 test/vcf/4.2/failed/failed_body_samples_ploidy_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: cardinality in PL does not match the cardinality derived from allele number and GT ploidy
 test/vcf/4.2/failed/failed_body_samples_ploidy_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: cardinality in PL does not match the cardinality derived from allele number and GT ploidy
-test/vcf/4.2/failed/failed_body_unsorted_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: non-sorted vcf
 test/vcf/4.2/failed/failed_meta_alt_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect ALT ID value
 test/vcf/4.2/failed/failed_meta_assembly_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Meta-data entry is not a key-value pair
 test/vcf/4.2/failed/failed_meta_pedigree_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Genome ID with whitespace

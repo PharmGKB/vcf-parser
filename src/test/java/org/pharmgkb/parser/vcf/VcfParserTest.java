@@ -15,6 +15,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.pharmgkb.common.util.PathUtils;
@@ -991,6 +992,186 @@ public class VcfParserTest {
       root.detachAppender(appender);
       appender.stop();
     }
+  }
+
+  @Test
+  void testPositionOrderingWarnsOnDecreasingPosWithinSameChromosome() throws IOException {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      String vcf = "##fileformat=VCFv4.2\n" +
+          "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+          "1\t200\t.\tA\tT\t.\t.\t.\n" +
+          "1\t100\t.\tA\tT\t.\t.\t.\n";
+      List<VcfPosition> positions = new ArrayList<>();
+      try (VcfParser parser = new VcfParser.Builder()
+          .fromReader(new BufferedReader(new StringReader(vcf)))
+          .parseWith((metadata, position, sampleData) -> positions.add(position))
+          .build()) {
+        parser.parse();
+      }
+      // both records are still delivered -- this warns, it does not throw or drop the record
+      assertEquals(2, positions.size());
+      assertTrue(appender.anyMessageContains("POS 100 is out of order for CHROM 1"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testPositionOrderingAllowsRepeatedPosOnSameChromosome() throws IOException {
+    // VCFv4.2.tex line 180: "It is permitted to have multiple records with the same POS."
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      String vcf = "##fileformat=VCFv4.2\n" +
+          "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+          "1\t100\t.\tA\tT\t.\t.\t.\n" +
+          "1\t100\t.\tA\tG\t.\t.\t.\n" +
+          "1\t101\t.\tA\tT\t.\t.\t.\n";
+      try (VcfParser parser = new VcfParser.Builder()
+          .fromReader(new BufferedReader(new StringReader(vcf)))
+          .parseWith((metadata, position, sampleData) -> { })
+          .build()) {
+        parser.parse();
+      }
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testChromContiguityWarnsWhenAChromReappearsAfterBeingInterrupted() throws IOException {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      String vcf = "##fileformat=VCFv4.2\n" +
+          "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+          "1\t100\t.\tA\tT\t.\t.\t.\n" +
+          "2\t100\t.\tA\tT\t.\t.\t.\n" +
+          "1\t200\t.\tA\tT\t.\t.\t.\n";
+      List<VcfPosition> positions = new ArrayList<>();
+      try (VcfParser parser = new VcfParser.Builder()
+          .fromReader(new BufferedReader(new StringReader(vcf)))
+          .parseWith((metadata, position, sampleData) -> positions.add(position))
+          .build()) {
+        parser.parse();
+      }
+      // all three records are still delivered -- this warns, it does not throw or drop the record
+      assertEquals(3, positions.size());
+      assertTrue(appender.anyMessageContains("CHROM 1 is not contiguous"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testChromContiguityAndPositionOrderingProduceNoWarningsForAWellFormedFile() throws IOException {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      String vcf = "##fileformat=VCFv4.2\n" +
+          "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+          "1\t100\t.\tA\tT\t.\t.\t.\n" +
+          "1\t200\t.\tA\tT\t.\t.\t.\n" +
+          "2\t50\t.\tA\tT\t.\t.\t.\n" +
+          "2\t60\t.\tA\tT\t.\t.\t.\n";
+      try (VcfParser parser = new VcfParser.Builder()
+          .fromReader(new BufferedReader(new StringReader(vcf)))
+          .parseWith((metadata, position, sampleData) -> { })
+          .build()) {
+        parser.parse();
+      }
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testPositionOrderingWarningFiresEvenWhenRsidsOnlyDiscardsTheOffendingRecord() throws IOException {
+    // rsidsOnly() discards a record with no matching rsID via an early return in parseNextLine() before
+    // VcfPosition is ever constructed for it. CHROM and POS are both parsed before that early-return branch,
+    // though, so this check must still see -- and warn about -- a record's POS/CHROM even when rsidsOnly()
+    // goes on to discard that same record.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      String vcf = "##fileformat=VCFv4.2\n" +
+          "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+          "1\t200\trs1\tA\tT\t.\t.\t.\n" +
+          "1\t100\tnotanrsid\tA\tT\t.\t.\t.\n";
+      List<VcfPosition> positions = new ArrayList<>();
+      try (VcfParser parser = new VcfParser.Builder()
+          .fromReader(new BufferedReader(new StringReader(vcf)))
+          .rsidsOnly()
+          .parseWith((metadata, position, sampleData) -> positions.add(position))
+          .build()) {
+        parser.parse();
+      }
+      // only the rs1 record was delivered to the callback -- the second was discarded by rsidsOnly()
+      assertEquals(1, positions.size());
+      // but the ordering check still saw and warned about the discarded record's POS
+      assertTrue(appender.anyMessageContains("POS 100 is out of order for CHROM 1"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Tag("hts-specs")
+  @Test
+  void testHtsSpecsContiguousAndUnsortedFixturesWarnWithTheSpecificNewMessage() throws IOException {
+    assertHtsSpecsFixtureWarns("failed_body_contiguous_000.vcf", "CHROM 1 is not contiguous");
+    assertHtsSpecsFixtureWarns("failed_body_contiguous_001.vcf", "CHROM 2 is not contiguous");
+    assertHtsSpecsFixtureWarns("failed_body_unsorted_000.vcf", "is out of order for CHROM 1");
+  }
+
+  private static void assertHtsSpecsFixtureWarns(String fixtureName, String expectedMessageFragment)
+      throws IOException {
+    Path fixture = Path.of("build/hts-specs-checkout/test/vcf/4.2/failed", fixtureName);
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(fixture)
+        .parseWith((metadata, position, sampleData) -> { })
+        .build()) {
+      parser.parse();
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(appender.anyMessageContains(expectedMessageFragment),
+        () -> fixtureName + " should have produced a warning containing: " + expectedMessageFragment);
   }
 
   @Test

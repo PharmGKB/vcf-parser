@@ -66,6 +66,9 @@ public class VcfParser implements Closeable {
   private int m_lineNumber;
   private boolean m_alreadyFinished;
   private VcfWarnings m_warnings = VcfWarnings.DEFAULT;
+  private @Nullable String m_lastChromosome;
+  private long m_lastPosition;
+  private final Set<String> m_closedChromosomes = new HashSet<>();
 
 
 
@@ -255,6 +258,7 @@ public class VcfParser implements Closeable {
       } catch (NumberFormatException e) {
         throw new VcfFormatException("POS '" + data.get(1) + "' is not a number");
       }
+      checkPositionOrdering(chromosome, position);
 
       // ID
       List<String> ids = null;
@@ -341,6 +345,35 @@ public class VcfParser implements Closeable {
     } catch (RuntimeException e) {
       throw new VcfFormatException(m_lineNumber, "data", e);
     }
+  }
+
+  /**
+   * Warns (never throws) if {@code position} is out of order within {@code chromosome}, or if
+   * {@code chromosome} is not contiguous (its records were interrupted by a different CHROM and have now
+   * reappeared). VCFv4.2.tex line 179/180: CHROM entries "should" form a contiguous block, and POS values
+   * "are sorted numerically, in increasing order" within a CHROM (multiple records at the same POS are
+   * explicitly permitted). Neither violates this library's structural floor -- record/column boundaries stay
+   * unambiguous either way -- and neither bcftools 1.23.1 nor vcf_validator 0.10.2 treats either as
+   * rejection-worthy (vcf_validator's own severity classification puts both at warning-tier, not
+   * error-tier), so this warns and recovers rather than throwing.
+   */
+  private void checkPositionOrdering(String chromosome, long position) {
+    if (m_lastChromosome != null) {
+      if (chromosome.equals(m_lastChromosome)) {
+        if (position < m_lastPosition) {
+          m_warnings.warn("POS {} is out of order for CHROM {} (previous record's POS was {}, on line {})",
+              position, chromosome, m_lastPosition, m_lineNumber);
+        }
+      } else {
+        if (m_closedChromosomes.contains(chromosome)) {
+          m_warnings.warn("CHROM {} is not contiguous: it reappears after being interrupted by a different " +
+              "CHROM (on line {})", chromosome, m_lineNumber);
+        }
+        m_closedChromosomes.add(m_lastChromosome);
+      }
+    }
+    m_lastChromosome = chromosome;
+    m_lastPosition = position;
   }
 
   @Override
