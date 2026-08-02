@@ -148,9 +148,10 @@ public class ContigMetadataTest {
 
   @Test
   public void testTypedConstructorRejectsInvalidCharactersAnywhere() {
-    // the 12 characters VCFv4.3.tex's errata newly disallows in a VCF contig name (comma is already covered
-    // by IdMetadata's own dedicated check, exercised separately by this class's existing whitespace/comma
-    // tests)
+    // the 12 non-comma characters VCFv4.3.tex's errata newly disallows in a VCF contig name (comma is the
+    // 13th character in InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN, but it's already covered by
+    // IdMetadata's own dedicated check, exercised separately by this class's existing whitespace/comma tests
+    // and by testMapConstructorWarnsForCommaProducesTwoWarnings below)
     char[] invalidChars = { '\\', '"', '`', '\'', '(', ')', '{', '}', '[', ']', '<', '>' };
     for (char c : invalidChars) {
       String id = "chr" + c + "1";
@@ -191,6 +192,31 @@ public class ContigMetadataTest {
       Map<String, String> map = new HashMap<>();
       map.put(ContigMetadata.ID, "chr(1)");
       new ContigMetadata(map, VcfWarnings.DEFAULT);
+      assertTrue(appender.anyMessageContains("contains the invalid character"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testMapConstructorWarnsForCommaProducesTwoWarnings() {
+    // documents accepted, intentional redundancy (see the typed constructor's comment right before its
+    // "char first = id.charAt(0);" line): InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN has 13 characters,
+    // one of which is a comma, so on the lenient/warn Map-based path a comma-containing ID trips both
+    // IdMetadata's own dedicated comma check AND this newer character-set check, producing two separate
+    // warnings for the same defect. This is cosmetic, not a bug, and is deliberately not special-cased away.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      Map<String, String> map = new HashMap<>();
+      map.put(ContigMetadata.ID, "chr,1");
+      new ContigMetadata(map, VcfWarnings.DEFAULT);
+      assertTrue(appender.anyMessageContains("must not contain a comma"));
       assertTrue(appender.anyMessageContains("contains the invalid character"));
     } finally {
       root.detachAppender(appender);

@@ -66,9 +66,16 @@ public class ContigMetadata extends IdMetadata {
     // VCFv4.3.tex's own "Changes to VCFv4.3" errata (~line 2129-2144, unchanged in 4.4/4.5), which states the
     // rule for "VCF contig names" specifically -- confirmed by direct bcftools 1.23.1 testing that this does
     // NOT extend to INFO/FORMAT tag names, which bcftools validates under a different, stricter rule (see
-    // findings24.md item 20). Comma is already covered by IdMetadata's own dedicated check above (which fires
-    // first for any comma-containing ID), so this pattern's own comma coverage is confirmed-redundant here,
-    // not a double-check risk.
+    // findings24.md item 20). InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN itself has 13 characters,
+    // including a comma, so its coverage overlaps IdMetadata's own dedicated comma check above. On this
+    // strict/throw path the overlap is harmless: IdMetadata's own constructor (the super("CONTIG", id) call
+    // above) already throws on any comma-containing ID before this pattern check ever runs. On the
+    // lenient/warn path (the Map-based constructor below, via init()), both checks run independently, so a
+    // comma-containing ID produces two separate warnings for the same defect -- "must not contain a comma"
+    // from IdMetadata, then "contains the invalid character ','" from this pattern. That double warning is
+    // accepted, cosmetic redundancy, not a correctness issue, and is deliberately not special-cased away here
+    // to avoid forking a second near-duplicate pattern in InternalUtils just to exclude one character for this
+    // one call site.
     char first = id.charAt(0);
     if (first == '*' || first == '=') {
       throw new VcfFormatException(getLabel() + " ID \"" + id + "\" must not start with '" + first + "'");
