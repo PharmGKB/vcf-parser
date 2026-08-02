@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.LinkedListMultimap;
@@ -204,9 +205,28 @@ public class VcfPosition {
     if (chr == null) {
       throw new VcfFormatException("CHROM is null");
     }
-    // the VCF spec forbids whitespace in CHROM (but not other characters, e.g. colons)
     if (chr.isEmpty() || InternalUtils.containsWhitespace(chr)) {
       throw new VcfFormatException("CHROM column \"" + chr + "\" is empty or contains whitespace");
+    }
+    // VCFv4.2.tex line 179 also documents CHROM's other valid form, a fully angle-bracket-wrapped symbolic
+    // reference ("<ID>") pointing to a contig in the assembly file -- unwrap it before applying the character
+    // check below so a well-formed "<1>" isn't rejected for the very brackets that make it valid; an
+    // unwrapped/malformed use of '<' or '>' (e.g. a lone leading "<1") still hits the check below.
+    String content = chr;
+    if (chr.length() > 1 && chr.charAt(0) == '<' && chr.charAt(chr.length() - 1) == '>') {
+      content = chr.substring(1, chr.length() - 1);
+    }
+    if (content.isEmpty()) {
+      throw new VcfFormatException("CHROM column \"" + chr + "\" is empty or contains whitespace");
+    }
+    char first = content.charAt(0);
+    if (first == '*' || first == '=') {
+      throw new VcfFormatException("CHROM column \"" + chr + "\" must not start with '" + first + "'");
+    }
+    Matcher matcher = InternalUtils.INVALID_CHROM_CHAR_PATTERN.matcher(content);
+    if (matcher.find()) {
+      throw new VcfFormatException("CHROM column \"" + chr + "\" contains the invalid character '" +
+          matcher.group() + "'");
     }
   }
 

@@ -481,6 +481,47 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testInvalidCharactersRejectedAnywhereInChromosome() {
+    // VCFv4.2.tex line 179 only states "no whitespace permitted" for CHROM; this fuller grammar is VCFv4.2-silent
+    // clarifying guidance from VCFv4.3.tex's own "changes since previous version" appendix (~line 2135-2141,
+    // unchanged in 4.4/4.5): VCF contig names must match SAM reference-sequence-name rules. These 13 characters
+    // are invalid anywhere in an unwrapped CHROM value.
+    char[] invalidChars = { '\\', ',', '"', '`', '\'', '(', ')', '{', '}', '[', ']', '<', '>' };
+    for (char c : invalidChars) {
+      String chrom = "chr" + c + "1";
+      assertThrows(VcfFormatException.class, () -> new VcfPosition(chrom, 1, "C", new BigDecimal("0"), -1),
+          () -> "CHROM \"" + chrom + "\" containing '" + c + "' should have been rejected");
+    }
+  }
+
+  @Test
+  public void testAsteriskAndEqualsRejectedOnlyAsFirstCharacter() {
+    // VCFv4.3.tex's appendix: "* is now valid when not the first character"; "*"/"=" as the first character
+    // "were already invalid and remain so"
+    assertThrows(VcfFormatException.class, () -> new VcfPosition("*chr1", 1, "C", new BigDecimal("0"), -1));
+    assertThrows(VcfFormatException.class, () -> new VcfPosition("=chr1", 1, "C", new BigDecimal("0"), -1));
+    new VcfPosition("chr*1", 1, "C", new BigDecimal("0"), -1); // '*' elsewhere is fine
+    new VcfPosition("chr1*", 1, "C", new BigDecimal("0"), -1);
+    new VcfPosition("chr=1", 1, "C", new BigDecimal("0"), -1); // '=' elsewhere was never restricted
+  }
+
+  @Test
+  public void testWellFormedAngleBracketWrappedChromosomeAccepted() {
+    // VCFv4.2.tex line 179: CHROM's other valid form, "an angle-bracketed ID String (<ID>) pointing to a contig
+    // in the assembly file"
+    new VcfPosition("<1>", 1, "C", new BigDecimal("0"), -1);
+    new VcfPosition("<chr1>", 1, "C", new BigDecimal("0"), -1);
+  }
+
+  @Test
+  public void testMalformedAngleBracketChromosomeRejected() {
+    assertThrows(VcfFormatException.class, () -> new VcfPosition("<1", 1, "C", new BigDecimal("0"), -1));    // unclosed
+    assertThrows(VcfFormatException.class, () -> new VcfPosition("1>", 1, "C", new BigDecimal("0"), -1));    // no opening
+    assertThrows(VcfFormatException.class, () -> new VcfPosition("<>", 1, "C", new BigDecimal("0"), -1));    // empty content after unwrap
+    assertThrows(VcfFormatException.class, () -> new VcfPosition("<1>2>", 1, "C", new BigDecimal("0"), -1)); // malformed nested '>'
+  }
+
+  @Test
   public void testShortConstructorValidates() {
     assertThrows(VcfFormatException.class, () -> new VcfPosition("", 1, "C", new BigDecimal("0"), -1));      // empty CHROM
     assertThrows(VcfFormatException.class, () -> new VcfPosition("chr1", -1, "C", new BigDecimal("0"), -1)); // negative POS
