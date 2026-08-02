@@ -3,8 +3,7 @@
 This document describes the parser's (lenient) behavior -- reached via `VcfParser`, `VcfPosition.validate()`,
 or `VcfPosition`'s own 11-argument lenient constructor. `VcfPosition`'s 10-argument (default) constructor
 throws `VcfFormatException` immediately for an empty ID/ALT/FILTER entry or an empty FORMAT sub-field name
-instead of warning-and-normalizing per the table below; see `AGENTS.md`'s "Direct/Manual Construction vs.
-Parser Construction" section.
+instead of warning-and-normalizing per the table below; see `VALIDATION_PHILOSOPHY.md`.
 
 The VCF spec (explicitly stated starting with VCFv4.3; VCFv4.1/4.2 are silent on it) says:
 
@@ -181,5 +180,7 @@ for rejection purposes, but they are still a data-loss case in practice.
   (a live-mutated empty value that looks identical to a Flag) would otherwise silently corrupt the field's
   semantic type on the default write path too, not just under full diagnostics.
 - `VcfMetadata.Builder.addRawProperty()`, and `VcfMetadata.addAssembly()` / `addPedigreeDatabase()` -- warn and
-  drop a generic metadata property with an empty value, or an empty bracket pair (`<>`).
-  `VcfWriter.Builder.validateBeforeWrite()` runs the identical check but only warns, without dropping.
+  drop a generic metadata property with an empty value, or an empty bracket pair (`<>`), in lenient mode;
+  `Builder`'s strict default (no `.lenient(...)`) throws `VcfFormatException` for the same condition instead --
+  see `VALIDATION_PHILOSOPHY.md`. `VcfWriter.Builder.validateBeforeWrite()` runs the identical lenient-mode
+  check but only warns, without dropping.

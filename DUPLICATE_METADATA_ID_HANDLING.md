@@ -4,7 +4,7 @@ This document describes `VcfMetadata.Builder`'s/`VcfMetadata`'s lenient-mode beh
 or `VcfMetadata`'s own instance `addXxx` methods when constructed with a `VcfWarnings` sink) -- the mode
 `VcfParser` always uses internally, so a parsed file's behavior is exactly as described below. `Builder`'s
 *default* (non-lenient) mode instead throws `VcfFormatException` immediately for a duplicate or missing/empty
-declaration ID; see `AGENTS.md`'s "Direct/Manual Construction vs. Parser Construction" section.
+declaration ID; see `VALIDATION_PHILOSOPHY.md`.
 
 VCF metadata declarations (`##contig`, `##INFO`, `##FORMAT`, `##FILTER`, `##ALT`, `##SAMPLE`) are each keyed by an
 `ID` attribute. Neither [VCFv4.2.tex](https://github.com/samtools/hts-specs) nor VCFv4.3.tex states what happens
@@ -132,8 +132,9 @@ surfaces any complaint about a dropped duplicate's content either.
 
 ## Where this is implemented
 
-- `VcfMetadata.warnIfDuplicate(Map, String, String)` — the shared helper, used by both `VcfMetadata`'s own
-  instance `addXxx` methods and `VcfMetadata.Builder`'s `addXxx` methods.
+- `VcfMetadata.warnIfDuplicate(Map, String, String, VcfWarnings)` — the shared helper, used by both
+  `VcfMetadata`'s own instance `addXxx` methods and `VcfMetadata.Builder`'s `addXxx` methods; its `VcfWarnings`
+  parameter is `@Nullable` (`null` throws instead of warning -- see `VALIDATION_PHILOSOPHY.md`).
 - `VcfMetadata.Builder.addAlt()` / `addInfo()` / `addFormat()` / `addFilter()` / `addContig()` / `addSample()`, and
   `VcfMetadata.addAlt()` / `addInfo()` / `addFormat()` / `addFilter()` / `addContig()` / `addSample()` (the same
   six) — each calls `warnIfDuplicate()` before storing a new declaration, and returns immediately (without
@@ -153,7 +154,8 @@ surfaces any complaint about a dropped duplicate's content either.
 - `VcfMetadata`'s 6 instance `addXxx` methods and `VcfMetadata.Builder`'s 6 `addXxx` methods each check for a
   missing or blank `ID` before calling `warnIfDuplicate()`, warning and dropping the declaration entirely (never
   storing it) if so -- this is what actually catches a malformed declaration built via the parser's lenient
-  `Map`-based construction path.
+  `Map`-based construction path. In strict mode (a `Builder` used without `.lenient(...)`, or a `VcfMetadata`
+  built that way), both checks throw `VcfFormatException` instead -- see `VALIDATION_PHILOSOPHY.md`.
 
 ## `##PEDIGREE`: a conditional case
 

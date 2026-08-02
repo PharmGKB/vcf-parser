@@ -17,6 +17,8 @@ Before treating a baseline entry as a new problem to fix, check `HTS_SPECS_BASEL
 
 Before treating any other code-quality observation as a new finding, check `WONT_FIX.md` -- it catalogs known issues deliberately left unaddressed, with the reasoning, so they aren't rediscovered and re-proposed.
 
+Read `VALIDATION_PHILOSOPHY.md` before touching any validation logic -- it states, as a stable design contract, when this library rejects content immediately, when it warns and recovers, and when it skips validation altogether. The Parser Validation Policy, Writer Validation and Round-Trip Policy, and Public API Null-Safety Policy sections below are each an application of that file's principles to a specific surface.
+
 If still in doubt, consult bcftools behavior.  Decisions made this way should be documented and have a regression fixture demonstrating the behavior.  If bcftools was consulted, include bcftools version.
 
 When hts-specs itself is silent (no fixture covers the exact case), running vcf_validator (the EBI reference validator; the tool hts-specs itself uses to generate its `passed`/`failed` corpus) directly against a hand-built input is informative but is *not* equivalent to a documented hts-specs fixture -- cite it as a direct tool run ("vcf_validator `<version>`"), not as "the suite says." vcf_validator tends to be stricter than bcftools on zero-length-field cases in structural fields (ID/FILTER/ALT/INFO) but does not apply the same rigor to sample-column sub-structure (GT, reserved FORMAT values) -- don't treat a vcf_validator "invalid" verdict there as load-bearing. When bcftools and vcf_validator disagree, bcftools remains the tie-breaker per the hierarchy above, but document the disagreement rather than silently picking a side.
@@ -44,23 +46,6 @@ The parser is intentionally permissive for non-structural VCF violations in perf
 
 
 
-### Direct/Manual Construction vs. Parser Construction
-
-A class with both a typed constructor (fixed, compiler-checked parameters) and a `Map`-based constructor (or,
-for `VcfMetadata`, `Builder`'s default vs. `.lenient(VcfWarnings)`) makes the typed/default path throw
-`VcfFormatException` immediately for a condition its own declaration-level checks would otherwise flag, while
-the `Map`-based/lenient path keeps today's warn-and-recover behavior, routed to an explicitly required
-`VcfWarnings` instance. `VcfParser` always uses the lenient path internally, so this does not change what a
-parsed file accepts, warns about, or rejects -- only the default for direct/manual construction, and how the
-resulting diagnostic is routed. This was previously stated only for `IdMetadata`'s ID-null case (see
-`WONT_FIX.md`'s corresponding entry); it is now a systematic rule applied to every class that has such a
-constructor pair: `IdMetadata`, `IdDescriptionMetadata`, `InfoMetadata`, `FormatMetadata`, `ContigMetadata`,
-`VcfPosition` (its 10-arg constructor is the strict one, its 11-arg `VcfWarnings`-taking overload the lenient
-one), and `VcfMetadata` (`Builder`'s default vs. `.lenient(VcfWarnings)`, as above). `PedigreeMetadata` and
-`VcfSample` are deliberately *not* part of this split -- their constructors are unchanged, because neither has
-a construction-time warn site to route in the first place.
-
-
 ### Writer Validation and Round-Trip Policy
 
 Writer output is governed by the semantics of the target VCF specification. A writer must not emit a `fileformat` declaration for another VCF version unless the emitted output is also valid under that declared version.
@@ -68,7 +53,7 @@ Writer output is governed by the semantics of the target VCF specification. A wr
 A record accepted by the parser must be writable without losing fields or producing malformed column structure.
 
 - The default writer path is performance-sensitive. It assumes metadata, positions, and samples have not been mutated into an invalid state after parsing, and must preserve parser-normalized values and maintain record/sample column structure without full revalidation.
-- That "trusts already-valid input" exemption covers VCF-semantic re-validation (spec compliance the parser or a prior check already established) -- it does not extend to basic Java null-safety. A `null` reference reaching string concatenation or `StringBuilder.append` silently renders as the literal text `"null"`, fabricating output content that was never in the original value. That is not a permissiveness question the default path is exempt from; it must be rejected there too (e.g. with `VcfFormatException`), not deferred to `validateBeforeWrite()` alone, since a caller mutating a live view without enabling full diagnostics mode would otherwise get silently corrupted output instead of either a clean rejection or an honest warning.
+- That "trusts already-valid input" exemption covers VCF-semantic re-validation only -- it does not extend to basic Java null-safety, a separate axis never subject to this exemption (see `VALIDATION_PHILOSOPHY.md`'s "How the principles interact").
 - The writer may canonicalize parser-recovered invalid input (for example, an empty recoverable value normalized to `.`), but must preserve the usable meaning and emit a syntactically parseable VCF record.
 - `VcfWriter.Builder.validateBeforeWrite()` is the full-output diagnostics mode. Before every write, it must validate metadata, positions, FORMAT keys, INFO fields, and sample values sufficiently to ensure structural validity of the emitted header and records and report all detected semantic non-compliance.
 - In full-output diagnostics mode, content that is semantically non-compliant but can be represented safely must emit a warning identifying the issue and be preserved or canonicalized. Content that would make output structurally invalid or unparseable — including incorrect column count, invalid delimiter placement, line terminators, invalid mandatory fixed fields, or sample data inconsistent with FORMAT — must be rejected with `VcfFormatException`.
