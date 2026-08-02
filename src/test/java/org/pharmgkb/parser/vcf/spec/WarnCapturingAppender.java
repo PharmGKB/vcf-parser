@@ -3,6 +3,7 @@ package org.pharmgkb.parser.vcf.spec;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.AppenderBase;
@@ -38,6 +39,29 @@ public class WarnCapturingAppender extends AppenderBase<ILoggingEvent> {
    */
   public long countMessagesContaining(String substring) {
     return m_events.stream().filter(event -> event.getFormattedMessage().contains(substring)).count();
+  }
+
+  /**
+   * @return true if any captured WARN-or-higher event's raw (pre-substitution) message is not in
+   * {@code ignoredMessageTemplates} -- use this instead of {@link #hasWarnOrHigher()} when some known,
+   * content-independent warning would otherwise mask whether a MORE SPECIFIC warning also fired
+   */
+  public boolean hasWarnOrHigherExcluding(Set<String> ignoredMessageTemplates) {
+    return m_events.stream()
+        .filter(event -> event.getLevel().isGreaterOrEqual(Level.WARN))
+        .anyMatch(event -> !ignoredMessageTemplates.contains(event.getMessage()));
+  }
+
+  /**
+   * @return the formatted (post-substitution) messages of every captured WARN-or-higher event not in
+   * {@code ignoredMessageTemplates}, for diagnostic reporting
+   */
+  public List<String> getRelevantWarnOrHigherMessages(Set<String> ignoredMessageTemplates) {
+    return m_events.stream()
+        .filter(event -> event.getLevel().isGreaterOrEqual(Level.WARN))
+        .filter(event -> !ignoredMessageTemplates.contains(event.getMessage()))
+        .map(ILoggingEvent::getFormattedMessage)
+        .toList();
   }
 
 }

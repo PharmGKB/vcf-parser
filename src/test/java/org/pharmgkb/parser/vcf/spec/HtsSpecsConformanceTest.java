@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 import ch.qos.logback.classic.Logger;
 import org.junit.jupiter.api.AfterAll;
@@ -19,6 +20,7 @@ import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfParser;
 import org.slf4j.LoggerFactory;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -50,6 +52,18 @@ class HtsSpecsConformanceTest {
   private static final List<String> FAILED_VERSIONS = List.of("4.1", "4.2");
 
   private static final String CAUSE_OF_FAILURE_PREFIX = "##CauseOfFailure=";
+
+  // These two warnings fire whenever #CHROM declares sample columns with no matching ##SAMPLE metadata line --
+  // true for the vast majority of failed/ fixtures regardless of their actual violation, since most real-world
+  // VCFs never declare ##SAMPLE at all. Treating either as "this fixture's invalidity was detected" produced a
+  // near-universal false positive that hid real gaps from HTS_SPECS_BASELINE_STATUS.md's catalog: parsing e.g.
+  // failed_body_duplicated_000.vcf, failed_body_unsorted_000.vcf, or failed_body_chrom_000.vcf each produced
+  // exactly one of these two warnings and nothing else, regardless of each fixture's own distinct documented
+  // cause. Extend this set if a future investigation finds another generic, content-independent warning with
+  // the same masking effect.
+  private static final Set<String> GENERIC_NOISE_WARNINGS = Set.of(
+      "Sample {} is missing in the metadata",
+      "There are {} samples in the header but {} in the metadata");
 
   // literal, project-relative path to the committed baseline file -- used both to locate it as a classpath
   // resource for reading (works regardless of working directory) and, in update mode, as a real filesystem path
@@ -92,6 +106,38 @@ class HtsSpecsConformanceTest {
       assertFalse(appender.hasWarnOrHigher());
       LoggerFactory.getLogger(HtsSpecsConformanceTest.class).warn("sanity check warning");
       assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testHasWarnOrHigherExcludingIgnoresOnlyExactTemplateMatches() {
+    Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      Set<String> ignored = Set.of("known noise: {}");
+      org.slf4j.Logger testLogger = LoggerFactory.getLogger(HtsSpecsConformanceTest.class);
+
+      // no events at all -> nothing relevant
+      assertFalse(appender.hasWarnOrHigherExcluding(ignored));
+
+      // only an ignored-template event, WITH a real interpolated value -> still nothing relevant. This proves
+      // ILoggingEvent.getMessage() returns the pre-substitution template ("known noise: {}"), not the
+      // formatted text ("known noise: 42") -- if it returned the formatted text instead, this assertion
+      // would fail, since "known noise: 42" is not in the ignored set.
+      testLogger.warn("known noise: {}", 42);
+      assertFalse(appender.hasWarnOrHigherExcluding(ignored));
+
+      // a second, non-ignored warning -> now something relevant fired
+      testLogger.warn("a genuinely relevant warning");
+      assertTrue(appender.hasWarnOrHigherExcluding(ignored));
+
+      // getRelevantWarnOrHigherMessages() must report only the non-ignored, formatted message
+      assertEquals(List.of("a genuinely relevant warning"), appender.getRelevantWarnOrHigherMessages(ignored));
     } finally {
       root.detachAppender(appender);
       appender.stop();
@@ -222,7 +268,7 @@ class HtsSpecsConformanceTest {
       root.detachAppender(appender);
       appender.stop();
     }
-    boolean silentlyAccepted = !threw && !appender.hasWarnOrHigher();
+    boolean silentlyAccepted = !threw && !appender.hasWarnOrHigherExcluding(GENERIC_NOISE_WARNINGS);
     boolean acceptable = BASELINE.check(fixturePath, "parser-throw-or-warn", silentlyAccepted, "silently-accepted",
         "CauseOfFailure: " + causeOfFailure);
     assertTrue(acceptable, () -> silentlyAccepted
