@@ -403,6 +403,35 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteWarnsWhenChromSampleMissingFromSampleMetadata() throws Exception {
+    // regression test: writeHeader() previously never checked this at all, even though the same mismatch would
+    // have been caught had the file been re-parsed from scratch (VcfParser has the identical check, with the
+    // same warning text). Checked once here, at writeHeader() time, not on every writeLine() call: #CHROM's
+    // sample columns can't change after construction (VcfMetadata.Builder.build() copies them into an immutable
+    // list), and a post-writeHeader() mutation to ##SAMPLE itself is already rejected outright by writeLine()'s
+    // own header-text-snapshot check, so there's nothing left for a per-writeLine() re-check to catch.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .build();
+    // no ##SAMPLE=<ID=S1,...> declaration added -- #CHROM declares 1 sample, metadata declares 0
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      assertTrue(appender.anyMessageContains("There are 1 samples in the header but 0 in the metadata"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testWriteLineValidatesWhenBuiltWithValidateBeforeWrite() throws Exception {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
@@ -584,9 +613,10 @@ public class VcfWriterTest {
   @Test
   public void testValidateBeforeWriteRejectsNullInfoPropertyValueViaLiveView() throws Exception {
     // getPropertiesRaw() is a live view, so a caller can insert a null value after construction, bypassing the
-    // constructor's own validateProperties() check. Unlike the raw-property case, validateMetadata() already
-    // rejects this today via validateMetadataProperties() (called from validateKeyedMetadataEntries()) -- this
-    // test locks in that pre-existing protection rather than exercising a new fix.
+    // constructor's own validateProperties() check at the time it originally ran. validateMetadata() calls
+    // entry.validate() on every keyed entry (BaseMetadata.validate() -> validateProperties(), the same method,
+    // re-run), which now rejects a null value there too -- this locks in that re-validation, not a dead branch
+    // in validateMetadataProperties() (which used to duplicate this check but is now unreachable for it).
     InfoMetadata info = new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(info).build();
     metadata.getInfo().get("NS").getPropertiesRaw().put("Description", null);

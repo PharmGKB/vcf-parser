@@ -5,43 +5,6 @@ unaddressed, along with the reasoning, so they aren't rediscovered and re-propos
 entry is self-contained: it names the exact code location and behavior, explains why it's not being fixed,
 and states what would change that decision.
 
-## BaseMetadata tolerates a null property value inserted via getPropertiesRaw()
-
-`BaseMetadata.putPropertyRaw`/`putAndQuoteProperty` (`BaseMetadata.java:92,99`) throw `VcfFormatException`
-on a null value, but `validateProperties()` only checks for null *keys*, not null values. A property map
-containing a null value survives both construction (via the `Map`-based constructor, which bypasses the
-put methods) and a later `validate()` call, as long as the null value was inserted directly through
-`getPropertiesRaw()` rather than through `putPropertyRaw`/`putAndQuoteProperty`.
-
-This is unreachable from real VCF parsing: `InternalUtils.splitProperty` always returns two non-null halves or
-throws, so a parsed property value is never null. It's reachable only via a caller directly mutating the
-map returned by `getPropertiesRaw()` with a hand-built null value. `BaseMetadata.checkNoLineTerminator`
-already deliberately tolerates a null `value` parameter elsewhere in this class, suggesting this asymmetry
-(reject a null value at the put methods, tolerate it if inserted directly via the raw map) is an
-intentional design choice, not an oversight.
-
-**Decision: won't fix.** Not reachable through any real parsing path; only affects a caller who bypasses
-this class's own put methods to mutate the backing map directly. Revisit if `validate()` is ever expected
-to provide a full structural guarantee regardless of how the map was populated.
-
-## VcfWriter never re-validates ##SAMPLE declarations against #CHROM sample columns
-
-`VcfParser.java:129-139` warns during parsing when a file's `##SAMPLE` declaration count/names don't match
-its `#CHROM` header's sample columns. `VcfWriter.validateMetadata()` has no equivalent post-construction
-check: its `validateKeyedMetadataEntries("SAMPLE", ...)` call only verifies that each `##SAMPLE` entry's
-map key matches its own `ID` property (internal self-consistency), not that the full set of `##SAMPLE`
-declarations agrees with the `#CHROM` sample-column list.
-
-This means a caller who adds/removes a `##SAMPLE` declaration after construction (via
-`VcfMetadata.addSample()`/`removeSample()`, or by mutating the map returned by `getSamples()` directly) and
-then writes the file with `validateBeforeWrite()` enabled gets no warning if the result no longer matches
-the `#CHROM` columns, even though the equivalent mismatch would have been caught had the file been
-re-parsed from scratch.
-
-**Decision: won't fix.** No current caller in this library performs this kind of post-construction SAMPLE
-mutation followed by a validated write. Revisit if a real use case requiring this cross-check at write time
-emerges.
-
 ## InfoMetadata and FormatMetadata each independently duplicate their Number/Type validation logic
 
 `InfoMetadata`'s and `FormatMetadata`'s private `init()` methods are structurally near-identical: both

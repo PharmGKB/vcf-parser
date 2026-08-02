@@ -126,6 +126,7 @@ public class VcfWriter implements Closeable {
     claimMetadataWarningsSinks(metadata);
     if (m_validateBeforeWrite) {
       validateMetadata(metadata);
+      checkSampleMetadataMatchesChromColumns(metadata);
     }
 
     List<String> lines = buildHeaderLines(metadata);
@@ -459,6 +460,28 @@ public class VcfWriter implements Closeable {
     }
   }
 
+  // mirrors VcfParser's identical post-parse check (same warning text). Called once, from writeHeader() only --
+  // not from validateMetadata() (which also runs per writeLine() call) -- since #CHROM's sample-column list is
+  // fixed forever once VcfMetadata is built (VcfMetadata.Builder.build() copies it into an immutable list with no
+  // supported mutation path), so this can only ever need re-checking if ##SAMPLE itself changes. A caller who
+  // mutates ##SAMPLE (via addSample()/removeSample(), or by mutating the map getSamples() returns directly) after
+  // writeHeader() has already run is already rejected outright by writeLine()'s own header-text-snapshot check
+  // (m_headerText) before this method's caller would ever be reached again -- so checking only here, once, misses
+  // nothing a later writeLine() call could otherwise have caught.
+  private void checkSampleMetadataMatchesChromColumns(VcfMetadata metadata) {
+    if (metadata.getNumSamples() == metadata.getSamples().size()) {
+      for (int i = 0; i < metadata.getNumSamples(); i++) {
+        String sampleName = metadata.getSampleName(i);
+        if (!metadata.getSamples().containsKey(sampleName)) {
+          m_warnings.warn("Sample {} is missing in the metadata", sampleName);
+        }
+      }
+    } else {
+      m_warnings.warn("There are {} samples in the header but {} in the metadata", metadata.getNumSamples(),
+          metadata.getSamples().size());
+    }
+  }
+
   /**
    * Claims every metadata declaration's warning sink for this writer, unconditionally -- called from
    * {@link #writeHeader} after its own structural checks (non-null metadata, header-not-already-written) but
@@ -527,7 +550,8 @@ public class VcfWriter implements Closeable {
 
   // both call sites pass the same live map an entry.validate()/pedigree.validate() call already ran against,
   // immediately before this method runs -- BaseMetadata.validate() already calls checkNoLineTerminator(key,
-  // value) for every property in that same map, so redoing it here would just repeat that work per property
+  // value) for every property in that same map, so redoing it here would just repeat that work per property.
+  // It also now rejects a null value itself, so a null here is already unreachable -- no separate check needed.
   private void validateMetadataProperties(String kind, Map<String, String> properties) {
     for (Map.Entry<String, String> property : properties.entrySet()) {
       String propertyName = property.getKey();
@@ -536,9 +560,6 @@ public class VcfWriter implements Closeable {
         throw new VcfFormatException(kind + " metadata contains an invalid property name: " + property.getKey());
       }
       String value = property.getValue();
-      if (value == null) {
-        throw new VcfFormatException(kind + " metadata property " + propertyName + " has a null value");
-      }
       if (!isQuoted(value) && (value.contains(",") || value.contains("=") || containsUnescapedQuote(value))) {
         throw new VcfFormatException(kind + " metadata property " + propertyName +
             " contains an unquoted structural delimiter");

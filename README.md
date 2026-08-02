@@ -149,7 +149,9 @@ still throws -- see the strict section above):
   bcftools/vcf_validator comparison and the empty-vs-missing rationale.
 - A missing or invalid `Number`, `Type`, or `Description`; an unquoted `Description`; or `Type=Flag` with a `Number`
   other than `0`. An unparseable `Type` leaves the metadata's type `null`.
-- A header/metadata sample-count mismatch, or a sample named in the header but absent from the metadata.
+- A header/metadata sample-count mismatch, or a sample named in the header but absent from the metadata: warned
+  during parsing, and separately by `VcfWriter.Builder.validateBeforeWrite()`'s `writeHeader()` (checked once,
+  since `#CHROM`'s sample columns can't change after a `VcfMetadata` is built).
 - INFO, FILTER, FORMAT, and sample content that is semantically malformed but can be preserved or normalized safely.
 - A non-numeric `QUAL`: the column itself is still well-formed, so this is treated as the missing value rather than
   a structural failure.

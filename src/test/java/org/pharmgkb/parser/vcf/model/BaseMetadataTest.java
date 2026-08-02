@@ -192,6 +192,19 @@ public class BaseMetadataTest {
   }
 
   @Test
+  public void testValidateThrowsForNullPropertyValueInsertedViaGetPropertiesRaw() {
+    // regression test: putPropertyRaw/putAndQuoteProperty already reject a null value at insertion, but
+    // validateProperties() (called by validate(), and unconditionally at construction) only checked for a null
+    // key, tolerating a null value inserted directly through getPropertiesRaw()'s live view
+    Map<String, String> map = new LinkedHashMap<>();
+    map.put("ID", "DP");
+    BaseMetadata metadata = new BaseMetadata("TEST", map);
+    metadata.getPropertiesRaw().put("Extra", null);
+    VcfFormatException e = assertThrows(VcfFormatException.class, metadata::validate);
+    assertTrue(e.getMessage().contains("null value"));
+  }
+
+  @Test
   public void testCheckAttributeOrderThrowsForNullPropertyName() {
     // regression test: checkAttributeOrder() used to let CANONICAL_ATTRIBUTE_ORDER.contains(key) throw an
     // uncaught NullPointerException for a null key (reachable via getPropertiesRaw().put(null, ...)) instead of

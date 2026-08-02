@@ -87,6 +87,15 @@ public class BaseMetadata {
       if (entry.getKey() == null) {
         throw new VcfFormatException("Metadata contains a null property name");
       }
+      // putPropertyRaw/putAndQuoteProperty already reject a null value at the point of insertion; this closes
+      // the same gap for a value inserted directly through getPropertiesRaw()'s live view, bypassing those put
+      // methods entirely. Unreachable from real VCF parsing (InternalUtils.splitProperty always returns two
+      // non-null halves or throws), but this loop already runs unconditionally at construction (via the
+      // Map-based constructor every parsed declaration uses) and on every validate() re-check, so this is one
+      // more check on an already-active path, not a new one.
+      if (entry.getValue() == null) {
+        throw new VcfFormatException("Metadata property \"" + entry.getKey() + "\" has a null value");
+      }
       InternalUtils.checkNoLineTerminator(entry.getKey(), entry.getValue());
     }
   }
