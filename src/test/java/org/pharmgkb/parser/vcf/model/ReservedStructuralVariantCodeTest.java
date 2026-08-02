@@ -16,8 +16,17 @@ public class ReservedStructuralVariantCodeTest {
     assertEquals(ReservedStructuralVariantCode.Duplication, ReservedStructuralVariantCode.fromId("DUP"));
     assertEquals(ReservedStructuralVariantCode.Inversion, ReservedStructuralVariantCode.fromId("INV"));
     assertEquals(ReservedStructuralVariantCode.Cnv, ReservedStructuralVariantCode.fromId("CNV"));
+    assertEquals(ReservedStructuralVariantCode.Breakend, ReservedStructuralVariantCode.fromId("BND"));
     assertEquals(ReservedStructuralVariantCode.Tandem, ReservedStructuralVariantCode.fromId("TANDEM"));
     assertEquals(ReservedStructuralVariantCode.MobileElement, ReservedStructuralVariantCode.fromId("ME"));
+  }
+
+  @Test
+  public void testBreakendIsALevelZeroCodeWithNoParents() {
+    // regression test: BND (VCFv4.3.tex line 208, a 4.3+ addition to VCFv4.2's original 5-code list) was
+    // previously unrecognized, causing new AltStructuralVariant("BND") to throw.
+    assertEquals(0, ReservedStructuralVariantCode.Breakend.getLevelInSpecification());
+    assertEquals(0, ReservedStructuralVariantCode.Breakend.getParentCodes().size());
   }
 
   @Test

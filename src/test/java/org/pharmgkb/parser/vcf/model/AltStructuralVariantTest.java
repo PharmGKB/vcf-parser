@@ -14,7 +14,7 @@ public class AltStructuralVariantTest {
   @Test
   public void testTopLevelCodes() {
     // every top-level reserved code (level 0, no parent) must be accepted on its own
-    for (String id : new String[] { "DEL", "INS", "DUP", "INV", "CNV" }) {
+    for (String id : new String[] { "DEL", "INS", "DUP", "INV", "CNV", "BND" }) {
       AltStructuralVariant alt = new AltStructuralVariant(id);
       assertEquals(ReservedStructuralVariantCode.fromId(id), alt.getReservedComponent(0));
     }
