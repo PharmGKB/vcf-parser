@@ -129,3 +129,15 @@ nesting reachable through *only* reserved codes, and the non-reserved-parent cas
 behavior rather than a gap, for the reason above. Revisit if a level-2+ reserved code is ever added to
 `ReservedStructuralVariantCode`, since that would be the first case where a real "was this actually a valid
 nesting" question has a definite right answer to enforce.
+
+## `getDevVersionName()` in build.gradle has no call site
+
+`build.gradle:21-33` defines `getDevVersionName()` (shells out to `git describe --tags` to compute a dev
+version string), but nothing in `build.gradle` or `pgkb-build.gradle` currently calls it -- `getVersionName()`
+(the function actually assigned to `project.version`) uses `git describe --tags --abbrev=0` instead.
+
+**Decision: won't fix.** This is release-tooling dead code, not library behavior -- removing or wiring it in
+doesn't affect anything this library does at runtime, and it's not clear which was intended (delete it, or
+wire it into the version-computation path its name suggests it was written for). Revisit if someone
+determines which was actually intended, or needs a dev-build version-naming scheme distinct from
+`getVersionName()`'s tagged-release one.
