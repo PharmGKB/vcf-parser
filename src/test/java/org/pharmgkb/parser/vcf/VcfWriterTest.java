@@ -129,6 +129,110 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testDefaultWriteDropsEmptyIdEntry() throws Exception {
+    // regression test: the default path previously only null-checked ID/FILTER/ALT entries, silently writing a
+    // zero-length VCF field for a non-null empty string inserted via the live getIds()/getFilters()/getAltBases()
+    // view. ID is position-independent (nothing indexes into it), so EMPTY_FIELD_HANDLING.md's strategy is to
+    // drop the empty entry, matching the parser's own lenient behavior.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getIds().add("rs1");
+    position.getIds().add("");
+    position.getIds().add("rs2");
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertTrue(sw.toString().contains("\trs1;rs2\t"));
+      assertTrue(appender.anyMessageContains("ID contains an empty entry"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testDefaultWriteDropsAllEmptyIdEntriesRendersMissingValue() throws Exception {
+    // edge case: dropping every entry must still render the field's own missing-value sentinel, not an
+    // accidentally-empty column
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getIds().add("");
+    position.getIds().add("");
+
+    writer.writeLine(metadata, position, Collections.emptyList());
+    // pin down the ID field specifically (between POS and REF) -- a loose "\t.\t" check would trivially match
+    // the unrelated ALT/QUAL/FILTER fields elsewhere in the same line, which also render as "."
+    assertTrue(sw.toString().contains("chr1\t1\t.\tA\t"));
+  }
+
+  @Test
+  public void testDefaultWriteDropsEmptyFilterEntry() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getFilters().add("q10");
+    position.getFilters().add("");
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertTrue(sw.toString().contains("\tq10\t"));
+      assertTrue(appender.anyMessageContains("FILTER contains an empty entry"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testDefaultWriteSubstitutesEmptyAltEntryWithDot() throws Exception {
+    // ALT is position-dependent (GT genotype values index into it), so an empty entry is substituted with "."
+    // rather than dropped -- dropping would shift every later allele's index
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getAltBases().add("T");
+    position.getAltBases().add("");
+    position.getAltBases().add("C");
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertTrue(sw.toString().contains("\tT,.,C\t"));
+      assertTrue(appender.anyMessageContains("ALT contains an empty entry"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testDefaultWriteRejectsNullFormatKeyInsteadOfWritingLiteralNullText() throws Exception {
     // getFormat() is a live view; VcfPosition.validate()'s checkFormat() null guard only runs under
     // validateBeforeWrite(), so addFormatConditionally() must guard the default path itself
@@ -1142,6 +1246,42 @@ public class VcfWriterTest {
     // sample has fewer properties than FORMAT: this previously threw NoSuchElementException
     writer.writeLine(metadata, position, Collections.singletonList(sample));
     assertTrue(sw.toString().contains("\tGT:DP\t0/1:."));
+  }
+
+  @Test
+  public void testDefaultWriteSubstitutesEmptySampleValueWithDot() throws Exception {
+    // regression test: the default path previously only substituted "." for a null sample property value, not a
+    // non-null empty one (e.g. via the documented sample.putProperty("DP", "") live-mutation path) --
+    // testValidateBeforeWriteNormalizesEmptySampleValue covers the diagnostics-mode case (via VcfSample.validate()),
+    // this covers the default-path sibling EMPTY_FIELD_HANDLING.md's finding said was missing
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "SAMPLE1"))
+        .build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getAltBases().add("T");
+    position.getFormat().add("GT");
+    position.getFormat().add("DP");
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    sample.putProperty(ReservedFormatProperty.Genotype, "0/1");
+    sample.putProperty("DP", "");
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeLine(metadata, position, Collections.singletonList(sample));
+      assertTrue(sw.toString().contains("\tGT:DP\t0/1:."));
+      assertTrue(appender.anyMessageContains("property DP has an empty value"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
   }
 
   @Test

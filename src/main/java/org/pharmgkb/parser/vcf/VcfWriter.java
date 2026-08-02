@@ -296,11 +296,13 @@ public class VcfWriter implements Closeable {
 
     sb.append(chromosome).append("\t");
     sb.append(position.getPosition()).append("\t");
-    addListOrElse("ID", position.getIds(), ";", ".", sb);
+    addListOrElse("ID", position.getIds(), ";", ".", false, sb);
     sb.append(ref).append("\t");
-    addListOrElse("ALT", position.getAltBases(), ",", ".", sb);
+    // ALT is position-dependent (GT genotype values index into it), so an empty entry is substituted with "."
+    // rather than dropped -- dropping would shift every later allele's index; see EMPTY_FIELD_HANDLING.md.
+    addListOrElse("ALT", position.getAltBases(), ",", ".", true, sb);
     addStringOrElse(position.getQuality(), ".", sb);
-    addListOrElse("FILTER", position.getFilters(), ";", ".", sb);
+    addListOrElse("FILTER", position.getFilters(), ";", ".", false, sb);
     addInfoOrDot(metadata, position, sb);
 
     // "PASS" is VCF's reserved "all filters passed" keyword (VCFv4.2.tex line 185: "PASS if this position has
@@ -850,6 +852,17 @@ public class VcfWriter implements Closeable {
               " (on line {})", sampleIndex, key, lineBeingWritten());
         }
         value = ".";
+      } else if (value.isEmpty()) {
+        // FORMAT sub-field values are position-dependent (matched to FORMAT keys by index), so an empty value is
+        // substituted with "." rather than dropped, the same reasoning EMPTY_FIELD_HANDLING.md gives for ALT.
+        // VcfSample.validate() already does this same substitution under validateBeforeWrite() (called before
+        // this method runs in that mode), so this closes the identical gap for the default write path only --
+        // the !m_validateBeforeWrite guard on the warning avoids double-warning for the same event.
+        if (!m_validateBeforeWrite) {
+          m_warnings.warn("Sample #{} property {} has an empty value; treating it as the missing value '.'" +
+              " (on line {})", sampleIndex, key, lineBeingWritten());
+        }
+        value = ".";
       }
 
       FormatMetadata format = metadata.getFormats().get(key);
@@ -983,27 +996,45 @@ public class VcfWriter implements Closeable {
   }
 
   private void addListOrElse(String fieldName, List<String> list, String delimiter, String missingValue,
-      StringBuilder sb) {
-    // list (position.getIds()/getAltBases()/getFilters()) is a live view a caller can insert a null entry into
-    // directly, bypassing VcfPosition.validate()'s own null guards (checkIds/checkAltBases/checkFilters), which
-    // only run under validateBeforeWrite(). On the default path, StringBuilder.append(Object) would otherwise
-    // silently stringify a null entry into the literal text "null" instead of a clean rejection.
-    if (list.isEmpty()) {
-      sb.append(missingValue);
-    } else {
-      sb.append(requireNonNullEntry(fieldName, list.get(0)));
-      for (int i = 1; i < list.size(); i++) {
-        sb.append(delimiter).append(requireNonNullEntry(fieldName, list.get(i)));
+      boolean substituteEmptyWithDot, StringBuilder sb) {
+    // list (position.getIds()/getAltBases()/getFilters()) is a live view a caller can insert a null or empty
+    // entry into directly, bypassing VcfPosition.validate()'s own guards (checkIds/checkAltBases/checkFilters),
+    // which only run under validateBeforeWrite(). On the default path, StringBuilder.append(Object) would
+    // otherwise silently stringify a null entry into the literal text "null" instead of a clean rejection, and
+    // an empty entry would silently produce a zero-length VCF field instead of being canonicalized.
+    //
+    // The empty-entry canonicalization below (drop for a position-independent list like ID/FILTER, substitute
+    // "." for a position-dependent one like ALT -- see EMPTY_FIELD_HANDLING.md) is folded into this method's own
+    // single pass over the list, rather than calling InternalUtils.dropEmptyEntries()/fillEmptyEntriesWithDot()
+    // first, to avoid a second full scan of the list on this performance-sensitive default write path. This
+    // means this method and those two InternalUtils methods independently implement the SAME per-field decision
+    // table -- if EMPTY_FIELD_HANDLING.md's table ever changes, update both places to keep them in sync.
+    boolean appendedAny = false;
+    for (String entry : list) {
+      if (entry == null) {
+        throw new VcfFormatException(fieldName + " contains a null entry");
       }
+      if (entry.isEmpty()) {
+        if (substituteEmptyWithDot) {
+          m_warnings.warn("{} contains an empty entry (VCF does not allow zero-length fields); treating it as " +
+              "the missing value '.'", fieldName);
+          entry = ".";
+        } else {
+          m_warnings.warn("{} contains an empty entry (VCF does not allow zero-length fields); dropping it",
+              fieldName);
+          continue;
+        }
+      }
+      if (appendedAny) {
+        sb.append(delimiter);
+      }
+      sb.append(entry);
+      appendedAny = true;
+    }
+    if (!appendedAny) {
+      sb.append(missingValue);
     }
     sb.append("\t");
-  }
-
-  private static String requireNonNullEntry(String fieldName, @Nullable String entry) {
-    if (entry == null) {
-      throw new VcfFormatException(fieldName + " contains a null entry");
-    }
-    return entry;
   }
 
   private void addPropertyLines(List<String> lines, String name, Collection<String> list) {

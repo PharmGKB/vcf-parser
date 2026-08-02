@@ -3,7 +3,11 @@
 This document describes the parser's (lenient) behavior -- reached via `VcfParser`, `VcfPosition.validate()`,
 or `VcfPosition`'s own 11-argument lenient constructor. `VcfPosition`'s 10-argument (default) constructor
 throws `VcfFormatException` immediately for an empty ID/ALT/FILTER entry or an empty FORMAT sub-field name
-instead of warning-and-normalizing per the table below; see `VALIDATION_PHILOSOPHY.md`.
+instead of warning-and-normalizing per the table below; see `VALIDATION_PHILOSOPHY.md`. `VcfWriter`'s default
+write path applies this same warn-and-normalize behavior for a live-mutated empty ID/ALT/FILTER entry or
+sample FORMAT value that reaches `writeLine()` without validation having re-run (see "Where this is
+implemented" below) -- it is not part of `VALIDATION_PHILOSOPHY.md`'s strict/lenient constructor split, since
+the writer has no "direct construction" analogue to be strict about.
 
 The VCF spec (explicitly stated starting with VCFv4.3; VCFv4.1/4.2 are silent on it) says:
 
@@ -155,7 +159,18 @@ for rejection purposes, but they are still a data-loss case in practice.
 
 ## Where this is implemented
 
-- `InternalUtils.dropEmptyEntries` / `InternalUtils.fillEmptyEntriesWithDot` — the two shared normalization strategies.
+- `InternalUtils.dropEmptyEntries` / `InternalUtils.fillEmptyEntriesWithDot` — the two shared normalization
+  strategies, used by `VcfPosition`'s own constructor-time checks and `validate()`.
+- `VcfWriter.addListOrElse()` (ID/ALT/FILTER) and `addSampleConditionally()` (a sample's FORMAT sub-field
+  value) — the default write path's own equivalent of the same two strategies, for a live-mutated empty entry
+  that reaches `writeLine()` without `position.validate()`/`sample.validate()` ever having run (the default
+  path skips those for performance; see `VALIDATION_PHILOSOPHY.md`). `addListOrElse()` folds the drop/substitute
+  decision into its own single pass over the list rather than calling `dropEmptyEntries`/`fillEmptyEntriesWithDot`
+  first, to avoid scanning the list twice on this hot path -- it duplicates, rather than reuses, the same
+  per-field decision table those two methods implement. **If that table ever changes, update both places.**
+  `addSampleConditionally()`'s empty-value substitution is a simpler, unconditional "always substitute `.`"
+  rule (not a per-field table), independently duplicated a third time by `VcfSample.validate()` below --
+  update all three if a sample value's canonicalization rule ever needs to become field-specific too.
 - `VcfPosition.checkIds` / `checkFilters` — drop empty entries (ID, FILTER).
 - `VcfPosition.checkAltBases` — substitutes `.` for an empty entry (position-dependent, like the sample/INFO
   values below), and no longer rejects `.` combined with a real allele.
