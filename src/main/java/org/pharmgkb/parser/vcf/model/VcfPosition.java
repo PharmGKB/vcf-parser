@@ -402,6 +402,8 @@ public class VcfPosition {
         throw new VcfFormatException("Duplicate FORMAT key \"" + f + "\"");
       }
     }
+    // VCFv4.2.tex line 211: "The first sub-field must always be the genotype (GT) if it is present." Restated
+    // standalone at VCFv4.3.tex line 431 ("The first key must always be the genotype (GT) if it is present.").
     if (format.indexOf("GT") > 0) {
       throw new VcfFormatException("FORMAT GT must be the first sub-field when present");
     }

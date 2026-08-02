@@ -73,6 +73,35 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testMidWriteLineWarningReportsTheLineCurrentlyBeingWritten() throws Exception {
+    // regression test: a warning fired while writeLine() is still building the current data line used to read
+    // m_lineNumber before this line's own printLine() call had run, under-reporting by exactly one line. A
+    // metadata-only header (no INFO/FILTER/FORMAT/ALT/contig/SAMPLE/PEDIGREE declared, no samples) always emits
+    // exactly 2 header lines (##fileformat and #CHROM), so the first data line written afterward is line 3.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getInfo().put("AD", "1"); // AD is not declared in metadata's (empty) INFO map
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertTrue(appender.anyMessageContains("(on line 3)"));
+      assertFalse(appender.anyMessageContains("(on line 2)"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testDefaultWriteRejectsNullIdInsteadOfWritingLiteralNullText() throws Exception {
     // getIds() is a live view; VcfPosition.validate()'s checkIds() null guard only runs under
     // validateBeforeWrite(), so addListOrElse() must guard the default path itself, since

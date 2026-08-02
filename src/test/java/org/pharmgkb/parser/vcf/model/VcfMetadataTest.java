@@ -354,6 +354,14 @@ public class VcfMetadataTest {
   }
 
   @Test
+  public void testRemoveAssemblyRemovesEntry() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    metadata.addAssembly("file://somewhere");
+    metadata.removeAssembly("file://somewhere");
+    assertTrue(metadata.getAssemblies().isEmpty());
+  }
+
+  @Test
   public void testBuilderAddRawPropertyRejectsLineTerminator() {
     VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
     assertThrows(VcfFormatException.class, () -> builder.addRawProperty("name", "bad\nvalue"));

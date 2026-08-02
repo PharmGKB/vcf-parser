@@ -313,7 +313,7 @@ public class VcfWriter implements Closeable {
     position.getFilters().stream()
         .filter(key -> !key.equals("PASS") && !metadata.getFilters().containsKey(key)).forEach(key ->
         m_warnings.warn("Position {}:{} has FILTER {}, but there is no FILTER metadata with that name (on line {})",
-            position.getChromosome(), position.getPosition(), key, m_lineNumber));
+            position.getChromosome(), position.getPosition(), key, lineBeingWritten()));
 
     // these columns can be skipped completely
     addFormatConditionally(position, numSamples, sb);
@@ -807,7 +807,7 @@ public class VcfWriter implements Closeable {
       // FORMAT key left for them to correspond to.
       if (!sample.getPropertyKeys().isEmpty()) {
         m_warnings.warn("Sample #{} has propert(y/ies) set, but FORMAT is empty ('.'); they will not be written " +
-            "(on line {})", sampleIndex, m_lineNumber);
+            "(on line {})", sampleIndex, lineBeingWritten());
       }
       sb.append(".\t");
       return;
@@ -819,14 +819,14 @@ public class VcfWriter implements Closeable {
       if (!m_validateBeforeWrite && !metadata.getFormats().containsKey(key)) {
         m_warnings.warn("Sample #{} for {}:{} contains FORMAT {}, but there is no FORMAT metadata with that name " +
                 "(on line {})",
-            sampleIndex, position.getChromosome(), position.getPosition(), key, m_lineNumber);
+            sampleIndex, position.getChromosome(), position.getPosition(), key, lineBeingWritten());
       }
 
       String value = sample.getProperty(key);
       if (value == null) {
         if (!m_validateBeforeWrite) {
           m_warnings.warn("Sample #{} is missing property {}" +
-              " (on line {})", sampleIndex, key, m_lineNumber);
+              " (on line {})", sampleIndex, key, lineBeingWritten());
         }
         value = ".";
       }
@@ -842,7 +842,7 @@ public class VcfWriter implements Closeable {
             InternalUtils.convertProperty(format.getType(), value, m_warnings);
           } catch (VcfFormatException e) {
             m_warnings.warn("Property {} for sample #{} is not of type {}" +
-                " (on line {})", key, sampleIndex, format.getType(), m_lineNumber);
+                " (on line {})", key, sampleIndex, format.getType(), lineBeingWritten());
           }
         }
       }
@@ -857,7 +857,7 @@ public class VcfWriter implements Closeable {
     if (!m_validateBeforeWrite) {
       sample.getPropertyKeys().stream().filter(key -> !position.getFormat().contains(key)).forEach(key -> {
         m_warnings.warn("Sample #{} contains extra property {} " +
-            "(on line {})", sampleIndex, key, m_lineNumber);
+            "(on line {})", sampleIndex, key, lineBeingWritten());
       });
     }
     sb.append("\t");
@@ -893,7 +893,7 @@ public class VcfWriter implements Closeable {
       InfoMetadata info = metadata.getInfo().get(key);
       if (!m_validateBeforeWrite && info == null) {
         m_warnings.warn("Position {}:{} contains INFO {}, but there is no INFO metadata with that name (on line {})",
-            position.getChromosome(), position.getPosition(), key, m_lineNumber);
+            position.getChromosome(), position.getPosition(), key, lineBeingWritten());
       } else if (!m_validateBeforeWrite) {
         for (String value : values) {
           Integer number = null;
@@ -906,7 +906,7 @@ public class VcfWriter implements Closeable {
             try {
               InternalUtils.convertProperty(info.getType(), value, m_warnings); // just test
             } catch (VcfFormatException e) {
-              m_warnings.warn("Property {} is not of type {} (on line {})", key, info.getType(), m_lineNumber);
+              m_warnings.warn("Property {} is not of type {} (on line {})", key, info.getType(), lineBeingWritten());
             }
           }
         }
@@ -935,7 +935,7 @@ public class VcfWriter implements Closeable {
           // convention of skipping a check "already reported generically" to avoid warning about it twice.
           if (!m_validateBeforeWrite) {
             m_warnings.warn("INFO {} has an empty value but is declared Type={} (not Flag); writing the " +
-                "missing-value sentinel \".\" instead (on line {})", key, info.getType(), m_lineNumber);
+                "missing-value sentinel \".\" instead (on line {})", key, info.getType(), lineBeingWritten());
           }
           sb.append("=.");
         }
@@ -1227,10 +1227,21 @@ public class VcfWriter implements Closeable {
     m_warnings.close();
   }
 
+  /**
+   * {@link #m_lineNumber} is a post-increment "lines fully written so far" counter -- only accurate once
+   * {@link #printLine} has actually run for the line in question. A warning or exception message describing the
+   * line currently under construction (fired from {@link #writeLine}'s own body, or from {@link #printLine}
+   * itself before its own increment below has run) must report this value instead of {@link #m_lineNumber}
+   * directly, or it silently reports the <em>previous</em> line's number instead.
+   */
+  private int lineBeingWritten() {
+    return m_lineNumber + 1;
+  }
+
   private void printLine(Object line) {
     String string = line.toString();
     if (string.contains("\n") || string.contains("\r")) {
-      throw new VcfFormatException("Something went wrong writing line #" + m_lineNumber + ": [[[" + string +
+      throw new VcfFormatException("Something went wrong writing line #" + lineBeingWritten() + ": [[[" + string +
           "]]] contains a line terminator");
     }
     // always terminate with LF (not the platform separator from println) so output is deterministic across platforms
