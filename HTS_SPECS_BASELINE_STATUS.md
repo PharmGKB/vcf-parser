@@ -49,7 +49,7 @@ divergence under this library's target semantics — there's nothing to gain by 
 | CHROM contains a reserved/structural delimiter character (`<`, `:`, or `,`) | `failed_body_chrom_000.vcf` (angle bracket), `_001.vcf` (colon), `_003.vcf` (comma) (4.1, 4.2) | 6 | Known gap — tracked as an open finding, not yet fixed | `VcfPosition.checkChromosome` only rejects an empty or whitespace-containing CHROM. A comma-containing CHROM can never match a legitimately-declared `##contig` ID (`IdMetadata`'s typed constructor already rejects a comma in any metadata ID), so this is a reachable inconsistency, not just a cosmetic gap. |
 | CHROM values for one reference sequence don't form a contiguous block | `failed_body_contiguous_000.vcf` (chromosome 1), `_001.vcf` (chromosome 2) (4.1, 4.2) | 4 | Known gap — tracked as an open finding, not yet fixed | `VCFv4.2.tex` line 179: entries for a CHROM "should" form a contiguous block (`VCFv4.3.tex` line 327 upgrades this to "must"). No cross-record state exists anywhere in `VcfParser` to detect this. |
 | Records not sorted by increasing POS within a CHROM | `failed_body_unsorted_000.vcf` (4.1, 4.2) | 2 | Known gap — tracked as an open finding, not yet fixed | `VCFv4.2.tex` line 180 states this flatly ("Positions are sorted numerically, in increasing order..."). No cross-record state exists anywhere in `VcfParser` to detect this. |
-| Duplicate/triplicate identical variant records at the same POS | `failed_body_duplicated_000.vcf` (duplicated), `_001.vcf` (triplicated), `_002.vcf` (multiallelic-derived), `_003.vcf` (different-context) (4.1, 4.2) | 8 | Pending decision -- candidate for `WONT_FIX`, not yet agreed | `VCFv4.2.tex` line 180 explicitly permits multiple records at the same POS, and `_002.vcf`'s own cause text ("duplicated variant due to multiallelic") names a legitimate multiallelic-decomposition case as one hts-specs treats as invalid -- reads as a vcf_validator-specific business-logic check beyond VCFv4.2's own text. Proposed as a `WONT_FIX.md` entry; awaiting explicit sign-off before finalizing. |
+| Duplicate/triplicate identical variant records at the same POS | `failed_body_duplicated_000.vcf` (duplicated), `_001.vcf` (triplicated), `_002.vcf` (multiallelic-derived), `_003.vcf` (different-context) (4.1, 4.2) | 8 | Permanently accepted, deliberate | See "Duplicate/triplicate record fixtures" below. |
 | PL/GL/GP cardinality-vs-ploidy mismatch not detected at parse time | `failed_body_samples_ploidy_000-003.vcf` (4.1, 4.2) | 8 | Known gap — tracked as an open finding, not yet fixed | The cardinality check already exists (`VcfWriter.getExpectedCardinality`/`warnIfWrongCardinality`) but is only reachable via `validateBeforeWrite()`, never at parse time or through a typed getter — violates the Parser Validation Policy requirement that deferred validation must be reachable via a getter/typed conversion. |
 | Non-numeric QUAL | `failed_body_qual_000.vcf` (4.1, 4.2) | 2 | Permanently accepted | `VcfPosition.getQuality()` (`VcfPosition.java:542-563`) warns ("QUAL '{}' is not a number; treating it as the missing value") and falls back to `null` on first access — deferred validation catching the problem exactly per Parser Validation Policy. Confirmed with a scratch parse+`getQuality()` test. |
 | Negative QUAL | `failed_body_qual_001.vcf` (4.1, 4.2) | 2 | Permanently accepted | See "Negative QUAL fixtures" below. |
@@ -84,6 +84,38 @@ check does not actually fire for a negative value, an inconsistency in the tool 
 references this project defers to (target spec text, bcftools, vcf_validator) enforces non-negativity, the
 hts-specs fixture's own `##CauseOfFailure=` claim is unsupported — analogous to the "Non-valid URL fixtures"
 precedent above.
+
+## Duplicate/triplicate record fixtures: why permanently accepted
+
+Four fixtures document repeated/near-repeated records as invalid: `failed_body_duplicated_000.vcf` (the
+exact same `1:123 C>G` record appears twice, byte-for-byte identical including sample data,
+`##CauseOfFailure=duplicated variant`), `_001.vcf` (six records sharing one `ID` across six different
+positions, `triplicated variant`), `_002.vcf` (two adjacent records, `AT→AAT,AA` at POS 123 and `T→A` at POS
+124 — exactly the shape a multiallelic-decomposition tool produces, `duplicated variant due to
+multiallelic`), and `_003.vcf` (two adjacent records representing the same variant under two different
+left-alignment contexts, `duplicated variant due to different context`).
+
+`VCFv4.2.tex` line 180 explicitly permits multiple records at the same POS ("It is permitted to have multiple
+records with the same POS"); VCFv4.3.tex/4.4.tex/4.5.tex (checked through 4.5, the newest version in this
+project's local hts-specs clone) repeat this sentence verbatim, with no version ever adding language
+addressing duplicate or near-duplicate records. `_002.vcf`'s own cause text names exactly the legitimate
+multiallelic-decomposition case this would risk rejecting if enforced generally. Both reference tools this
+project defers to independently treat all four fixtures as valid: bcftools 1.23.1 (htslib 1.23.1) exits 0 on
+all four with no duplicate-related warning (only the generic, unrelated "contig/INFO/FORMAT not defined in
+header" warnings every fixture in this suite triggers), and vcf_validator 0.10.2 reports all four as valid
+("According to the VCF specification, the input file is valid"). Since neither the target spec, its later
+clarifying versions, nor either reference tool treats any of these four as invalid, this reads as a
+vcf_validator-conformance-suite-specific convention with no independent support, the same shape as the
+"Non-valid URL fixtures" precedent above.
+
+A cheap, hot-path-compatible check (comparing each record's CHROM/POS/REF/ALT against only the immediately
+preceding record, reusing the same O(1) per-record state a future CHROM-contiguity/POS-ordering check would
+also need) would catch `_000.vcf`'s exact-duplicate case, but not the other three: `_001.vcf`'s repeats are
+non-adjacent, and `_002.vcf`/`_003.vcf` require variant-normalization logic (left-alignment/trimming,
+generally needing reference-genome context) to recognize as equivalent — a materially larger feature this
+library isn't designed to provide, not a hot-path-cheap addition. Implementing the partial, `_000`-only
+version was considered and rejected as not worth the inconsistency (catching one of four documented patterns
+while leaving the rest permanently accepted anyway).
 
 ## `writer-bytediff` entries (9) — `passed/` fixtures whose round trip isn't byte-identical
 
