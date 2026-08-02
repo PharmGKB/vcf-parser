@@ -1,7 +1,5 @@
 fixture_path	check_type	category	reason
-test/vcf/4.1/failed/failed_body_chrom_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: contig ID contains an angle bracket
 test/vcf/4.1/failed/failed_body_chrom_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: contig ID contains a colon
-test/vcf/4.1/failed/failed_body_chrom_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: contig ID contains a comma
 test/vcf/4.1/failed/failed_body_duplicated_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: duplicated variant
 test/vcf/4.1/failed/failed_body_duplicated_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: triplicated variant
 test/vcf/4.1/failed/failed_body_duplicated_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: duplicated variant due to multiallelic
@@ -66,9 +64,7 @@ test/vcf/4.1/failed/failed_meta_pedigree_001.vcf	parser-throw-or-warn	silently-a
 test/vcf/4.1/failed/failed_meta_pedigreedb_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Non-valid URL
 test/vcf/4.1/failed/failed_meta_sample_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Genomes field missing
 test/vcf/4.1/failed/failed_meta_sample_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Non-description field containing quotes
-test/vcf/4.2/failed/failed_body_chrom_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: contig ID contains an angle bracket
 test/vcf/4.2/failed/failed_body_chrom_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: contig ID contains a colon
-test/vcf/4.2/failed/failed_body_chrom_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: contig ID contains a comma
 test/vcf/4.2/failed/failed_body_duplicated_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: duplicated variant
 test/vcf/4.2/failed/failed_body_duplicated_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: triplicated variant
 test/vcf/4.2/failed/failed_body_duplicated_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: duplicated variant due to multiallelic

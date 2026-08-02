@@ -30,7 +30,7 @@ directly, cross-referenced against this project's own established policy docs) a
 table below. One row (the duplicate/triplicate-record entries) is marked "pending decision" rather than
 finalized — a `WONT_FIX.md` entry was drafted for it but is awaiting explicit sign-off before being added.
 
-## `parser-throw-or-warn` entries (133: 10 pre-existing + 123 added 2026-08-02 (6 of the original 129 since fixed and removed), one row pending a `WONT_FIX` decision) — `failed/` fixtures whose invalidity isn't detected
+## `parser-throw-or-warn` entries (129: 10 pre-existing + 119 added 2026-08-02 (10 of the original 129 since fixed and removed), one row pending a `WONT_FIX` decision) — `failed/` fixtures whose invalidity isn't detected
 
 This check only runs `failed/` fixtures from VCF versions 4.1 and 4.2 (`HtsSpecsConformanceTest.java`'s
 `FAILED_VERSIONS = List.of("4.1", "4.2")`) — 4.3's own `failed/` fixtures are never examined at all. This is
@@ -46,7 +46,7 @@ divergence under this library's target semantics — there's nothing to gain by 
 | Non-valid URL / mislabeled cause | `failed_meta_assembly_001.vcf` (4.1), `failed_meta_pedigreedb_002.vcf` (4.1, 4.2) | 3 | Permanently accepted | See "Non-valid URL fixtures" below. |
 | Incorrect ALT ID value (`ID=DEL1`) | `failed_meta_alt_000.vcf` (4.1, 4.2) | 2 | Permanently accepted, deliberate | A documented false negative: the reserved structural-variant-code hierarchy is only enforced when an ALT ID contains `:`, since a bare token has other spec-sanctioned uses (IUPAC codes, `CN0`-style copy-number codes). |
 | Meta-data entry is not a key-value pair | `failed_meta_assembly_001.vcf` (4.2 only) | 1 | Permanently accepted | Same fixture/value as the URL row above, but this version copy has a different, inconsistent `##CauseOfFailure=` label than its 4.1/4.3 siblings — doesn't matter to us, both labels get the same treatment. See "Non-valid URL fixtures" below. |
-| CHROM contains a reserved/structural delimiter character (`<`, `:`, or `,`) | `failed_body_chrom_000.vcf` (angle bracket), `_001.vcf` (colon), `_003.vcf` (comma) (4.1, 4.2) | 6 | Known gap — tracked as an open finding, not yet fixed | `VcfPosition.checkChromosome` only rejects an empty or whitespace-containing CHROM. A comma-containing CHROM can never match a legitimately-declared `##contig` ID (`IdMetadata`'s typed constructor already rejects a comma in any metadata ID), so this is a reachable inconsistency, not just a cosmetic gap. |
+| CHROM contains a colon | `failed_body_chrom_001.vcf` (4.1, 4.2) | 2 | Permanently accepted, deliberate | See "CHROM colon fixture" below. |
 | Duplicate/triplicate identical variant records at the same POS | `failed_body_duplicated_000.vcf` (duplicated), `_001.vcf` (triplicated), `_002.vcf` (multiallelic-derived), `_003.vcf` (different-context) (4.1, 4.2) | 8 | Permanently accepted, deliberate | See "Duplicate/triplicate record fixtures" below. |
 | PL/GL/GP cardinality-vs-ploidy mismatch not detected at parse time | `failed_body_samples_ploidy_000-003.vcf` (4.1, 4.2) | 8 | Known gap — tracked as an open finding, not yet fixed | The cardinality check already exists (`VcfWriter.getExpectedCardinality`/`warnIfWrongCardinality`) but is only reachable via `validateBeforeWrite()`, never at parse time or through a typed getter — violates the Parser Validation Policy requirement that deferred validation must be reachable via a getter/typed conversion. |
 | Non-numeric QUAL | `failed_body_qual_000.vcf` (4.1, 4.2) | 2 | Permanently accepted | `VcfPosition.getQuality()` (`VcfPosition.java:542-563`) warns ("QUAL '{}' is not a number; treating it as the missing value") and falls back to `null` on first access — deferred validation catching the problem exactly per Parser Validation Policy. Confirmed with a scratch parse+`getQuality()` test. |
@@ -142,3 +142,25 @@ Affected fixtures:
 | `failed_meta_assembly_001.vcf` | 4.1 | `Non-valid URL` |
 | `failed_meta_assembly_001.vcf` | 4.2 (file internally declares `VCFv4.3` despite living under the `4.2/` directory), 4.3 | `Meta-data entry is not a key-value pair` |
 | `failed_meta_pedigreedb_002.vcf` | 4.1, 4.2, 4.3 | `Non-valid URL` (consistent across versions) |
+
+## CHROM colon fixture: why permanently accepted
+
+`failed_body_chrom_001.vcf`'s `##CauseOfFailure=contig ID contains a colon` claim is directly contradicted by
+`VCFv4.3.tex`'s own "changes since previous version" appendix (~line 2135-2141, unchanged in VCFv4.4/4.5):
+
+> "The VCF specification previously disallowed colons (`:`) in contig names to avoid confusion when parsing
+> breakends, but this was unnecessary. Even with contig names containing colons, the breakend mate position
+> notation can be unambiguously parsed because the `:pos` part is always present."
+
+This is used as VCFv4.2-silent clarifying guidance per `AGENTS.md`'s decision hierarchy (VCFv4.2 has no
+character-set grammar for CHROM beyond forbidding whitespace). Confirmed directly with bcftools 1.23.1 and
+vcf_validator 0.10.2 against this exact fixture: both tools accept it without complaint (bcftools exit 0,
+silent; vcf_validator reports the file valid even at its `warning` verbosity level). `VcfPosition.checkChromosome`
+deliberately excludes colon from its invalid-character set for this reason — see the citation comment on
+`InternalUtils.INVALID_CHROM_CHAR_PATTERN`.
+
+Affected fixture:
+
+| Fixture | Version(s) | `##CauseOfFailure=` |
+|---|---|---|
+| `failed_body_chrom_001.vcf` | 4.1, 4.2 | `contig ID contains a colon` |

@@ -50,6 +50,10 @@ invalid:
   identifier within a single `ID` field; a `FILTER` of `0`; a `FILTER` missing value (`.`) combined with another
   filter code; an `INFO` missing value (`.`) combined with a real property; or a `FORMAT` in which `GT` is
   present but not the first sub-field or a (non-empty) key is duplicated.
+- `CHROM` additionally rejects `\`, `,`, `"`, `` ` ``, `'`, `(`, `)`, `{`, `}`, `[`, `]`, or `<`/`>` (unless the
+  entire value is a well-formed, fully angle-bracket-wrapped symbolic contig reference like `<1>`) anywhere in
+  the value, and a leading `*` or `=` -- matching the SAM reference-sequence-name character set VCFv4.3 aligned
+  CHROM to. A colon is explicitly allowed.
 - A sample with more sub-fields than its `FORMAT` declares (trailing sub-fields may be dropped, but not added).
 - A malformed or out-of-range `GT` allele index looked up through `MemoryMappedVcfDataStore`, or a failed
   conversion when a typed value is requested.
