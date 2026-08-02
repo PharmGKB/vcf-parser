@@ -28,6 +28,12 @@ public abstract class IdMetadata extends BaseMetadata {
     if (InternalUtils.containsWhitespace(id)) {
       throw new VcfFormatException(label + " metadata ID \"" + id + "\" must not contain whitespace");
     }
+    // strict construction, same reasoning as the whitespace check above -- see init()'s own comment (cited from
+    // every ##INFO/##FILTER/##FORMAT/##ALT/##contig/##SAMPLE worked example's shared comma-delimited
+    // attribute-list grammar) for why this applies uniformly, including to ALT, with no exception.
+    if (id.contains(",")) {
+      throw new VcfFormatException(label + " metadata ID \"" + id + "\" must not contain a comma");
+    }
     putPropertyRaw(ID, id);
   }
 
@@ -58,6 +64,18 @@ public abstract class IdMetadata extends BaseMetadata {
     // vcf_validator's uniform treatment govern instead, per this project's decision hierarchy.
     if (id != null && InternalUtils.containsWhitespace(id)) {
       m_warnings.warn("{} metadata ID \"{}\" must not contain whitespace", getLabel(), id);
+    }
+    // Every ##INFO/##FILTER/##FORMAT/##ALT/##contig/##SAMPLE worked example in VCFv4.2.tex (e.g. line 35:
+    // "##INFO=<ID=NS,Number=1,...>") delimits attributes with an unescaped comma; a literal comma inside an ID
+    // value would be indistinguishable from the end of the ID attribute itself, for every one of these six
+    // types uniformly -- unlike the whitespace check above, this needs no bcftools/vcf_validator corroboration,
+    // since it follows directly from the attribute-list grammar every example shares, not a per-type policy
+    // choice. Deliberately not scoped away from ALT the way angle brackets are (see VcfMetadata.validateAlt()'s
+    // own comment): a comma is never part of either of ALT's spec-sanctioned colonless conventions (an IUPAC
+    // ambiguity code or a CN0-style copy-number allele) or its colon-delimited structural-variant-code grammar,
+    // so this check applies to every type this class covers, with no exception.
+    if (id != null && id.contains(",")) {
+      m_warnings.warn("{} metadata ID \"{}\" must not contain a comma", getLabel(), id);
     }
   }
 

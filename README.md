@@ -187,6 +187,12 @@ still throws -- see the strict section above):
   the hts-specs fixture and vcf_validator's uniform treatment govern instead. `##ALT` IDs also separately warn on
   angle brackets (`<`/`>`), per the same VCFv4.2.tex line 105 sentence — an `##ALT`-specific restriction not
   extended to the other five types, since no fixture or spec passage evidences it for them.
+- Any of those same six declaration types' `ID` containing a comma: warns, with no exception for `##ALT` (unlike
+  angle brackets above) — a comma is never part of `##ALT`'s own colon-delimited structural-variant-code grammar
+  or its colonless conventions (an IUPAC ambiguity code or a `CN0`-style copy-number allele) either. This follows
+  directly from every `##INFO`/`##FILTER`/`##FORMAT`/`##ALT`/`##contig`/`##SAMPLE` worked example's own
+  comma-delimited attribute-list syntax, not a per-type policy choice, so it needs no bcftools/vcf_validator
+  corroboration the way the whitespace check above does.
 
 An empty ("zero-length") entry in a delimited record field — e.g. `ID=rs1;;rs2`, `ALT=T,`, `FILTER=q10;`,
 `FORMAT=GT:DP:`, a sample value like `0/1:`, or `INFO=AD=1,,2` — is also lenient rather than strict when it can be

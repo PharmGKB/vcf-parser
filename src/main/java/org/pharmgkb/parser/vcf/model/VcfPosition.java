@@ -240,9 +240,16 @@ public class VcfPosition {
     ids = InternalUtils.dropEmptyEntries("ID", ids, warnings);
     Set<String> seenIds = new HashSet<>();
     for (String id : ids) {
+      // hts-specs' own conformance fixtures document both rejections directly: test/vcf/4.2/failed/
+      // failed_body_id_000.vcf ("ID has a whitespace"), failed_body_id_001.vcf ("ID begins with a semi-colon"),
+      // and failed_body_id_002.vcf ("ID ends with a semi-colon").
       if (InternalUtils.containsWhitespace(id) || id.contains(";")) {
         throw new VcfFormatException("ID \"" + id + "\" contains whitespace or semicolons");
       }
+      // VCFv4.2's own conformance suite is silent on a within-record duplicate ID; test/vcf/4.3/failed/
+      // failed_body_id_003.vcf ("ID contains duplicate values in a single line", literal
+      // "ID=rs180734498;rs180734498") is used here as newer-version clarifying guidance per this project's
+      // policy for a case the target version's own suite doesn't cover.
       if (!seenIds.add(id)) {
         throw new VcfFormatException("Duplicate ID \"" + id + "\"");
       }

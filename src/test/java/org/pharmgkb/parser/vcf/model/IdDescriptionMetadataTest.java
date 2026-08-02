@@ -168,6 +168,41 @@ public class IdDescriptionMetadataTest {
   }
 
   @Test
+  public void testTypedConstructorRejectsCommaInIdInsteadOfWarning() {
+    // regression test: IdMetadata's generic ID-grammar check previously only threw (strict path) for whitespace,
+    // never a comma, for every type sharing this class (##FILTER, ##SAMPLE, ##ALT)
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> new IdDescriptionMetadata("FILTER", "A,B", "some description"));
+    assertTrue(ex.getMessage().contains("must not contain a comma"));
+  }
+
+  @Test
+  public void testMapConstructorWarnsForCommaInIdToSuppliedSink() {
+    // regression test: only reachable via the Map-based (lenient) constructor or live mutation, since a real
+    // parsed header line's own comma would already have been consumed by the top-level attribute-list splitter
+    // before an ID value containing one could exist
+    Map<String, String> props = InternalUtils.extractProperties(
+        new String[] {"ID=A,B", "Description=\"d\""}, VcfWarnings.DEFAULT);
+    StringWriter sink = new StringWriter();
+    new IdDescriptionMetadata("FILTER", props, new VcfWarnings(sink));
+    assertTrue(sink.toString().contains("must not contain a comma"));
+  }
+
+  @Test
+  public void testColonlessAltIdWithCommaWarns() {
+    // regression test: VcfMetadata.validateAlt()'s colon-gated dispatch never checked a colonless ALT ID for a
+    // comma at all (its own comma-checking, via AltStructuralVariant, only ran for a colon-containing ID) --
+    // closed here, at the shared IdMetadata.init() level, rather than in validateAlt() itself, since a comma is
+    // never valid in ANY of ALT's spec-sanctioned colonless conventions (an IUPAC ambiguity code or a
+    // CN0-style copy-number allele) either, the same as every other type this class covers
+    Map<String, String> props = InternalUtils.extractProperties(
+        new String[] {"ID=A,B", "Description=\"d\""}, VcfWarnings.DEFAULT);
+    StringWriter sink = new StringWriter();
+    new IdDescriptionMetadata("ALT", props, new VcfWarnings(sink));
+    assertTrue(sink.toString().contains("must not contain a comma"));
+  }
+
+  @Test
   public void testTypedConstructorDoesNotCallWarnBasedInit() {
     // regression guard: the typed constructor must not warn even to the shared logger for a well-formed input --
     // if a future change accidentally reintroduces a call to init() here, this would still pass (init() is a

@@ -208,8 +208,9 @@ public class VcfMetadata {
   public static void validateAlt(IdDescriptionMetadata value, @Nullable VcfWarnings warnings) {
     String id = value.getId();
     if (id != null) {
-      // whitespace is already checked generically by IdMetadata.init() for every ID-based metadata type; angle
-      // brackets are checked here since VCFv4.2.tex line 105's "or angle brackets" clause has only ever been
+      // whitespace and commas are already checked generically by IdMetadata.init() for every ID-based metadata
+      // type, including this one (a colonless ID with a comma is caught there, not here); angle brackets are
+      // checked here instead since VCFv4.2.tex line 105's "or angle brackets" clause has only ever been
       // evidenced for ALT specifically, not extended to ##contig/##INFO/##FORMAT/##FILTER/##SAMPLE.
       if (id.chars().anyMatch(c -> c == '<' || c == '>')) {
         warnOrThrow(warnings, "ALT {} must not contain angle brackets", id);
