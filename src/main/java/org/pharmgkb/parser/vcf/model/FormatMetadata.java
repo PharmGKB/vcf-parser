@@ -27,6 +27,12 @@ public class FormatMetadata extends IdDescriptionMetadata {
 
   public FormatMetadata(String id, String description, String number, FormatType type) {
     super("FORMAT", id);
+    // Validated before putPropertyRaw stores it below: see InfoMetadata's identical constructor for why
+    // checking format here first (rather than after) is what makes a null or malformed Number actually
+    // produce this class's own, more specific message instead of putPropertyRaw's generic null-check one.
+    if (number == null || !InternalUtils.NUMBER_PATTERN.matcher(number).matches()) {
+      throw new VcfFormatException("FORMAT Number is not a valid VCF number: '" + number + "'");
+    }
     putPropertyRaw(NUMBER, number);
     // type is typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting
     // type.name() below throw a raw NullPointerException
@@ -39,9 +45,6 @@ public class FormatMetadata extends IdDescriptionMetadata {
     putAndQuoteProperty(DESCRIPTION, description);
     // strict construction: see InfoMetadata's identical constructor for why Description-quoting and
     // Type-parse-failure have no throw-equivalent here.
-    if (number == null || !InternalUtils.NUMBER_PATTERN.matcher(number).matches()) {
-      throw new VcfFormatException("FORMAT Number is not a valid VCF number: '" + number + "'");
-    }
     ReservedFormatProperty reserved = ReservedFormatProperty.fromId(id);
     if (reserved != null) {
       if (!reserved.getExpectedNumber().equals(number)) {

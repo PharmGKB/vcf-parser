@@ -38,6 +38,12 @@ public class InfoMetadata extends IdDescriptionMetadata {
   public InfoMetadata(String id, String description, InfoType type, String number,
       @Nullable String source, @Nullable String version) {
     super("INFO", id);
+    // Validated before putPropertyRaw stores it below: putPropertyRaw only null-checks (with a generic
+    // "Metadata property ... has a null value" message), so checking format here first is what makes a null
+    // or malformed Number actually produce this class's own, more specific message.
+    if (number == null || !InternalUtils.NUMBER_PATTERN.matcher(number).matches()) {
+      throw new VcfFormatException("INFO Number is not a valid VCF number: '" + number + "'");
+    }
     putPropertyRaw(NUMBER, number);
     if (type == null) {
       throw new VcfFormatException("INFO type is null");
@@ -54,9 +60,6 @@ public class InfoMetadata extends IdDescriptionMetadata {
     // Source/Version-quoting and Type-parse-failure checks init() also performs are structurally unreachable here
     // (putAndQuoteProperty always quotes; type is already a real InfoType enum, not a raw string) and have no
     // throw-equivalent added, per this project's "no error handling for impossible scenarios" convention.
-    if (number == null || !InternalUtils.NUMBER_PATTERN.matcher(number).matches()) {
-      throw new VcfFormatException("INFO Number is not a valid VCF number: '" + number + "'");
-    }
     if (type == InfoType.Flag && !"0".equals(number)) {
       throw new VcfFormatException("INFO " + id + " has Type=Flag but Number is '" + number + "' (should be 0)");
     }

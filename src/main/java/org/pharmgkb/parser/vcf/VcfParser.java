@@ -475,16 +475,18 @@ public class VcfParser implements Closeable {
       case "SAMPLE":
         mdBuilder.addSample(new IdDescriptionMetadata("SAMPLE", props, m_warnings));
         break;
-      case "PEDIGREE":
-        // PedigreeMetadata's constructor is unchanged and has no warn site of its own (it has no init() at all,
-        // unlike the IdMetadata subclasses above -- PedigreeMetadata extends BaseMetadata directly). This
-        // construction site is deliberately asymmetric with VcfWriter, which DOES claim pedigrees in
-        // claimMetadataWarningsSinks(): BaseMetadata's own inherited checkAttributeOrder() already warns and is
-        // reachable on any PedigreeMetadata, so a pedigree's attribute-order warning already bypasses the
-        // parser's warningsToFile() destination today (falling back to the shared logger), while the writer's
-        // side captures it correctly. Passing m_warnings here would close that one gap.
-        mdBuilder.addPedigree(new PedigreeMetadata(props));
+      case "PEDIGREE": {
+        // PedigreeMetadata has no init() and calls no warn site of its own today (unlike the IdMetadata
+        // subclasses above, which invoke checkAttributeOrder() from their own constructors) -- so a mis-ordered
+        // ##PEDIGREE line currently produces no attribute-order warning at all, not merely one routed
+        // elsewhere. Still claiming m_warnings here keeps this consistent with every sibling declaration type
+        // and ensures any future lazy warn site added to PedigreeMetadata/BaseMetadata is correctly routed to
+        // warningsToFile() instead of silently falling back to the shared logger.
+        PedigreeMetadata pedigree = new PedigreeMetadata(props);
+        pedigree.setWarningsSink(m_warnings);
+        mdBuilder.addPedigree(pedigree);
         break;
+      }
     }
   }
 

@@ -241,6 +241,28 @@ public class InfoMetadataTest {
   }
 
   @Test
+  public void testTypedConstructorRejectsNullNumberWithSpecificMessage() {
+    // regression test: putPropertyRaw(NUMBER, number) used to run before this class's own Number-format
+    // check below it, so a null Number threw BaseMetadata's generic "Metadata property \"Number\" has a
+    // null value" message instead of this class's own, more specific one -- the specific check was dead
+    // code for the null case.
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> new InfoMetadata("AN", "desc", InfoType.Integer, null, null, null));
+    assertTrue(ex.getMessage().contains("INFO Number is not a valid VCF number: 'null'"));
+  }
+
+  @Test
+  public void testTypedConstructorPrioritizesInvalidNumberOverNullType() {
+    // documents a real, narrow behavior change from moving the Number-format check ahead of putPropertyRaw:
+    // when Number is malformed (non-null) AND Type is null simultaneously, the Number-format error now wins.
+    // Previously the Type-null check fired first (it ran before the malformed-Number check, which used to
+    // sit after Type/Description handling), so this exact input used to throw "INFO type is null" instead.
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> new InfoMetadata("AN", "desc", null, "not-a-number", null, null));
+    assertTrue(ex.getMessage().contains("Number is not a valid VCF number"));
+  }
+
+  @Test
   public void testTypedConstructorRejectsFlagWithNonZeroNumber() {
     VcfFormatException ex = assertThrows(VcfFormatException.class,
         () -> new InfoMetadata("DB", "desc", InfoType.Flag, "1", null, null));

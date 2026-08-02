@@ -321,6 +321,9 @@ public class VcfPosition {
         warnings.warn("FILTER contains PASS along with other filters: {}", filters);
       }
       if (f.equals(".") && filters.size() > 1) {
+        // hts-specs test/vcf/4.2/failed/failed_body_filter_000.vcf, ##CauseOfFailure=FILTER contains missing
+        // in addition to a value. Unconditional (not gated on warnings == null like the PASS-combined check
+        // above): unlike PASS, `.` has no legitimate combined-with-another-code use documented anywhere.
         throw new VcfFormatException("FILTER contains '.' (missing value) along with other filters!");
       }
     }

@@ -47,9 +47,9 @@ invalid:
 - A data line with the wrong number of tab-separated columns.
 - An empty mandatory fixed field (the missing value must be `.`), an empty `CHROM`, or a negative `POS`.
 - Invalid `REF`/`ALT` bases; whitespace where the spec forbids it (`CHROM`, `ID`, `FILTER`, `INFO`); a duplicate
-  identifier within a single `ID` field; a `FILTER` of `0`; an `INFO` missing value (`.`) combined with a real
-  property; or a `FORMAT` in which `GT` is present but not the first sub-field or a (non-empty) key is
-  duplicated.
+  identifier within a single `ID` field; a `FILTER` of `0`; a `FILTER` missing value (`.`) combined with another
+  filter code; an `INFO` missing value (`.`) combined with a real property; or a `FORMAT` in which `GT` is
+  present but not the first sub-field or a (non-empty) key is duplicated.
 - A sample with more sub-fields than its `FORMAT` declares (trailing sub-fields may be dropped, but not added).
 - A malformed or out-of-range `GT` allele index looked up through `MemoryMappedVcfDataStore`, or a failed
   conversion when a typed value is requested.

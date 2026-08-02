@@ -1175,6 +1175,31 @@ public class VcfParserTest {
   }
 
   @Test
+  public void testPedigreeMetadataWarningsSinkIsWiredToParserWarningsFile(@TempDir Path tempDir) throws IOException {
+    // regression test: VcfParser's PEDIGREE case previously never called setWarningsSink on the constructed
+    // PedigreeMetadata, unlike every sibling declaration type. checkAttributeOrder() isn't invoked
+    // automatically for PEDIGREE, so this calls it directly (from within the parseWith callback, while the
+    // parser's own warnings-file redirection is still active) to prove a warning from it now correctly
+    // reaches the configured warnings file instead of silently falling back to the shared logger.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##PEDIGREE=<Description=\"d\",ID=P1>\n" + // Description before ID -- out of canonical order
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT\t.\t.\t.\n";
+    Path vcfFile = tempDir.resolve("sample.vcf");
+    Files.writeString(vcfFile, vcf);
+    Path warningsFile = tempDir.resolve("warnings.log");
+
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(vcfFile)
+        .warningsToFile(warningsFile)
+        .parseWith((metadata, position, sampleData) -> metadata.getPedigrees().get(0).checkAttributeOrder())
+        .build()) {
+      parser.parse();
+    }
+    assertTrue(Files.readString(warningsFile).contains("PEDIGREE metadata attributes declared out of canonical order"));
+  }
+
+  @Test
   public void testWarningsToFileDefaultNameDerivedFromSourcePath(@org.junit.jupiter.api.io.TempDir Path tempDir)
       throws IOException {
     // a metadata line with no ID triggers a warning during parseMetadata() -- see VcfMetadata.addInfo
