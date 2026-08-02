@@ -20,6 +20,16 @@ analog — a `Type=Flag`-specific check (`FormatType` has no `Flag` constant at 
 fields). Both classes also independently redeclare identical `DESCRIPTION`/`NUMBER`/`TYPE` property-key constants
 and separately call the same inherited `checkNumberProperty(number)`/`warnIfMissing(TYPE, type)` helpers.
 
+Each class now duplicates this logic a second way too, not just across the two classes: since `VALIDATION_PHILOSOPHY.md`'s
+strict/lenient constructor split gave each typed constructor its own inline `Number`-format/`Type=Flag`/
+reserved-property checks (thrown), the same three conditions are checked twice within a single class -- once
+inline in the typed constructor (using the already-typed `InfoType`/`FormatType` enum and local variables,
+no parsing needed), once in the shared `init()` (parsing a raw `Type` string, used by the Map-based
+constructor). This is a different duplication shape than the cross-class one above (throw vs. warn, not
+`InfoType` vs. `FormatType`), so it doesn't change this entry's own reasoning -- there's still no single
+shared helper that could serve both without being parameterized over both the strict/lenient dispatch and
+the two enum hierarchies at once, for a handful of few-line checks.
+
 **Decision: won't fix.** A shared abstraction would need to be parameterized over two unrelated enum
 hierarchies (`InfoType`/`ReservedInfoProperty` vs. `FormatType`/`ReservedFormatProperty`) for exactly 2 call
 sites, and would still need special-cased branches for the `Flag`-type check and the `SOURCE`/`VERSION`
