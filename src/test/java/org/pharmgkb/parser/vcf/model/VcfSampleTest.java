@@ -303,4 +303,142 @@ class VcfSampleTest {
       appender.stop();
     }
   }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataChecksReservedListCardinality() {
+    // PL is Number=G, isList=true: GT=0|1 (ploidy 2), 1 ALT allele -> 2 total alleles -> expected
+    // combinationsWithRepetition(2, 2) = 3, but only 2 values given -- must warn, but still return the full list
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0|1");
+    map.put("PL", "1,2");
+    VcfSample sample = new VcfSample(map);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      Object result = sample.getProperty(position, metadata, "PL");
+      assertEquals(java.util.Arrays.asList(1L, 2L), result);
+      assertTrue(appender.anyMessageContains("FORMAT PL has 2 value(s), but Number=G requires 3"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataDoesNotWarnOnCorrectCardinality() {
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0|1");
+    map.put("PL", "1,2,3");
+    VcfSample sample = new VcfSample(map);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertEquals(java.util.Arrays.asList(1L, 2L, 3L), sample.getProperty(position, metadata, "PL"));
+      assertFalse(appender.anyMessageContains("value(s), but Number="));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataExemptsGleFromCardinalityCheck() {
+    // GLE's Number=G doesn't describe a comma-delimited list -- its commas are internal to its own encoding
+    String gle = "0:-75.22,1:-223.42,0/0:-323.03,1/0:-99.29,1/1:-802.53";
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0|1");
+    map.put("GLE", gle);
+    VcfSample sample = new VcfSample(map);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertEquals(gle, sample.getProperty(position, metadata, "GLE"));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataSkipsCardinalityCheckWhenPloidyUnknown() {
+    // GT absent -> ploidy can't be determined -> skip rather than guess
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("PL", "1,2");
+    VcfSample sample = new VcfSample(map);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertEquals(java.util.Arrays.asList(1L, 2L), sample.getProperty(position, metadata, "PL"));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataTruncatesScalarCardinalityViolation() {
+    // FT is Number=1/String-typed, isList=false; a raw comma is a cardinality violation this library had no
+    // read-path way to detect before this method -- must warn and keep only the first piece, not silently pass
+    // the whole comma-containing value through as one opaque String
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0/1");
+    map.put("FT", "STD_FILTER,extra");
+    VcfSample sample = new VcfSample(map);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertEquals("STD_FILTER", sample.getProperty(position, metadata, "FT"));
+      assertTrue(appender.anyMessageContains("FORMAT FT has 2 value(s), but Number=1 requires 1"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataReturnsNullForAbsentValueOrNullArgs() {
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0/1");
+    VcfSample sample = new VcfSample(map);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+
+    assertNull(sample.getProperty(position, metadata, "PL")); // not present on this sample
+    assertNull(sample.getProperty(null, metadata, "GT"));
+    assertNull(sample.getProperty(position, null, "GT"));
+    assertNull(sample.getProperty(position, metadata, (String) null));
+  }
 }

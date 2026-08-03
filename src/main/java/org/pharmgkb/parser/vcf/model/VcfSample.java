@@ -194,6 +194,54 @@ public class VcfSample {
     return InternalUtils.convertProperty(key, getProperty(key.getId()), m_warnings);
   }
 
+  /**
+   * Returns the value for {@code key} converted to the type its {@link ReservedFormatProperty} declares, or --
+   * for a non-reserved key -- the type its {@code ##FORMAT} declaration in {@code metadata} specifies. Unlike
+   * {@link #getProperty(ReservedFormatProperty)}, this also validates the value's cardinality against the
+   * declared {@code Number}, using {@code position}'s ALT allele count and this sample's own ploidy (derived
+   * from its own {@code GT} value) -- including {@code Number=G}'s ploidy-dependent genotype-ordering formula,
+   * which {@link #getProperty(ReservedFormatProperty)} alone cannot compute, since it has no access to
+   * {@code position} or {@code metadata}. A cardinality mismatch warns rather than throwing; a genuine
+   * {@code Type} mismatch still throws {@link VcfFormatException}, unchanged from
+   * {@link #getProperty(ReservedFormatProperty)}'s existing behavior.
+   *
+   * @param <T> the type {@code key}'s declared {@code Type} specifies if it (or, for a non-reserved key, its
+   * {@code ##FORMAT} declaration's {@code Number}) is not list-shaped; otherwise {@code List<V>} where {@code V}
+   * is that type
+   */
+  public @Nullable <T> T getProperty(VcfPosition position, VcfMetadata metadata, String key) {
+    if (key == null || position == null || metadata == null) {
+      return null;
+    }
+    String rawValue = getProperty(key);
+    if (rawValue == null) {
+      return null;
+    }
+    ReservedFormatProperty reserved = ReservedFormatProperty.fromId(key);
+    String number;
+    boolean isList;
+    if (reserved != null) {
+      number = reserved.getExpectedNumber();
+      isList = reserved.isList();
+    } else {
+      return null; // non-reserved-key handling added in Task 3
+    }
+    String[] pieces = InternalUtils.splitFormatValue(key, rawValue);
+    boolean isGle = key.equals(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy.getId());
+    if (!isGle) {
+      Integer ploidy = InternalUtils.getPloidy(position, getProperty("GT"), "FORMAT " + key, m_warnings);
+      InternalUtils.warnIfWrongCardinality("FORMAT " + key, number, pieces.length, position.getAltBases().size(),
+          ploidy, m_warnings);
+    }
+    // more than one comma-piece for a scalar (isList=false) key is a cardinality violation already warned about
+    // above -- convert only the first piece (the same "keep the first, warn about the rest" convention this
+    // library already uses for a duplicate metadata ID and a duplicate INFO key), rather than passing the whole
+    // multi-piece value through as one opaque element, which would silently swallow a String-typed key's extra
+    // pieces or crash a numeric/Boolean-typed one
+    String valueToConvert = (!isList && pieces.length > 1) ? pieces[0] : rawValue;
+    return InternalUtils.convertProperty(reserved, valueToConvert, m_warnings);
+  }
+
   public boolean containsProperty(@Nullable String key) {
     // Property keys can never actually be null in this class (checkNoStructuralDelimiter rejects a null
     // key in every constructor/mutation path), so a null argument is trivially "not present" -- the same

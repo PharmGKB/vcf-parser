@@ -616,7 +616,8 @@ public class InternalUtils {
   // own read-path cardinality check can derive a FORMAT value's comma-separated pieces identically. GLE (see
   // ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy) is exempted: its commas are part of its own
   // internal genotype:likelihood encoding, not a delimiter between independent values.
-  static String[] splitFormatValue(String key, String value) {
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
+  public static String[] splitFormatValue(String key, String value) {
     if (key.equals(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy.getId())) {
       return new String[] { value };
     }
@@ -629,7 +630,8 @@ public class InternalUtils {
    * method reading {@code m_warnings} implicitly) so {@code VcfSample}'s own read-path check can share the
    * identical implementation, rather than a second, independently-drifting copy.
    */
-  static void warnIfWrongCardinality(String field, @Nullable String number, int actual, int numAltAlleles,
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
+  public static void warnIfWrongCardinality(String field, @Nullable String number, int actual, int numAltAlleles,
       @Nullable Integer ploidy, VcfWarnings warnings) {
     Long expected = getExpectedCardinality(number, numAltAlleles, ploidy, warnings);
     if (expected != null && expected != actual) {
@@ -696,7 +698,8 @@ public class InternalUtils {
    * {@code VcfSample}'s own read-path caller has no {@code sampleIndex} of its own to include, unlike
    * {@code VcfWriter}'s per-sample write loop.
    */
-  static @Nullable Integer getPloidy(VcfPosition position, @Nullable String gt, String warnContext,
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
+  public static @Nullable Integer getPloidy(VcfPosition position, @Nullable String gt, String warnContext,
       VcfWarnings warnings) {
     if (gt == null) {
       return null;
