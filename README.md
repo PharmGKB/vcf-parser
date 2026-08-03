@@ -103,6 +103,17 @@ pipelines that mutate a position in place; call `VcfPosition.validate()` after s
 this also re-normalizes a lone `.` `FILTER` value left by such a mutation, matching construction. `PASS` is never
 normalized away -- it is itself the sole representation of a passing FILTER (see `VcfPosition.getFilterStatus()`).
 
+One exception: `Builder.rsidsOnly()` is a true pre-filter, not a post-parse one -- a data line whose ID doesn't
+match an RSID is treated as though it were never in the file at all, the same as if it had been removed by an
+external tool (e.g. `bcftools view`) beforehand (see its Javadoc). `VcfPosition` is never constructed for a
+discarded line, so none of the structural-floor checks above apply to it -- not just a negative `POS`,
+`CHROM`'s character-set rules, invalid `REF`/`ALT`, or the `FILTER`/`FORMAT` checks, but not even confirming
+`POS` parses as a number at all, or CHROM/POS ordering. Only the column-count check and the check that no
+fixed field is empty still apply to every line regardless, since both are needed just to read the ID field in
+the first place. A `VcfTransformation`-based filter can't replicate this: it only sees a record after
+`VcfPosition` has already been fully constructed and validated, so a structurally invalid record `rsidsOnly()`
+would silently discard instead aborts parsing before a transformation ever gets a chance to reject it.
+
 Mutating `position.getFormat()` (adding or removing a FORMAT key) does *not* automatically update that line's
 `VcfSample` properties -- the two must be kept in agreement by the caller. If they diverge, the default writer path
 warns and reconciles by key name: a FORMAT key with no corresponding sample value is substituted with `.`, and a

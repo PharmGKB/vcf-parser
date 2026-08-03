@@ -1111,11 +1111,14 @@ public class VcfParserTest {
   }
 
   @Test
-  void testPositionOrderingWarningFiresEvenWhenRsidsOnlyDiscardsTheOffendingRecord() throws IOException {
-    // rsidsOnly() discards a record with no matching rsID via an early return in parseNextLine() before
-    // VcfPosition is ever constructed for it. CHROM and POS are both parsed before that early-return branch,
-    // though, so this check must still see -- and warn about -- a record's POS/CHROM even when rsidsOnly()
-    // goes on to discard that same record.
+  void testRsidsOnlyTreatsDiscardedLineAsIfItNeverExisted() throws IOException {
+    // regression test for a design reversal: rsidsOnly() now discards a non-rsID line via an early return in
+    // parseNextLine() BEFORE CHROM/POS are even examined, not after (as an earlier version of this check did).
+    // A discarded line must not be able to trigger a POS-ordering warning itself, AND must not corrupt the
+    // ordering-tracking state for later, kept records -- the discarded "POS 50" record here is deliberately
+    // out of order relative to the real preceding record (rs1, POS 100), but must produce no warning of its
+    // own; the next kept record (rs2, POS 75) must still be compared against rs1's real POS (100), not the
+    // discarded record's POS (50), and correctly warn as out of order relative to THAT.
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -1125,8 +1128,9 @@ public class VcfParserTest {
     try {
       String vcf = "##fileformat=VCFv4.2\n" +
           "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
-          "1\t200\trs1\tA\tT\t.\t.\t.\n" +
-          "1\t100\tnotanrsid\tA\tT\t.\t.\t.\n";
+          "1\t100\trs1\tA\tT\t.\t.\t.\n" +
+          "1\t50\tnotanrsid\tA\tT\t.\t.\t.\n" +
+          "1\t75\trs2\tA\tT\t.\t.\t.\n";
       List<VcfPosition> positions = new ArrayList<>();
       try (VcfParser parser = new VcfParser.Builder()
           .fromReader(new BufferedReader(new StringReader(vcf)))
@@ -1135,14 +1139,74 @@ public class VcfParserTest {
           .build()) {
         parser.parse();
       }
-      // only the rs1 record was delivered to the callback -- the second was discarded by rsidsOnly()
-      assertEquals(1, positions.size());
-      // but the ordering check still saw and warned about the discarded record's POS
-      assertTrue(appender.anyMessageContains("POS 100 is out of order for CHROM 1"));
+      // only rs1 and rs2 were delivered -- the middle record was discarded by rsidsOnly()
+      assertEquals(2, positions.size());
+      // the discarded record's own out-of-order POS never triggered a warning
+      assertFalse(appender.anyMessageContains("POS 50"));
+      // rs2 (POS 75) is still correctly flagged as out of order relative to rs1 (POS 100) -- proving the
+      // discarded record's POS never became the tracked "last position" either
+      assertTrue(appender.anyMessageContains("POS 75 is out of order for CHROM 1"));
     } finally {
       root.detachAppender(appender);
       appender.stop();
     }
+  }
+
+  @Test
+  void testRsidsOnlyDiscardsLineWithNegativePosWithoutThrowing() throws IOException {
+    // a discarded line is treated as though it were never in the file -- VcfPosition (where the negative-POS
+    // throw lives) is never constructed for it, so this must not throw despite the malformed POS
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t-5\tnotanrsid\tA\tT\t.\t.\t.\n" +
+        "1\t100\trs1\tA\tT\t.\t.\t.\n";
+    List<VcfPosition> positions = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .rsidsOnly()
+        .parseWith((metadata, position, sampleData) -> positions.add(position))
+        .build()) {
+      parser.parse();
+    }
+    assertEquals(1, positions.size());
+  }
+
+  @Test
+  void testRsidsOnlyDiscardsLineWithNonNumericPosWithoutThrowing() throws IOException {
+    // POS isn't even parsed as a number for a discarded line anymore -- confirming a genuinely non-numeric
+    // value doesn't throw either, not just a negative one
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\tnotanumber\tnotanrsid\tA\tT\t.\t.\t.\n" +
+        "1\t100\trs1\tA\tT\t.\t.\t.\n";
+    List<VcfPosition> positions = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .rsidsOnly()
+        .parseWith((metadata, position, sampleData) -> positions.add(position))
+        .build()) {
+      parser.parse();
+    }
+    assertEquals(1, positions.size());
+  }
+
+  @Test
+  void testRsidsOnlyDiscardsLineWithMalformedChromWithoutThrowing() throws IOException {
+    // a discarded line's CHROM is never even extracted, let alone validated -- confirming a CHROM containing
+    // an invalid character (per VcfPosition.checkChromosome's character-set rules) doesn't throw either
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr(1)\t50\tnotanrsid\tA\tT\t.\t.\t.\n" +
+        "1\t100\trs1\tA\tT\t.\t.\t.\n";
+    List<VcfPosition> positions = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .rsidsOnly()
+        .parseWith((metadata, position, sampleData) -> positions.add(position))
+        .build()) {
+      parser.parse();
+    }
+    assertEquals(1, positions.size());
   }
 
   @Tag("hts-specs")

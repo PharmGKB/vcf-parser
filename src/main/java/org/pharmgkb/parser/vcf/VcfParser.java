@@ -240,12 +240,34 @@ public class VcfParser implements Closeable {
             " vs. " + m_vcfMetadata.getNumColumns() + ")", m_lineNumber);
       }
 
-      // every fixed field is mandatory; an empty field is invalid (the missing value must be ".")
+      // every fixed field is mandatory; an empty field is invalid (the missing value must be ".") -- this check
+      // (unlike everything below it) applies regardless of rsidsOnly(), since it's a precondition for reading
+      // any field, including ID, at all: you can't know whether a line has an rsID without first being able to
+      // read it as a well-formed record.
       for (int i = 0; i < FIXED_FIELD_NAMES.size(); i++) {
         if (data.get(i).isEmpty()) {
           throw new VcfFormatException(FIXED_FIELD_NAMES.get(i) + " field is empty; the missing value must be '.'",
               m_lineNumber);
         }
+      }
+
+      // ID -- checked here, before CHROM/POS/REF/ALT/FILTER/FORMAT are examined at all, so rsidsOnly() acts as
+      // a true pre-filter: a discarded line is treated as though it were never in the file, the same as if it
+      // had been removed by an external tool before this file was ever handed to VcfParser. Nothing below this
+      // point -- CHROM/POS ordering, negative-POS, CHROM's character-set rules, REF/ALT syntax, FILTER/FORMAT
+      // rules, even confirming POS parses as a number at all -- runs for a line this discards. See
+      // rsidsOnly()'s own Javadoc for the full rationale, including why a VcfTransformation-based filter can't
+      // achieve the same thing (it only sees a record after VcfPosition has already been fully constructed and
+      // validated).
+      List<String> ids = null;
+      if (!data.get(2).equals(".")) {
+        List<String> parsedIds = toList(SEMICOLON, data.get(2));
+        if (m_rsidsOnly && parsedIds.stream().noneMatch(id -> InternalUtils.RSID_PATTERN.matcher(id).matches())) {
+          return true;
+        }
+        ids = parsedIds;
+      } else if (m_rsidsOnly) {
+        return true;
       }
 
       // CHROM
@@ -259,18 +281,6 @@ public class VcfParser implements Closeable {
         throw new VcfFormatException("POS '" + data.get(1) + "' is not a number");
       }
       checkPositionOrdering(chromosome, position);
-
-      // ID
-      List<String> ids = null;
-      if (!data.get(2).equals(".")) {
-        List<String> parsedIds = toList(SEMICOLON, data.get(2));
-        if (m_rsidsOnly && parsedIds.stream().noneMatch(id -> InternalUtils.RSID_PATTERN.matcher(id).matches())) {
-          return true;
-        }
-        ids = parsedIds;
-      } else if (m_rsidsOnly) {
-        return true;
-      }
 
       // REF
       String ref = data.get(3);
@@ -654,6 +664,20 @@ public class VcfParser implements Closeable {
      * Tells parser to ignore data lines that are not associated with an RSID: a line is kept only if at least one
      * complete semicolon-delimited ID component matches {@code rs\d+}. An ID such as "notrs123suffix" does not
      * qualify, even though it contains "rs123" as a substring.
+     * <p>This is a true pre-filter, not a post-parse one: a discarded line is treated as though it were never in
+     * the file at all -- the same as if it had been removed by an external tool (e.g. {@code bcftools view})
+     * before this file was ever handed to {@code VcfParser}. Only the column-count check and the check that no
+     * fixed field is empty apply to a line before this filter runs, since both are preconditions for reading the
+     * ID field at all; everything else -- confirming POS even parses as a number, CHROM/POS ordering, and the
+     * rest of {@link VcfPosition}'s structural-floor validation (negative POS, CHROM's character-set rules,
+     * invalid REF/ALT syntax, FILTER/FORMAT rules) -- never runs for a line this option discards, and never
+     * throws {@link VcfFormatException} on its account. {@code VcfPosition} is never constructed for a
+     * discarded line at all.
+     * <p>This is why a {@link VcfTransformation}-based filter (e.g. returning {@code false} from
+     * {@link VcfTransformation#transformDataLine}) cannot achieve the same thing: a transformation only sees a
+     * record after {@code VcfPosition} has already been fully constructed and validated, so a structurally
+     * invalid record this option would silently discard instead aborts parsing entirely before any
+     * transformation gets a chance to reject it.
      */
     public Builder rsidsOnly() {
       m_rsidsOnly = true;
