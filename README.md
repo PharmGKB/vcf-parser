@@ -71,8 +71,11 @@ invalid:
 - A typed metadata constructor given directly (e.g. `new InfoMetadata(id, ...)`, `new FormatMetadata(id,
   ...)`, `new ContigMetadata(id, ...)`, `new IdDescriptionMetadata(label, id, description)`) throws, *at
   construction time*, for every condition that class's own declaration-level checks would otherwise flag -- a
-  missing/empty/whitespace-only `ID` (VCFv4.3.tex line 121), an invalid `Number`, a `Type=Flag`/non-zero-
-  `Number` mismatch, a reserved property's Number/Type mismatch, or a malformed `##contig` URL. This is a
+  missing/empty/whitespace-only `ID` (VCFv4.3.tex line 121), an `##INFO`/`##FORMAT` `ID` that doesn't match
+  the required tag-name grammar (VCFv4.3.tex line 368/429: must start with a letter or underscore, followed
+  only by letters, digits, underscores, or periods -- `##INFO` additionally allows the legacy value
+  `1000G`), an invalid `Number`, a `Type=Flag`/non-zero-`Number` mismatch, a reserved property's Number/Type
+  mismatch, or a malformed `##contig` URL. This is a
   property of the constructor only, not of the resulting object: calling `validate()` later on that same
   object (e.g. after mutating it through `getPropertiesRaw()`) always warns instead of throwing, the same as
   an object built via the lenient constructor -- see [`VcfWarnings`](#vcfwarnings-explicit-warning-routing)
@@ -164,6 +167,11 @@ still throws -- see the strict section above):
   bcftools/vcf_validator comparison and the empty-vs-missing rationale.
 - A missing or invalid `Number`, `Type`, or `Description`; an unquoted `Description`; or `Type=Flag` with a `Number`
   other than `0`. An unparseable `Type` leaves the metadata's type `null`.
+- An `##INFO`/`##FORMAT` `ID` that doesn't match the required tag-name grammar (the same grammar the strict
+  section above enforces at construction time): warned, not dropped -- the declaration is still stored and
+  usable. `##FILTER`/`##SAMPLE`/`##ALT` declaration IDs are not held to this stricter grammar (only
+  `IdMetadata`'s shared whitespace/comma check above applies to them), confirmed directly against bcftools
+  1.23.1, which accepts the identical character in a `##FILTER`/`##SAMPLE`/`##ALT` ID silently.
 - A header/metadata sample-count mismatch, or a sample named in the header but absent from the metadata: warned
   during parsing, and separately by `VcfWriter.Builder.validateBeforeWrite()`'s `writeHeader()` (checked once,
   since `#CHROM`'s sample columns can't change after a `VcfMetadata` is built).
