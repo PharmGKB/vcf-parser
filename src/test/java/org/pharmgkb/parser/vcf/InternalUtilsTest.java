@@ -486,6 +486,48 @@ public class InternalUtilsTest {
   }
 
   @Test
+  public void testCheckReservedInfoConstraintsCigarWarnsOnInvalidGrammarButDoesNotThrow() {
+    // CIGAR's grammar (a lone "*", or one or more <length><operation> pairs) isn't expressible through its
+    // declared Type=String (which accepts any string unchanged), so it's checked separately; this is
+    // non-structural INFO content, so an invalid value warns rather than throws
+    InternalUtils.checkReservedInfoConstraints("CIGAR", "8M2I4M1D3M", VcfWarnings.DEFAULT); // valid: does not throw
+    InternalUtils.checkReservedInfoConstraints("CIGAR", "*", VcfWarnings.DEFAULT); // valid ("unavailable"): does not throw
+    InternalUtils.checkReservedInfoConstraints("CIGAR", "123MYCIGAR", VcfWarnings.DEFAULT); // illegal trailing chars: warns
+    InternalUtils.checkReservedInfoConstraints("CIGAR", "0.05", VcfWarnings.DEFAULT); // a decimal number, not pairs: warns
+    InternalUtils.checkReservedInfoConstraints("CIGAR", null, VcfWarnings.DEFAULT); // no value set: nothing to check
+    InternalUtils.checkReservedInfoConstraints("CIGAR", ".", VcfWarnings.DEFAULT); // missing value: nothing to check
+  }
+
+  @Test
+  public void testCheckReservedInfoConstraintsCigarChecksEachListElement() {
+    // CIGAR is Number=A (one value per ALT allele); a malformed value anywhere in the comma-joined list must be
+    // caught, not just the first element
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      InternalUtils.checkReservedInfoConstraints("CIGAR", "8M,0.05,4M1D", VcfWarnings.DEFAULT);
+      assertEquals(1, appender.countMessagesContaining("does not match the expected CIGAR grammar"));
+      assertTrue(appender.anyMessageContains("0.05"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testConvertPropertyCigarPreservesInvalidValue() {
+    // the typed accessor still returns the raw value even when it violates CIGAR's grammar, consistent with the
+    // "warn and preserve" policy for non-structural INFO content -- there's nothing to normalize since CIGAR's
+    // declared Type=String passes any value through unchanged
+    List<String> value = InternalUtils.convertProperty(ReservedInfoProperty.Cigar, "123MYCIGAR", VcfWarnings.DEFAULT);
+    assertEquals(List.of("123MYCIGAR"), value);
+  }
+
+  @Test
   public void testConvertPropertyDoesNotApplyInfoConstraintsToNonInfoReservedProperty() {
     // regression test: a ReservedProperty implementation whose ID happens to equal "AC" (the same ID as
     // ReservedInfoProperty.AlleleCount) must NOT have AC's INFO-only non-negative constraint applied, since

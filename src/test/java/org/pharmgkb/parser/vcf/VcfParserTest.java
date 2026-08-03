@@ -1321,6 +1321,36 @@ public class VcfParserTest {
     }
   }
 
+  @Tag("hts-specs")
+  @Test
+  void testHtsSpecsInvalidCigarValueFixturesWarnOnTypedAccess() throws IOException {
+    // CIGAR's grammar is only checked lazily, when the typed accessor is actually used (same mechanism as
+    // testHtsSpecsNegativeReservedInfoValueFixturesWarnOnTypedAccess above) -- neither fixture declares a
+    // ##INFO line for CIGAR, confirming getInfo(ReservedInfoProperty) doesn't need one.
+    String[] fixtures = { "failed_body_info_010.vcf", "failed_body_info_011.vcf" };
+    for (String fixtureName : fixtures) {
+      ch.qos.logback.classic.Logger root =
+          (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+      org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+          new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+      appender.start();
+      root.addAppender(appender);
+      try (VcfParser parser = new VcfParser.Builder()
+          .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.2/failed", fixtureName))
+          .parseWith((metadata, position, sampleData) -> position.getInfo(ReservedInfoProperty.Cigar))
+          .build()) {
+        parser.parse();
+      } finally {
+        root.detachAppender(appender);
+        appender.stop();
+      }
+      // same false-positive-prone "There are {} samples..." warning as the negative-value fixtures above --
+      // match the specific message this check produces instead of a bare hasWarnOrHigher()
+      assertTrue(appender.anyMessageContains("does not match the expected CIGAR grammar"),
+          () -> fixtureName + " should have warned about the invalid CIGAR grammar");
+    }
+  }
+
   private static void assertHtsSpecsFixtureWarns(String fixtureName, String expectedMessageFragment)
       throws IOException {
     Path fixture = Path.of("build/hts-specs-checkout/test/vcf/4.2/failed", fixtureName);

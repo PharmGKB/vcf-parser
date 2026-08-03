@@ -1073,6 +1073,37 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteWarnsButPreservesInvalidCigarValue() throws Exception {
+    // CIGAR's grammar isn't expressible through its declared Type=String (which passes any value through
+    // unchanged), so it's checked separately (mirroring FT/PS/AC's own treatment); an invalid value is
+    // semantically non-compliant but safely representable, so it's a warning, not a rejection
+    InfoMetadata cigar = new InfoMetadata(ReservedInfoProperty.Cigar.getId(), "d", InfoType.String, "A",
+        null, null);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(cigar).build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getAltBases().add("T");
+    position.getInfo().put("CIGAR", "123MYCIGAR");
+
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    writer.writeHeader(metadata);
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertTrue(appender.anyMessageContains("does not match the expected CIGAR grammar"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(sw.toString().contains("CIGAR=123MYCIGAR"));
+  }
+
+  @Test
   public void testValidateBeforeWriteRejectsLineBeforeHeader() throws Exception {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();

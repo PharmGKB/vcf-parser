@@ -176,8 +176,9 @@ still throws -- see the strict section above):
   express, so they're checked separately, both when a typed value is requested and by
   `VcfWriter.Builder.validateBeforeWrite()`.
 - A negative value for the reserved `INFO` keys `AC`, `AN`, `DP`, `END`, `MQ0`, or `NS`, or an `AF` value outside
-  the interval `[0, 1]`: same treatment as `FT`/`PS` above -- these constraints go beyond what each key's declared
-  `Type` can express, so they're checked separately, both when a typed value is requested and by
+  the interval `[0, 1]`, or a reserved `INFO/CIGAR` value that doesn't match a lone `*` or one or more
+  `<length><operation>` pairs: same treatment as `FT`/`PS` above -- these constraints go beyond what each key's
+  declared `Type` can express, so they're checked separately, both when a typed value is requested and by
   `VcfWriter.Builder.validateBeforeWrite()`.
 - A `FILTER` value combining `PASS` with another code (e.g. `STD_FILTER;PASS`): VCFv4.2 only implies `PASS` is
   exclusive, without stating it as a hard rule, and hts-specs' own `complexfile_passed_000.vcf` fixture combines

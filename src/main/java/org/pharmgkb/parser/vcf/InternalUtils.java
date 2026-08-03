@@ -143,6 +143,20 @@ public class InternalUtils {
   // HTS_SPECS_BASELINE_STATUS.md for the fixtures this knowingly diverges from.
   public static final Pattern INVALID_CONTIG_NAME_CHAR_PATTERN = Pattern.compile("[\\\\,\"`'(){}\\[\\]<>]");
 
+  // No VCF spec version (checked VCFv4.2.tex through VCFv4.5.tex directly -- unlike CHROM/contig names, which
+  // 4.3+ explicitly ties to "the same rules as the SAM format's reference sequence names") ever states that
+  // INFO CIGAR's grammar follows the SAM specification's own CIGAR string format; every version just describes
+  // it in prose/table as "Cigar string describing how to align an alternate allele to the reference allele",
+  // with no BNF and no cross-reference. The only source connecting this key to SAM's grammar is vcf_validator
+  // 0.10.2's own message text ("value is not an alphanumeric string compliant with the SAM specification"),
+  // confirmed directly against test/vcf/4.2/failed/failed_body_info_010.vcf (CIGAR=123MYCIGAR, illegal trailing
+  // characters) and _011.vcf (CIGAR=0.05, a decimal number, not (length, operation) pairs at all); bcftools
+  // 1.23.1 is silent on both. This regex is SAM's own well-established CIGAR grammar (a lone "*" for
+  // unavailable, or one-or-more (positive-integer length, single-letter operation) pairs, operation one of
+  // M/I/D/N/S/H/P/=/X) -- not itself vendored in this repo, so cited here as the common bioinformatics
+  // convention vcf_validator's message implies, not as a VCF-spec-mandated rule.
+  public static final Pattern CIGAR_PATTERN = Pattern.compile("\\*|(?:[0-9]+[MIDNSHPX=])+");
+
   private static final Pattern sf_whitespacePattern = Pattern.compile("\\s");
 
   private static final String RESTRICTED_API_EXPLANATION =
@@ -517,11 +531,13 @@ public class InternalUtils {
    *   against vcf_validator 0.10.2 with both a negative value (test/vcf/4.2/failed/failed_body_info_004.vcf,
    *   AF=-0.01) and a value above 1 (a hand-built AF=1.5 file, since hts-specs has no fixture for that side of
    *   the interval); bcftools 1.23.1 is silent on both.</li>
+   *   <li>{@link ReservedInfoProperty#Cigar CIGAR} must match {@link #CIGAR_PATTERN} -- see that constant's own
+   *   comment for the citation (vcf_validator only, no VCF spec version ties this key to SAM's grammar).</li>
    * </ul>
-   * {@code value} may be a comma-joined list (AC/AF are both {@code Number=A}, one value per ALT allele): each
-   * comma-separated element is checked independently. Unlike {@link #checkReservedFormatConstraints}, nothing
-   * here needs normalizing -- these are pure range checks with no equivalent to FT's empty-entry-dropping -- so
-   * this returns {@code void} rather than a value for the caller to use.
+   * {@code value} may be a comma-joined list (AC/AF/CIGAR are all {@code Number=A}, one value per ALT allele):
+   * each comma-separated element is checked independently. Unlike {@link #checkReservedFormatConstraints},
+   * nothing here needs normalizing -- these are pure range/grammar checks with no equivalent to FT's
+   * empty-entry-dropping -- so this returns {@code void} rather than a value for the caller to use.
    */
   static void checkReservedInfoConstraints(String key, @Nullable String value, VcfWarnings warnings) {
     if (value == null || value.equals(".")) {
@@ -534,6 +550,10 @@ public class InternalUtils {
     } else if (key.equals(ReservedInfoProperty.AlleleFrequency.getId())) {
       for (String element : value.split(",", -1)) {
         checkUnitInterval(key, element, warnings);
+      }
+    } else if (key.equals(ReservedInfoProperty.Cigar.getId())) {
+      for (String element : value.split(",", -1)) {
+        checkCigarGrammar(element, warnings);
       }
     }
   }
@@ -577,6 +597,17 @@ public class InternalUtils {
     }
     if (decimal.compareTo(BigDecimal.ZERO) < 0 || decimal.compareTo(BigDecimal.ONE) > 0) {
       warnings.warn("INFO {} value \"{}\" does not lie in the interval [0, 1]", key, value);
+    }
+  }
+
+  private static void checkCigarGrammar(String value, VcfWarnings warnings) {
+    if (value.isEmpty() || value.equals(".")) {
+      // an empty entry or the missing-value sentinel is reported elsewhere; not this check's concern
+      return;
+    }
+    if (!CIGAR_PATTERN.matcher(value).matches()) {
+      warnings.warn("INFO CIGAR value \"{}\" does not match the expected CIGAR grammar (a lone '*', or one or " +
+          "more <length><operation> pairs, operation one of MIDNSHPX=)", value);
     }
   }
 
