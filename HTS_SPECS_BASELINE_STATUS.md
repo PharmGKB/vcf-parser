@@ -7,6 +7,20 @@ re-verify: run `./gradlew htsSpecsUpdateBaseline`, then `git diff
 src/test/resources/org/pharmgkb/parser/vcf/spec/hts-specs-baseline.tsv` against the fixture list in each row
 below — update both this document and the rows before trusting it again.
 
+The same re-verification pass must also check `HtsSpecsConformanceTest`'s `EXPECTED_WARNING_SUBSTRINGS` map
+(`src/test/java/org/pharmgkb/parser/vcf/spec/HtsSpecsConformanceTest.java`):
+
+1. **A new multi-line `failed/` fixture with no map entry** doesn't need a separate detection step —
+   `htsSpecsTest` already hard-fails directly on it, naming the fixture and printing its actual captured
+   warnings. Resolve it the way the map's own comment describes: cross-check the printed warnings against the
+   fixture's `##CauseOfFailure=`, pick a specific substring, add an entry.
+2. **A pin bump that changes an existing mapped fixture's content** so its substring stops matching surfaces as
+   a normal `parser-warn-content` baseline finding through the usual `htsSpecsUpdateBaseline` workflow — nothing
+   extra to do here beyond the existing baseline-diff review.
+3. **A pin bump that removes or renames a mapped fixture** leaves its old map entry dead (the key never matches
+   any current fixture, and nothing fails because of it). Check for and prune orphaned
+   `EXPECTED_WARNING_SUBSTRINGS` entries during this same pass.
+
 If cross-referencing fixture content directly against a local hts-specs clone (e.g. via `git show`/`git diff`
 rather than through `./gradlew htsSpecsUpdateBaseline`), make sure that clone is on its `master` branch —
 `master` is the branch that matches `htsSpecsPinnedSha` (verified: `master`'s HEAD *is* the pinned SHA). A
