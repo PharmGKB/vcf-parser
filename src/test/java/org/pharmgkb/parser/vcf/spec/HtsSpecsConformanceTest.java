@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -64,6 +65,25 @@ class HtsSpecsConformanceTest {
   private static final Set<String> GENERIC_NOISE_WARNINGS = Set.of(
       "Sample {} is missing in the metadata",
       "There are {} samples in the header but {} in the metadata");
+
+  // Multi-line failed/ fixtures where "any non-generic warning fired" (see GENERIC_NOISE_WARNINGS above) isn't
+  // enough to prove THIS fixture's own documented ##CauseOfFailure= was actually detected, since a single parse
+  // could legitimately produce more than one warning. Each entry's substring(s) are hand-verified against the
+  // fixture's actual captured warnings (visible in a hard-fail's message below -- no separate scratch harness
+  // needed) and its ##CauseOfFailure= text -- see findings24.md item 14's design doc
+  // (docs/superpowers/specs/2026-08-03-1616-htsspecs-warning-content-correlation-design.md, if still present)
+  // for the corpus review that established this was tractable and why line-number correlation wasn't needed.
+  //
+  // PROTOCOL for a new multi-line failed/ fixture with no entry here (e.g. after an htsSpecsPinnedSha bump):
+  // assertThrowsOrWarns hard-fails directly on it (see below) -- deliberate, not a bug. The failure message
+  // includes the actual captured warnings, so read those, cross-check against the fixture's ##CauseOfFailure=,
+  // pick a substring specific enough to prove the right defect fired, and add an entry here. See
+  // HTS_SPECS_BASELINE_STATUS.md's re-verification section for the rest of the pin-bump checklist, including
+  // pruning entries here that a pin bump has orphaned (fixture renamed/removed upstream).
+  private static final Map<String, List<String>> EXPECTED_WARNING_SUBSTRINGS = Map.ofEntries(
+      Map.entry("test/vcf/4.1/failed/failed_body_unsorted_000.vcf", List.of("out of order")),
+      Map.entry("test/vcf/4.2/failed/failed_body_unsorted_000.vcf", List.of("out of order"))
+  );
 
   // literal, project-relative path to the committed baseline file -- used both to locate it as a classpath
   // resource for reading (works regardless of working directory) and, in update mode, as a real filesystem path
@@ -248,6 +268,25 @@ class HtsSpecsConformanceTest {
     return "unknown";
   }
 
+  /**
+   * @return the number of non-blank lines in {@code file} strictly after its {@code #CHROM} header line (i.e.
+   * the number of actual VCF data records). Deliberately NOT "any line not starting with #" -- some fixtures
+   * inject a malformed non-#-prefixed line into the header block itself (failed_meta_004.vcf,
+   * failed_meta_005.vcf), and a trailing blank line at EOF (failed_body_format_000.vcf) would otherwise also be
+   * miscounted as a second data line when there's really only one. Used by EXPECTED_WARNING_SUBSTRINGS below to
+   * decide which failed/ fixtures have enough real data lines that "some warning fired somewhere" could
+   * plausibly be the wrong warning.
+   */
+  private static long countDataLines(Path file) throws IOException {
+    try (Stream<String> lines = Files.lines(file)) {
+      return lines
+          .dropWhile(line -> !line.startsWith("#CHROM"))
+          .skip(1)
+          .filter(line -> !line.isBlank())
+          .count();
+    }
+  }
+
   private static void assertThrowsOrWarns(Path file, String causeOfFailure) throws IOException {
     String fixturePath = relativeName(file);
     Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -276,6 +315,26 @@ class HtsSpecsConformanceTest {
             ") was accepted with no VcfFormatException and no logged warning -- invalid content silently accepted"
         : "baseline entry for " + fixturePath +
             " (parser-throw-or-warn) no longer reproduces -- remove it from hts-specs-baseline.tsv");
+    if (!threw && !silentlyAccepted) {
+      long dataLines = countDataLines(file);
+      if (dataLines > 1) {
+        List<String> expectedSubstrings = EXPECTED_WARNING_SUBSTRINGS.get(fixturePath);
+        List<String> actualMessages = appender.getRelevantWarnOrHigherMessages(GENERIC_NOISE_WARNINGS);
+        if (expectedSubstrings == null) {
+          fail(fixturePath + " has " + dataLines + " data lines but no entry in EXPECTED_WARNING_SUBSTRINGS -- " +
+              "see that constant's comment for how to add one. Captured warnings were: " + actualMessages);
+        } else {
+          boolean contentMismatch = expectedSubstrings.stream().anyMatch(s -> !appender.anyMessageContains(s));
+          boolean contentAcceptable = BASELINE.check(fixturePath, "parser-warn-content", contentMismatch,
+              "expected-substring-missing", "CauseOfFailure: " + causeOfFailure);
+          assertTrue(contentAcceptable, () -> contentMismatch
+              ? fixturePath + ": expected warning substring(s) " + expectedSubstrings +
+                  " not all found in captured warnings: " + actualMessages
+              : "baseline entry for " + fixturePath +
+                  " (parser-warn-content) no longer reproduces -- remove it from hts-specs-baseline.tsv");
+        }
+      }
+    }
   }
 
   private static void checkRoundTripSemantic(Path file) throws IOException {
