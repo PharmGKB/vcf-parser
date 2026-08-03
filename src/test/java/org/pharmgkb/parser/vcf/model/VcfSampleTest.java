@@ -441,4 +441,97 @@ class VcfSampleTest {
     assertNull(sample.getProperty(position, null, "GT"));
     assertNull(sample.getProperty(position, metadata, (String) null));
   }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataHandlesNonReservedScalarKey() {
+    // DS is declared Number=1/Type=Float in metadata but is not a ReservedFormatProperty
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0/1");
+    map.put("DS", "1.5");
+    VcfSample sample = new VcfSample(map);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    FormatMetadata dsFormat = new FormatMetadata("DS", "Genotype dosage", "1", FormatType.Float);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(dsFormat).build();
+
+    assertEquals(VcfFloat.of(new java.math.BigDecimal("1.5")), sample.getProperty(position, metadata, "DS"));
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataWarnsOnNonReservedScalarCardinalityViolation() {
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0/1");
+    map.put("DS", "1.5,2.5");
+    VcfSample sample = new VcfSample(map);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    FormatMetadata dsFormat = new FormatMetadata("DS", "Genotype dosage", "1", FormatType.Float);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(dsFormat).build();
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertEquals(VcfFloat.of(new java.math.BigDecimal("1.5")), sample.getProperty(position, metadata, "DS"));
+      assertTrue(appender.anyMessageContains("FORMAT DS has 2 value(s), but Number=1 requires 1"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataHandlesNonReservedListKey() {
+    // AL is declared Number=A/Type=Float; ALT has 2 alleles, so Number=A expects 2 values
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0/1");
+    map.put("AL", "0.1,0.2");
+    VcfSample sample = new VcfSample(map);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    position.getAltBases().add("C");
+    FormatMetadata alFormat = new FormatMetadata("AL", "Alt allele field", "A", FormatType.Float);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(alFormat).build();
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertEquals(java.util.Arrays.asList(VcfFloat.of(new java.math.BigDecimal("0.1")),
+          VcfFloat.of(new java.math.BigDecimal("0.2"))), sample.getProperty(position, metadata, "AL"));
+      assertFalse(appender.anyMessageContains("value(s), but Number="));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataThrowsOnNonReservedTypeMismatch() {
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0/1");
+    map.put("DS", "my_string");
+    VcfSample sample = new VcfSample(map);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    FormatMetadata dsFormat = new FormatMetadata("DS", "Genotype dosage", "1", FormatType.Float);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(dsFormat).build();
+
+    assertThrows(VcfFormatException.class, () -> sample.getProperty(position, metadata, "DS"));
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataReturnsNullWhenNoMetadataDeclared() {
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0/1");
+    map.put("DS", "1.5");
+    VcfSample sample = new VcfSample(map);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build(); // no ##FORMAT=<ID=DS,...>
+
+    assertNull(sample.getProperty(position, metadata, "DS"));
+  }
 }

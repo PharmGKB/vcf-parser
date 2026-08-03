@@ -735,11 +735,12 @@ public class InternalUtils {
    * with a genuinely custom type the way its signature suggests. Callers wanting to convert a custom,
    * non-reserved property's raw value should do their own conversion instead.
    */
-  // package-private (not private): VcfSample's read-path accessor for a non-reserved FORMAT key needs to convert
-  // a raw Class<?> (resolved from that key's own ##FORMAT declaration, not a ReservedProperty) the same way the
-  // ReservedProperty/FormatType/InfoType-driven overloads above already do
+  // public only for cross-package access: VcfSample (org.pharmgkb.parser.vcf.model package) needs to convert
+  // a raw Class<?> for non-reserved FORMAT keys the same way ReservedProperty and FormatType overloads above do.
+  // @RestrictedApi marks this as public solely for that cross-package reason, not as real external API.
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   @SuppressWarnings("unchecked")
-  static @Nullable <T> T convertProperty(Class<?> clas, @Nullable String value, boolean isList, VcfWarnings warnings) {
+  public static @Nullable <T> T convertProperty(Class<?> clas, @Nullable String value, boolean isList, VcfWarnings warnings) {
     if (value == null || ".".equals(value)) {
       return null;
     }

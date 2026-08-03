@@ -218,13 +218,20 @@ public class VcfSample {
       return null;
     }
     ReservedFormatProperty reserved = ReservedFormatProperty.fromId(key);
+    FormatMetadata format = null;
     String number;
     boolean isList;
     if (reserved != null) {
       number = reserved.getExpectedNumber();
       isList = reserved.isList();
     } else {
-      return null; // non-reserved-key handling added in Task 3
+      format = metadata.getFormats().get(key);
+      if (format == null) {
+        m_warnings.warn("FORMAT {} has no metadata declaration; cannot determine its Number/Type", key);
+        return null;
+      }
+      number = format.getNumber();
+      isList = number != null && !number.equals("0") && !number.equals("1");
     }
     String[] pieces = InternalUtils.splitFormatValue(key, rawValue);
     boolean isGle = key.equals(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy.getId());
@@ -239,7 +246,12 @@ public class VcfSample {
     // multi-piece value through as one opaque element, which would silently swallow a String-typed key's extra
     // pieces or crash a numeric/Boolean-typed one
     String valueToConvert = (!isList && pieces.length > 1) ? pieces[0] : rawValue;
-    return InternalUtils.convertProperty(reserved, valueToConvert, m_warnings);
+    if (reserved != null) {
+      return InternalUtils.convertProperty(reserved, valueToConvert, m_warnings);
+    }
+    FormatType formatType = format.getType();
+    Class<?> type = formatType == null ? String.class : InternalUtils.toJavaType(formatType);
+    return InternalUtils.convertProperty(type, valueToConvert, isList, m_warnings);
   }
 
   public boolean containsProperty(@Nullable String key) {
