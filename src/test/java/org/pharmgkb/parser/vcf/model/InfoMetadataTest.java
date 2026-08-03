@@ -377,4 +377,88 @@ public class InfoMetadataTest {
     assertNull(md.getSource());
     assertNull(md.getVersion());
   }
+
+  @Test
+  public void testTypedConstructorRejectsInvalidTagNameCharacter() {
+    assertThrows(VcfFormatException.class,
+        () -> new InfoMetadata("AB*C", "d", InfoType.String, "1", null, null));
+  }
+
+  @Test
+  public void testTypedConstructorRejectsLeadingDigit() {
+    assertThrows(VcfFormatException.class,
+        () -> new InfoMetadata("1ABC", "d", InfoType.String, "1", null, null));
+  }
+
+  @Test
+  public void testTypedConstructorAcceptsValidTagName() {
+    InfoMetadata md = new InfoMetadata("DP", "d", InfoType.Integer, "1", null, null);
+    assertEquals("DP", md.getId());
+  }
+
+  @Test
+  public void testTypedConstructorAccepts1000GLegacyException() {
+    InfoMetadata md = new InfoMetadata("1000G", "d", InfoType.Flag, "0", null, null);
+    assertEquals("1000G", md.getId());
+  }
+
+  @Test
+  public void testLenientConstructorWarnsOnInvalidTagNameCharacter() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    InfoMetadata md;
+    try {
+      md = new InfoMetadata(InternalUtils.extractProperties(
+          new String[]{"ID=AB*C", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT),
+          VcfWarnings.DEFAULT);
+      assertTrue(appender.anyMessageContains("does not match the required tag-name grammar"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals("AB*C", md.getId());
+  }
+
+  @Test
+  public void testLenientConstructorAccepts1000GLegacyExceptionWithoutWarning() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new InfoMetadata(InternalUtils.extractProperties(
+          new String[]{"ID=1000G", "Number=0", "Type=Flag", "Description=\"d\""}, VcfWarnings.DEFAULT),
+          VcfWarnings.DEFAULT);
+      assertFalse(appender.anyMessageContains("does not match the required tag-name grammar"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testLenientConstructorDoesNotDoubleWarnForCommaContainingId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new InfoMetadata(InternalUtils.extractProperties(
+          new String[]{"ID=AB,C", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT),
+          VcfWarnings.DEFAULT);
+      assertEquals(0, appender.countMessagesContaining("does not match the required tag-name grammar"));
+      assertEquals(1, appender.countMessagesContaining("must not contain a comma"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
 }

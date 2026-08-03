@@ -132,6 +132,16 @@ public class InternalUtils {
   // declaration IDs, which VCFv4.3.tex:368 gives a different regex with a "1000G" legacy exception -- see
   // INFO_PATTERN below.
   public static final Pattern FORMAT_PATTERN = Pattern.compile("^[A-Za-z_][0-9A-Za-z_.]*$");
+  // VCFv4.3.tex:368 (unchanged in 4.4/4.5): "INFO keys must match the regular expression
+  // ^([A-Za-z_][0-9A-Za-z_.]*|1000G)$, please note that ``1000G'' is allowed as a special legacy value." The
+  // VCFv4.2->4.3 changelog (VCFv4.3.tex:2150) states the rule for "INFO and FORMAT tag names" together with no
+  // 1000G exception mentioned, but the more specific body text -- confirmed live via bcftools 1.23.1, which
+  // silently accepts ##INFO=<ID=1000G,...> -- governs over the changelog's more general summary. VCFv4.2 is
+  // silent on INFO tag-name grammar; used here as VCFv4.2-silent clarifying guidance per AGENTS.md. Confirmed
+  // via direct bcftools 1.23.1 testing that ##INFO declaration IDs are held to this stricter grammar (an
+  // asterisk anywhere but the first character triggers "Invalid tag name"), unlike ##FILTER/##SAMPLE/##ALT
+  // declaration IDs -- see findings24.md item 20.
+  public static final Pattern INFO_PATTERN = Pattern.compile("^([A-Za-z_][0-9A-Za-z_.]*|1000G)$");
   public static final Pattern RSID_PATTERN = Pattern.compile("rs\\d+");
   public static final Pattern NUMBER_PATTERN = Pattern.compile("(?:\\d+|[ARG.])");
 

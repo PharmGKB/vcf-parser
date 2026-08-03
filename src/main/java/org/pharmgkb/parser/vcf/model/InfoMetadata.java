@@ -38,6 +38,14 @@ public class InfoMetadata extends IdDescriptionMetadata {
   public InfoMetadata(String id, String description, InfoType type, String number,
       @Nullable String source, @Nullable String version) {
     super("INFO", id);
+    // structurally unreachable for a whitespace- or comma-containing id: IdMetadata's own super(...) call above
+    // already throws first for either -- see findings24.md item 20 and ContigMetadata's identical strict-path
+    // reasoning for its own analogous character-set check
+    if (!InternalUtils.INFO_PATTERN.matcher(id).matches()) {
+      throw new VcfFormatException(getLabel() + " ID \"" + id + "\" does not match the required tag-name " +
+          "grammar (must start with a letter or underscore, followed only by letters, digits, underscores, " +
+          "or periods -- or be the legacy value '1000G')");
+    }
     // Validated before putPropertyRaw stores it below: putPropertyRaw only null-checks (with a generic
     // "Metadata property ... has a null value" message), so checking format here first is what makes a null
     // or malformed Number actually produce this class's own, more specific message.
@@ -105,6 +113,14 @@ public class InfoMetadata extends IdDescriptionMetadata {
       }
     }
     String id = getId();
+    // skip when id already triggered IdMetadata's own whitespace/comma warning (via its own init(), which ran
+    // before this method during construction) -- avoids warning twice about the same underlying defect
+    if (id != null && !id.isEmpty() && !InternalUtils.containsWhitespace(id) && !id.contains(",")
+        && !InternalUtils.INFO_PATTERN.matcher(id).matches()) {
+      m_warnings.warn("{} ID \"{}\" does not match the required tag-name grammar (must start with a letter or " +
+          "underscore, followed only by letters, digits, underscores, or periods -- or be the legacy value " +
+          "'1000G')", getLabel(), id);
+    }
     ReservedInfoProperty reserved = ReservedInfoProperty.fromId(id);
     if (reserved != null) {
       if (number != null && !reserved.getExpectedNumber().equals(number)) {
