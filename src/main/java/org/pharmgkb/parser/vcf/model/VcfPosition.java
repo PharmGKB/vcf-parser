@@ -796,8 +796,28 @@ public class VcfPosition {
     if (list.isEmpty()) {
       return null;
     }
+    // info() unconditionally comma-splits every raw INFO value regardless of the key's declared Number/isList
+    // (it has no access to that metadata) -- for a scalar key (isList=false), more than one split piece is
+    // unambiguously a Number=1/0 cardinality violation, since VCF's comma is the multi-value separator. Naively
+    // rejoining those pieces with "," before Type conversion (the pre-fix behavior) silently discarded that
+    // violation for a String-typed key like AA (a joined "1,23" round-trips as one opaque string) and crashed
+    // for a numeric/Boolean-typed key like DP (Long.parseLong("1,23") throws), even though this INFO field is
+    // supposed to warn-and-recover rather than throw for a non-structural problem (see AGENTS.md's Parser
+    // Validation Policy). Warn and fall back to the first piece -- the same "keep the first, warn about the
+    // rest" convention this library already uses for a duplicate metadata ID and a duplicate INFO key.
+    String value;
+    if (!key.isList() && list.size() > 1) {
+      // getExpectedNumber() is always the literal "0" or "1" for a scalar (isList=false) key -- unlike
+      // VcfWriter.warnIfWrongCardinality's Number=A/G/R cases, there's no combinatorial expected count to compute
+      // here, so the same string fills both message slots
+      m_warnings.warn("INFO {} has {} value(s), but Number={} requires {}", key.getId(), list.size(),
+          key.getExpectedNumber(), key.getExpectedNumber());
+      value = list.get(0);
+    } else {
+      value = sf_commaJoiner.join(list);
+    }
     try {
-      return InternalUtils.convertProperty(key, sf_commaJoiner.join(list), m_warnings);
+      return InternalUtils.convertProperty(key, value, m_warnings);
     } catch (VcfFormatException ex) {
       if (m_lineNumber >= 0) {
         ex.addMetadata(m_lineNumber, "data");

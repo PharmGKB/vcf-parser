@@ -261,6 +261,70 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testGetInfoStringTypedScalarKeyCardinalityViolationWarnsAndKeepsFirstValue() {
+    // AA is Number=1/String-typed; info() unconditionally comma-splits every raw INFO value regardless of the
+    // key's declared cardinality, and the pre-fix code rejoined the split pieces with "," before Type conversion
+    // -- for a String-typed key, that rejoined "1,23" round-tripped as one opaque, unvalidated string, silently
+    // hiding the cardinality violation entirely (no warning, no throw)
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      VcfPosition p = newPosition();
+      p.setRawInfo("AA=1,23");
+      assertEquals("1", p.getInfo(ReservedInfoProperty.AncestralAllele));
+      assertEquals(1, appender.countMessagesContaining("INFO AA has 2 value(s), but Number=1 requires 1"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testGetInfoNumericTypedScalarKeyCardinalityViolationWarnsInsteadOfThrowing() {
+    // DP is Number=1/Long-typed; the pre-fix rejoin instead crashed here (Long.parseLong("1,23") throws
+    // VcfFormatException), even though AGENTS.md's Parser Validation Policy says a non-structural INFO problem
+    // should warn and recover, not throw
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      VcfPosition p = newPosition();
+      p.setRawInfo("DP=1,23");
+      assertEquals(Long.valueOf(1L), p.getInfo(ReservedInfoProperty.Depth));
+      assertEquals(1, appender.countMessagesContaining("INFO DP has 2 value(s), but Number=1 requires 1"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testGetInfoScalarKeySingleValueDoesNotWarnCardinality() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      VcfPosition p = newPosition();
+      p.setRawInfo("AA=A");
+      assertEquals("A", p.getInfo(ReservedInfoProperty.AncestralAllele));
+      assertEquals(0, appender.countMessagesContaining("value(s), but Number="));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testGetInfoKeysPreservesInsertionOrder() {
     // confirmed via direct reproduction during the writer-ordering investigation: ArrayListMultimap's key
     // iteration order is hash-based, not insertion order, so this previously came back as [AC, AF, AN]

@@ -189,6 +189,9 @@ still throws -- see the strict section above):
   accepts both silently — splitting an `=`-containing value on the first `=` only (same as this parser), and
   keeping only the first occurrence of a duplicate key rather than merging the two into a list. This parser matches
   that bcftools tolerance rather than being stricter than it, consistent with the empty-field policy below.
+- More than one comma-separated raw value for a scalar (`Number=0`/`1`) reserved `INFO` key (e.g. `AA=1,23`): a
+  typed read of that key warns and keeps only the first value, the same "keep the first, warn about the rest"
+  treatment as a duplicate top-level `INFO` key above.
 - A declared `Number`/`Type` for a well-known reserved `INFO`/`FORMAT` key (e.g. `AC`, `AN`, `GT`, `PL`) that doesn't
   match VCF's canonical definition for that key.
 - An `##INFO`/`##FORMAT`/`##ALT`/`##FILTER`/`##SAMPLE` declaration whose attributes are out of the canonical
