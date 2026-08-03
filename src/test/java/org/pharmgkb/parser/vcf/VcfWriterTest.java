@@ -1163,39 +1163,6 @@ public class VcfWriterTest {
   }
 
   @Test
-  public void testSpecialNumberCardinality() {
-    assertEquals(2L, VcfWriter.getExpectedCardinality("A", 2, 2, VcfWarnings.DEFAULT));
-    assertEquals(3L, VcfWriter.getExpectedCardinality("R", 2, 2, VcfWarnings.DEFAULT));
-    assertEquals(6L, VcfWriter.getExpectedCardinality("G", 2, 2, VcfWarnings.DEFAULT));
-    assertEquals(10L, VcfWriter.getExpectedCardinality("G", 2, 3, VcfWarnings.DEFAULT));
-  }
-
-  @Test
-  public void testGCardinalityOverflowSkipsValidationInsteadOfSentinelValue() {
-    // an astronomically large ploidy/allele-count combination overflows long; this must return null (skip
-    // validation), consistent with how the numeric-Number branch already skips validation when Number is too large
-    // to parse, rather than returning Long.MAX_VALUE as a bogus expected count
-    assertNull(VcfWriter.getExpectedCardinality("G", 1000, 1000, VcfWarnings.DEFAULT));
-  }
-
-  @Test
-  public void testGCardinalityWithUnknownPloidySkipsValidation() {
-    // ploidy=null means it could not be determined (e.g. GT is absent for this sample); previously getPloidy()
-    // defaulted to 2 in that case, which could produce a false Number=G cardinality warning for a haploid, or
-    // higher-ploidy, sample. There's nothing valid to compare against, so this must skip rather than guess.
-    // validateInfoValue also now passes null here for the same reason: an INFO value isn't tied to any one
-    // sample's ploidy at all (previously hardcoded to 2, which would have falsely flagged a correctly-formed
-    // haploid record's Number=G INFO field -- e.g. combinationsWithRepetition(2 alleles, 1 ploidy) = 2 actual
-    // values, but the hardcoded ploidy=2 assumption expects combinationsWithRepetition(2, 2) = 3).
-    assertNull(VcfWriter.getExpectedCardinality("G", 2, null, VcfWarnings.DEFAULT));
-    // Number=A/R/an explicit integer don't depend on ploidy at all, so they must still validate normally even when
-    // ploidy is unknown
-    assertEquals(2L, VcfWriter.getExpectedCardinality("A", 2, null, VcfWarnings.DEFAULT));
-    assertEquals(3L, VcfWriter.getExpectedCardinality("R", 2, null, VcfWarnings.DEFAULT));
-    assertEquals(5L, VcfWriter.getExpectedCardinality("5", 2, null, VcfWarnings.DEFAULT));
-  }
-
-  @Test
   public void testNoSamples() throws Exception {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();

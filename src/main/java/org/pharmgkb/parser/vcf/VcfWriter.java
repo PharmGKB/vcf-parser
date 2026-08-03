@@ -678,7 +678,7 @@ public class VcfWriter implements Closeable {
     // Number=G's expected cardinality from; pass null so getExpectedCardinality skips that check instead of
     // guessing a ploidy (previously hardcoded to 2, which could produce the same false-positive warning that
     // getPloidy's ploidy==null handling was introduced to prevent for FORMAT values)
-    warnIfWrongCardinality("INFO " + key, number, values.size(), numAltAlleles, null);
+    InternalUtils.warnIfWrongCardinality("INFO " + key, number, values.size(), numAltAlleles, null, m_warnings);
     if (type == null) {
       return;
     }
@@ -704,7 +704,7 @@ public class VcfWriter implements Closeable {
       InternalUtils.checkReservedFormatConstraints(key, value, m_warnings);
     }
     boolean isGle = key.equals("GLE");
-    String[] values = isGle ? new String[] { value } : value.split(",", -1);
+    String[] values = InternalUtils.splitFormatValue(key, value);
     for (String element : values) {
       if (element.isEmpty()) {
         m_warnings.warn("FORMAT {} for sample #{} contains an empty value", key, sampleIndex);
@@ -716,8 +716,8 @@ public class VcfWriter implements Closeable {
       // FORMAT key -- GLE's commas are part of its own internal genotype:likelihood encoding (see
       // ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy), so values.length is always 1 here and
       // comparing it against Number=G's combinatorial expected count would always be a false mismatch.
-      warnIfWrongCardinality("FORMAT " + key + " for sample #" + sampleIndex, number, values.length, numAltAlleles,
-          ploidy);
+      InternalUtils.warnIfWrongCardinality("FORMAT " + key + " for sample #" + sampleIndex, number, values.length,
+          numAltAlleles, ploidy, m_warnings);
     }
     FormatType type = format.getType();
     if (type == null) {
@@ -732,96 +732,13 @@ public class VcfWriter implements Closeable {
     }
   }
 
-  private void warnIfWrongCardinality(String field, @Nullable String number, int actual, int numAltAlleles,
-      @Nullable Integer ploidy) {
-    Long expected = getExpectedCardinality(number, numAltAlleles, ploidy, m_warnings);
-    if (expected != null && expected != actual) {
-      m_warnings.warn("{} has {} value(s), but Number={} requires {}", field, actual, number, expected);
-    }
-  }
-
-  // package-private (not private) so VcfWriterTest can exercise this pure cardinality logic directly; takes an
-  // explicit VcfWarnings (rather than being an instance method) for the same reason VcfMetadata.validateAlt does --
-  // it has no instance state of its own to route a warning through, so the caller's own sink is passed in instead
-  static @Nullable Long getExpectedCardinality(@Nullable String number, int numAltAlleles, @Nullable Integer ploidy,
-      VcfWarnings warnings) {
-    if (number == null || number.equals(".")) {
-      return null;
-    }
-    if (number.equals("A")) {
-      return (long) numAltAlleles;
-    }
-    if (number.equals("R")) {
-      return (long) numAltAlleles + 1;
-    }
-    if (number.equals("G")) {
-      if (ploidy == null) {
-        // ploidy could not be determined (e.g. GT is absent for this sample), so there's nothing valid to compare
-        // Number=G's expected cardinality against; skip rather than guessing
-        return null;
-      }
-      Long combinations = combinationsWithRepetition(numAltAlleles + 1, ploidy);
-      if (combinations == null) {
-        warnings.warn("Number=G cardinality for {} allele(s) and ploidy {} is too large to validate", numAltAlleles + 1,
-            ploidy);
-      }
-      return combinations;
-    }
-    try {
-      return Long.parseLong(number);
-    } catch (NumberFormatException e) {
-      warnings.warn("Number={} is too large to validate cardinality", number);
-      return null;
-    }
-  }
-
-  /**
-   * @return {@code null} if the result overflows a {@code long}, consistent with {@link #getExpectedCardinality}'s
-   * other branches skipping validation (rather than reporting a sentinel value) when a cardinality can't be computed
-   */
-  private static @Nullable Long combinationsWithRepetition(int numAlleles, int ploidy) {
-    int k = Math.min(ploidy, numAlleles - 1);
-    long result = 1;
-    for (int i = 1; i <= k; i++) {
-      try {
-        result = Math.multiplyExact(result, numAlleles + ploidy - 1L - k + i) / i;
-      } catch (ArithmeticException e) {
-        return null;
-      }
-    }
-    return result;
-  }
-
   /**
    * @return the ploidy inferred from this sample's GT value, or {@code null} if GT is absent and ploidy can
    * therefore not be determined (previously defaulted to 2, which could produce a false Number=G cardinality
    * warning for a haploid, or higher-ploidy, sample whose GT simply isn't present in this record)
    */
   private @Nullable Integer getPloidy(VcfPosition position, VcfSample sample, int sampleIndex) {
-    String gt = sample.getProperty("GT");
-    if (gt == null) {
-      return null;
-    }
-    String[] alleles = gt.split("[/|]", -1);
-    // gt.split(regex, -1) on a non-null input always yields an array of length >= 1, so this starts true
-    boolean valid = true;
-    for (String allele : alleles) {
-      if (allele.equals(".")) {
-        continue;
-      }
-      try {
-        int index = Integer.parseInt(allele);
-        if (index < 0 || index > position.getAltBases().size()) {
-          valid = false;
-        }
-      } catch (NumberFormatException e) {
-        valid = false;
-      }
-    }
-    if (!valid) {
-      m_warnings.warn("Sample #{} has invalid GT {}", sampleIndex, gt);
-    }
-    return Math.max(1, alleles.length);
+    return InternalUtils.getPloidy(position, sample.getProperty("GT"), "Sample #" + sampleIndex, m_warnings);
   }
 
   private void addSampleConditionally(VcfMetadata metadata, int sampleIndex,

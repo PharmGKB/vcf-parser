@@ -12,6 +12,7 @@ import org.pharmgkb.parser.vcf.model.InfoType;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
 import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
 import org.pharmgkb.parser.vcf.model.VcfFloat;
+import org.pharmgkb.parser.vcf.model.VcfPosition;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -728,6 +729,68 @@ public class InternalUtilsTest {
         new String[] {"ID=X", "Type=Integer", "Type=String"}, new VcfWarnings(sink));
     assertEquals("String", props.get("Type"));
     assertTrue(sink.toString().contains("duplicate attribute"));
+  }
+
+  @Test
+  public void testSpecialNumberCardinality() {
+    assertEquals(2L, InternalUtils.getExpectedCardinality("A", 2, 2, VcfWarnings.DEFAULT));
+    assertEquals(3L, InternalUtils.getExpectedCardinality("R", 2, 2, VcfWarnings.DEFAULT));
+    assertEquals(6L, InternalUtils.getExpectedCardinality("G", 2, 2, VcfWarnings.DEFAULT));
+    assertEquals(10L, InternalUtils.getExpectedCardinality("G", 2, 3, VcfWarnings.DEFAULT));
+  }
+
+  @Test
+  public void testGCardinalityOverflowSkipsValidationInsteadOfSentinelValue() {
+    assertNull(InternalUtils.getExpectedCardinality("G", 1000, 1000, VcfWarnings.DEFAULT));
+  }
+
+  @Test
+  public void testGCardinalityWithUnknownPloidySkipsValidation() {
+    assertNull(InternalUtils.getExpectedCardinality("G", 2, null, VcfWarnings.DEFAULT));
+    assertEquals(2L, InternalUtils.getExpectedCardinality("A", 2, null, VcfWarnings.DEFAULT));
+    assertEquals(3L, InternalUtils.getExpectedCardinality("R", 2, null, VcfWarnings.DEFAULT));
+    assertEquals(5L, InternalUtils.getExpectedCardinality("5", 2, null, VcfWarnings.DEFAULT));
+  }
+
+  @Test
+  public void testWarnIfWrongCardinalityWarnsOnMismatchOnly() {
+    StringWriter sink = new StringWriter();
+    VcfWarnings warnings = new VcfWarnings(sink);
+    InternalUtils.warnIfWrongCardinality("FORMAT PL", "G", 2, 1, 2, warnings);
+    assertTrue(sink.toString().contains("FORMAT PL has 2 value(s), but Number=G requires 3"));
+
+    StringWriter matchSink = new StringWriter();
+    VcfWarnings matchWarnings = new VcfWarnings(matchSink);
+    InternalUtils.warnIfWrongCardinality("FORMAT PL", "A", 2, 2, null, matchWarnings);
+    assertEquals("", matchSink.toString());
+  }
+
+  @Test
+  public void testSplitFormatValueExemptsGle() {
+    assertArrayEquals(new String[] { "0:-75.22,1:-223.42" },
+        InternalUtils.splitFormatValue("GLE", "0:-75.22,1:-223.42"));
+    assertArrayEquals(new String[] { "1", "2", "3" }, InternalUtils.splitFormatValue("PL", "1,2,3"));
+    assertArrayEquals(new String[] { "5" }, InternalUtils.splitFormatValue("DP", "5"));
+  }
+
+  @Test
+  public void testGetPloidyDerivesFromGtAlleleCount() {
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    assertEquals(Integer.valueOf(2), InternalUtils.getPloidy(position, "0|1", "Sample", VcfWarnings.DEFAULT));
+    assertEquals(Integer.valueOf(1), InternalUtils.getPloidy(position, "0", "Sample", VcfWarnings.DEFAULT));
+    assertNull(InternalUtils.getPloidy(position, null, "Sample", VcfWarnings.DEFAULT));
+  }
+
+  @Test
+  public void testGetPloidyWarnsForOutOfRangeAlleleIndex() {
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    StringWriter sink = new StringWriter();
+    VcfWarnings warnings = new VcfWarnings(sink);
+    // only 1 ALT allele (index 0 or 1 valid); "2" is out of range
+    InternalUtils.getPloidy(position, "0|2", "Sample #0", warnings);
+    assertTrue(sink.toString().contains("Sample #0 has invalid GT 0|2"));
   }
 
 }

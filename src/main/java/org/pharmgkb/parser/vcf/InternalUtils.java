@@ -17,6 +17,7 @@ import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
 import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
 import org.pharmgkb.parser.vcf.model.ReservedProperty;
 import org.pharmgkb.parser.vcf.model.VcfFloat;
+import org.pharmgkb.parser.vcf.model.VcfPosition;
 
 
 /**
@@ -611,6 +612,117 @@ public class InternalUtils {
     }
   }
 
+  // relocated from VcfWriter (was inlined in validateFormatValue there) so both the write path and VcfSample's
+  // own read-path cardinality check can derive a FORMAT value's comma-separated pieces identically. GLE (see
+  // ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy) is exempted: its commas are part of its own
+  // internal genotype:likelihood encoding, not a delimiter between independent values.
+  static String[] splitFormatValue(String key, String value) {
+    if (key.equals(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy.getId())) {
+      return new String[] { value };
+    }
+    return value.split(",", -1);
+  }
+
+  /**
+   * Warns if {@code actual} doesn't match the cardinality {@code number} implies for {@code numAltAlleles} ALT
+   * alleles (and, for {@code Number=G}, {@code ploidy}). Relocated from {@code VcfWriter} (was a private instance
+   * method reading {@code m_warnings} implicitly) so {@code VcfSample}'s own read-path check can share the
+   * identical implementation, rather than a second, independently-drifting copy.
+   */
+  static void warnIfWrongCardinality(String field, @Nullable String number, int actual, int numAltAlleles,
+      @Nullable Integer ploidy, VcfWarnings warnings) {
+    Long expected = getExpectedCardinality(number, numAltAlleles, ploidy, warnings);
+    if (expected != null && expected != actual) {
+      warnings.warn("{} has {} value(s), but Number={} requires {}", field, actual, number, expected);
+    }
+  }
+
+  // relocated from VcfWriter; package-private (not private) so VcfWriterTest/InternalUtilsTest can exercise this
+  // pure cardinality logic directly; takes an explicit VcfWarnings (rather than being an instance method) for the
+  // same reason VcfMetadata.validateAlt does -- it has no instance state of its own to route a warning through
+  static @Nullable Long getExpectedCardinality(@Nullable String number, int numAltAlleles, @Nullable Integer ploidy,
+      VcfWarnings warnings) {
+    if (number == null || number.equals(".")) {
+      return null;
+    }
+    if (number.equals("A")) {
+      return (long) numAltAlleles;
+    }
+    if (number.equals("R")) {
+      return (long) numAltAlleles + 1;
+    }
+    if (number.equals("G")) {
+      if (ploidy == null) {
+        // ploidy could not be determined (e.g. GT is absent for this sample), so there's nothing valid to compare
+        // Number=G's expected cardinality against; skip rather than guessing
+        return null;
+      }
+      Long combinations = combinationsWithRepetition(numAltAlleles + 1, ploidy);
+      if (combinations == null) {
+        warnings.warn("Number=G cardinality for {} allele(s) and ploidy {} is too large to validate", numAltAlleles + 1,
+            ploidy);
+      }
+      return combinations;
+    }
+    try {
+      return Long.parseLong(number);
+    } catch (NumberFormatException e) {
+      warnings.warn("Number={} is too large to validate cardinality", number);
+      return null;
+    }
+  }
+
+  /**
+   * @return {@code null} if the result overflows a {@code long}, consistent with {@link #getExpectedCardinality}'s
+   * other branches skipping validation (rather than reporting a sentinel value) when a cardinality can't be computed
+   */
+  private static @Nullable Long combinationsWithRepetition(int numAlleles, int ploidy) {
+    int k = Math.min(ploidy, numAlleles - 1);
+    long result = 1;
+    for (int i = 1; i <= k; i++) {
+      try {
+        result = Math.multiplyExact(result, numAlleles + ploidy - 1L - k + i) / i;
+      } catch (ArithmeticException e) {
+        return null;
+      }
+    }
+    return result;
+  }
+
+  /**
+   * @return the ploidy inferred from {@code gt}, or {@code null} if {@code gt} is absent and ploidy can therefore
+   * not be determined. Relocated from {@code VcfWriter} (was a private instance method taking a {@code VcfSample}
+   * and {@code sampleIndex} directly); {@code warnContext} lets each caller supply its own message prefix, since
+   * {@code VcfSample}'s own read-path caller has no {@code sampleIndex} of its own to include, unlike
+   * {@code VcfWriter}'s per-sample write loop.
+   */
+  static @Nullable Integer getPloidy(VcfPosition position, @Nullable String gt, String warnContext,
+      VcfWarnings warnings) {
+    if (gt == null) {
+      return null;
+    }
+    String[] alleles = gt.split("[/|]", -1);
+    // gt.split(regex, -1) on a non-null input always yields an array of length >= 1, so this starts true
+    boolean valid = true;
+    for (String allele : alleles) {
+      if (allele.equals(".")) {
+        continue;
+      }
+      try {
+        int index = Integer.parseInt(allele);
+        if (index < 0 || index > position.getAltBases().size()) {
+          valid = false;
+        }
+      } catch (NumberFormatException e) {
+        valid = false;
+      }
+    }
+    if (!valid) {
+      warnings.warn("{} has invalid GT {}", warnContext, gt);
+    }
+    return Math.max(1, alleles.length);
+  }
+
   /**
    * Shared type-dispatch plumbing behind the {@link ReservedProperty}/{@link FormatType}/{@link InfoType}
    * overloads above -- not public API in its own right. Unlike those three (each driven by a real,
@@ -620,8 +732,11 @@ public class InternalUtils {
    * with a genuinely custom type the way its signature suggests. Callers wanting to convert a custom,
    * non-reserved property's raw value should do their own conversion instead.
    */
+  // package-private (not private): VcfSample's read-path accessor for a non-reserved FORMAT key needs to convert
+  // a raw Class<?> (resolved from that key's own ##FORMAT declaration, not a ReservedProperty) the same way the
+  // ReservedProperty/FormatType/InfoType-driven overloads above already do
   @SuppressWarnings("unchecked")
-  private static @Nullable <T> T convertProperty(Class<?> clas, @Nullable String value, boolean isList, VcfWarnings warnings) {
+  static @Nullable <T> T convertProperty(Class<?> clas, @Nullable String value, boolean isList, VcfWarnings warnings) {
     if (value == null || ".".equals(value)) {
       return null;
     }
