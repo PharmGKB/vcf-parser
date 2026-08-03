@@ -27,6 +27,14 @@ public class FormatMetadata extends IdDescriptionMetadata {
 
   public FormatMetadata(String id, String description, String number, FormatType type) {
     super("FORMAT", id);
+    // structurally unreachable for a whitespace- or comma-containing id: IdMetadata's own super(...) call above
+    // already throws first for either -- see findings24.md item 20 and ContigMetadata's identical strict-path
+    // reasoning for its own analogous character-set check
+    if (!InternalUtils.FORMAT_PATTERN.matcher(id).matches()) {
+      throw new VcfFormatException(getLabel() + " ID \"" + id + "\" does not match the required tag-name " +
+          "grammar (must start with a letter or underscore, followed only by letters, digits, underscores, " +
+          "or periods)");
+    }
     // Validated before putPropertyRaw stores it below: see InfoMetadata's identical constructor for why
     // checking format here first (rather than after) is what makes a null or malformed Number actually
     // produce this class's own, more specific message instead of putPropertyRaw's generic null-check one.
@@ -78,6 +86,13 @@ public class FormatMetadata extends IdDescriptionMetadata {
       }
     }
     String id = getId();
+    // skip when id already triggered IdMetadata's own whitespace/comma warning (via its own init(), which ran
+    // before this method during construction) -- avoids warning twice about the same underlying defect
+    if (id != null && !id.isEmpty() && !InternalUtils.containsWhitespace(id) && !id.contains(",")
+        && !InternalUtils.FORMAT_PATTERN.matcher(id).matches()) {
+      m_warnings.warn("{} ID \"{}\" does not match the required tag-name grammar (must start with a letter or " +
+          "underscore, followed only by letters, digits, underscores, or periods)", getLabel(), id);
+    }
     ReservedFormatProperty reserved = ReservedFormatProperty.fromId(id);
     if (reserved != null) {
       if (number != null && !reserved.getExpectedNumber().equals(number)) {

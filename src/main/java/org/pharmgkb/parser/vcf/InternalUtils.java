@@ -123,10 +123,14 @@ public class InternalUtils {
   // FORMAT field informally as a "colon-separated alphanumeric String" (VCFv4.2.tex, Genotype fields
   // subsection). VCFv4.3.tex gives this exact regex verbatim, unchanged in VCFv4.4/4.5: "colon-separated FORMAT
   // keys matching the regular expression ^[A-Za-z_][0-9A-Za-z_.]*$, duplicate keys are not allowed"
-  // (VCFv4.3.tex:429; repeated in the VCFv4.2→4.3 changelog at VCFv4.3.tex:2150). Used here as VCFv4.2-silent
-  // clarifying guidance per AGENTS.md. Not reused for INFO keys, which VCFv4.3.tex:368 gives a different regex
-  // with a "1000G" legacy exception -- INFO keys are intentionally left unvalidated against any ID pattern here,
-  // per this project's parser leniency policy for INFO.
+  // (VCFv4.3.tex:429; repeated in the VCFv4.2->4.3 changelog at VCFv4.3.tex:2150, which states the identical rule
+  // for "INFO and FORMAT tag names" together). Used both for a data-line FORMAT key (VcfPosition.java) and for a
+  // ##FORMAT declaration's own ID (FormatMetadata.java) -- confirmed via direct bcftools 1.23.1 testing that
+  // bcftools enforces this same stricter grammar for ##FORMAT declaration IDs specifically (an asterisk anywhere
+  // but the first character triggers "Invalid tag name"), unlike ##FILTER/##SAMPLE/##ALT declaration IDs, which
+  // bcftools accepts the identical character in silently (see findings24.md item 20). Not reused for INFO
+  // declaration IDs, which VCFv4.3.tex:368 gives a different regex with a "1000G" legacy exception -- see
+  // INFO_PATTERN below.
   public static final Pattern FORMAT_PATTERN = Pattern.compile("^[A-Za-z_][0-9A-Za-z_.]*$");
   public static final Pattern RSID_PATTERN = Pattern.compile("rs\\d+");
   public static final Pattern NUMBER_PATTERN = Pattern.compile("(?:\\d+|[ARG.])");
