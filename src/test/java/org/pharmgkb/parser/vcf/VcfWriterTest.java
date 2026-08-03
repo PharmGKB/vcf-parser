@@ -22,6 +22,7 @@ import org.pharmgkb.parser.vcf.model.InfoMetadata;
 import org.pharmgkb.parser.vcf.model.InfoType;
 import org.pharmgkb.parser.vcf.model.PedigreeMetadata;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
+import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
@@ -1035,6 +1036,40 @@ public class VcfWriterTest {
     writer.writeHeader(metadata);
     writer.writeLine(metadata, position, Collections.singletonList(sample));
     assertTrue(sw.toString().contains("PS\t-5"));
+  }
+
+  @Test
+  public void testValidateBeforeWriteWarnsButPreservesNegativeAcValue() throws Exception {
+    // AC must be a non-negative integer, but that constraint isn't expressible through AC's declared
+    // Type=Integer (which maps to a 64-bit Long), so it's checked separately (mirroring FT/PS's own treatment
+    // on the FORMAT side); a negative value is semantically non-compliant but safely representable, so it's a
+    // warning, not a rejection. Captures the actual warning (not just the preserved output) so this test
+    // genuinely regression-guards validateInfoValue's own checkReservedInfoConstraints call, not just the
+    // unrelated fact that this writer never rewrites INFO content.
+    InfoMetadata ac = new InfoMetadata(ReservedInfoProperty.AlleleCount.getId(), "d", InfoType.Integer, "A",
+        null, null);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addInfo(ac).build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getAltBases().add("T");
+    position.getInfo().put("AC", "-1");
+
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    writer.writeHeader(metadata);
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertTrue(appender.anyMessageContains("INFO AC value \"-1\" is a negative number"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(sw.toString().contains("AC=-1"));
   }
 
   @Test

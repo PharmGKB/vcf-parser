@@ -1,5 +1,6 @@
 package org.pharmgkb.parser.vcf;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -13,6 +14,7 @@ import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.model.FormatType;
 import org.pharmgkb.parser.vcf.model.InfoType;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
+import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
 import org.pharmgkb.parser.vcf.model.ReservedProperty;
 import org.pharmgkb.parser.vcf.model.VcfFloat;
 
@@ -415,10 +417,15 @@ public class InternalUtils {
    */
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static @Nullable <T> T convertProperty(ReservedProperty key, @Nullable String value, VcfWarnings warnings) {
-    // FT/PS are FORMAT-only reserved IDs (see checkReservedFormatConstraints's Javadoc) -- a future
-    // ReservedInfoProperty whose ID happens to collide with one must not get FORMAT-only semantics applied
-    String normalized = key instanceof ReservedFormatProperty ? checkReservedFormatConstraints(key.getId(), value, warnings)
-        : value;
+    // FT/PS are FORMAT-only reserved IDs, and AC/AN/DP/END/MQ0/NS/AF are INFO-only reserved IDs (see each
+    // check's own Javadoc) -- a future reserved key on the other side whose ID happens to collide must not get
+    // the wrong side's semantics applied
+    String normalized = value;
+    if (key instanceof ReservedFormatProperty) {
+      normalized = checkReservedFormatConstraints(key.getId(), value, warnings);
+    } else if (key instanceof ReservedInfoProperty) {
+      checkReservedInfoConstraints(key.getId(), value, warnings);
+    }
     return convertProperty(key.getType(), normalized, key.isList(), warnings);
   }
 
@@ -484,6 +491,92 @@ public class InternalUtils {
     }
     if (parsed < 0 || parsed > Integer.MAX_VALUE) {
       warnings.warn("FORMAT {} value \"{}\" is not a non-negative 32-bit integer", key, value);
+    }
+  }
+
+  // AC/AN/DP/END/MQ0/NS's declared Long Type accepts any value Long.parseLong parses, including a negative one --
+  // vcf_validator 0.10.2 rejects a negative value for each of these ("value must be a non-negative integer
+  // number"; confirmed directly against test/vcf/4.2/failed/failed_body_info_001.vcf (AC), _006.vcf (AN),
+  // _013.vcf (DP), _016.vcf (END), _021.vcf (MQ0), _023.vcf (NS)); bcftools 1.23.1 is silent on all six (it never
+  // validates reserved-key semantics, only structural presence). VCFv4.2.tex doesn't table this constraint
+  // itself, but each key's own reserved-key description implies a count/depth/position can't be negative.
+  private static final Set<String> NON_NEGATIVE_INTEGER_INFO_KEYS = Set.of(
+      ReservedInfoProperty.AlleleCount.getId(), ReservedInfoProperty.AlleleNumber.getId(),
+      ReservedInfoProperty.Depth.getId(), ReservedInfoProperty.End.getId(),
+      ReservedInfoProperty.MappingQualityZeroCount.getId(), ReservedInfoProperty.NumberOfSamples.getId());
+
+  /**
+   * Warns if {@code value} violates a constraint that VCFv4.2 places on a reserved INFO key beyond its declared
+   * {@code Type} -- constraints that generic {@code Type}-based conversion can't express. Currently:
+   * <ul>
+   *   <li>{@link ReservedInfoProperty#AlleleCount AC}, {@link ReservedInfoProperty#AlleleNumber AN},
+   *   {@link ReservedInfoProperty#Depth DP}, {@link ReservedInfoProperty#End END},
+   *   {@link ReservedInfoProperty#MappingQualityZeroCount MQ0}, and {@link ReservedInfoProperty#NumberOfSamples NS}
+   *   must each be a non-negative integer.</li>
+   *   <li>{@link ReservedInfoProperty#AlleleFrequency AF} must lie in the interval [0, 1] -- confirmed directly
+   *   against vcf_validator 0.10.2 with both a negative value (test/vcf/4.2/failed/failed_body_info_004.vcf,
+   *   AF=-0.01) and a value above 1 (a hand-built AF=1.5 file, since hts-specs has no fixture for that side of
+   *   the interval); bcftools 1.23.1 is silent on both.</li>
+   * </ul>
+   * {@code value} may be a comma-joined list (AC/AF are both {@code Number=A}, one value per ALT allele): each
+   * comma-separated element is checked independently. Unlike {@link #checkReservedFormatConstraints}, nothing
+   * here needs normalizing -- these are pure range checks with no equivalent to FT's empty-entry-dropping -- so
+   * this returns {@code void} rather than a value for the caller to use.
+   */
+  static void checkReservedInfoConstraints(String key, @Nullable String value, VcfWarnings warnings) {
+    if (value == null || value.equals(".")) {
+      return;
+    }
+    if (NON_NEGATIVE_INTEGER_INFO_KEYS.contains(key)) {
+      for (String element : value.split(",", -1)) {
+        checkNonNegativeInteger(key, element, warnings);
+      }
+    } else if (key.equals(ReservedInfoProperty.AlleleFrequency.getId())) {
+      for (String element : value.split(",", -1)) {
+        checkUnitInterval(key, element, warnings);
+      }
+    }
+  }
+
+  private static void checkNonNegativeInteger(String key, String value, VcfWarnings warnings) {
+    if (value.isEmpty() || value.equals(".")) {
+      // an empty entry or the missing-value sentinel is reported elsewhere; not this check's concern
+      return;
+    }
+    long parsed;
+    try {
+      parsed = Long.parseLong(value);
+    } catch (NumberFormatException e) {
+      // not a number at all; the generic Long conversion reports this on its own
+      return;
+    }
+    if (parsed < 0) {
+      warnings.warn("INFO {} value \"{}\" is a negative number", key, value);
+    }
+  }
+
+  private static void checkUnitInterval(String key, String value, VcfWarnings warnings) {
+    if (value.isEmpty() || value.equals(".")) {
+      return;
+    }
+    if (VcfFloat.isSpecialValue(value)) {
+      // NaN/Inf/-Inf have no meaningful position within [0, 1]; nothing to compare
+      return;
+    }
+    // deliberately not VcfFloat.parse/parseDecimal here: both emit a "does not match the VCF Float grammar"
+    // warning as a side effect for a value that's BigDecimal-parseable but grammar-mismatched (e.g. "5."), and
+    // the real Type conversion that runs immediately after this check in every caller (convertProperty(key.getType(),
+    // ...) on the read path, convertProperty(type, value, ...) on the write path) already emits that exact
+    // warning once on its own -- calling VcfFloat.parse here as well would double it
+    BigDecimal decimal;
+    try {
+      decimal = new BigDecimal(value);
+    } catch (NumberFormatException e) {
+      // not a number at all; the generic VcfFloat conversion reports this on its own
+      return;
+    }
+    if (decimal.compareTo(BigDecimal.ZERO) < 0 || decimal.compareTo(BigDecimal.ONE) > 0) {
+      warnings.warn("INFO {} value \"{}\" does not lie in the interval [0, 1]", key, value);
     }
   }
 

@@ -135,6 +135,21 @@ public final class VcfFloat {
     return decimal;
   }
 
+  /**
+   * @return true if {@code value} matches the special-value grammar (NaN/Inf/-Inf, optionally signed,
+   * case-insensitive), with no side effect and no {@link VcfFloat} constructed.
+   * <p>Public only because {@link org.pharmgkb.parser.vcf.InternalUtils} needs cross-package access; not part
+   * of this library's supported public API. It needs to recognize a special AF value without going through
+   * {@link #parse}/{@link #parseDecimal} -- both of those would re-trigger the grammar-mismatch warning above
+   * as a side effect for a value the real Type conversion (called immediately afterward, in both the read and
+   * write paths) already warns about once on its own.
+   * @hidden
+   */
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
+  public static boolean isSpecialValue(String value) {
+    return SPECIAL_PATTERN.matcher(value).matches();
+  }
+
   public boolean isSpecial() {
     return m_special != null;
   }

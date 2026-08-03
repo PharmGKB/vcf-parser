@@ -665,6 +665,11 @@ public class VcfWriter implements Closeable {
       // simply unset). validateFormatValue already has the equivalent early return for FORMAT values.
       return;
     }
+    // mirrors validateFormatValue's own checkReservedFormatConstraints call: AC/AN/DP/END/MQ0/NS/AF go beyond
+    // what their declared Type can express (see InternalUtils.checkReservedInfoConstraints's own Javadoc), so
+    // this is checked separately, both here (the write/diagnostics path) and via getInfo(ReservedInfoProperty)
+    // (the read path, through convertProperty(ReservedProperty, ...)'s dispatch)
+    InternalUtils.checkReservedInfoConstraints(key, String.join(",", values), m_warnings);
     if (values.stream().anyMatch(String::isEmpty)) {
       m_warnings.warn("INFO {} contains an empty value", key);
     }

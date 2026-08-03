@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.model.FormatType;
 import org.pharmgkb.parser.vcf.model.InfoType;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
+import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
 import org.pharmgkb.parser.vcf.model.VcfFloat;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -402,6 +403,109 @@ public class InternalUtilsTest {
   }
 
   @Test
+  public void testCheckReservedInfoConstraintsNonNegativeKeysWarnButDoNotThrow() {
+    // AC/AN/DP/END/MQ0/NS's declared Long Type accepts a negative value, but each is semantically a count/depth/
+    // position that can't be negative -- checked separately, warning rather than throwing (non-structural INFO
+    // content)
+    for (String key : new String[] { "AC", "AN", "DP", "END", "MQ0", "NS" }) {
+      InternalUtils.checkReservedInfoConstraints(key, "0", VcfWarnings.DEFAULT); // valid: does not throw
+      InternalUtils.checkReservedInfoConstraints(key, "5", VcfWarnings.DEFAULT); // valid: does not throw
+      InternalUtils.checkReservedInfoConstraints(key, "-1", VcfWarnings.DEFAULT); // negative: warns, does not throw
+    }
+    InternalUtils.checkReservedInfoConstraints("AC", null, VcfWarnings.DEFAULT); // no value set: nothing to check
+    InternalUtils.checkReservedInfoConstraints("AC", ".", VcfWarnings.DEFAULT); // missing value: nothing to check
+  }
+
+  @Test
+  public void testCheckReservedInfoConstraintsNonNegativeKeyChecksEachListElement() {
+    // AC/AN (Number=A/1 respectively) may carry a comma-joined list; a negative value anywhere in the list must
+    // be caught, not just the first element
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      InternalUtils.checkReservedInfoConstraints("AC", "1,-2,3", VcfWarnings.DEFAULT);
+      assertEquals(1, appender.countMessagesContaining("negative number"));
+      assertTrue(appender.anyMessageContains("-2"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testCheckReservedInfoConstraintsAlleleFrequencyWarnsOutsideUnitInterval() {
+    InternalUtils.checkReservedInfoConstraints("AF", "0", VcfWarnings.DEFAULT); // valid: does not throw
+    InternalUtils.checkReservedInfoConstraints("AF", "1", VcfWarnings.DEFAULT); // valid: does not throw
+    InternalUtils.checkReservedInfoConstraints("AF", "0.5", VcfWarnings.DEFAULT); // valid: does not throw
+    InternalUtils.checkReservedInfoConstraints("AF", "-0.01", VcfWarnings.DEFAULT); // below 0: warns, does not throw
+    InternalUtils.checkReservedInfoConstraints("AF", "1.5", VcfWarnings.DEFAULT); // above 1: warns, does not throw
+    // NaN/Inf have no meaningful position within [0, 1] -- must not warn (or throw)
+    InternalUtils.checkReservedInfoConstraints("AF", "NaN", VcfWarnings.DEFAULT);
+    InternalUtils.checkReservedInfoConstraints("AF", "INF", VcfWarnings.DEFAULT);
+  }
+
+  @Test
+  public void testConvertPropertyAlleleFrequencyGrammarMismatchWarnsOnce() {
+    // regression test: checkReservedInfoConstraints's AF range check previously used VcfFloat.parse(...) to get
+    // a comparable value, which has its own "does not match the VCF Float grammar" warning as a side effect for
+    // a value that's BigDecimal-parseable but grammar-mismatched (e.g. "1.", a trailing decimal point with no
+    // digits after it -- see VcfFloat.FLOAT_PATTERN's own comment). The generic Type conversion immediately
+    // afterward (in convertProperty's own dispatch) already emits that exact warning once on its own, so calling
+    // VcfFloat.parse a second time inside the range check doubled it. The fix parses with plain BigDecimal
+    // (bypassing the grammar check entirely) purely to get a value to compare against [0, 1]. Deliberately uses
+    // "1." (equals 1, still within [0, 1]) rather than an out-of-range value like "5." so this test isolates the
+    // grammar-warning count from the unrelated, independently-tested out-of-range warning.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      List<VcfFloat> value = InternalUtils.convertProperty(ReservedInfoProperty.AlleleFrequency, "1.", VcfWarnings.DEFAULT);
+      assertEquals(1, appender.countMessagesContaining("does not match the VCF Float grammar"));
+      assertEquals(0, appender.countMessagesContaining("does not lie in the interval"));
+      assertEquals(1, value.size());
+      assertEquals(0, value.get(0).getValue().compareTo(new java.math.BigDecimal("1")));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testConvertPropertyAlleleCountPreservesNegativeValue() {
+    // the typed accessor still returns the parsed value even when it violates AC's non-negative constraint,
+    // consistent with the "warn and preserve" policy for non-structural INFO content
+    List<Long> value = InternalUtils.convertProperty(ReservedInfoProperty.AlleleCount, "-5", VcfWarnings.DEFAULT);
+    assertEquals(List.of(-5L), value);
+  }
+
+  @Test
+  public void testConvertPropertyDoesNotApplyInfoConstraintsToNonInfoReservedProperty() {
+    // regression test: a ReservedProperty implementation whose ID happens to equal "AC" (the same ID as
+    // ReservedInfoProperty.AlleleCount) must NOT have AC's INFO-only non-negative constraint applied, since
+    // checkReservedInfoConstraints is scoped to ReservedInfoProperty only
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      InternalUtils.convertProperty(new FakeInfoIdReservedProperty(), "-5", VcfWarnings.DEFAULT);
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testToJavaTypeMapsInfoType() {
     assertEquals(Long.class, InternalUtils.toJavaType(InfoType.Integer));
     assertEquals(VcfFloat.class, InternalUtils.toJavaType(InfoType.Float));
@@ -495,6 +599,33 @@ public class InternalUtilsTest {
     @Override
     public String getId() {
       return "FT";
+    }
+
+    @Override
+    public String getDescription() {
+      return "fake";
+    }
+
+    @Override
+    public Class getType() {
+      return String.class;
+    }
+
+    @Override
+    public boolean isList() {
+      return false;
+    }
+
+    @Override
+    public String getExpectedNumber() {
+      return "1";
+    }
+  }
+
+  private static final class FakeInfoIdReservedProperty implements org.pharmgkb.parser.vcf.model.ReservedProperty {
+    @Override
+    public String getId() {
+      return "AC";
     }
 
     @Override

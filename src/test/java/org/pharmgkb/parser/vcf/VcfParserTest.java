@@ -1279,6 +1279,48 @@ public class VcfParserTest {
     assertNotNull(contig1Star, "passed_meta_contig.vcf's \"1.*\" contig declaration should be present");
   }
 
+  @Tag("hts-specs")
+  @Test
+  void testHtsSpecsNegativeReservedInfoValueFixturesWarnOnTypedAccess() throws IOException {
+    // AC/AN/DP/END/MQ0/NS/AF's declared Type accepts a negative value; the extra non-negative (or, for AF,
+    // [0,1]-interval) constraint is only checked lazily, when the typed accessor is actually used -- these
+    // fixtures never declare a ##INFO line for their key, confirming getInfo(ReservedInfoProperty) doesn't
+    // need one (it uses the reserved property's own hardcoded Type, not a declared metadata entry).
+    Object[][] cases = {
+        { "failed_body_info_001.vcf", ReservedInfoProperty.AlleleCount },
+        { "failed_body_info_004.vcf", ReservedInfoProperty.AlleleFrequency },
+        { "failed_body_info_006.vcf", ReservedInfoProperty.AlleleNumber },
+        { "failed_body_info_013.vcf", ReservedInfoProperty.Depth },
+        { "failed_body_info_016.vcf", ReservedInfoProperty.End },
+        { "failed_body_info_021.vcf", ReservedInfoProperty.MappingQualityZeroCount },
+        { "failed_body_info_023.vcf", ReservedInfoProperty.NumberOfSamples },
+    };
+    for (Object[] c : cases) {
+      String fixtureName = (String) c[0];
+      ReservedInfoProperty key = (ReservedInfoProperty) c[1];
+      ch.qos.logback.classic.Logger root =
+          (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+      org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+          new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+      appender.start();
+      root.addAppender(appender);
+      try (VcfParser parser = new VcfParser.Builder()
+          .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.2/failed", fixtureName))
+          .parseWith((metadata, position, sampleData) -> position.getInfo(key))
+          .build()) {
+        parser.parse();
+      } finally {
+        root.detachAppender(appender);
+        appender.stop();
+      }
+      // hasWarnOrHigher() alone would be a false-positive-prone check here: these fixtures don't declare
+      // sample columns in their metadata, so "There are {} samples in the header but {} in the metadata" fires
+      // regardless of this check -- match the specific message this check itself produces instead
+      assertTrue(appender.anyMessageContains("INFO " + key.getId()),
+          () -> fixtureName + " (" + key.getId() + ") should have warned about the negative/out-of-range value");
+    }
+  }
+
   private static void assertHtsSpecsFixtureWarns(String fixtureName, String expectedMessageFragment)
       throws IOException {
     Path fixture = Path.of("build/hts-specs-checkout/test/vcf/4.2/failed", fixtureName);
