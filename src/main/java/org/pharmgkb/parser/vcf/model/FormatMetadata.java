@@ -86,12 +86,17 @@ public class FormatMetadata extends IdDescriptionMetadata {
       }
     }
     String id = getId();
-    // skip when id already triggered IdMetadata's own whitespace/comma warning (via its own init(), which ran
-    // before this method during construction) -- avoids warning twice about the same underlying defect
-    if (id != null && !id.isEmpty() && !InternalUtils.containsWhitespace(id) && !id.contains(",")
-        && !InternalUtils.FORMAT_PATTERN.matcher(id).matches()) {
-      m_warnings.warn("{} ID \"{}\" does not match the required tag-name grammar (must start with a letter or " +
-          "underscore, followed only by letters, digits, underscores, or periods)", getLabel(), id);
+    if (id != null && !id.isEmpty()) {
+      // strip commas/whitespace before checking: IdMetadata's own init() (which already ran, before this method,
+      // during construction) already warned about either separately -- stripping them first means this check only
+      // fires for a genuinely different defect, not a second warning about the same one. Matches ContigMetadata's
+      // own "keep searching past a comma for a different defect" precedent for this exact situation, adapted for a
+      // whole-string pattern instead of a per-character scan.
+      String stripped = id.replaceAll("[,\\s]", "");
+      if (!stripped.isEmpty() && !InternalUtils.FORMAT_PATTERN.matcher(stripped).matches()) {
+        m_warnings.warn("{} ID \"{}\" does not match the required tag-name grammar (must start with a letter or " +
+            "underscore, followed only by letters, digits, underscores, or periods)", getLabel(), id);
+      }
     }
     ReservedFormatProperty reserved = ReservedFormatProperty.fromId(id);
     if (reserved != null) {

@@ -374,6 +374,30 @@ public class FormatMetadataTest {
   }
 
   @Test
+  public void testLenientConstructorWarnsForBothCommaAndInvalidCharacterDefects() {
+    // regression test: the old guard skipped the entire tag-name-grammar check whenever a comma (or whitespace)
+    // was present anywhere in the id, which silently suppressed a genuinely different defect (e.g. an invalid
+    // character) coexisting in the same id -- confirmed against bcftools 1.23.1, which flags the '*' in
+    // "AB,C*D" as "Invalid tag name" independently of the comma/whitespace. Both defects must now be reported.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new FormatMetadata(InternalUtils.extractProperties(
+          new String[]{"ID=AB,C*D", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT),
+          VcfWarnings.DEFAULT);
+      assertEquals(1, appender.countMessagesContaining("must not contain a comma"));
+      assertEquals(1, appender.countMessagesContaining("does not match the required tag-name grammar"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testLenientConstructorDoesNotWarnForValidTagName() {
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -390,5 +414,13 @@ public class FormatMetadataTest {
       root.detachAppender(appender);
       appender.stop();
     }
+  }
+
+  @Test
+  public void testTypedConstructorRejects1000GUnlikeInfo() {
+    // unlike INFO_PATTERN, FORMAT_PATTERN has no 1000G legacy exception -- confirmed directly against
+    // bcftools 1.23.1, which accepts ##INFO=<ID=1000G,...> silently but flags ##FORMAT=<ID=1000G,...> as
+    // "Invalid tag name"
+    assertThrows(VcfFormatException.class, () -> new FormatMetadata("1000G", "d", "1", FormatType.String));
   }
 }

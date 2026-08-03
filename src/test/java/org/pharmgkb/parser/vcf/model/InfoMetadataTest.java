@@ -461,4 +461,28 @@ public class InfoMetadataTest {
       appender.stop();
     }
   }
+
+  @Test
+  public void testLenientConstructorWarnsForBothCommaAndInvalidCharacterDefects() {
+    // regression test: the old guard skipped the entire tag-name-grammar check whenever a comma (or whitespace)
+    // was present anywhere in the id, which silently suppressed a genuinely different defect (e.g. an invalid
+    // character) coexisting in the same id -- confirmed against bcftools 1.23.1, which flags the '*' in
+    // "AB,C*D" as "Invalid tag name" independently of the comma. Both defects must now be reported.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new InfoMetadata(InternalUtils.extractProperties(
+          new String[]{"ID=AB,C*D", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT),
+          VcfWarnings.DEFAULT);
+      assertEquals(1, appender.countMessagesContaining("must not contain a comma"));
+      assertEquals(1, appender.countMessagesContaining("does not match the required tag-name grammar"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
 }
