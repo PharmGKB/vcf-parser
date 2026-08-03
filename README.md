@@ -180,8 +180,11 @@ still throws -- see the strict section above):
   key's value whose element count doesn't match its declared `Number`, or whose value doesn't match its declared
   `Type`: the first two are checked and warned about (never thrown) both when
   `VcfSample.getProperty(VcfPosition, VcfMetadata, String)` is called and by
-  `VcfWriter.Builder().validateBeforeWrite()`; a genuine `Type` mismatch throws `VcfFormatException` from either
-  path, unchanged from `getProperty(ReservedFormatProperty)`'s existing behavior for a reserved key.
+  `VcfWriter.Builder.validateBeforeWrite()`; a genuine `Type` mismatch throws `VcfFormatException` when read via
+  `VcfSample.getProperty(VcfPosition, VcfMetadata, String)`, unchanged from
+  `getProperty(ReservedFormatProperty)`'s existing behavior for a reserved key -- but
+  `VcfWriter.Builder.validateBeforeWrite()` downgrades the identical `Type` mismatch to a warning instead of
+  throwing, preserving this library's general policy of never aborting a write over recoverable content.
 - A negative value for the reserved `INFO` keys `AC`, `AN`, `DP`, `END`, `MQ0`, or `NS`, or an `AF` value outside
   the interval `[0, 1]`, or a reserved `INFO/CIGAR` value that doesn't match a lone `*` or one or more
   `<length><operation>` pairs: same treatment as `FT`/`PS` above -- these constraints go beyond what each key's

@@ -7,7 +7,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import ch.qos.logback.classic.Logger;
 import org.junit.jupiter.api.Test;
+import org.pharmgkb.parser.vcf.InternalUtils;
 import org.pharmgkb.parser.vcf.VcfFormatException;
+import org.pharmgkb.parser.vcf.VcfWarnings;
 import org.pharmgkb.parser.vcf.spec.WarnCapturingAppender;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -520,6 +522,60 @@ class VcfSampleTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(dsFormat).build();
 
     assertThrows(VcfFormatException.class, () -> sample.getProperty(position, metadata, "DS"));
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataTreatsMissingValueSentinelAsAbsent() {
+    // a record that legitimately drops a trailing FORMAT sub-field gets '.'-filled by the parser; "." is the
+    // missing-value sentinel, not a real 1-element value, so it must not be measured against Number=G
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0|1");
+    map.put("GL", ".");
+    VcfSample sample = new VcfSample(map);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertNull(sample.getProperty(position, metadata, "GL"));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataDoesNotTruncateWhenNumberIsUndeclared() {
+    // a leniently-parsed ##FORMAT declaration missing Number leaves getNumber() null -- there's nothing to judge
+    // cardinality against, so no warning fires; truncating to the first piece would then silently discard data
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0/1");
+    map.put("XX", "a,b,c");
+    VcfSample sample = new VcfSample(map);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    FormatMetadata xxFormat = new FormatMetadata(InternalUtils.extractProperties(
+        new String[] {"ID=XX", "Type=String", "Description=\"no Number\""}, VcfWarnings.DEFAULT),
+        VcfWarnings.DEFAULT);
+    assertNull(xxFormat.getNumber());
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(xxFormat).build();
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertEquals("a,b,c", sample.getProperty(position, metadata, "XX"));
+      assertFalse(appender.anyMessageContains("value(s), but Number="));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
   }
 
   @Test

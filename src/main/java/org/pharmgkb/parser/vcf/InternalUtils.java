@@ -639,7 +639,7 @@ public class InternalUtils {
     }
   }
 
-  // relocated from VcfWriter; package-private (not private) so VcfWriterTest/InternalUtilsTest can exercise this
+  // relocated from VcfWriter; package-private (not private) so InternalUtilsTest can exercise this
   // pure cardinality logic directly; takes an explicit VcfWarnings (rather than being an instance method) for the
   // same reason VcfMetadata.validateAlt does -- it has no instance state of its own to route a warning through
   static @Nullable Long getExpectedCardinality(@Nullable String number, int numAltAlleles, @Nullable Integer ploidy,
