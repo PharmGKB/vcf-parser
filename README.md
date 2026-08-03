@@ -285,13 +285,18 @@ the object was originally parsed or built under a different destination (or none
 `./gradlew htsSpecsTest` runs this parser and writer against
 [hts-specs](https://github.com/samtools/hts-specs)' official VCF conformance fixture suite
 (`test/vcf/{4.1,4.2,4.3,4.5}/{passed,failed}`), fetched at build time and pinned to a specific commit
-(`htsSpecsPinnedSha` in `build.gradle`). It runs four checks:
+(`htsSpecsPinnedSha` in `build.gradle`). It runs five checks:
 
 - `parser-no-throw`: every `passed/` fixture (all versions) parses without error.
 - `parser-throw-or-warn`: every `failed/` fixture (for versions up to this library's VCFv4.2 target) either throws
   `VcfFormatException` or logs a warning — this library is deliberately more permissive than strict compliance for
   non-structural violations, so a `failed/` fixture parsing without error is not itself a failure; parsing it with
   *no signal at all* is.
+- `parser-warn-content`: for a `failed/` fixture with more than one real data record, the captured warning content
+  must match a specific, hand-verified expected substring, not merely "some warning fired" — a warning fired for
+  the wrong reason would otherwise pass `parser-throw-or-warn` undetected. Expected substrings are catalogued in
+  `HtsSpecsConformanceTest.EXPECTED_WARNING_SUBSTRINGS`; see that constant's own comment for the maintenance
+  protocol for adding an entry.
 - `writer-semantic` and `writer-bytediff`: every `passed/` fixture (all versions) is parsed, written back out via
   `VcfWriter`, and re-parsed; the round trip is compared both semantically (parsed data equal) and as raw text
   (byte-for-byte equal, ignoring line-ending differences).
@@ -299,7 +304,11 @@ the object was originally parsed or built under a different destination (or none
 Every check's outcome is compared against a committed baseline file
 (`src/test/resources/org/pharmgkb/parser/vcf/spec/hts-specs-baseline.tsv`): a run fails only on a NEW divergence
 (a fixture/check-type pair not yet in the baseline) or a STALE entry (baselined but no longer reproduces) — an
-already-accepted divergence never fails the build. A fully green `htsSpecsTest` run means current behavior exactly
+already-accepted divergence never fails the build. One exception: a multi-line `failed/` fixture with no entry in
+`EXPECTED_WARNING_SUBSTRINGS` fails `parser-warn-content` unconditionally via a direct assertion failure, bypassing
+the baseline mechanism entirely — it can never be suppressed by `./gradlew htsSpecsUpdateBaseline`. This is
+deliberate: it's what makes the harness fail loudly on a fixture a future hts-specs update adds, rather than
+silently missing it. A fully green `htsSpecsTest` run means current behavior exactly
 matches the committed baseline. After a deliberate behavior change, run `./gradlew htsSpecsUpdateBaseline` to
 regenerate the baseline from current results, then review the `git diff` of that file before committing — removed
 entries mean improved behavior, added entries mean a new divergence is being accepted.

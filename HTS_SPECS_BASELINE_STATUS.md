@@ -13,7 +13,11 @@ The same re-verification pass must also check `HtsSpecsConformanceTest`'s `EXPEC
 1. **A new multi-line `failed/` fixture with no map entry** doesn't need a separate detection step —
    `htsSpecsTest` already hard-fails directly on it, naming the fixture and printing its actual captured
    warnings. Resolve it the way the map's own comment describes: cross-check the printed warnings against the
-   fixture's `##CauseOfFailure=`, pick a specific substring, add an entry.
+   fixture's `##CauseOfFailure=`, pick a specific substring, add an entry. Because this hard fail bypasses the
+   baseline mechanism entirely, it also fires during the `./gradlew htsSpecsUpdateBaseline` run this
+   re-verification pass starts with, so that run reporting `BUILD FAILED` doesn't mean the baseline update
+   itself failed -- `HtsSpecsConformanceTest`'s `@AfterAll writeReports()` (which rewrites the baseline TSV in
+   update mode) runs regardless of dynamic-test failures, so the baseline file is still correctly updated.
 2. **A pin bump that changes an existing mapped fixture's content** so its substring stops matching surfaces as
    a normal `parser-warn-content` baseline finding through the usual `htsSpecsUpdateBaseline` workflow — nothing
    extra to do here beyond the existing baseline-diff review.

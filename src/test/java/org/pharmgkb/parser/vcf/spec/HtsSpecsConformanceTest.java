@@ -70,9 +70,10 @@ class HtsSpecsConformanceTest {
   // enough to prove THIS fixture's own documented ##CauseOfFailure= was actually detected, since a single parse
   // could legitimately produce more than one warning. Each entry's substring(s) are hand-verified against the
   // fixture's actual captured warnings (visible in a hard-fail's message below -- no separate scratch harness
-  // needed) and its ##CauseOfFailure= text -- see findings24.md item 14's design doc
-  // (docs/superpowers/specs/2026-08-03-1616-htsspecs-warning-content-correlation-design.md, if still present)
-  // for the corpus review that established this was tractable and why line-number correlation wasn't needed.
+  // needed) and its ##CauseOfFailure= text. Content matching (not line-number correlation) is used because the
+  // corpus's multi-line fixtures are either relational ordering defects spanning adjacent records (no single
+  // "correct" line exists) or repeat the same defect on every affected line (any one line's warning is equally
+  // valid evidence).
   //
   // PROTOCOL for a new multi-line failed/ fixture with no entry here (e.g. after an htsSpecsPinnedSha bump):
   // assertThrowsOrWarns hard-fails directly on it (see below) -- deliberate, not a bug. The failure message
