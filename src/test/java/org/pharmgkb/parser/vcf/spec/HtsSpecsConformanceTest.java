@@ -82,7 +82,11 @@ class HtsSpecsConformanceTest {
   // pruning entries here that a pin bump has orphaned (fixture renamed/removed upstream).
   private static final Map<String, List<String>> EXPECTED_WARNING_SUBSTRINGS = Map.ofEntries(
       Map.entry("test/vcf/4.1/failed/failed_body_unsorted_000.vcf", List.of("out of order")),
-      Map.entry("test/vcf/4.2/failed/failed_body_unsorted_000.vcf", List.of("out of order"))
+      Map.entry("test/vcf/4.2/failed/failed_body_unsorted_000.vcf", List.of("out of order")),
+      Map.entry("test/vcf/4.1/failed/failed_body_contiguous_000.vcf", List.of("CHROM 1 is not contiguous")),
+      Map.entry("test/vcf/4.1/failed/failed_body_contiguous_001.vcf", List.of("CHROM 2 is not contiguous")),
+      Map.entry("test/vcf/4.2/failed/failed_body_contiguous_000.vcf", List.of("CHROM 1 is not contiguous")),
+      Map.entry("test/vcf/4.2/failed/failed_body_contiguous_001.vcf", List.of("CHROM 2 is not contiguous"))
   );
 
   // literal, project-relative path to the committed baseline file -- used both to locate it as a classpath
