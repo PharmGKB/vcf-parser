@@ -1351,6 +1351,108 @@ public class VcfParserTest {
     }
   }
 
+  @Tag("hts-specs")
+  @Test
+  void testHtsSpecsPlCardinalityFixturesWarnOnTypedAccess() throws IOException {
+    // PL's Number=G cardinality is only checked lazily, when the new position+metadata-aware accessor is used
+    // (item 5) -- these fixtures' own ##CauseOfFailure= is "cardinality in PL does not match the cardinality
+    // derived from allele number and GT ploidy"
+    String[] fixtures = {
+        "failed_body_samples_ploidy_000.vcf", "failed_body_samples_ploidy_001.vcf",
+        "failed_body_samples_ploidy_002.vcf", "failed_body_samples_ploidy_003.vcf",
+    };
+    for (String fixtureName : fixtures) {
+      ch.qos.logback.classic.Logger root =
+          (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+      org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+          new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+      appender.start();
+      root.addAppender(appender);
+      try (VcfParser parser = new VcfParser.Builder()
+          .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.2/failed", fixtureName))
+          .parseWith((metadata, position, sampleData) -> {
+            for (VcfSample sample : sampleData) {
+              sample.getProperty(position, metadata, "PL");
+            }
+          })
+          .build()) {
+        parser.parse();
+      } finally {
+        root.detachAppender(appender);
+        appender.stop();
+      }
+      assertTrue(appender.anyMessageContains("FORMAT PL"),
+          () -> fixtureName + " should have warned about PL's cardinality");
+    }
+  }
+
+  @Tag("hts-specs")
+  @Test
+  void testHtsSpecsNonReservedFormatNumberFixturesWarnOnTypedAccess() throws IOException {
+    // a non-reserved FORMAT key's declared Number is only checked lazily, when the new position+metadata-aware
+    // accessor is used (item 19) -- each fixture's own ##CauseOfFailure= is "Sample field does not match Number
+    // definition in meta section"
+    Object[][] cases = {
+        { "failed_body_sample_004.vcf", "DS" },
+        { "failed_body_sample_005.vcf", "AL" },
+        { "failed_body_sample_006.vcf", "AL" },
+        { "failed_body_sample_010.vcf", "AL" },
+    };
+    for (Object[] c : cases) {
+      String fixtureName = (String) c[0];
+      String key = (String) c[1];
+      ch.qos.logback.classic.Logger root =
+          (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+      org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+          new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+      appender.start();
+      root.addAppender(appender);
+      try (VcfParser parser = new VcfParser.Builder()
+          .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.2/failed", fixtureName))
+          .parseWith((metadata, position, sampleData) -> {
+            for (VcfSample sample : sampleData) {
+              sample.getProperty(position, metadata, key);
+            }
+          })
+          .build()) {
+        parser.parse();
+      } finally {
+        root.detachAppender(appender);
+        appender.stop();
+      }
+      assertTrue(appender.anyMessageContains("FORMAT " + key),
+          () -> fixtureName + " (" + key + ") should have warned about its Number cardinality");
+    }
+  }
+
+  @Tag("hts-specs")
+  @Test
+  void testHtsSpecsNonReservedFormatTypeFixturesThrowOnTypedAccess() throws IOException {
+    // a non-reserved FORMAT key's declared Type mismatch still throws (unchanged sibling behavior), not warns --
+    // each fixture's own ##CauseOfFailure= is "Sample field does not match Type definition in meta section"
+    String[] fixtures = {
+        "failed_body_sample_007.vcf", "failed_body_sample_008.vcf", "failed_body_sample_009.vcf",
+    };
+    for (String fixtureName : fixtures) {
+      List<VcfFormatException> thrown = new ArrayList<>();
+      try (VcfParser parser = new VcfParser.Builder()
+          .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.2/failed", fixtureName))
+          .parseWith((metadata, position, sampleData) -> {
+            for (VcfSample sample : sampleData) {
+              try {
+                sample.getProperty(position, metadata, "DS");
+              } catch (VcfFormatException e) {
+                thrown.add(e);
+              }
+            }
+          })
+          .build()) {
+        parser.parse();
+      }
+      assertFalse(thrown.isEmpty(), () -> fixtureName + " should have thrown for DS's Type mismatch");
+    }
+  }
+
   private static void assertHtsSpecsFixtureWarns(String fixtureName, String expectedMessageFragment)
       throws IOException {
     Path fixture = Path.of("build/hts-specs-checkout/test/vcf/4.2/failed", fixtureName);

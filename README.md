@@ -175,6 +175,13 @@ still throws -- see the strict section above):
   value that isn't a non-negative 32-bit integer: both constraints go beyond what `FT`'s/`PS`'s declared `Type` can
   express, so they're checked separately, both when a typed value is requested and by
   `VcfWriter.Builder.validateBeforeWrite()`.
+- A reserved `FORMAT/PL`/`GL`/`GP` value whose element count doesn't match the `Number=G` cardinality implied by
+  the sample's ploidy and the record's ALT allele count, or any declared (reserved or non-reserved) `FORMAT`
+  key's value whose element count doesn't match its declared `Number`, or whose value doesn't match its declared
+  `Type`: the first two are checked and warned about (never thrown) both when
+  `VcfSample.getProperty(VcfPosition, VcfMetadata, String)` is called and by
+  `VcfWriter.Builder().validateBeforeWrite()`; a genuine `Type` mismatch throws `VcfFormatException` from either
+  path, unchanged from `getProperty(ReservedFormatProperty)`'s existing behavior for a reserved key.
 - A negative value for the reserved `INFO` keys `AC`, `AN`, `DP`, `END`, `MQ0`, or `NS`, or an `AF` value outside
   the interval `[0, 1]`, or a reserved `INFO/CIGAR` value that doesn't match a lone `*` or one or more
   `<length><operation>` pairs: same treatment as `FT`/`PS` above -- these constraints go beyond what each key's
