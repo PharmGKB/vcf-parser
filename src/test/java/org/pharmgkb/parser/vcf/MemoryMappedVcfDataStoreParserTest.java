@@ -80,6 +80,24 @@ public class MemoryMappedVcfDataStoreParserTest {
   }
 
   @Test
+  public void testParseLineRejectsNullElementInSampleDataInsteadOfStoringItAsIs() {
+    // regression test: before this fix, a sampleData list containing a null element (as opposed to the list
+    // itself being null, the sibling case above) was accepted and stored as-is; getGenotypeAtLocus/
+    // getGenotypeForId then raw-crashed with NullPointerException at doGetGenotype's sample.getProperty(...)
+    // call, while getSampleAtLocus/getSampleForId silently returned the null, indistinguishable from
+    // "not present". The null is placed at index 1 (behind one valid sample), and the exception message is
+    // asserted, so this pins that the check scans every element -- not just index 0 -- and reports the
+    // correct index, rather than merely that a null anywhere in the list is rejected.
+    MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    VcfSample validSample = new VcfSample(List.of("GT"), List.of("0/1"));
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> lineParser.parseLine(metadata, position, Arrays.asList(validSample, null)));
+    assertTrue(e.getMessage().contains("index 1"));
+  }
+
+  @Test
   public void test() throws IOException {
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream(
         "/vcfposition.vcf")))) {

@@ -65,6 +65,11 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
     if (sampleData == null) {
       throw new VcfFormatException("parseLine() was called with a null sample data list");
     }
+    for (int sampleIndex = 0; sampleIndex < sampleData.size(); sampleIndex++) {
+      if (sampleData.get(sampleIndex) == null) {
+        throw new VcfFormatException("parseLine() was called with a null sample at index " + sampleIndex);
+      }
+    }
 
     // check every ID for a FAIL-mode collision before mutating anything, so a rejected record is never partially
     // committed -- neither its locus entry nor any of its (possibly several) IDs. This must also catch a
