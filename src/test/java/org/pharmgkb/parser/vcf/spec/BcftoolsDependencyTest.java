@@ -60,6 +60,53 @@ class BcftoolsDependencyTest {
         "Expected bcftools " + EXPECTED_BCFTOOLS_VERSION + " but got: " + result.output());
   }
 
+  @Test
+  void testGenericPropertyEmptyBracketsBcftoolsRejects() throws IOException, InterruptedException {
+    // round-trip-critical: VcfMetadata.collidesWithAttributeListGrammar must reject this, or this library
+    // would write out a header line bcftools cannot parse at all
+    String vcf = "##fileformat=VCFv4.2\n##assembly=<>\n##contig=<ID=chr1,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertTrue(result.output().contains("Could not parse the header line"),
+        "Expected a header-parse error, got: " + result.output());
+  }
+
+  @Test
+  void testGenericPropertyBracketedNoEqualsBcftoolsRejects() throws IOException, InterruptedException {
+    // round-trip-critical: same as above, for a non-empty bracket-wrapped value with no '=' at all
+    String vcf = "##fileformat=VCFv4.2\n##pedigreeDB=<http://foo.com>\n##contig=<ID=chr1,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertTrue(result.output().contains("Could not parse the header line"),
+        "Expected a header-parse error, got: " + result.output());
+  }
+
+  @Test
+  void testGenericPropertyBracketedWithEqualsBcftoolsAccepts() throws IOException, InterruptedException {
+    // sanity-checks the safe side too, so a future regression that starts over-rejecting is caught, not just
+    // under-rejecting
+    String vcf = "##fileformat=VCFv4.2\n##pedigreeDB=<ID=foo>\n##contig=<ID=chr1,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("##pedigreeDB=<ID=foo>"), result.output());
+  }
+
+  @Test
+  void testGenericPropertySquareBracketSubListBcftoolsAccepts() throws IOException, InterruptedException {
+    // the specific regression guard for the bug Task 1 fixed: the exact hts-specs
+    // test/vcf/4.3/passed/passed_meta_meta.vcf fixture content, which a prior over-broad version of
+    // collidesWithAttributeListGrammar incorrectly rejected
+    String vcf = "##fileformat=VCFv4.3\n" +
+        "##META=<ID=Assay,Number=.,Type=String,Values=[WholeGenome, Exome]>\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("##META=<ID=Assay,Number=.,Type=String,Values=[WholeGenome, Exome]>"),
+        result.output());
+  }
+
   /**
    * Writes {@code vcfContent} to a temp file, runs {@code bcftools <args> <tempFile>}, and returns the combined
    * stdout+stderr and exit code. stdout/stderr are combined (not kept separate) specifically to avoid the
