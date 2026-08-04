@@ -183,10 +183,14 @@ still throws -- see the strict section above):
   value that isn't a non-negative 32-bit integer: both constraints go beyond what `FT`'s/`PS`'s declared `Type` can
   express, so they're checked separately, both when a typed value is requested and by
   `VcfWriter.Builder.validateBeforeWrite()`.
-- A reserved `FORMAT/PL`/`GL`/`GP` value whose element count doesn't match the `Number=G` cardinality implied by
-  the sample's ploidy and the record's ALT allele count, or any declared (reserved or non-reserved) `FORMAT`
-  key's value whose element count doesn't match its declared `Number`, or whose value doesn't match its declared
-  `Type`: the first two are checked and warned about (never thrown) both when
+- A reserved `FORMAT/PL`/`GL`/`GP`/`PP` value whose element count doesn't match the `Number=G` cardinality
+  implied by the sample's ploidy and the record's ALT allele count (`GLE`/`CNP` are specifically exempted from
+  this check despite declaring `Number=G` themselves: neither key's "G" describes this ploidy-derived ordering
+  -- `GLE`'s value isn't a comma-delimited list at all, and `CNP`'s own list is indexed by "potential copy
+  number," a dimension unrelated to ploidy/ALT allele count; `CNL` is unaffected by this exemption since its
+  own declared `Number` is `.`, not `G`, under this library's VCFv4.2 target), or any declared (reserved or
+  non-reserved) `FORMAT` key's value whose element count doesn't match its declared `Number`, or whose value
+  doesn't match its declared `Type`: the first two are checked and warned about (never thrown) both when
   `VcfSample.getProperty(VcfPosition, VcfMetadata, String)` is called and by
   `VcfWriter.Builder.validateBeforeWrite()`; a genuine `Type` mismatch throws `VcfFormatException` when read via
   `VcfSample.getProperty(VcfPosition, VcfMetadata, String)`, unchanged from

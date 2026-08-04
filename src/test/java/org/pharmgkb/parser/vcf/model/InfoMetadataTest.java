@@ -278,6 +278,27 @@ public class InfoMetadataTest {
   }
 
   @Test
+  public void testTypedConstructorRejectsAdDeclaredWithNumberDot() {
+    // AD is now reserved with expected Number "R" (VCFv4.3.tex's Reserved INFO Keys table); "Number=." is the
+    // form many real-world pipelines emit for AD, and previously constructed fine since AD wasn't reserved at all
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> new InfoMetadata("AD", "desc", InfoType.Integer, ".", null, null));
+    assertTrue(ex.getMessage().contains("reserved definition expects"));
+  }
+
+  @Test
+  public void testAdDeclaredWithNumberDotWarnsAndPreservesValueViaLenientPath() {
+    // same mismatch as above, but via the lenient map constructor (the parser's own path): warn and preserve,
+    // not reject
+    StringWriter sink = new StringWriter();
+    VcfWarnings warnings = new VcfWarnings(sink);
+    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
+        new String[]{"ID=AD", "Number=.", "Type=Integer", "Description=\"d\""}, warnings), warnings);
+    assertEquals(".", md.getNumber());
+    assertTrue(sink.toString().contains("reserved definition expects"));
+  }
+
+  @Test
   public void testTypedConstructorAcceptsValidInfo() {
     InfoMetadata md = new InfoMetadata("AF", "allele freq", InfoType.Float, "A", null, null);
     assertEquals(InfoType.Float, md.getType());

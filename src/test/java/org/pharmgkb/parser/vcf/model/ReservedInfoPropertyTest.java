@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ReservedInfoPropertyTest {
 
@@ -41,6 +42,20 @@ public class ReservedInfoPropertyTest {
     assertEquals("2", ReservedInfoProperty.ConfidenceIntervalForPosition.getExpectedNumber());
     assertEquals("2", ReservedInfoProperty.ConfidenceIntervalForEnd.getExpectedNumber());
     assertEquals("4", ReservedInfoProperty.MobileElementInfo.getExpectedNumber());
+  }
+
+  @Test
+  public void testFromIdResolvesAlleleDepthKeys() {
+    // AD/ADF/ADR are common, frequently-used real-world INFO keys; sourced from VCFv4.3's Reserved INFO Keys
+    // table (table:reserved-info) -- VCFv4.2 does not table them at all
+    assertEquals(ReservedInfoProperty.AlleleDepth, ReservedInfoProperty.fromId("AD"));
+    assertEquals(ReservedInfoProperty.AlleleDepthForward, ReservedInfoProperty.fromId("ADF"));
+    assertEquals(ReservedInfoProperty.AlleleDepthReverse, ReservedInfoProperty.fromId("ADR"));
+    assertEquals("R", ReservedInfoProperty.AlleleDepth.getExpectedNumber());
+    assertEquals("R", ReservedInfoProperty.AlleleDepthForward.getExpectedNumber());
+    assertEquals("R", ReservedInfoProperty.AlleleDepthReverse.getExpectedNumber());
+    assertEquals(Long.class, ReservedInfoProperty.AlleleDepth.getType());
+    assertTrue(ReservedInfoProperty.AlleleDepth.isList());
   }
 
   @Test

@@ -254,8 +254,7 @@ public class VcfSample {
       isList = number != null && !number.equals("0") && !number.equals("1");
     }
     String[] pieces = InternalUtils.splitFormatValue(key, rawValue);
-    boolean isGle = key.equals(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy.getId());
-    if (!isGle) {
+    if (!InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck(key)) {
       Integer ploidy = InternalUtils.getPloidy(position, getProperty("GT"), "FORMAT " + key, m_warnings);
       InternalUtils.warnIfWrongCardinality("FORMAT " + key, number, pieces.length, position.getAltBases().size(),
           ploidy, m_warnings);

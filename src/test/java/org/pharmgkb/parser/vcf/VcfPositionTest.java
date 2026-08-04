@@ -224,6 +224,17 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testGetInfoAlleleDepthIsListValued() {
+    // AD/ADF/ADR were previously missing from ReservedInfoProperty entirely, so getInfo(ReservedInfoProperty)
+    // could not be called with them at all; Number=R means one value per allele, including REF, so a biallelic
+    // record's AD converts to a two-element List, not a scalar
+    VcfPosition p = newPosition();
+    p.getAltBases().add("T");
+    p.setRawInfo("AD=10,5");
+    assertEquals(Arrays.asList(10L, 5L), p.getInfo(ReservedInfoProperty.AlleleDepth));
+  }
+
+  @Test
   public void testGetInfoFloatAcceptsSpecialValues() {
     // VCFv4.2 doesn't define Float's grammar at all; VCFv4.5 clarifies it accepts NAN/INF/INFINITY (case-insensitive,
     // optionally signed) in addition to a normal decimal number -- a plain BigDecimal can't represent these at all

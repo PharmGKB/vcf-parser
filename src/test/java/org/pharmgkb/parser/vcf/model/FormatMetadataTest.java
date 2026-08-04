@@ -152,6 +152,49 @@ public class FormatMetadataTest {
   }
 
   @Test
+  public void testCorrectlyDeclaredCnpDoesNotWarn() {
+    // CNP keeps expectedNumber="G" (the literal, only spec value) despite being exempted from the generic
+    // value-cardinality check elsewhere (see InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck) --
+    // this declared-Number check is a separate concern and must still accept a correct declaration cleanly
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new FormatMetadata(InternalUtils.extractProperties(
+          new String[]{"ID=CNP", "Number=G", "Type=Float", "Description=\"d\""}, VcfWarnings.DEFAULT),
+          VcfWarnings.DEFAULT);
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testIncorrectlyDeclaredCnpWarns() {
+    // a CNP declared with a Number other than "G" is still a real mismatch worth flagging, even though the
+    // generic value-cardinality check itself is skipped for CNP
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new FormatMetadata(InternalUtils.extractProperties(
+          new String[]{"ID=CNP", "Number=1", "Type=Float", "Description=\"d\""}, VcfWarnings.DEFAULT),
+          VcfWarnings.DEFAULT);
+      assertTrue(appender.anyMessageContains("reserved definition expects"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testNonReservedKeyIsNotChecked() {
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -289,6 +332,39 @@ public class FormatMetadataTest {
     VcfFormatException ex = assertThrows(VcfFormatException.class,
         () -> new FormatMetadata("DP", "desc", "2", FormatType.Integer));
     assertTrue(ex.getMessage().contains("reserved definition expects"));
+  }
+
+  @Test
+  public void testTypedConstructorRejectsAdDeclaredWithNumberDot() {
+    // AD is now reserved with expected Number "R" (VCFv4.3.tex's Reserved genotype keys table); "Number=." is
+    // the form many real-world pipelines emit for AD, and previously constructed fine since AD wasn't reserved
+    // at all
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> new FormatMetadata("AD", "desc", ".", FormatType.Integer));
+    assertTrue(ex.getMessage().contains("reserved definition expects"));
+  }
+
+  @Test
+  public void testAdDeclaredWithNumberDotWarnsAndPreservesValueViaLenientPath() {
+    // same mismatch as above, but via the lenient map constructor (the parser's own path): warn and preserve,
+    // not reject
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    FormatMetadata md;
+    try {
+      md = new FormatMetadata(InternalUtils.extractProperties(
+          new String[]{"ID=AD", "Number=.", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT),
+          VcfWarnings.DEFAULT);
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(".", md.getNumber());
   }
 
   @Test

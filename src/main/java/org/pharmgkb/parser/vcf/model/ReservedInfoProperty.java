@@ -20,6 +20,11 @@ public enum ReservedInfoProperty implements ReservedProperty {
   AncestralAllele("AA", "Ancestral allele", String.class, false, "1"),
   AlleleCount("AC", "Allele count in genotypes, for each ALT allele, in the same order as listed",
       Long.class, true, "A"),
+  // Number=R (one value per allele, including REF, unlike Number=A's ALT-only count) -- VCFv4.3.tex's Reserved
+  // INFO Keys table (table:reserved-info); VCFv4.2 does not table INFO AD/ADF/ADR at all
+  AlleleDepth("AD", "Total read depth for each allele", Long.class, true, "R"),
+  AlleleDepthForward("ADF", "Read depth for each allele on the forward strand", Long.class, true, "R"),
+  AlleleDepthReverse("ADR", "Read depth for each allele on the reverse strand", Long.class, true, "R"),
   AlleleFrequency("AF", "Allele frequency for each ALT allele in the same order as listed: use this when estimated " +
       "from primary data, not called genotypes", VcfFloat.class, true, "A"),
   AlleleNumber("AN", "Total number of alleles in called genotypes", Long.class, false, "1"),

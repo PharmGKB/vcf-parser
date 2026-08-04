@@ -646,6 +646,44 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteDoesNotWarnAboutCnpCardinality() throws Exception {
+    // CNP's declared Number=G is genuinely a comma-delimited list (unlike GLE), but the list is indexed by
+    // "potential copy number," not by the ploidy-derived genotype ordering this codebase's Number=G formula
+    // computes -- 5 possible copy-number states is a legitimate CNP value shape for a diploid, biallelic
+    // sample even though the genotype-ordering formula would expect 3 (see
+    // ReservedFormatProperty.CopyNumberPosteriorProbabilities' own comment)
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .addFormat(new FormatMetadata("GT", "Genotype", "1", FormatType.String))
+        .addFormat(new FormatMetadata("CNP", "Copy number posterior probabilities", "G", FormatType.Float))
+        .build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getAltBases().add("T");
+    position.getFormat().add("GT");
+    position.getFormat().add("CNP");
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    sample.putProperty("GT", "0/1");
+    sample.putProperty("CNP", "0.1,0.2,0.3,0.2,0.2");
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, Collections.singletonList(sample));
+      assertFalse(appender.anyMessageContains("Number=G requires"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testValidateBeforeWriteRejectsMetadataDelimiterInjectedThroughRawView() throws Exception {
     InfoMetadata info = new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null);
     info.getPropertiesRaw().put("Description", "unquoted,comma");

@@ -638,6 +638,23 @@ public class InternalUtils {
     return value.split(",", -1);
   }
 
+  // Reserved FORMAT keys whose formal Number=G does not describe the standard ploidy-derived genotype-ordering
+  // list that getExpectedCardinality's "G" branch computes an expected count for. GLE's value isn't
+  // comma-delimited the normal way at all (see splitFormatValue above). CNP's value IS a genuine
+  // comma-delimited list, but per its own spec prose (ReservedFormatProperty.CopyNumberPosteriorProbabilities'
+  // own comment) means "one value per potential copy number" -- a dimension nothing in a VCF record states,
+  // unlike ploidy + ALT allele count, which genotype-ordering "G" is defined from. There is no correct
+  // expected count to compare either key's actual value against, so both are exempted from the generic
+  // Number=G value-cardinality check specifically (not from Number/Type checks generally).
+  private static final Set<String> KEYS_EXEMPT_FROM_GENOTYPE_ORDERING_CARDINALITY_CHECK = Set.of(
+      ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy.getId(),
+      ReservedFormatProperty.CopyNumberPosteriorProbabilities.getId());
+
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
+  public static boolean isExemptFromGenotypeOrderingCardinalityCheck(String key) {
+    return KEYS_EXEMPT_FROM_GENOTYPE_ORDERING_CARDINALITY_CHECK.contains(key);
+  }
+
   /**
    * Warns if {@code actual} doesn't match the cardinality {@code number} implies for {@code numAltAlleles} ALT
    * alleles (and, for {@code Number=G}, {@code ploidy}). Relocated from {@code VcfWriter} (was a private instance

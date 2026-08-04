@@ -163,6 +163,23 @@ class VcfSampleTest {
   }
 
   @Test
+  void testAlleleDepthAndPosteriorProbabilityKeysAreListTyped() {
+    // AD/ADF/ADR/PP were previously missing from ReservedFormatProperty entirely, so getProperty(
+    // ReservedFormatProperty) could not be called with them at all
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("AD", "10,5");
+    map.put("ADF", "6,3");
+    map.put("ADR", "4,2");
+    map.put("PP", "0,3,10");
+    VcfSample sample = new VcfSample(map);
+    assertEquals(Arrays.asList(10L, 5L), sample.getProperty(ReservedFormatProperty.AlleleDepth));
+    assertEquals(Arrays.asList(6L, 3L), sample.getProperty(ReservedFormatProperty.AlleleDepthForward));
+    assertEquals(Arrays.asList(4L, 2L), sample.getProperty(ReservedFormatProperty.AlleleDepthReverse));
+    assertEquals(Arrays.asList(0L, 3L, 10L),
+        sample.getProperty(ReservedFormatProperty.PhredScaledPosteriorProbabilities));
+  }
+
+  @Test
   void testMappingQualityIsSingleValued() {
     // MQ was previously declared isList=true; the spec describes it as a single Integer, unlike GL/PL/GP/HQ/EC
     // which are explicitly comma-separated
@@ -373,6 +390,35 @@ class VcfSampleTest {
     root.addAppender(appender);
     try {
       assertEquals(gle, sample.getProperty(position, metadata, "GLE"));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataExemptsCnpFromCardinalityCheck() {
+    // CNP's Number=G means "one value per potential copy number," not the ploidy-derived genotype ordering
+    // this codebase's Number=G formula computes -- GT=0|1 (ploidy 2), 1 ALT allele would make the formula
+    // expect 3 values, but a real CNP for 5 possible copy-number states legitimately has 5; must not warn
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0|1");
+    map.put("CNP", "0.1,0.2,0.3,0.2,0.2");
+    VcfSample sample = new VcfSample(map);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertEquals(java.util.Arrays.asList(
+          VcfFloat.of(new java.math.BigDecimal("0.1")), VcfFloat.of(new java.math.BigDecimal("0.2")),
+          VcfFloat.of(new java.math.BigDecimal("0.3")), VcfFloat.of(new java.math.BigDecimal("0.2")),
+          VcfFloat.of(new java.math.BigDecimal("0.2"))), sample.getProperty(position, metadata, "CNP"));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);

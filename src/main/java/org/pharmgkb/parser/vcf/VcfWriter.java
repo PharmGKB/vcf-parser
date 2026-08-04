@@ -703,7 +703,6 @@ public class VcfWriter implements Closeable {
       // reserved list-typed FORMAT value's empty entry is also only normalized on read, not on write.
       InternalUtils.checkReservedFormatConstraints(key, value, m_warnings);
     }
-    boolean isGle = key.equals("GLE");
     String[] values = InternalUtils.splitFormatValue(key, value);
     for (String element : values) {
       if (element.isEmpty()) {
@@ -711,11 +710,15 @@ public class VcfWriter implements Closeable {
       }
     }
     String number = format.getNumber();
-    if (!isGle) {
+    if (!InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck(key)) {
       // GLE's conventional Number=G does not describe a comma-delimited value list the way it does for every other
       // FORMAT key -- GLE's commas are part of its own internal genotype:likelihood encoding (see
       // ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy), so values.length is always 1 here and
-      // comparing it against Number=G's combinatorial expected count would always be a false mismatch.
+      // comparing it against Number=G's combinatorial expected count would always be a false mismatch. CNP's
+      // value IS a genuine comma-delimited list, but its own Number=G means "per potential copy number," not
+      // the ploidy-derived genotype ordering this combinatorial count assumes -- see
+      // InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck and
+      // ReservedFormatProperty.CopyNumberPosteriorProbabilities' own comment.
       InternalUtils.warnIfWrongCardinality("FORMAT " + key + " for sample #" + sampleIndex, number, values.length,
           numAltAlleles, ploidy, m_warnings);
     }

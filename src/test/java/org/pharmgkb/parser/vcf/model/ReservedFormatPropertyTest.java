@@ -1,9 +1,11 @@
 package org.pharmgkb.parser.vcf.model;
 
 import org.junit.jupiter.api.Test;
+import org.pharmgkb.parser.vcf.InternalUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ReservedFormatPropertyTest {
 
@@ -31,6 +33,41 @@ public class ReservedFormatPropertyTest {
     assertEquals("G", ReservedFormatProperty.GenotypeLikelihoods.getExpectedNumber());
     assertEquals("G", ReservedFormatProperty.PhredScaledGenotypeLikelihoods.getExpectedNumber());
     assertEquals("A", ReservedFormatProperty.ExpectedAlleleCounts.getExpectedNumber());
+  }
+
+  @Test
+  public void testFromIdResolvesAlleleDepthAndPosteriorProbabilityKeys() {
+    // AD/ADF/ADR/PP are sourced from VCFv4.3's Reserved genotype keys table (table:reserved-genotypes) --
+    // VCFv4.2 does not table them at all. AD in particular is one of the most commonly emitted FORMAT fields
+    // in real-world VCFs (allelic depths).
+    assertEquals(ReservedFormatProperty.AlleleDepth, ReservedFormatProperty.fromId("AD"));
+    assertEquals(ReservedFormatProperty.AlleleDepthForward, ReservedFormatProperty.fromId("ADF"));
+    assertEquals(ReservedFormatProperty.AlleleDepthReverse, ReservedFormatProperty.fromId("ADR"));
+    assertEquals(ReservedFormatProperty.PhredScaledPosteriorProbabilities, ReservedFormatProperty.fromId("PP"));
+    assertEquals("R", ReservedFormatProperty.AlleleDepth.getExpectedNumber());
+    assertEquals("R", ReservedFormatProperty.AlleleDepthForward.getExpectedNumber());
+    assertEquals("R", ReservedFormatProperty.AlleleDepthReverse.getExpectedNumber());
+    assertEquals("G", ReservedFormatProperty.PhredScaledPosteriorProbabilities.getExpectedNumber());
+    assertEquals(Long.class, ReservedFormatProperty.AlleleDepth.getType());
+    assertTrue(ReservedFormatProperty.AlleleDepth.isList());
+    assertTrue(ReservedFormatProperty.PhredScaledPosteriorProbabilities.isList());
+  }
+
+  @Test
+  public void testFromIdResolvesCopyNumberPosteriorProbabilities() {
+    // CNP has no VCFv4.2 declaration at all (introduced by VCFv4.3's "FORMAT keys used for structural
+    // variants" section, sv-format-keys) -- same gap shape as AD/ADF/ADR/PP above, found during this
+    // batch's own reserved-key sweep rather than the original finding
+    assertEquals(ReservedFormatProperty.CopyNumberPosteriorProbabilities, ReservedFormatProperty.fromId("CNP"));
+    // expectedNumber stays "G" (the literal, only spec value -- see the enum entry's own comment) even though
+    // CNP's own "G" means "per possible copy number," not the ploidy-derived genotype ordering GT/GL/PL/GP/PP's
+    // "G" means. Keeping "G" here still lets FormatMetadata correctly flag a declared Number that isn't "G";
+    // it's specifically the generic value-cardinality check that's skipped for CNP -- see
+    // InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck.
+    assertEquals("G", ReservedFormatProperty.CopyNumberPosteriorProbabilities.getExpectedNumber());
+    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP"));
+    assertEquals(VcfFloat.class, ReservedFormatProperty.CopyNumberPosteriorProbabilities.getType());
+    assertTrue(ReservedFormatProperty.CopyNumberPosteriorProbabilities.isList());
   }
 
   @Test
