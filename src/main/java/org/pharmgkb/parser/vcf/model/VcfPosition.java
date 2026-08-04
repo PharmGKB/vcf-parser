@@ -254,7 +254,8 @@ public class VcfPosition {
   /**
    * @return {@code ids} unchanged, or a new list with any empty entry dropped (with a warning, or a thrown
    * {@link VcfFormatException} if {@code warnings} is {@code null} -- strict mode); see
-   * {@code EMPTY_FIELD_HANDLING.md}
+   * {@code EMPTY_FIELD_HANDLING.md}. A duplicate ID is left in place (with the same warn-or-throw signal) rather
+   * than dropped or deduplicated; see {@code VCF_SPEC_AMBIGUITIES.md}.
    */
   private static List<String> checkIds(List<String> ids, @Nullable VcfWarnings warnings) {
     ids = InternalUtils.dropEmptyEntries("ID", ids, warnings);
@@ -266,12 +267,21 @@ public class VcfPosition {
       if (InternalUtils.containsWhitespace(id) || id.contains(";")) {
         throw new VcfFormatException("ID \"" + id + "\" contains whitespace or semicolons");
       }
-      // VCFv4.2's own conformance suite is silent on a within-record duplicate ID; test/vcf/4.3/failed/
-      // failed_body_id_003.vcf ("ID contains duplicate values in a single line", literal
-      // "ID=rs180734498;rs180734498") is used here as newer-version clarifying guidance per this project's
-      // policy for a case the target version's own suite doesn't cover.
+      // VCFv4.2.tex line 181 has no duplicate-value clause for ID ("String, no whitespace or semicolons
+      // permitted"); VCFv4.3.tex line 338 adds "duplicate values not allowed" verbatim, used here as
+      // VCFv4.2-silent clarifying guidance -- matching hts-specs' own test/vcf/4.3/failed/failed_body_id_003.vcf
+      // (##CauseOfFailure=ID contains duplicate values in a single line, literal "ID=rs180734498;rs180734498").
+      // Confirmed directly that both bcftools 1.23.1 and vcf_validator 0.10.2 silently accept a duplicate ID.
+      // Warn rather than reject: ID is stored/emitted as an ordinary List (m_ids), never looked up by key or
+      // indexed positionally by any other field (unlike ALT, which GT indexes into -- see checkAltBases), so a
+      // duplicate causes no data loss or misalignment -- matching this library's general permissive stance for
+      // non-structural content. See VCF_SPEC_AMBIGUITIES.md's "Duplicate ID/FILTER entries within one record"
+      // entry, and checkFilters() below for the identical treatment of the same field shape.
       if (!seenIds.add(id)) {
-        throw new VcfFormatException("Duplicate ID \"" + id + "\"");
+        if (warnings == null) {
+          throw new VcfFormatException("Duplicate ID \"" + id + "\"");
+        }
+        warnings.warn("Duplicate ID \"{}\"", id);
       }
     }
     return ids;
@@ -315,10 +325,13 @@ public class VcfPosition {
    *
    * @return {@code filters} unchanged, or a new list with any empty entry dropped (with a warning, or a thrown
    * {@link VcfFormatException} if {@code warnings} is {@code null} -- strict mode, which likewise throws rather
-   * than warns for PASS combined with other filters); see {@code EMPTY_FIELD_HANDLING.md}
+   * than warns for PASS combined with other filters); see {@code EMPTY_FIELD_HANDLING.md}. A duplicate FILTER
+   * code is left in place (with the same warn-or-throw signal) rather than dropped or deduplicated; see
+   * {@code VCF_SPEC_AMBIGUITIES.md}.
    */
   private static List<String> checkFilters(List<String> filters, @Nullable VcfWarnings warnings) {
     filters = InternalUtils.dropEmptyEntries("FILTER", filters, warnings);
+    Set<String> seenFilters = new HashSet<>();
     for (String f : filters) {
       if (InternalUtils.containsWhitespace(f)) {
         throw new VcfFormatException("FILTER column entry \"" + f + "\" contains whitespace");
@@ -345,6 +358,22 @@ public class VcfPosition {
         // in addition to a value. Unconditional (not gated on warnings == null like the PASS-combined check
         // above): unlike PASS, `.` has no legitimate combined-with-another-code use documented anywhere.
         throw new VcfFormatException("FILTER contains '.' (missing value) along with other filters!");
+      }
+      // VCFv4.2.tex line 185 has no duplicate-value clause for FILTER ("String, no whitespace or semicolons
+      // permitted"); VCFv4.3.tex line 362 adds "duplicate values not allowed" verbatim, used here as
+      // VCFv4.2-silent clarifying guidance -- matching hts-specs' own
+      // test/vcf/4.3/failed/failed_body_filter_004.vcf (##CauseOfFailure=FILTER contains duplicate values,
+      // literal "hp23;hp23"). Confirmed directly that both bcftools 1.23.1 and vcf_validator 0.10.2 silently
+      // accept a duplicate FILTER code. Warn rather than reject: FILTER is stored/emitted as an ordinary List
+      // (m_filter), never looked up by key or indexed positionally by any other field, so a duplicate causes no
+      // data loss or misalignment -- matching this library's general permissive stance for non-structural
+      // content, and matching checkIds()'s identical treatment of the same field shape. See
+      // VCF_SPEC_AMBIGUITIES.md's "Duplicate ID/FILTER entries within one record" entry.
+      if (!seenFilters.add(f)) {
+        if (warnings == null) {
+          throw new VcfFormatException("Duplicate FILTER code \"" + f + "\"");
+        }
+        warnings.warn("Duplicate FILTER code \"{}\"", f);
       }
     }
     return filters;

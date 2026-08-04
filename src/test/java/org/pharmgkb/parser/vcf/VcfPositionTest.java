@@ -710,8 +710,10 @@ public class VcfPositionTest {
     position.validate();
 
     position.getIds().add("rs1");
-    position.getIds().add("rs1"); // duplicate ID
-    assertThrows(VcfFormatException.class, position::validate);
+    position.getIds().add("rs1"); // duplicate ID -- validate() warns (via m_warnings, never null), doesn't
+    // throw, matching testValidateAlwaysWarnsRegardlessOfOriginalConstructor's established pattern; see
+    // VCF_SPEC_AMBIGUITIES.md's "Duplicate ID/FILTER entries within one record" entry
+    position.validate();
   }
 
   @Test
@@ -1079,6 +1081,31 @@ public class VcfPositionTest {
         "1", 100, null, "A", null, null, List.of("PASS", "q10"), null, null, -1, new VcfWarnings(sink));
     assertEquals(List.of("PASS", "q10"), position.getFilters());
     assertTrue(sink.toString().contains("PASS along with other filters"));
+  }
+
+  @Test
+  public void testLenientConstructorWarnsInsteadOfThrowingForDuplicateId() {
+    StringWriter sink = new StringWriter();
+    VcfPosition position = new VcfPosition(
+        "1", 100, List.of("rs1", "rs1"), "A", null, null, null, null, null, -1, new VcfWarnings(sink));
+    assertEquals(List.of("rs1", "rs1"), position.getIds());
+    assertTrue(sink.toString().contains("Duplicate ID"));
+  }
+
+  @Test
+  public void testStrictConstructorThrowsForDuplicateFilterCode() {
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new VcfPosition(
+        "1", 100, null, "A", null, null, List.of("hp23", "hp23"), null, null, -1));
+    assertTrue(ex.getMessage().contains("Duplicate FILTER code"));
+  }
+
+  @Test
+  public void testLenientConstructorWarnsInsteadOfThrowingForDuplicateFilterCode() {
+    StringWriter sink = new StringWriter();
+    VcfPosition position = new VcfPosition(
+        "1", 100, null, "A", null, null, List.of("hp23", "hp23"), null, null, -1, new VcfWarnings(sink));
+    assertEquals(List.of("hp23", "hp23"), position.getFilters());
+    assertTrue(sink.toString().contains("Duplicate FILTER code"));
   }
 
   @Test

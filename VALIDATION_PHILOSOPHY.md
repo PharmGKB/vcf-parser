@@ -87,8 +87,9 @@ vs-parsing distinction; see that policy for why these specific fields stay uncon
   5-argument one (`chromosome, position, refBases, quality, lineNumber` only -- no ID/ALT/FILTER/INFO/FORMAT
   checks at all, since those fields are absent), and an 11-argument lenient overload taking an explicit
   `VcfWarnings`. The content checks that differ between the two full constructors (an empty ID/ALT/FILTER
-  entry, an empty FORMAT sub-field name, FILTER combining `PASS` with another code, `=` inside an INFO value)
-  all go through the `@Nullable VcfWarnings`-as-signal mechanism above.
+  entry, an empty FORMAT sub-field name, FILTER combining `PASS` with another code, a duplicate value within
+  `ID` or `FILTER`, `=` inside an INFO value) all go through the `@Nullable VcfWarnings`-as-signal mechanism
+  above.
 - **`VcfMetadata`/`Builder`**: covered in "How principles 1 and 2 are dispatched" above.
 - **`VcfSample`**: not part of either dispatch shape -- both of its constructors already only throw (a null or
   mismatched-size key/value list, or a structural delimiter in a key/value), never warn, so there is no

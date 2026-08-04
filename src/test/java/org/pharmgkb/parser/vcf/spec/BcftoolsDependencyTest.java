@@ -344,6 +344,25 @@ class BcftoolsDependencyTest {
   }
 
   @Test
+  void testDuplicateFilterCodeBcftoolsAcceptsSilently() throws IOException, InterruptedException {
+    String vcf = "##fileformat=VCFv4.2\n##FILTER=<ID=hp23,Description=\"test\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\thp23;hp23\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("hp23;hp23"), result.output());
+  }
+
+  @Test
+  void testDuplicateIdBcftoolsAcceptsSilently() throws IOException, InterruptedException {
+    String vcf = "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1;rs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("rs1;rs1"), result.output());
+  }
+
+  @Test
   void testFilterClearNeverPromotesToPassBcftoolsConvention() throws IOException, InterruptedException {
     // bcftools annotate -x FILTER converts every FILTER value, including a real failing code, to "." when
     // clearing it, never to "PASS" -- the convention VcfPosition's FilterStatus derivation matches

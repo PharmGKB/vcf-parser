@@ -101,6 +101,11 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
 - Test: `BcftoolsDependencyTest#testDuplicateInfoKeyBcftoolsKeepsFirstOccurrence`
 - Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Duplicate INFO key within one record" entry
 
+### Duplicate ID/FILTER entries within one record
+- Test: `BcftoolsDependencyTest#testDuplicateIdBcftoolsAcceptsSilently`,
+  `#testDuplicateFilterCodeBcftoolsAcceptsSilently`
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Duplicate ID/FILTER entries within one record" entry
+
 ### `FORMAT="."` meaning no per-sample fields
 - Test: `BcftoolsDependencyTest#testFormatDotMeansNoPerSampleFieldsBcftoolsAcceptsAndInterprets`
 - Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "`FORMAT=\".\"` meaning no per-sample fields" entry

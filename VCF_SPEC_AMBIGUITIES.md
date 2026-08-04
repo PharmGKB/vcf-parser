@@ -48,7 +48,7 @@ before assuming it generalizes to a similar-looking case.
 | FILTER value `"0"` | Reject (reserved value) | ✅ |
 | `PASS` combined with other FILTER codes | Warn (lenient), throw (strict/direct construction) | ✅ |
 | FILTER status (`PASSED`/`FAILED`/`NONE`) derivation | Derive purely from list contents, matching bcftools's clear-never-promotes-to-PASS convention | ✅ |
-| Duplicate FILTER codes within one record | *(no decision yet)* | 🟡 |
+| Duplicate ID/FILTER entries within one record | Warn, keep both (no dedup) in lenient mode; throw in strict mode | ✅ |
 | INFO value containing a bare `=` | Warn, don't throw (matches bcftools) | ✅ |
 | Duplicate INFO key within one record | Warn, keep first occurrence (matches bcftools) | ✅ |
 | Negative/out-of-range values for reserved INFO keys `AC`/`AN`/`DP`/`END`/`MQ0`/`NS`/`AF` | Warn (vcf_validator-sourced; bcftools silent) | ✅ |
@@ -244,18 +244,32 @@ literal empty FILTER string is likewise never silently promoted to `PASS` by bcf
 contents every time (empty → `NONE`, exactly `["PASS"]` → `PASSED`, anything else → `FAILED`), matching
 bcftools's clear-never-promotes-to-PASS convention. Implemented in `VcfPosition`.
 
-### Duplicate FILTER codes within one record 🟡
+### Duplicate ID/FILTER entries within one record
 
-`VcfPosition.checkFilters` currently has no check at all for the same code appearing more than once (e.g.
-`hp23;hp23`). VCFv4.3.tex line 362 states duplicate FILTER values are "not allowed"; hts-specs' own
-`test/vcf/4.3/failed/failed_body_filter_004.vcf` fixture documents this exact case as a failure. Confirmed
-live that bcftools also silently accepts the duplicate (an omitted check on bcftools's side too, not a
-tool disagreement to arbitrate).
+VCFv4.2.tex (target) is silent on duplicate values for both fields: ID (line 181) and FILTER (line 185) are
+each described only as "(String, no whitespace or semicolons permitted)". VCFv4.3.tex adds the identical
+clause to both: "duplicate values not allowed" (ID: line 338; FILTER: line 362), used here as VCFv4.2-silent
+clarifying guidance. hts-specs' own `failed/` suite documents both exact cases:
+`test/vcf/4.3/failed/failed_body_id_003.vcf` (`##CauseOfFailure=ID contains duplicate values in a single
+line`) and `test/vcf/4.3/failed/failed_body_filter_004.vcf` (`##CauseOfFailure=FILTER contains duplicate
+values`, literal `hp23;hp23`). Confirmed directly that both bcftools 1.23.1 and vcf_validator 0.10.2 silently
+accept a duplicate value in either field.
 
-**Status: open.** This is the same clarifying-guidance shape already used to justify throwing on a duplicate
-FORMAT key (see `EMPTY_FIELD_HANDLING.md`), but FILTER's own duplicate case doesn't have that shape's
-data-loss mechanism (FILTER is a list, not looked up by key), so whether to reject, warn-and-dedupe, or
-warn-and-keep is still an open design question — see the active findings backlog.
+**Decision:** warn (not throw) in lenient mode, and leave both entries in place -- no dedup -- matching this
+library's general permissive stance for non-structural content. Neither field is looked up by key (both are
+ordinary `List`s, unlike the duplicate-FORMAT-key case below, where a `Map`-based lookup would silently drop
+all but one value) nor referenced positionally by any other field (unlike ALT, which GT indexes into by
+position -- see `EMPTY_FIELD_HANDLING.md`'s ALT row), so a duplicate causes no data loss or misalignment
+either way. This also differs from "Duplicate INFO key within one record" below, which warns-and-*dedupes*
+specifically because bcftools itself dedupes there -- FILTER/ID get no such signal from bcftools, so there is
+no basis to drop either copy. Strict-mode direct construction still throws for either field, matching this
+library's usual construct-vs-parse dispatch shape (see `VALIDATION_PHILOSOPHY.md`).
+
+ID's own duplicate check previously threw unconditionally, regardless of strict/lenient mode -- an older
+decision made without this level of citation rigor (no bcftools/vcf_validator consultation, no data-loss/
+indexing analysis on record). Revisited and aligned with FILTER's treatment here, since both fields share the
+identical spec clause, identical hts-specs evidence shape, and the identical non-data-loss/non-indexed
+characteristics that justify warn-and-keep over throw. Implemented in `VcfPosition.checkIds`/`checkFilters`.
 
 ## INFO/FORMAT sample value content
 

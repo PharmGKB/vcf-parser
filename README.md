@@ -46,10 +46,10 @@ invalid:
   `FORMAT` column with no sample columns following it, an empty sample name, or a duplicate sample name.
 - A data line with the wrong number of tab-separated columns.
 - An empty mandatory fixed field (the missing value must be `.`), an empty `CHROM`, or a negative `POS`.
-- Invalid `REF`/`ALT` bases; whitespace where the spec forbids it (`CHROM`, `ID`, `FILTER`, `INFO`); a duplicate
-  identifier within a single `ID` field; a `FILTER` of `0`; a `FILTER` missing value (`.`) combined with another
-  filter code; an `INFO` missing value (`.`) combined with a real property; or a `FORMAT` in which `GT` is
-  present but not the first sub-field or a (non-empty) key is duplicated.
+- Invalid `REF`/`ALT` bases; whitespace where the spec forbids it (`CHROM`, `ID`, `FILTER`, `INFO`); a `FILTER`
+  of `0`; a `FILTER` missing value (`.`) combined with another filter code; an `INFO` missing value (`.`)
+  combined with a real property; or a `FORMAT` in which `GT` is present but not the first sub-field or a
+  (non-empty) key is duplicated.
 - `CHROM` additionally rejects `\`, `,`, `"`, `` ` ``, `'`, `(`, `)`, `{`, `}`, `[`, `]`, or `<`/`>` (unless the
   entire value is a well-formed, fully angle-bracket-wrapped symbolic contig reference like `<1>`) anywhere in
   the value, and a leading `*` or `=` -- matching the SAM reference-sequence-name character set VCFv4.3 aligned
@@ -88,8 +88,9 @@ invalid:
   [`VcfWarnings`](#vcfwarnings-explicit-warning-routing) instance to route the warnings to (see that section
   below).
 - `new VcfPosition(...)`'s 10-argument constructor throws, at construction time, for FILTER combining `PASS`
-  with another code, an INFO value containing `=`, an empty FORMAT sub-field name, or an empty ID/ALT/FILTER
-  entry -- the same conditions the lenient section below describes as warned-and-recovered when parsed; its
+  with another code, a duplicate value within `ID` or `FILTER`, an INFO value containing `=`, an empty FORMAT
+  sub-field name, or an empty ID/ALT/FILTER entry -- the same conditions the lenient section below describes
+  as warned-and-recovered when parsed; its
   own `validate()` method always warns instead, matching the metadata classes above. A separate 11-argument
   overload, taking an explicit [`VcfWarnings`](#vcfwarnings-explicit-warning-routing) instance as its last
   parameter, restores exactly that warn-and-recover behavior; this is the overload `VcfParser` itself uses.
@@ -227,6 +228,11 @@ still throws -- see the strict section above):
   exclusive, without stating it as a hard rule, and hts-specs' own `complexfile_passed_000.vcf` fixture combines
   them and is expected to parse; confirmed accepted silently by bcftools 1.23.1 and valid per vcf_validator
   0.10.2.
+- A duplicate value within a single `ID` or `FILTER` field (e.g. `ID=rs1;rs1`, `FILTER=hp23;hp23`): VCFv4.2 is
+  silent on this for both fields; VCFv4.3 adds an identical "duplicate values not allowed" clause to both, but
+  bcftools 1.23.1 and vcf_validator 0.10.2 both accept either silently. Both entries are kept as-is (no
+  deduplication) -- neither field is looked up by key or referenced positionally by any other field, so a
+  duplicate causes no data loss or misalignment.
 - An INFO value containing `=` (e.g. `DP=1=2`), or a duplicate top-level INFO key (e.g. `DP=1;DP=2`): VCFv4.2's INFO
   grammar note technically disallows the former, and VCFv4.3 explicitly disallows the latter, but bcftools 1.23.1
   accepts both silently — splitting an `=`-containing value on the first `=` only (same as this parser), and
