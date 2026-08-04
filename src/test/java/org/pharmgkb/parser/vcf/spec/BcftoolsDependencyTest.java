@@ -353,5 +353,74 @@ class BcftoolsDependencyTest {
     assertFalse(result.output().contains("PASS"), result.output());
   }
 
+  @Test
+  void testInfoValueContainingBareEqualsBcftoolsAcceptsSilently() throws IOException, InterruptedException {
+    String vcf = "##fileformat=VCFv4.2\n##INFO=<ID=XY,Number=1,Type=String,Description=\"depth-ish\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\tXY=1=2\n";
+    BcftoolsResult result = runBcftools(vcf, "query", "-f", "%INFO/XY\n");
+    assertEquals("1=2\n", result.output());
+  }
+
+  @Test
+  void testDuplicateInfoKeyBcftoolsKeepsFirstOccurrence() throws IOException, InterruptedException {
+    String vcf = "##fileformat=VCFv4.2\n##INFO=<ID=DP,Number=1,Type=Integer,Description=\"depth\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\tDP=1;DP=2\n";
+    BcftoolsResult result = runBcftools(vcf, "query", "-f", "%INFO/DP\n");
+    assertEquals("1\n", result.output());
+  }
+
+  @Test
+  void testFormatDotMeansNoPerSampleFieldsBcftoolsAcceptsAndInterprets() throws IOException, InterruptedException {
+    String vcf = "##fileformat=VCFv4.2\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\t.\tgarbage\n";
+    BcftoolsResult viewResult = runBcftools(vcf, "view");
+    assertEquals(0, viewResult.exitCode(), viewResult.output());
+    // bcftools silently normalizes the sample's ignored raw content to "." on write, not just on read
+    assertTrue(viewResult.output().lines().anyMatch(line -> line.endsWith("\t.\t.")), viewResult.output());
+
+    BcftoolsResult queryResult = runBcftools(vcf, "query", "-f", "[%GT]\n");
+    assertEquals(".\n", queryResult.output());
+  }
+
+  @Test
+  void testUndeclaredFormatNumberBcftoolsAssumesDot() throws IOException, InterruptedException {
+    String vcf = "##fileformat=VCFv4.2\n##FORMAT=<ID=XX,Type=String,Description=\"no Number\">\n" +
+        "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:XX\t0/1:a,b,c\n";
+    BcftoolsResult result = runBcftools(vcf, "query", "-f", "[%XX{0} | %XX{1} | %XX{2}]\n");
+    // the absorbed warning above is itself confirmation of the behavior under test, not a weakened assertion
+    assertTrue(result.output().endsWith("a | b | c\n"), result.output());
+  }
+
+  @Test
+  void testNumberGCardinalityNotValidatedByBcftoolsForAnyKey() throws IOException, InterruptedException {
+    // the CNP process-lesson: bcftools's silence on a specific check is not evidence it endorses either side of
+    // a disagreement -- confirmed here for PL specifically (a deliberately-mismatched cardinality: 2 values
+    // given for a triallelic Number=G, which combinatorially expects 6)
+    String vcf = "##fileformat=VCFv4.2\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##FORMAT=<ID=PL,Number=G,Type=Integer,Description=\"PL\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
+        "chr1\t1\trs1\tA\tT,C\t.\tPASS\t.\tGT:PL\t0/1:1,2\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+  }
+
+  @Test
+  void testEmptyAltEntryBcftoolsSubstitutesDotUnlikeThisLibrarysOwnDropChoice() throws IOException, InterruptedException {
+    // documents a deliberate divergence from EMPTY_FIELD_HANDLING.md's own choice: bcftools substitutes an
+    // empty ALT entry with "." (T,,C -> T,.,C), but this library drops it instead (ALT deliberately drops
+    // rather than substituting '.', since '.' mixed with a real allele already throws elsewhere)
+    String vcf = "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT,,C\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("A\tT,.,C\t"), result.output());
+  }
+
   private record BcftoolsResult(int exitCode, String output) {}
 }
