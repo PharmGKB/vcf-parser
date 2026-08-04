@@ -456,8 +456,22 @@ public class VcfWriter implements Closeable {
           // unlike VcfMetadata.Builder.addRawProperty()/addAssembly()/addPedigreeDatabase() (which drop an empty
           // value at insertion time), this only warns -- silently removing content the caller is already holding
           // a reference to, right before serializing it, is a bigger behavioral surprise than dropping it before
-          // the caller ever sees the parsed object.
+          // the caller ever sees the parsed object. bcftools 1.23.1 silently preserves a plain empty generic
+          // property value unchanged, so there is no round-trip hazard here to reject over.
           m_warnings.warn("Metadata property \"{}\" has an empty value: {}", key, value);
+        }
+        if (VcfMetadata.collidesWithAttributeListGrammar(value)) {
+          // unlike the empty-value case above, this rejects outright rather than warning: getRawProperties()/
+          // getRawValuesOfProperty() are live views, so a caller can insert a bracket-wrapped value here after
+          // addRawProperty()/addAssembly()/addPedigreeDatabase()'s own insertion-time rejection has already run
+          // once. Confirmed directly that bcftools 1.23.1 hard-errors ("Could not parse the header line") on a
+          // generic property value shaped like this -- see VcfMetadata.collidesWithAttributeListGrammar's own comment --
+          // so writing it out would produce output a reference tool cannot read back at all, not merely
+          // semantically non-compliant content this policy would otherwise preserve. This is the
+          // structurally-unparseable-output case AGENTS.md's Writer Validation and Round-Trip Policy calls out
+          // as the one thing validateBeforeWrite() must reject rather than warn about.
+          throw new VcfFormatException("Metadata property \"" + key + "\" (" + value + ") is wrapped in angle " +
+              "brackets, which bcftools cannot parse as a generic property value");
         }
       }
     }

@@ -1015,6 +1015,26 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteRejectsBracketedGenericPropertyValue() throws Exception {
+    // getRawProperties() returns the backing multimap directly; mutating an existing entry's value to a
+    // bracket-wrapped one bypasses addRawProperty()/addAssembly()/addPedigreeDatabase()'s own insertion-time
+    // rejection entirely, so validateBeforeWrite() must re-check it at write time. Unlike the empty-value case
+    // above, this throws rather than warns: bcftools 1.23.1 hard-errors ("Could not parse the header line")
+    // trying to read a generic property value shaped like "<...>" back, so writing it out would produce output
+    // a reference tool cannot parse at all -- exactly the structurally-unparseable-output case
+    // validateBeforeWrite() must reject rather than merely warn about.
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addRawProperty("reference", "file:///seq/reference.fasta")
+        .build();
+    metadata.getRawProperties().remove("reference", "file:///seq/reference.fasta");
+    metadata.getRawProperties().put("reference", "<http://foo.com>");
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+  }
+
+  @Test
   public void testValidateBeforeWriteRejectsReservedRawPropertyKey() throws Exception {
     // getRawProperties() returns the backing multimap directly; a caller can insert a raw property whose key
     // collides with a structured declaration keyword (here "INFO") after the builder-side check in

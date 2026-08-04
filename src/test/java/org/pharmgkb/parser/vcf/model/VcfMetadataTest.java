@@ -356,6 +356,62 @@ public class VcfMetadataTest {
   }
 
   @Test
+  public void testAddAssemblyWarnsAndDropsBracketedValue() {
+    // regression test: a non-empty bracket-wrapped value (unlike the empty "<>" case above) was previously
+    // accepted here as a literal string, even though bcftools 1.23.1 hard-errors ("Could not parse the header
+    // line") trying to read "##assembly=<...>" back -- see VcfMetadata.collidesWithAttributeListGrammar's own comment
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addAssembly("<http://foo.com>");
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getAssemblies().isEmpty());
+  }
+
+  @Test
+  public void testAddPedigreeDatabaseWarnsAndDropsBracketedValueWithNoEquals() {
+    // regression test: before this fix, a non-empty bracket-wrapped value was accepted here as a literal
+    // string with no warning at all. Confirmed directly against bcftools 1.23.1: "##pedigreeDB=<http://foo.com>"
+    // hard-errors ("Could not parse the header line") since "http://foo.com" isn't valid key=value attribute
+    // syntax. See VcfMetadata.collidesWithAttributeListGrammar's own comment.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addPedigreeDatabase("<http://foo.com>");
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getPedigreeDatabases().isEmpty());
+  }
+
+  @Test
+  public void testAddPedigreeDatabaseAcceptsBracketedValueContainingEquals() {
+    // "##pedigreeDB=<ID=foo>" is not this field's own documented grammar (VCFv4.2.tex/4.3.tex/4.4.tex's
+    // Pedigree field format section templates it bracket-less), but confirmed directly that bcftools 1.23.1
+    // accepts and round-trips it unchanged (it parses as a trivial, valid attribute list) -- so this library
+    // does not reject it either, per collidesWithAttributeListGrammar's deliberately conservative rule
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    metadata.addPedigreeDatabase("<ID=foo>");
+    assertEquals(java.util.Collections.singletonList("<ID=foo>"), metadata.getPedigreeDatabases());
+  }
+
+  @Test
   public void testAddPedigreeDatabaseAcceptsBracketLessUrl() {
     // regression test for the bracket-requirement bug: VCFv4.2.tex/4.3.tex/4.4.tex's Pedigree field format section
     // all template this bracket-less ("##pedigreeDB=URL"); hts-specs' own passed/passed_meta_pedigreedb.vcf
@@ -408,6 +464,43 @@ public class VcfMetadataTest {
       appender.stop();
     }
     assertFalse(metadata.getRawPropertyKeys().contains("reference"));
+  }
+
+  @Test
+  public void testBuilderAddRawPropertyWarnsAndDropsBracketedValue() {
+    // regression test: confirms the bracket-collision check applies to an arbitrary generic property key, not
+    // just "assembly"/"pedigreeDB" -- htslib's own header-line parser special-cases any generic property value
+    // shaped like "<...>" regardless of key. See VcfMetadata.collidesWithAttributeListGrammar's own comment.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+          .addRawProperty("myCustomKey", "<http://foo.com>").build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertFalse(metadata.getRawPropertyKeys().contains("myCustomKey"));
+  }
+
+  @Test
+  public void testBuilderAddRawPropertyAcceptsSquareBracketSubListValue() {
+    // regression test for the bug this predicate was corrected to fix: the exact hts-specs
+    // test/vcf/4.3/passed/passed_meta_meta.vcf fixture content is a real, legitimate generic property value
+    // that happens to be bracket-wrapped and contain a square-bracket sub-list -- an earlier, over-broad
+    // version of collidesWithAttributeListGrammar (reject ANY bracket-wrapped value) incorrectly rejected this;
+    // confirmed directly that bcftools 1.23.1 accepts and round-trips it unchanged
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addRawProperty("META", "<ID=Assay,Number=.,Type=String,Values=[WholeGenome, Exome]>")
+        .build();
+    assertEquals(java.util.Collections.singletonList("<ID=Assay,Number=.,Type=String,Values=[WholeGenome, Exome]>"),
+        metadata.getRawValuesOfProperty("META"));
   }
 
   @Test
@@ -484,8 +577,29 @@ public class VcfMetadataTest {
   public void testIsEmptyMetadataValue() {
     assertTrue(VcfMetadata.isEmptyMetadataValue(""));
     assertTrue(VcfMetadata.isEmptyMetadataValue("   "));
-    assertTrue(VcfMetadata.isEmptyMetadataValue("<>"));
+    // "<>" is no longer classified as "empty" -- it's handled separately by collidesWithAttributeListGrammar below,
+    // since a bracket-wrapped value needs rejecting regardless of whether its content is empty
+    assertFalse(VcfMetadata.isEmptyMetadataValue("<>"));
     assertFalse(VcfMetadata.isEmptyMetadataValue("ftp://example.com/db"));
+  }
+
+  @Test
+  public void testCollidesWithAttributeListGrammar() {
+    assertTrue(VcfMetadata.collidesWithAttributeListGrammar("<>"));
+    assertTrue(VcfMetadata.collidesWithAttributeListGrammar("<http://foo.com>"));
+    assertTrue(VcfMetadata.collidesWithAttributeListGrammar("  <http://foo.com>  "));
+    // a bracket-wrapped value containing at least one "=" is left alone, even though it isn't the field's own
+    // documented bracket-less grammar -- bcftools 1.23.1 confirmed to accept and round-trip both of these
+    assertFalse(VcfMetadata.collidesWithAttributeListGrammar("<ID=foo>"));
+    // regression test: the exact hts-specs test/vcf/4.3/passed/passed_meta_meta.vcf fixture content -- an
+    // earlier, over-broad version of this predicate (reject ANY bracket-wrapped value) incorrectly rejected
+    // this real, legitimate ##META line, which bcftools genuinely accepts and round-trips
+    assertFalse(VcfMetadata.collidesWithAttributeListGrammar(
+        "<ID=Assay,Number=.,Type=String,Values=[WholeGenome, Exome]>"));
+    assertFalse(VcfMetadata.collidesWithAttributeListGrammar("ftp://example.com/db"));
+    assertFalse(VcfMetadata.collidesWithAttributeListGrammar(""));
+    assertFalse(VcfMetadata.collidesWithAttributeListGrammar("<"));
+    assertFalse(VcfMetadata.collidesWithAttributeListGrammar(">"));
   }
 
   @Test

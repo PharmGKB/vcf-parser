@@ -250,8 +250,7 @@ public class VcfMetadata {
   }
 
   /**
-   * @return Whether {@code value} has no meaningful content -- either fully empty, or an empty bracket pair
-   * ({@code <>}).
+   * @return Whether {@code value} has no meaningful content once trimmed.
    * <p>Public only because {@link org.pharmgkb.parser.vcf.VcfWriter} needs cross-package access; not part of
    * this library's supported public API.
    *
@@ -259,13 +258,46 @@ public class VcfMetadata {
    */
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static boolean isEmptyMetadataValue(String value) {
+    return value.trim().isEmpty();
+  }
+
+  /**
+   * @return Whether {@code value} (trimmed) is wrapped in angle brackets AND its content could not plausibly be
+   * a {@code key=value,...} attribute list -- either because there's nothing between the brackets, or because
+   * there's no {@code =} anywhere in it.
+   * <p>A generic (raw, non-structured) metadata property's value was never meant to have this shape -- unlike
+   * {@code ##ALT}/{@code ##INFO}/{@code ##FORMAT}/etc, which are {@code <key=value,...>} attribute lists by
+   * design, a property like {@code assembly}/{@code pedigreeDB} is documented (VCFv4.2.tex/4.3.tex/4.4.tex's
+   * Pedigree field format section) as a bracket-less bare value. htslib's own header-line parser doesn't know
+   * that, though: it special-cases any generic property value shaped like this, attempting to parse it as an
+   * attribute list regardless of which key it's attached to. Confirmed directly that bcftools 1.23.1
+   * hard-errors ("[E::bcf_hdr_parse_line] Could not parse the header line") on both {@code ##assembly=<>}
+   * (empty content) and {@code ##pedigreeDB=<http://foo.com>} (content with no {@code =} at all) -- not scoped
+   * to either key specifically.
+   * <p>A bracket-wrapped value that DOES contain at least one {@code =} (e.g. {@code "<ID=foo>"}, or
+   * {@code "<ID=Assay,Number=.,Type=String,Values=[WholeGenome, Exome]>"} -- hts-specs'
+   * {@code test/vcf/4.3/passed/passed_meta_meta.vcf} fixture's real, legitimate {@code ##META} line) is treated
+   * as safe and left alone: confirmed directly that bcftools accepts and round-trips both. This deliberately
+   * does not attempt to fully replicate htslib's actual attribute-list grammar (this library's own closest
+   * equivalent, {@link org.pharmgkb.parser.vcf.InternalUtils#extractPropertiesFromLine}, can't do that correctly
+   * either -- its comma-splitter doesn't understand a square-bracket-delimited sub-list like
+   * {@code Values=[...]}'s own internal comma, so reusing it here would incorrectly reject the {@code ##META}
+   * case above). The presence-of-{@code =} heuristic is deliberately conservative: it only rejects the two
+   * shapes empirically confirmed to break bcftools, and accepts everything else, rather than risking a false
+   * rejection of content this library can't fully validate the true grammar of anyway.
+   * <p>Public only because {@link org.pharmgkb.parser.vcf.VcfWriter} needs cross-package access; not part of
+   * this library's supported public API.
+   *
+   * @hidden
+   */
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
+  public static boolean collidesWithAttributeListGrammar(String value) {
     String trimmed = value.trim();
-    // ##pedigreeDB=<> (test/vcf/{4.1,4.2}/failed/failed_meta_pedigreedb_001.vcf, ##CauseOfFailure=Meta-data entry
-    // is not a key-value pair) has no meaningful content between the brackets -- effectively the same as empty.
-    // Not pedigreeDB-specific: confirmed directly that bcftools 1.23.1 rejects "##assembly=<>" (and, by the same
-    // htslib attribute-list-grammar collision, any other key) with "[E::bcf_hdr_parse_line] Could not parse the
-    // header line", not just "##pedigreeDB=<>" -- so the check applies uniformly to every key.
-    return trimmed.isEmpty() || trimmed.equals("<>");
+    if (!(trimmed.startsWith("<") && trimmed.endsWith(">"))) {
+      return false;
+    }
+    String inner = trimmed.substring(1, trimmed.length() - 1).trim();
+    return inner.isEmpty() || !inner.contains("=");
   }
 
   /**
@@ -421,6 +453,11 @@ public class VcfMetadata {
       warnOrThrow(m_warnings, "Metadata property \"assembly\" has an empty value and was dropped: {}", value);
       return;
     }
+    if (collidesWithAttributeListGrammar(value)) {
+      warnOrThrow(m_warnings, "Metadata property \"assembly\" is wrapped in angle brackets, which bcftools " +
+          "cannot parse as a generic property value, and was dropped: {}", value);
+      return;
+    }
     m_properties.put("assembly", value);
   }
 
@@ -432,12 +469,8 @@ public class VcfMetadata {
     // VCFv4.2.tex/4.3.tex/4.4.tex's Pedigree field format section all template this bracket-less:
     // "##pedigreeDB=URL". hts-specs' own passed/passed_meta_pedigreedb.vcf fixture (all versions) is bracket-less
     // and expected to parse; confirmed bcftools 1.23.1 accepts it. Brackets are not required or expected here
-    // (unlike ##ALT/##INFO/etc, which use <ID=...> attribute-list syntax) -- bcftools hard-errors on
-    // "##pedigreeDB=<>" specifically because it collides with that other grammar, not because brackets are this
-    // field's own syntax.
-    // Known, deliberately out-of-scope gap: a non-empty bracket-wrapped value (e.g. "<ftp://example.com/db>") is
-    // still accepted here as a literal string today, even though bcftools would also reject it via that same
-    // grammar collision -- not fixed in this pass.
+    // (unlike ##ALT/##INFO/etc, which use <ID=...> attribute-list syntax) -- see collidesWithAttributeListGrammar's own
+    // comment for why any bracket-wrapped value (not just an empty one) is rejected below.
     // value is typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting
     // isEmptyMetadataValue(value) below throw a raw NullPointerException at value.trim()
     if (value == null) {
@@ -446,6 +479,11 @@ public class VcfMetadata {
     InternalUtils.checkNoLineTerminator("pedigreeDB", value);
     if (isEmptyMetadataValue(value)) {
       warnOrThrow(m_warnings, "Metadata property \"pedigreeDB\" has an empty value and was dropped: {}", value);
+      return;
+    }
+    if (collidesWithAttributeListGrammar(value)) {
+      warnOrThrow(m_warnings, "Metadata property \"pedigreeDB\" is wrapped in angle brackets, which bcftools " +
+          "cannot parse as a generic property value, and was dropped: {}", value);
       return;
     }
     m_properties.put("pedigreeDB", value);
@@ -817,6 +855,13 @@ public class VcfMetadata {
         // this library is already stricter than bcftools for an empty ID/FILTER/ALT list entry -- see
         // EMPTY_FIELD_HANDLING.md's "position-independent list: drop" strategy, used there for the same reason.
         warnOrThrow(m_warnings, "Metadata property \"{}\" has an empty value and was dropped: {}", name, value);
+        return this;
+      }
+      if (collidesWithAttributeListGrammar(value)) {
+        // see collidesWithAttributeListGrammar's own comment: htslib special-cases any generic property value shaped
+        // like this regardless of key, so this is not scoped to "assembly"/"pedigreeDB" specifically
+        warnOrThrow(m_warnings, "Metadata property \"{}\" is wrapped in angle brackets, which bcftools cannot " +
+            "parse as a generic property value, and was dropped: {}", name, value);
         return this;
       }
       m_properties.put(name, value);
