@@ -114,3 +114,23 @@ doesn't affect anything this library does at runtime, and it's not clear which w
 wire it into the version-computation path its name suggests it was written for). Revisit if someone
 determines which was actually intended, or needs a dev-build version-naming scheme distinct from
 `getVersionName()`'s tagged-release one.
+
+## `VcfPosition.checkFilters` emits redundant warnings for a FILTER list with multiple `PASS` entries
+
+`checkFilters` runs two independent checks within the same per-element loop over the FILTER list: one warns
+whenever an element equals `PASS` and the list has more than one entry ("FILTER contains PASS along with
+other filters"), and another warns whenever an element has already been seen earlier in the same list
+("Duplicate FILTER code"). Neither check tracks whether it has already fired for the list as a whole --
+each re-evaluates independently, once per matching element.
+
+For `FILTER=["PASS","PASS"]`, this produces three warnings from one call: the PASS-combined check fires once
+per `PASS` occurrence (twice, with an identical message both times, since it doesn't distinguish "the first
+PASS" from "a later PASS"), and the duplicate-code check fires once more for the second occurrence. No data
+is lost or corrupted -- both entries are preserved as-is -- this is purely warning-output noise.
+
+**Decision: won't fix.** `FILTER=PASS;PASS` is already a degenerate, spec-invalid input on its own terms
+(`PASS` is defined as meaning no filters failed; repeating it conveys no additional information), so
+real-world occurrence is unlikely. Deduplicating the warning output would require either an early-exit flag
+or restructuring the per-element loop into two passes -- real complexity for a purely cosmetic issue with no
+functional impact. Revisit if a caller reports genuinely noisy warning output from this pattern, or if
+`checkFilters`/`checkIds` are restructured for an unrelated reason that would make deduplication free.
