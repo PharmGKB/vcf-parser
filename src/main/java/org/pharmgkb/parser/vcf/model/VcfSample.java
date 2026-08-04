@@ -233,9 +233,12 @@ public class VcfSample {
     if (reserved != null) {
       // for a reserved key, always use this library's own hardcoded canonical Number/Type, regardless of whether
       // the file's header actually declares ##FORMAT=<ID=...> for it. This is intentional continuity with
-      // getProperty(ReservedFormatProperty), which has never consulted VcfMetadata either -- not an accidental
-      // divergence from VcfWriter's write path, which does require an explicit declaration even for a reserved
-      // key because it validates every FORMAT column generically.
+      // getProperty(ReservedFormatProperty), which has never consulted VcfMetadata either. VcfWriter's write path
+      // now falls back to the same reserved canonical values when there's no declaration at all, matching this
+      // method -- the one remaining, deliberate divergence is a reserved key declared with a non-canonical
+      // Number/Type: this method still ignores the declaration and uses the canonical value, while the writer's
+      // validateBeforeWrite() validates against what was actually declared, so the two can warn in opposite
+      // directions for that specific (declared-but-non-canonical) case.
       number = reserved.getExpectedNumber();
       isList = reserved.isList();
     } else {

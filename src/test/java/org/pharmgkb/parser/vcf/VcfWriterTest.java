@@ -684,6 +684,74 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteChecksUndeclaredReservedInfoKeyCardinality() throws Exception {
+    // AC is reserved (Number=A) but has no ##INFO=<ID=AC,...> declaration at all here -- validateInfo must still
+    // fall back to AC's own canonical Number/Type, matching getInfo(ReservedInfoProperty)'s identical read-path
+    // fallback, rather than silently skipping every check beyond the generic "no INFO metadata" warning
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
+        .build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getAltBases().add("T");
+    position.getAltBases().add("C");
+    position.getInfo().put("AC", "1"); // 2 ALT alleles but only 1 value -- a real Number=A violation
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertTrue(appender.anyMessageContains("no INFO metadata with that name"));
+      assertTrue(appender.anyMessageContains("INFO AC has 1 value(s), but Number=A requires 2"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testValidateBeforeWriteChecksUndeclaredReservedFormatKeyCardinality() throws Exception {
+    // AD is reserved (Number=R) but has no ##FORMAT=<ID=AD,...> declaration at all here -- validateSamples must
+    // still fall back to AD's own canonical Number/Type, matching getProperty(VcfPosition, VcfMetadata,
+    // String)'s identical read-path fallback
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .addFormat(new FormatMetadata("GT", "Genotype", "1", FormatType.String))
+        .build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getAltBases().add("T");
+    position.getFormat().add("GT");
+    position.getFormat().add("AD");
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    sample.putProperty("GT", "0/1");
+    sample.putProperty("AD", "10"); // Number=R with 1 ALT allele expects 2 values, only 1 given
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, Collections.singletonList(sample));
+      assertTrue(appender.anyMessageContains("no FORMAT metadata with that name"));
+      assertTrue(appender.anyMessageContains("FORMAT AD for sample #0 has 1 value(s), but Number=R requires 2"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testValidateBeforeWriteRejectsMetadataDelimiterInjectedThroughRawView() throws Exception {
     InfoMetadata info = new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null);
     info.getPropertiesRaw().put("Description", "unquoted,comma");

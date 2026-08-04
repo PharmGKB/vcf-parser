@@ -188,15 +188,26 @@ still throws -- see the strict section above):
   this check despite declaring `Number=G` themselves: neither key's "G" describes this ploidy-derived ordering
   -- `GLE`'s value isn't a comma-delimited list at all, and `CNP`'s own list is indexed by "potential copy
   number," a dimension unrelated to ploidy/ALT allele count; `CNL` is unaffected by this exemption since its
-  own declared `Number` is `.`, not `G`, under this library's VCFv4.2 target), or any declared (reserved or
-  non-reserved) `FORMAT` key's value whose element count doesn't match its declared `Number`, or whose value
-  doesn't match its declared `Type`: the first two are checked and warned about (never thrown) both when
-  `VcfSample.getProperty(VcfPosition, VcfMetadata, String)` is called and by
+  own declared `Number` is `.`, not `G`, under this library's VCFv4.2 target), or any `FORMAT` key's value whose
+  element count doesn't match its declared `Number`, or whose value doesn't match its declared `Type` (a
+  non-reserved key needs an explicit `##FORMAT` declaration for either check to run; a reserved key's own
+  canonical `Number`/`Type` apply even with no declaration at all): the first two are checked and warned about
+  (never thrown) both when `VcfSample.getProperty(VcfPosition, VcfMetadata, String)` is called and by
   `VcfWriter.Builder.validateBeforeWrite()`; a genuine `Type` mismatch throws `VcfFormatException` when read via
   `VcfSample.getProperty(VcfPosition, VcfMetadata, String)`, unchanged from
   `getProperty(ReservedFormatProperty)`'s existing behavior for a reserved key -- but
   `VcfWriter.Builder.validateBeforeWrite()` downgrades the identical `Type` mismatch to a warning instead of
-  throwing, preserving this library's general policy of never aborting a write over recoverable content.
+  throwing, preserving this library's general policy of never aborting a write over recoverable content. A
+  reserved key that *is* declared with a non-canonical `Number`/`Type` is the one case where the read and write
+  paths can disagree: the read path always uses the reserved canonical value regardless of the declaration,
+  while `validateBeforeWrite()` validates against what was actually declared.
+- A reserved, list-typed `INFO` key's value whose element count doesn't match the cardinality its `Number`
+  implies for the record's own ALT allele count (e.g. `AC`/`AF`'s `Number=A`, `CIPOS`/`CIEND`'s fixed
+  `Number=2`) -- no reserved `INFO` key declares `Number=G`, so there's no ploidy-dependent case here the way
+  there is for `FORMAT` -- or any `INFO` key's value whose element count doesn't match its declared `Number`
+  (same declared-vs-reserved-fallback split as `FORMAT` above): checked and warned about (never thrown) both
+  when a typed value is requested via `getInfo(ReservedInfoProperty)` and by
+  `VcfWriter.Builder.validateBeforeWrite()`.
 - A negative value for the reserved `INFO` keys `AC`, `AN`, `DP`, `END`, `MQ0`, or `NS`, or an `AF` value outside
   the interval `[0, 1]`, or a reserved `INFO/CIGAR` value that doesn't match a lone `*` or one or more
   `<length><operation>` pairs: same treatment as `FT`/`PS` above -- these constraints go beyond what each key's

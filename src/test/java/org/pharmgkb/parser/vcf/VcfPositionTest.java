@@ -272,6 +272,95 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testGetInfoListTypedKeyCardinalityViolationWarnsButKeepsAllValues() {
+    // AC is Number=A (list-typed): with 1 ALT allele, exactly 1 value is expected, but 2 are given. Unlike the
+    // scalar-key violation below (which truncates to the first value), a list-typed violation warns but returns
+    // every given value unchanged -- this is the INFO-side counterpart of VcfSample.getProperty(VcfPosition,
+    // VcfMetadata, String)'s identical FORMAT-side check, added earlier this session
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      VcfPosition p = newPosition();
+      p.getAltBases().add("T");
+      p.setRawInfo("AC=1,2");
+      assertEquals(Arrays.asList(1L, 2L), p.getInfo(ReservedInfoProperty.AlleleCount));
+      assertTrue(appender.anyMessageContains("INFO AC has 2 value(s), but Number=A requires 1"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testGetInfoFixedCountKeyCardinalityViolationWarns() {
+    // CIPOS is a fixed Number=2 (not ALT-allele-derived); 3 values given instead of 2 must still warn
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      VcfPosition p = newPosition();
+      p.setRawInfo("CIPOS=1,2,3");
+      assertEquals(Arrays.asList(1L, 2L, 3L), p.getInfo(ReservedInfoProperty.ConfidenceIntervalForPosition));
+      assertTrue(appender.anyMessageContains("INFO CIPOS has 3 value(s), but Number=2 requires 2"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testGetInfoListTypedKeyCorrectCardinalityDoesNotWarn() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      VcfPosition p = newPosition();
+      p.getAltBases().add("T");
+      p.getAltBases().add("C");
+      p.setRawInfo("AC=1,2");
+      assertEquals(Arrays.asList(1L, 2L), p.getInfo(ReservedInfoProperty.AlleleCount));
+      assertFalse(appender.anyMessageContains("value(s), but Number="));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testGetInfoListTypedKeyDotSentinelDoesNotWarnCardinality() {
+    // AD's whole value normalizes to a single "." entry when the raw INFO text is "AD=" (an entirely empty
+    // value, per EMPTY_FIELD_HANDLING.md's documented table) -- that represents this key's value being absent
+    // altogether, not a real 1-element value that violates AD's Number=R (2 expected, for 1 ALT allele)
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      VcfPosition p = newPosition();
+      p.getAltBases().add("T");
+      p.setRawInfo("AD=");
+      assertEquals(Collections.singletonList("."), p.getInfo("AD"));
+      assertNull(p.getInfo(ReservedInfoProperty.AlleleDepth));
+      assertFalse(appender.anyMessageContains("value(s), but Number="));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testGetInfoStringTypedScalarKeyCardinalityViolationWarnsAndKeepsFirstValue() {
     // AA is Number=1/String-typed; info() unconditionally comma-splits every raw INFO value regardless of the
     // key's declared cardinality, and the pre-fix code rejoined the split pieces with "," before Type conversion

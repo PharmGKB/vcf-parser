@@ -23,10 +23,11 @@ import com.google.common.base.Preconditions;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.model.BaseMetadata;
 import org.pharmgkb.parser.vcf.model.FormatMetadata;
-import org.pharmgkb.parser.vcf.model.FormatType;
 import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
 import org.pharmgkb.parser.vcf.model.InfoMetadata;
 import org.pharmgkb.parser.vcf.model.InfoType;
+import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
+import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
 import org.pharmgkb.parser.vcf.model.VcfMetadata;
 import org.pharmgkb.parser.vcf.model.VcfPosition;
 import org.pharmgkb.parser.vcf.model.VcfSample;
@@ -618,8 +619,18 @@ public class VcfWriter implements Closeable {
       if (info == null) {
         m_warnings.warn("Position {}:{} contains INFO {}, but there is no INFO metadata with that name",
             position.getChromosome(), position.getPosition(), key);
+        // still validate a reserved key's value against its own canonical Number/Type, matching
+        // getInfo(ReservedInfoProperty)'s identical read-path fallback for exactly this situation -- an
+        // undeclared reserved key otherwise silently skipped every check below, even though its expected
+        // shape is well known independent of any header declaration
+        ReservedInfoProperty reserved = ReservedInfoProperty.fromId(key);
+        if (reserved != null) {
+          validateInfoValue(reserved.getExpectedNumber(), reserved.getType(), values, key,
+              position.getAltBases().size());
+        }
       } else {
-        validateInfoValue(info, values, key, position.getAltBases().size());
+        validateInfoValue(info.getNumber(), info.getType() == null ? null : InternalUtils.toJavaType(info.getType()),
+            values, key, position.getAltBases().size());
       }
     }
   }
@@ -643,16 +654,31 @@ public class VcfWriter implements Closeable {
           m_warnings.warn("Sample #{} is missing property {}", sampleIndex, key);
         } else if (format == null) {
           m_warnings.warn("Sample #{} contains FORMAT {}, but there is no FORMAT metadata with that name", sampleIndex, key);
+          // still validate a reserved key's value against its own canonical Number/Type, matching
+          // getProperty(VcfPosition, VcfMetadata, String)'s identical read-path fallback for exactly this
+          // situation -- see validateInfo's identical INFO-side fallback for the full rationale
+          ReservedFormatProperty reserved = ReservedFormatProperty.fromId(key);
+          if (reserved != null) {
+            validateFormatValue(reserved.getExpectedNumber(), reserved.getType(), value, key, sampleIndex,
+                position.getAltBases().size(), ploidy);
+          }
         } else {
-          validateFormatValue(format, value, key, sampleIndex, position.getAltBases().size(), ploidy);
+          validateFormatValue(format.getNumber(),
+              format.getType() == null ? null : InternalUtils.toJavaType(format.getType()), value, key, sampleIndex,
+              position.getAltBases().size(), ploidy);
         }
       }
     }
   }
 
-  private void validateInfoValue(InfoMetadata info, List<String> values, String key, int numAltAlleles) {
-    InfoType type = info.getType();
-    if (type == InfoType.Flag) {
+  // number/type are the resolved Number/Type to validate against -- either a declared ##INFO=<ID=...>'s own
+  // values, or (when there is no declaration at all) a reserved key's own canonical Number/Type, matching
+  // getInfo(ReservedInfoProperty)'s identical read-path fallback. type is the already-converted Java type
+  // (see InternalUtils.toJavaType(InfoType)/ReservedInfoProperty.getType()), not the InfoType enum itself, so
+  // this one method serves both callers without needing a synthetic InfoMetadata for the reserved-only case.
+  private void validateInfoValue(@Nullable String number, @Nullable Class<?> type, List<String> values, String key,
+      int numAltAlleles) {
+    if (type == Boolean.class) {
       if (values.size() != 1 || !values.get(0).isEmpty()) {
         m_warnings.warn("INFO {} has Type=Flag but has a value", key);
       }
@@ -673,7 +699,6 @@ public class VcfWriter implements Closeable {
     if (values.stream().anyMatch(String::isEmpty)) {
       m_warnings.warn("INFO {} contains an empty value", key);
     }
-    String number = info.getNumber();
     // unlike a FORMAT value, an INFO value isn't tied to any one sample, so there's no single ploidy to compute
     // Number=G's expected cardinality from; pass null so getExpectedCardinality skips that check instead of
     // guessing a ploidy (previously hardcoded to 2, which could produce the same false-positive warning that
@@ -684,15 +709,21 @@ public class VcfWriter implements Closeable {
     }
     for (String value : values) {
       try {
-        InternalUtils.convertProperty(type, value, m_warnings);
+        InternalUtils.convertProperty(type, value, false, m_warnings);
       } catch (VcfFormatException e) {
-        m_warnings.warn("INFO {} value {} is not of type {}", key, value, type);
+        m_warnings.warn("INFO {} value {} is not of type {}", key, value, type.getSimpleName());
       }
     }
   }
 
-  private void validateFormatValue(FormatMetadata format, String value, String key, int sampleIndex,
-      int numAltAlleles, @Nullable Integer ploidy) {
+  // number/type are the resolved Number/Type to validate against -- either a declared ##FORMAT=<ID=...>'s own
+  // values, or (when there is no declaration at all) a reserved key's own canonical Number/Type, matching
+  // getProperty(VcfPosition, VcfMetadata, String)'s identical read-path fallback. type is the already-converted
+  // Java type (see InternalUtils.toJavaType(FormatType)/ReservedFormatProperty.getType()), not the FormatType
+  // enum itself, so this one method serves both callers without needing a synthetic FormatMetadata for the
+  // reserved-only case.
+  private void validateFormatValue(@Nullable String number, @Nullable Class<?> type, String value, String key,
+      int sampleIndex, int numAltAlleles, @Nullable Integer ploidy) {
     if (value.equals(".")) {
       return;
     }
@@ -709,7 +740,6 @@ public class VcfWriter implements Closeable {
         m_warnings.warn("FORMAT {} for sample #{} contains an empty value", key, sampleIndex);
       }
     }
-    String number = format.getNumber();
     if (!InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck(key)) {
       // GLE's conventional Number=G does not describe a comma-delimited value list the way it does for every other
       // FORMAT key -- GLE's commas are part of its own internal genotype:likelihood encoding (see
@@ -722,15 +752,15 @@ public class VcfWriter implements Closeable {
       InternalUtils.warnIfWrongCardinality("FORMAT " + key + " for sample #" + sampleIndex, number, values.length,
           numAltAlleles, ploidy, m_warnings);
     }
-    FormatType type = format.getType();
     if (type == null) {
       return;
     }
     for (String element : values) {
       try {
-        InternalUtils.convertProperty(type, element, m_warnings);
+        InternalUtils.convertProperty(type, element, false, m_warnings);
       } catch (VcfFormatException e) {
-        m_warnings.warn("FORMAT {} for sample #{} value {} is not of type {}", key, sampleIndex, element, type);
+        m_warnings.warn("FORMAT {} for sample #{} value {} is not of type {}", key, sampleIndex, element,
+            type.getSimpleName());
       }
     }
   }

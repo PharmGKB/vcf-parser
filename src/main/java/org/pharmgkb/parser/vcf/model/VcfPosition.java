@@ -814,6 +814,18 @@ public class VcfPosition {
           key.getExpectedNumber(), key.getExpectedNumber());
       value = list.get(0);
     } else {
+      // for a list-typed key, check the actual element count against what getExpectedNumber() implies for this
+      // record's own ALT allele count (the INFO-side counterpart of VcfSample.getProperty(VcfPosition,
+      // VcfMetadata, String)'s identical FORMAT-side check) -- e.g. AC/AF (Number=A) must have exactly one value
+      // per ALT allele, CIPOS/CIEND (Number=2) exactly two. No reserved INFO key declares Number=G, so ploidy
+      // (irrelevant for INFO, which has no per-sample concept) is always null here. Skipped when list is the
+      // single-element "." sentinel: that represents this key's value being entirely absent (e.g. an INFO
+      // string of "AD=" normalizes to a single "." entry, per EMPTY_FIELD_HANDLING.md), not a real value whose
+      // count could violate cardinality.
+      if (key.isList() && !(list.size() == 1 && list.get(0).equals("."))) {
+        InternalUtils.warnIfWrongCardinality("INFO " + key.getId(), key.getExpectedNumber(), list.size(),
+            getAltBases().size(), null, m_warnings);
+      }
       value = sf_commaJoiner.join(list);
     }
     try {
