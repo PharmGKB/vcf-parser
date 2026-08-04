@@ -85,7 +85,7 @@ public class VcfParserTest {
 
   @Test
   void testDeferredInfoValidationExceptionCarriesLineNumberAfterParseReturns() throws IOException {
-    // regression test for findings19.md's line-number gap: a VcfFormatException from VcfPosition.getInfo()'s
+    // regression test: a VcfFormatException from VcfPosition.getInfo()'s
     // lazy-parse path, thrown AFTER parser.parse() has already returned (not from inside the parseWith callback),
     // must still carry the correct originating line number -- this was previously silently lost, since
     // VcfParser's own line-tracking call stack is gone by the time a caller inspects a collected position later
@@ -964,7 +964,7 @@ public class VcfParserTest {
 
   @Test
   void testMetadataLabelsMatchDeclarationKindAtEachParserCallSite() throws IOException {
-    // Regression test for findings19.md Important #1: VcfParser.parseMetadataProperty passes a literal label
+    // Regression test: VcfParser.parseMetadataProperty passes a literal label
     // ("ALT", "FILTER", "SAMPLE") at each of its IdDescriptionMetadata call sites. IdDescriptionMetadataTest's
     // testWarningEmbedsCallerSuppliedLabelNotSharedClassName only unit-constructs IdDescriptionMetadata directly
     // and confirms whatever label it's given comes through correctly -- it does not verify VcfParser itself

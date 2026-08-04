@@ -374,8 +374,8 @@ public class InfoMetadataTest {
   public void testGetSourceAndVersionUnquote() {
     // regression-shaped test: getSource()/getVersion() had zero test coverage despite using
     // getPropertyUnquoted (the same operation whose sibling, ContigMetadata.getLength(), previously had a
-    // real quoted-value bug closed in docs/issues/findings21.md Batch 21.3) -- verify the quote-stripping
-    // actually round-trips, not just that construction doesn't throw
+    // real quoted-value bug) -- verify the quote-stripping actually round-trips, not just that construction
+    // doesn't throw
     InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
         new String[]{"ID=X", "Number=1", "Type=String", "Description=\"d\"", "Source=\"dbSNP\"", "Version=\"138\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
     assertEquals("dbSNP", md.getSource());

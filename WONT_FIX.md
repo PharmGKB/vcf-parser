@@ -84,8 +84,8 @@ only valid parents) is accepted without any parent-relationship check at all.
 
 This is *not* reachable today with the current reserved-code set. The constructor unconditionally requires
 the level-0 component to already be a recognized reserved code (`if (type == null && level == 0) throw
-...`, `AltStructuralVariant.java:67-69`), and a reserved code is only accepted at the level matching its own
-`getLevelInSpecification()` (line 73-76). Since the only reserved codes today are five level-0 codes and two
+...`, `AltStructuralVariant.java:75-78`), and a reserved code is only accepted at the level matching its own
+`getLevelInSpecification()` (lines 81-84). Since the only reserved codes today are five level-0 codes and two
 level-1 codes (`Tandem`, `MobileElement`), the parent-check block (`level > 0`) can only ever fire at level
 1, checking against the level-0 predecessor -- which is unconditionally guaranteed to already be a
 recognized reserved code by the throw above. So `realParent` can never actually be null with today's

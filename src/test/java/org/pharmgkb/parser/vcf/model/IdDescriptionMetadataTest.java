@@ -136,7 +136,7 @@ public class IdDescriptionMetadataTest {
 
   @Test
   public void testWarningEmbedsCallerSuppliedLabelNotSharedClassName() {
-    // Regression test for findings19.md Minor #1: ALT/FILTER/SAMPLE all share this concrete class, so before the
+    // Regression test: ALT/FILTER/SAMPLE all share this concrete class, so before the
     // label mechanism existed, every warning said "IdDescriptionMetadata" regardless of which of the three it was.
     for (String label : new String[] { "ALT", "FILTER", "SAMPLE" }) {
       ch.qos.logback.classic.Logger root =

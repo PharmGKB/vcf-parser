@@ -343,9 +343,8 @@ public class ContigMetadataTest {
 
   @Test
   public void testGetSpeciesUnquotes() {
-    // regression-shaped test: getLength()'s own quoted-value mismatch (fixed in findings21.md Batch 21.3) was
-    // hidden by the same kind of gap this closes -- a getter that unquotes but was never actually exercised
-    // against a quoted value
+    // regression-shaped test: getLength()'s own quoted-value mismatch was hidden by the same kind of gap this
+    // closes -- a getter that unquotes but was never actually exercised against a quoted value
     Map<String, String> map = new HashMap<>();
     map.put(ContigMetadata.ID, "id");
     map.put(ContigMetadata.SPECIES, "\"Homo sapiens\"");

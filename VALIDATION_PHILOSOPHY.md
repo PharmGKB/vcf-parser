@@ -99,7 +99,9 @@ vs-parsing distinction; see that policy for why these specific fields stay uncon
   `VcfMetadata.addPedigree`/`Builder.addPedigree`, which are covered by the `VcfMetadata`/`Builder` entry above.
 - **`VcfFloat`**: a different case again. A genuinely malformed value (neither the special-value pattern nor a
   valid decimal) always throws from `parse(String)` -- in both the public single-argument overload and the
-  package-private `VcfWarnings`-taking one -- there is no lenient variant of that rejection. The warn-vs-throw
+  `public` (but `@RestrictedApi`/`@hidden`, not part of this library's supported public API --
+  see `AGENTS.md`'s Null-Safety Policy exemption list) `VcfWarnings`-taking one -- there is no lenient variant
+  of that rejection. The warn-vs-throw
   axis it does have sits one level down, in the shared decimal-parsing grammar check (does the string match the
   stricter `FLOAT_PATTERN`, e.g. `"5."` does not): that is a data-value tolerance judgment, not a
   declaration-level correctness question, and it warns unconditionally for every caller (`VcfFloat.parse()`

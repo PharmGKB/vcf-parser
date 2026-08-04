@@ -204,4 +204,5 @@ for rejection purposes, but they are still a data-loss case in practice.
   bracket-collision case instead **throws** `VcfFormatException`, since bcftools cannot parse a value shaped
   like this back in at all -- writing it out would produce output this library's own bcftools-informed
   decisions treat as invalid, so `validateBeforeWrite()` rejects it as structurally unparseable rather than
-  merely warning.
+  merely warning. See `VCF_SPEC_AMBIGUITIES.md`'s "`##pedigreeDB`/`##assembly` bracket-wrapped values colliding
+  with attribute-list grammar" entry for the bcftools evidence behind the bracket-collision half of this rule.

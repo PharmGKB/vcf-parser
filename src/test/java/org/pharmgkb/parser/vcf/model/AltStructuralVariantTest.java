@@ -103,8 +103,8 @@ public class AltStructuralVariantTest {
   public void testGetComponentsIsUnmodifiable() {
     AltStructuralVariant alt = new AltStructuralVariant("INS:ME:LINE");
     assertThrows(UnsupportedOperationException.class, () -> alt.getComponents().add("X"));
-    // the scenario findings20.md's item 16 actually named: injecting a null this way used to surface later as a
-    // confusing NullPointerException from getReservedComponent() instead of failing at the point of misuse
+    // injecting a null this way used to surface later as a confusing NullPointerException from
+    // getReservedComponent() instead of failing at the point of misuse
     assertThrows(UnsupportedOperationException.class, () -> alt.getComponents().set(0, null));
   }
 }

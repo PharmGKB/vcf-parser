@@ -128,7 +128,8 @@ public class InternalUtils {
   // ##FORMAT declaration's own ID (FormatMetadata.java) -- confirmed via direct bcftools 1.23.1 testing that
   // bcftools enforces this same stricter grammar for ##FORMAT declaration IDs specifically (an asterisk anywhere
   // but the first character triggers "Invalid tag name"), unlike ##FILTER/##SAMPLE/##ALT declaration IDs, which
-  // bcftools accepts the identical character in silently (see findings24.md item 20). Not reused for INFO
+  // bcftools accepts the identical character in silently (see VCF_SPEC_AMBIGUITIES.md's "##FORMAT/##INFO
+  // declaration ID grammar is stricter than ##FILTER/##SAMPLE/##ALT" entry). Not reused for INFO
   // declaration IDs, which VCFv4.3.tex:368 gives a different regex with a "1000G" legacy exception -- see
   // INFO_PATTERN below.
   public static final Pattern FORMAT_PATTERN = Pattern.compile("^[A-Za-z_][0-9A-Za-z_.]*$");
@@ -140,7 +141,8 @@ public class InternalUtils {
   // silent on INFO tag-name grammar; used here as VCFv4.2-silent clarifying guidance per AGENTS.md. Confirmed
   // via direct bcftools 1.23.1 testing that ##INFO declaration IDs are held to this stricter grammar (an
   // asterisk anywhere but the first character triggers "Invalid tag name"), unlike ##FILTER/##SAMPLE/##ALT
-  // declaration IDs -- see findings24.md item 20.
+  // declaration IDs -- see VCF_SPEC_AMBIGUITIES.md's "##FORMAT/##INFO declaration ID grammar is stricter than
+  // ##FILTER/##SAMPLE/##ALT" entry.
   public static final Pattern INFO_PATTERN = Pattern.compile("^([A-Za-z_][0-9A-Za-z_.]*|1000G)$");
   public static final Pattern RSID_PATTERN = Pattern.compile("rs\\d+");
   public static final Pattern NUMBER_PATTERN = Pattern.compile("(?:\\d+|[ARG.])");

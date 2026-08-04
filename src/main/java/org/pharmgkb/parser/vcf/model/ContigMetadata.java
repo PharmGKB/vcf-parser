@@ -66,7 +66,7 @@ public class ContigMetadata extends IdMetadata {
     // VCFv4.3.tex's own "Changes to VCFv4.3" errata (~line 2129-2144, unchanged in 4.4/4.5), which states the
     // rule for "VCF contig names" specifically -- confirmed by direct bcftools 1.23.1 testing that this does
     // NOT extend to INFO/FORMAT tag names, which bcftools validates under a different, stricter rule (see
-    // findings24.md item 20). InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN itself has 13 characters,
+    // VCF_SPEC_AMBIGUITIES.md's "##contig ID character set" entry). InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN itself has 13 characters,
     // including a comma, so its coverage overlaps IdMetadata's own dedicated comma check above. This overlap
     // is harmless on this strict/throw path regardless: IdMetadata's own constructor (the super("CONTIG", id)
     // call above) already throws on any comma-containing ID before this pattern check ever runs, so the

@@ -5,7 +5,10 @@ insufficiently specific to determine this library's behavior on its own, and whe
 **vcf_validator** were consulted per `AGENTS.md`'s decision hierarchy to resolve it. It is an index for future
 agents: each entry states the ambiguity, what each source actually says (verified live, not assumed), the
 decision made, and where that decision is implemented — so the next person who hits the same question doesn't
-have to re-derive it from git history or re-run the tools from scratch.
+have to re-derive it from git history or re-run the tools from scratch. A small number of entries (marked 🟡)
+document an ambiguity that was investigated this way but is still genuinely open — no decision has shipped yet
+— so a future agent doesn't re-run the same tool checks before finding that out; see the active findings
+backlog for the current status of any 🟡 entry.
 
 This file does **not** duplicate two topics that already have their own dedicated, deeper reference docs:
 
@@ -130,15 +133,12 @@ declaration type. `ContigMetadata.ensureNoExtras()` call removed.
 
 ### Generic metadata property with an empty value
 
-VCFv4.3.tex line 39 states "zero length fields are not allowed, a dot ('.') must be used instead," stated
-generally for meta-information/header/data lines, not scoped to data fields only (VCFv4.1/4.2 are silent).
-Confirmed live that bcftools actually **silently preserves** a generic metadata line with a completely empty
-value unchanged (`##reference=` round-trips through `bcftools view -h` verbatim, no warning).
-
-**Decision:** drop the property with a warning anyway — a deliberate, acknowledged choice to be stricter than
-bcftools here, consistent with this library's established stricter-than-bcftools stance for an empty
-ID/FILTER/ALT list entry (see `EMPTY_FIELD_HANDLING.md`'s "position-independent list: drop" strategy).
-Implemented in `VcfMetadata`'s `isEmptyMetadataValue`-gated property setters.
+**Decision:** drop the property with a warning, even though bcftools 1.23.1 silently preserves an empty
+generic metadata line unchanged (confirmed live: `##reference=` round-trips through `bcftools view -h`
+verbatim, no warning) — a deliberate choice to be stricter than bcftools here. Full reasoning (the `VCFv4.3.tex`
+line 39 citation, and why this row's drop-the-whole-line behavior differs from every other empty-field row) and
+implementation pointer live in `EMPTY_FIELD_HANDLING.md`'s "Generic metadata property" row and the paragraph
+following its reference table.
 
 ### `##pedigreeDB`/`##assembly` bracket-wrapped values colliding with attribute-list grammar
 

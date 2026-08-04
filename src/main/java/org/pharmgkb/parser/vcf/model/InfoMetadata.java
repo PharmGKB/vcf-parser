@@ -39,8 +39,8 @@ public class InfoMetadata extends IdDescriptionMetadata {
       @Nullable String source, @Nullable String version) {
     super("INFO", id);
     // structurally unreachable for a whitespace- or comma-containing id: IdMetadata's own super(...) call above
-    // already throws first for either -- see findings24.md item 20 and ContigMetadata's identical strict-path
-    // reasoning for its own analogous character-set check
+    // already throws first for either -- see ContigMetadata's identical strict-path reasoning for its own
+    // analogous character-set check
     if (!InternalUtils.INFO_PATTERN.matcher(id).matches()) {
       throw new VcfFormatException(getLabel() + " ID \"" + id + "\" does not match the required tag-name " +
           "grammar (must start with a letter or underscore, followed only by letters, digits, underscores, " +

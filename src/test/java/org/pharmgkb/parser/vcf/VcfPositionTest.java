@@ -857,8 +857,8 @@ public class VcfPositionTest {
 
   @Test
   public void testClearingFiltersFromFailedProducesNoneNotPassed() {
-    // regression test: this is the original bug findings19.md item 1 investigated -- clearing a position that
-    // actually FAILED a filter (not one that started as NONE) previously left a stale "true" default behind and
+    // regression test: clearing a position that actually FAILED a filter (not one that started as NONE)
+    // previously left a stale "true" default behind and
     // reported PASSED, which contradicts bcftools 1.23.1's "annotate -x FILTER" convention (a real filter code
     // becomes "." when cleared, never "PASS"). Verified live against the compiled library before this fix:
     // constructing with FILTER=q10 then clearing+validating produced PASSED, not NONE.

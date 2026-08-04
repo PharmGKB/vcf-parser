@@ -28,8 +28,8 @@ public class FormatMetadata extends IdDescriptionMetadata {
   public FormatMetadata(String id, String description, String number, FormatType type) {
     super("FORMAT", id);
     // structurally unreachable for a whitespace- or comma-containing id: IdMetadata's own super(...) call above
-    // already throws first for either -- see findings24.md item 20 and ContigMetadata's identical strict-path
-    // reasoning for its own analogous character-set check
+    // already throws first for either -- see ContigMetadata's identical strict-path reasoning for its own
+    // analogous character-set check
     if (!InternalUtils.FORMAT_PATTERN.matcher(id).matches()) {
       throw new VcfFormatException(getLabel() + " ID \"" + id + "\" does not match the required tag-name " +
           "grammar (must start with a letter or underscore, followed only by letters, digits, underscores, " +
