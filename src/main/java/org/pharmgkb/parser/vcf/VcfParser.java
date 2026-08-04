@@ -280,7 +280,6 @@ public class VcfParser implements Closeable {
       } catch (NumberFormatException e) {
         throw new VcfFormatException("POS '" + data.get(1) + "' is not a number");
       }
-      checkPositionOrdering(chromosome, position);
 
       // REF
       String ref = data.get(3);
@@ -346,6 +345,12 @@ public class VcfParser implements Closeable {
         samples.add(sample);
       }
 
+      // only run once every check above that can reject this line -- notably VcfPosition's own structural
+      // checks and VcfSample's FORMAT/sample-arity check -- has passed, so the ordering/contiguity state
+      // reflects exactly the records delivered to the VcfLineParser below, never a line rejected before
+      // reaching it. Deliberately runs before parseLine() itself, not after: a VcfLineParser callback that
+      // throws is the caller's own problem with an already-valid record, not this parser rejecting it.
+      checkPositionOrdering(chromosome, position);
       m_vcfLineParser.parseLine(m_vcfMetadata, pos, samples);
       return true;
 

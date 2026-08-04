@@ -1111,6 +1111,145 @@ public class VcfParserTest {
   }
 
   @Test
+  void testStructurallyRejectedLineDoesNotPoisonPositionOrderingState() throws IOException {
+    // regression test: checkPositionOrdering() used to run before VcfPosition was constructed, so a line that
+    // was later structurally rejected (here, a negative POS) still permanently updated the ordering/contiguity
+    // tracking state. Using parseNextLine() directly in a catch-and-continue loop (the supported, though not
+    // separately documented, per-line recovery pattern for parseNextLine() -- m_alreadyFinished is only set on
+    // EOF, never on a caught exception -- unlike parse(), which aborts entirely on the first exception) so the
+    // rejected line's effect on later lines is observable.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      String vcf = "##fileformat=VCFv4.2\n" +
+          "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+          "1\t200\t.\tA\tT\t.\t.\t.\n" +
+          "2\t-5\t.\tA\tT\t.\t.\t.\n" +
+          "1\t250\t.\tA\tT\t.\t.\t.\n";
+      List<VcfPosition> positions = new ArrayList<>();
+      try (VcfParser parser = new VcfParser.Builder()
+          .fromReader(new BufferedReader(new StringReader(vcf)))
+          .parseWith((metadata, position, sampleData) -> positions.add(position))
+          .build()) {
+        boolean hasNext = true;
+        while (hasNext) {
+          try {
+            hasNext = parser.parseNextLine();
+          } catch (VcfFormatException ex) {
+            // catch-and-continue: the middle line (negative POS) is rejected but parsing continues
+          }
+        }
+      }
+      // only the two structurally valid records were delivered
+      assertEquals(2, positions.size());
+      // the rejected CHROM 2 line must never have been treated as a real interruption of CHROM 1's contiguity
+      assertFalse(appender.anyMessageContains("CHROM 1 is not contiguous"));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testSampleArityRejectedLineDoesNotPoisonPositionOrderingState() throws IOException {
+    // same regression as testStructurallyRejectedLineDoesNotPoisonPositionOrderingState above, but for the
+    // rejection thrown by VcfSample's own constructor (FORMAT/sample-value-count mismatch) rather than
+    // VcfPosition's -- this throw point is reached after VcfPosition has already been successfully constructed,
+    // so checkPositionOrdering() must run only after this check too, not merely after VcfPosition's.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      String vcf = "##fileformat=VCFv4.2\n" +
+          "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+          "1\t200\t.\tA\tT\t.\t.\t.\tGT\t0/1\n" +
+          "2\t300\t.\tA\tT\t.\t.\t.\tGT\t0/1:5\n" +
+          "1\t250\t.\tA\tT\t.\t.\t.\tGT\t0/1\n";
+      List<VcfPosition> positions = new ArrayList<>();
+      try (VcfParser parser = new VcfParser.Builder()
+          .fromReader(new BufferedReader(new StringReader(vcf)))
+          .parseWith((metadata, position, sampleData) -> positions.add(position))
+          .build()) {
+        boolean hasNext = true;
+        while (hasNext) {
+          try {
+            hasNext = parser.parseNextLine();
+          } catch (VcfFormatException ex) {
+            // catch-and-continue: the middle line (2 sample values for 1 FORMAT key) is rejected but parsing
+            // continues
+          }
+        }
+      }
+      // only the two structurally valid records were delivered
+      assertEquals(2, positions.size());
+      // the rejected CHROM 2 line must never have been treated as a real interruption of CHROM 1's contiguity;
+      // unlike testStructurallyRejectedLineDoesNotPoisonPositionOrderingState above, this fixture declares a
+      // sample column with no corresponding ##SAMPLE metadata, which triggers its own unrelated "N samples in
+      // the header but 0 in the metadata" warning -- so this test checks the specific message, not the absence
+      // of any warning at all
+      assertFalse(appender.anyMessageContains("CHROM 1 is not contiguous"));
+      assertFalse(appender.anyMessageContains("out of order"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testStructurallyRejectedLineDoesNotPoisonLastPositionWithinSameChromosome() throws IOException {
+    // a third variant of the same regression: the rejected line here shares its CHROM with the surrounding
+    // valid records (rather than differing, as in testStructurallyRejectedLineDoesNotPoisonPositionOrderingState
+    // above), so this specifically targets m_lastPosition poisoning rather than m_closedChromosomes. The
+    // rejected line's own POS (99999) is a well-formed, large positive number that must never become the
+    // tracked "last position" -- if it did, the next valid record's real POS (250) would be smaller than it and
+    // incorrectly warn as out of order. REF "Z" (not a valid IUPAC base) is what makes the middle line rejected,
+    // not POS itself.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      String vcf = "##fileformat=VCFv4.2\n" +
+          "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+          "1\t200\t.\tA\tT\t.\t.\t.\n" +
+          "1\t99999\t.\tZ\tT\t.\t.\t.\n" +
+          "1\t250\t.\tA\tT\t.\t.\t.\n";
+      List<VcfPosition> positions = new ArrayList<>();
+      try (VcfParser parser = new VcfParser.Builder()
+          .fromReader(new BufferedReader(new StringReader(vcf)))
+          .parseWith((metadata, position, sampleData) -> positions.add(position))
+          .build()) {
+        boolean hasNext = true;
+        while (hasNext) {
+          try {
+            hasNext = parser.parseNextLine();
+          } catch (VcfFormatException ex) {
+            // catch-and-continue: the middle line (invalid REF "Z") is rejected but parsing continues
+          }
+        }
+      }
+      // only the two structurally valid records were delivered
+      assertEquals(2, positions.size());
+      // POS 250 must still be compared against POS 200 (the last real record), not the rejected line's POS 99999
+      assertFalse(appender.anyMessageContains("out of order"));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   void testRsidsOnlyTreatsDiscardedLineAsIfItNeverExisted() throws IOException {
     // regression test for a design reversal: rsidsOnly() now discards a non-rsID line via an early return in
     // parseNextLine() BEFORE CHROM/POS are even examined, not after (as an earlier version of this check did).
