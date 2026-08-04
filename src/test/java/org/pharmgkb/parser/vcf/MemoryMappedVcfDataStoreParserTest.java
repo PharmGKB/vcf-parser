@@ -34,6 +34,52 @@ public class MemoryMappedVcfDataStoreParserTest {
   }
 
   @Test
+  public void testSetMetadataRejectsNullInsteadOfSilentlyAccepting() {
+    // regression test, called directly (rather than only transitively through parseLine()/parseMetadata()):
+    // before this fix, a null metadata was accepted silently and stored, so a later by-name lookup
+    // (getSampleForId, and the String-sampleId overloads of getSampleAtLocus/getGenotypeForId/
+    // getGenotypeAtLocus) raw-crashed with NullPointerException at that unrelated call site instead of at the
+    // actual mistake here. setMetadata() is package-protected, accessible here since this test is in the
+    // same package.
+    assertThrows(VcfFormatException.class, () -> new MemoryMappedVcfDataStore().setMetadata(null));
+  }
+
+  @Test
+  public void testParseLineRejectsNullMetadataInsteadOfCorruptingLaterLookups() {
+    MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    assertThrows(VcfFormatException.class,
+        () -> lineParser.parseLine(null, position, Collections.emptyList()));
+  }
+
+  @Test
+  public void testParseMetadataRejectsNullInsteadOfSilentlyAccepting() {
+    MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+    assertThrows(VcfFormatException.class, () -> lineParser.parseMetadata(null));
+  }
+
+  @Test
+  public void testParseLineRejectsNullPositionInsteadOfNullPointerException() {
+    // regression test: before this fix, a null position raw-crashed with NullPointerException at
+    // position.getIds() in the FAIL-mode duplicate-ID check loop, instead of being rejected here
+    MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class,
+        () -> lineParser.parseLine(metadata, null, Collections.emptyList()));
+  }
+
+  @Test
+  public void testParseLineRejectsNullSampleDataInsteadOfStoringNullElement() {
+    // regression test: before this fix, a null sampleData list was accepted and stored as a literal null
+    // element inside getSamplesAtLocus()'s per-locus List<List<VcfSample>>, crashing later at
+    // getSampleAtLocus/getGenotypeAtLocus with NullPointerException instead of here
+    MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    assertThrows(VcfFormatException.class, () -> lineParser.parseLine(metadata, position, null));
+  }
+
+  @Test
   public void test() throws IOException {
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream(
         "/vcfposition.vcf")))) {

@@ -76,6 +76,15 @@ public class MemoryMappedVcfDataStore {
   }
 
   protected void setMetadata(VcfMetadata metadata) {
+    if (metadata == null) {
+      // rejected here, not left to surface later, because a null m_metadata silently corrupts every
+      // sample-index lookup (getSampleForId, and the String-sampleId overloads of getSampleAtLocus/
+      // getGenotypeForId/getGenotypeAtLocus) with an NPE at that unrelated call site instead of at the actual
+      // mistake. This method is called from both parseLine() and parseMetadata(), so the message can't name
+      // either specific caller -- see Genotype's own "alleles is null"/"phasedBoundaries is null" below for
+      // the same caller-agnostic phrasing convention.
+      throw new VcfFormatException("metadata is null");
+    }
     m_metadata = metadata;
   }
 

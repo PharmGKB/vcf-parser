@@ -56,8 +56,15 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
   @Override
   public void parseLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
 
-    // fallback in case parseMetadata was not invoked (e.g. parseLine called directly, not through VcfParser)
+    // fallback in case parseMetadata was not invoked (e.g. parseLine called directly, not through VcfParser);
+    // also rejects a null metadata immediately, before position/sampleData are ever touched below
     m_dataStore.setMetadata(metadata);
+    if (position == null) {
+      throw new VcfFormatException("parseLine() was called with a null position");
+    }
+    if (sampleData == null) {
+      throw new VcfFormatException("parseLine() was called with a null sample data list");
+    }
 
     // check every ID for a FAIL-mode collision before mutating anything, so a rejected record is never partially
     // committed -- neither its locus entry nor any of its (possibly several) IDs. This must also catch a
