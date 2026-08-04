@@ -11,25 +11,28 @@ The goal is maximum practical compliance with the target VCF specification while
 
 When newer 4.x VCF specifications clarify an ambiguity not resolved by the target VCF specification, use them as guidance. Do not let newer-version rules override target VCF specification semantics for a conflict.
 
+Minimum supported bcftools version: 1.18.
+
+VCF specifications can be found at https://github.com/samtools/hts-specs.  Use the `.tex` instead of `.pdf` formatted files.
+
+### Spec Ambiguity Decision Hierarchy
+
+Before treating something as a new problem to investigate from scratch, check whether it's already resolved:
+
+- **`HTS_SPECS_BASELINE_STATUS.md`** -- before treating a baseline entry as a new problem to fix. Catalogs every current baseline entry's status (permanently accepted / filed upstream / candidate for filing) and is bound to a specific `htsSpecsPinnedSha`; treat it as stale if that pin has changed since.
+- **`WONT_FIX.md`** -- before treating any other code-quality observation as a new finding. Catalogs known issues deliberately left unaddressed, with the reasoning, so they aren't rediscovered and re-proposed.
+- **`VCF_SPEC_AMBIGUITIES.md`** -- before re-deriving a decision to resolve a VCF spec ambiguity via bcftools/vcf_validator consultation. Catalogs every ambiguity already resolved this way, so the next person who hits the same question doesn't have to re-run the same tool checks.
+- **`VALIDATION_PHILOSOPHY.md`** -- before touching any validation logic. States, as a stable design contract, when this library rejects content immediately, when it warns and recovers, and when it skips validation altogether. The Parser Validation Policy, Writer Validation and Round-Trip Policy, and Public API Null-Safety Policy sections below are each an application of that file's principles to a specific surface.
+
 hts-specs also publishes an official VCF conformance fixture suite (`test/vcf/{version}/{passed,failed}/*.vcf`; wired into this project as the opt-in `./gradlew htsSpecsTest` task, see README). Treat this suite as part of the spec: a `failed/*.vcf` fixture's `##CauseOfFailure=` line documents the spec authors' own interpretation of what makes a file invalid, and is authoritative guidance on the same footing as spec prose or a newer-version clarifying table -- consult it when the target VCF specification's text is ambiguous or silent.
-
-Before treating a baseline entry as a new problem to fix, check `HTS_SPECS_BASELINE_STATUS.md` -- it catalogs every current baseline entry's status (permanently accepted / filed upstream / candidate for filing) and is bound to a specific `htsSpecsPinnedSha`; treat it as stale if that pin has changed since.
-
-Before treating any other code-quality observation as a new finding, check `WONT_FIX.md` -- it catalogs known issues deliberately left unaddressed, with the reasoning, so they aren't rediscovered and re-proposed.
-
-Before re-deriving a decision to resolve a VCF spec ambiguity via bcftools/vcf_validator consultation, check `VCF_SPEC_AMBIGUITIES.md` -- it catalogs every ambiguity already resolved this way, so the next person who hits the same question doesn't have to re-run the same tool checks.
-
-Read `VALIDATION_PHILOSOPHY.md` before touching any validation logic -- it states, as a stable design contract, when this library rejects content immediately, when it warns and recovers, and when it skips validation altogether. The Parser Validation Policy, Writer Validation and Round-Trip Policy, and Public API Null-Safety Policy sections below are each an application of that file's principles to a specific surface.
 
 If still in doubt, consult bcftools behavior.  Decisions made this way should be documented and have a regression fixture demonstrating the behavior.  If bcftools was consulted, include bcftools version.  If the decision should be re-checked on a bcftools upgrade (round-trip-critical decisions especially), also index it in `BCFTOOLS_VERSION_DEPENDENCIES.md`.
 
 When hts-specs itself is silent (no fixture covers the exact case), running vcf_validator (the EBI reference validator; the tool hts-specs itself uses to generate its `passed`/`failed` corpus) directly against a hand-built input is informative but is *not* equivalent to a documented hts-specs fixture -- cite it as a direct tool run ("vcf_validator `<version>`"), not as "the suite says." vcf_validator tends to be stricter than bcftools on zero-length-field cases in structural fields (ID/FILTER/ALT/INFO) but does not apply the same rigor to sample-column sub-structure (GT, reserved FORMAT values) -- don't treat a vcf_validator "invalid" verdict there as load-bearing. When bcftools and vcf_validator disagree, bcftools remains the tie-breaker per the hierarchy above, but document the disagreement rather than silently picking a side.
 
-When code behavior is guided by a specific spec passage (a table, a sentence, a worked example) rather than being self-evident from the VCF column/record structure, cite it in a code comment specific enough that a future agent can find the exact passage without re-deriving it: name the spec file (e.g. `VCFv4.3.tex`), and the section/table/example it comes from or a short verbatim quote -- not just "per the VCF spec" or a bare version number. When the target VCF specification is silent and a later version is used as clarifying guidance (per the paragraph above), say so explicitly in the comment (e.g. "VCFv4.2 does not table this; VCFv4.3's Reserved Genotype Keys table gives Number=G") so the reasoning survives independently of whichever agent wrote it. The same specificity requirement applies when hts-specs' conformance suite is the source of a decision: name the fixture path (e.g. `test/vcf/4.2/failed/failed_meta_alt_001.vcf`) and quote or summarize its `##CauseOfFailure=` line -- not just "per hts-specs" or "the conformance suite requires it".
+### Spec Citation Discipline
 
-Minimum supported bcftools version: 1.18.
-
-VCF specifications can be found at https://github.com/samtools/hts-specs.  Use the `.tex` instead of `.pdf` formatted files.
+When code behavior is guided by a specific spec passage (a table, a sentence, a worked example) rather than being self-evident from the VCF column/record structure, cite it in a code comment specific enough that a future agent can find the exact passage without re-deriving it: name the spec file (e.g. `VCFv4.3.tex`), and the section/table/example it comes from or a short verbatim quote -- not just "per the VCF spec" or a bare version number. When the target VCF specification is silent and a later version is used as clarifying guidance (per the Decision Hierarchy above), say so explicitly in the comment (e.g. "VCFv4.2 does not table this; VCFv4.3's Reserved Genotype Keys table gives Number=G") so the reasoning survives independently of whichever agent wrote it. The same specificity requirement applies when hts-specs' conformance suite is the source of a decision: name the fixture path (e.g. `test/vcf/4.2/failed/failed_meta_alt_001.vcf`) and quote or summarize its `##CauseOfFailure=` line -- not just "per hts-specs" or "the conformance suite requires it".
 
 
 ### Parser Validation Policy
