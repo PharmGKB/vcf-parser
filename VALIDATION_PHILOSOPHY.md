@@ -121,6 +121,18 @@ vs-parsing distinction; see that policy for why these specific fields stay uncon
   (`addListOrElse`, `addInfoOrDot`, `addFormatConditionally`, and the raw-property-line writer all throw on a
   null entry regardless of `validateBeforeWrite()`): principle 3 exempts the default path from re-doing
   *VCF-semantic* validation the parser or an earlier check already performed, not from basic Java null-safety.
+  This generalizes beyond `VcfWriter` to the whole public API surface: JSpecify's `@Nullable` annotations are
+  documentation only in this codebase (no compile-time or runtime enforcement), so a caller can always pass
+  `null` regardless of a parameter's declared type -- a public constructor, static factory, or method must
+  defend against that itself rather than relying on the annotation. `AGENTS.md`'s Public API Null-Safety
+  Policy states the concrete per-shape rules this produces.
+- A class or method's `@RestrictedApi`/`@hidden` disclaimer (e.g. `InternalUtils`, `VcfMetadata.validateAlt`,
+  `VcfFloat.parse(String, VcfWarnings)`) is the identical kind of documentation-only signal: no ErrorProne
+  plugin is configured in this codebase, so nothing enforces it at compile time or runtime either. It is a
+  purely documentation-level exemption from the null-safety policy above, not a technical guarantee -- a
+  caller who calls one of these methods directly despite the disclaimer and hits a raw `NullPointerException`
+  is getting an acceptable outcome for ignoring an explicit "not supported" contract. See `AGENTS.md`'s
+  Null-Safety Policy for the current list of exempt members.
 
 ## Known, permanent deviations
 

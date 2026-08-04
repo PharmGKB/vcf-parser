@@ -70,8 +70,9 @@ already-valid input" exemption for one specific case (a live-mutable value reach
 The same underlying rule applies across this library's whole public API surface, not just that one path: a
 public constructor, static factory, or method whose parameter is typed as a non-`@Nullable` reference (the
 default when no `@Nullable` annotation is present) must not raw-crash with `NullPointerException` when a
-caller passes `null` at runtime -- JSpecify annotations are documentation only in this codebase (no
-compile-time or runtime enforcement), so a caller can always pass `null` regardless of the declared type.
+caller passes `null` at runtime. See `VALIDATION_PHILOSOPHY.md`'s "How the principles interact" section for
+why this is a distinct axis from that file's four principles and why annotations alone can't be relied on
+here. The rest of this section states the concrete per-shape rules that follow from it.
 
 - For a method that constructs or mutates state (a constructor, a `Builder` setter that stores
   caller-supplied VCF content, an `addXxx`/`putXxx`/factory method), reject a `null` argument immediately
@@ -100,16 +101,12 @@ compile-time or runtime enforcement), so a caller can always pass `null` regardl
   `VcfMetadata.validateAlt`/`isEmptyMetadataValue`/`collidesWithAttributeListGrammar`, and
   `VcfFloat.parse(String, VcfWarnings)`/`isSpecialValue` (the same situation, on otherwise fully-supported
   classes) -- is exempt from this policy's null-rejection requirement. All three are marked with
-  `@RestrictedApi`/`@hidden` and a class- or method-level Javadoc disclaimer; `@RestrictedApi` has no
-  compile-time or runtime enforcement in this codebase (no ErrorProne plugin is configured), so this is a
-  purely documentation-level exemption, exactly like the JSpecify annotations this whole policy exists
-  because of. A caller who calls one of these methods directly despite the documentation and hits a raw
-  `NullPointerException` is getting an acceptable outcome for ignoring an explicit "not supported" contract
-  -- unlike anywhere else this policy applies. Two of `InternalUtils`'s
-  null-guards were judged genuinely load-bearing regardless of this exemption and were kept: `unquote` (see
-  its own comment) and the per-element checks in `dropEmptyEntries`/`fillEmptyEntriesWithDot` (reachable via
-  `VcfPosition`'s documented live-mutation contract on its own genuinely-supported getters, not through
-  `InternalUtils` itself).
+  `@RestrictedApi`/`@hidden` and a class- or method-level Javadoc disclaimer; see `VALIDATION_PHILOSOPHY.md`
+  for why that disclaimer is a documentation-only exemption, not a technical guarantee. Two of
+  `InternalUtils`'s null-guards were judged genuinely load-bearing regardless of this exemption and were
+  kept: `unquote` (see its own comment) and the per-element checks in
+  `dropEmptyEntries`/`fillEmptyEntriesWithDot` (reachable via `VcfPosition`'s documented live-mutation
+  contract on its own genuinely-supported getters, not through `InternalUtils` itself).
 
 
 ## Repository Guidelines
@@ -118,7 +115,7 @@ compile-time or runtime enforcement), so a caller can always pass `null` regardl
 - **Keep parser changes streaming-friendly**. Do not load an entire VCF into memory unless the affected class explicitly provides an in-memory data store.
 - Commit messages use conventional-commits style (`type(scope): summary`). `scope` is drawn from `parser`, `writer`, `memoryMappedImpl`, and `spec` -- never a class name. `org.pharmgkb.parser.vcf.model` classes use `parser` (there is no separate `model` scope); `VcfWriter.java` and its `Builder` use `writer`; `MemoryMappedVcfDataStore.java`/`MemoryMappedVcfLineParser.java` use `memoryMappedImpl`, including doc-only changes to either; `spec` covers commits touching `src/test/java/org/pharmgkb/parser/vcf/spec/` (the hts-specs conformance test infrastructure). A commit touching more than one of these areas may list multiple, comma-separated (e.g. `type(parser,writer): summary`), rather than picking one to cover the rest.
 - A single logical change should land as one commit. Squash incidental churn (fix-loop iterations, a reconsidered design, a follow-up correction) into the commit for the item it belongs to rather than leaving it split across commits, and bundle several individually-trivial fixes -- pure documentation/comment changes especially -- into one commit even when they're unrelated to each other. Reserve a dedicated commit for anything with a real design decision, a behavior change, or genuine risk, so it can be reviewed and reverted independently. See `SOP.md`'s Standing Conventions for the squashing/bundling mechanics used when following the findings-review batch workflow.
-- A rename (a class, method, or other identifier that appears by name in prose, not just in code) isn't finished until the repo's own tracked `*.md` docs are checked for the old name too -- at minimum `AGENTS.md` itself, `WONT_FIX.md`, `VALIDATION_PHILOSOPHY.md`, `EMPTY_FIELD_HANDLING.md`, `DUPLICATE_METADATA_ID_HANDLING.md`, `HTS_SPECS_BASELINE_STATUS.md`, `VCF_SPEC_AMBIGUITIES.md`, `BCFTOOLS_VERSION_DEPENDENCIES.md`, and `README.md` (not `CHANGELOG.md`, which is semantic-release-owned history, never hand-edited). `BCFTOOLS_VERSION_DEPENDENCIES.md` and `VCF_SPEC_AMBIGUITIES.md` in particular name methods/classes by exact name throughout and are exactly as rename-fragile as the others. A code-scoped diff review only covers the code; a doc citing the old identifier in an example or a cross-reference goes stale silently and won't surface unless something specifically greps for it. This slipped through once: `AGENTS.md`, `EMPTY_FIELD_HANDLING.md`, and `WONT_FIX.md` all still named `VcfUtils` after it was renamed to `InternalUtils`, caught only because a broad final-review pass happened to check; and again when `VALIDATION_PHILOSOPHY.md` kept describing a since-changed method visibility, caught only during a later documentation audit.
+- A rename (a class, method, or other identifier that appears by name in prose, not just in code) isn't finished until the repo's own tracked `*.md` docs are checked for the old name too -- at minimum `AGENTS.md` itself, `WONT_FIX.md`, `VALIDATION_PHILOSOPHY.md`, `EMPTY_FIELD_HANDLING.md`, `DUPLICATE_METADATA_ID_HANDLING.md`, `HTS_SPECS_BASELINE_STATUS.md`, `VCF_SPEC_AMBIGUITIES.md`, `BCFTOOLS_VERSION_DEPENDENCIES.md`, and `README.md` (not `CHANGELOG.md`, which is semantic-release-owned history, never hand-edited). `BCFTOOLS_VERSION_DEPENDENCIES.md` and `VCF_SPEC_AMBIGUITIES.md` in particular name methods/classes by exact name throughout and are exactly as rename-fragile as the others. A code-scoped diff review only covers the code; a doc citing the old identifier in an example or a cross-reference goes stale silently and won't surface unless something specifically greps for it.
 
 ### Repository Layout
 
