@@ -195,12 +195,21 @@ tasks.register('htsSpecsUpdateBaseline', Test) {
   systemProperty 'htsSpecsUpdateBaseline', 'true'
 }
 
+tasks.register('bcftoolsDependencyTest', Test) {
+  testClassesDirs = sourceSets.test.output.classesDirs
+  classpath = sourceSets.test.runtimeClasspath
+  useJUnitPlatform {
+    includeTags 'bcftools-dependency'
+  }
+}
+
 test {
   // pgkb-build.gradle's tasks.withType(Test).configureEach { useJUnitPlatform() } also applies to this task (lazily,
   // so it may run before or after this block); this works because repeated useJUnitPlatform() calls layer their
   // JUnitPlatformOptions instead of resetting them.
   useJUnitPlatform {
     excludeTags 'hts-specs'
+    excludeTags 'bcftools-dependency'
   }
 }
 
