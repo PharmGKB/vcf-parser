@@ -35,7 +35,7 @@ before assuming it generalizes to a similar-looking case.
 | `##contig` ID character set | SAM reference-name rules; does not extend to INFO/FORMAT tag names | ✅ |
 | `##contig` extra/unmodeled attributes | Allowed, no warning | ✅ |
 | Generic metadata property with an empty value | Drop (deliberately stricter than bcftools) | ✅ |
-| `##pedigreeDB`/`##assembly` bracket collision (`<>`) | Reject uniformly for any key | ✅ |
+| `##pedigreeDB`/`##assembly` bracket-wrapped values colliding with attribute-list grammar | Reject when empty or no `=` inside the brackets; accept when it contains `=` | ✅ |
 | FORMAT declared but zero sample columns | Reject (both tools agree) | ✅ |
 | Empty sample name in `#CHROM` header | Reject (both tools agree) | ✅ |
 | CHROM contiguity / POS ordering within a CHROM block | Warn, don't reject (neither tool rejects it) | ✅ |
@@ -140,21 +140,22 @@ bcftools here, consistent with this library's established stricter-than-bcftools
 ID/FILTER/ALT list entry (see `EMPTY_FIELD_HANDLING.md`'s "position-independent list: drop" strategy).
 Implemented in `VcfMetadata`'s `isEmptyMetadataValue`-gated property setters.
 
-### `##pedigreeDB`/`##assembly` bracket collision (`<>`)
+### `##pedigreeDB`/`##assembly` bracket-wrapped values colliding with attribute-list grammar
 
 `##pedigreeDB=<>` (hts-specs' `failed_meta_pedigreedb_001.vcf`) has no meaningful content between the
-brackets. Confirmed directly that this isn't pedigreeDB-specific: bcftools rejects `##assembly=<>` (and, by
-the same htslib attribute-list-grammar collision, any other key) with `"[E::bcf_hdr_parse_line] Could not
-parse the header line"`.
+brackets. Confirmed directly that this isn't pedigreeDB-specific, and isn't limited to the empty case either:
+bcftools 1.23.1 rejects both `##assembly=<>` (empty content) and `##pedigreeDB=<http://foo.com>` (non-empty
+content with no `=` anywhere in it) with `"[E::bcf_hdr_parse_line] Could not parse the header line"` — by the
+same htslib attribute-list-grammar collision, regardless of which key it's attached to.
 
-**Decision:** `VcfMetadata.isEmptyMetadataValue` treats a bare `<>` as empty for every key uniformly, not just
-`pedigreeDB`. Separately: `##pedigreeDB`'s own spec template (VCFv4.2/4.3/4.4.tex) is bracket-*less*
-(`##pedigreeDB=URL`), confirmed by hts-specs' own passing fixture and live bcftools acceptance of the
-bracket-less form — brackets are not this field's own syntax, unlike `##ALT`/`##INFO`'s `<ID=...>` structure.
-**Known, deliberately out-of-scope gap:** a non-empty bracket-wrapped `##pedigreeDB` value (e.g.
-`<ftp://example.com/db>`) is still accepted today as a literal string, even though bcftools would also reject
-it via that same grammar collision — not fixed as part of this decision. (This gap isn't yet recorded in
-`WONT_FIX.md` — worth adding there if it's confirmed to stay unaddressed.)
+**Decision:** `VcfMetadata.collidesWithAttributeListGrammar(String value)` rejects a bracket-wrapped value
+whose trimmed inner content is either empty or contains no `=` (covering both `##assembly=<>` and
+`##pedigreeDB=<http://foo.com>`). A bracket-wrapped value containing at least one `=` (e.g. `<ID=foo>`, or the
+real hts-specs `##META=<ID=Assay,Number=.,Type=String,Values=[WholeGenome, Exome]>` fixture) is left alone,
+since bcftools genuinely accepts and round-trips both. Separately: `##pedigreeDB`'s own spec template
+(VCFv4.2/4.3/4.4.tex) is bracket-*less* (`##pedigreeDB=URL`), confirmed by hts-specs' own passing fixture and
+live bcftools acceptance of the bracket-less form — brackets are not this field's own syntax, unlike
+`##ALT`/`##INFO`'s `<ID=...>` structure.
 
 ## Data-line / record structure
 

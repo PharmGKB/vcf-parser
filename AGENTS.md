@@ -19,7 +19,7 @@ Before treating any other code-quality observation as a new finding, check `WONT
 
 Read `VALIDATION_PHILOSOPHY.md` before touching any validation logic -- it states, as a stable design contract, when this library rejects content immediately, when it warns and recovers, and when it skips validation altogether. The Parser Validation Policy, Writer Validation and Round-Trip Policy, and Public API Null-Safety Policy sections below are each an application of that file's principles to a specific surface.
 
-If still in doubt, consult bcftools behavior.  Decisions made this way should be documented and have a regression fixture demonstrating the behavior.  If bcftools was consulted, include bcftools version.
+If still in doubt, consult bcftools behavior.  Decisions made this way should be documented and have a regression fixture demonstrating the behavior.  If bcftools was consulted, include bcftools version.  If the decision should be re-checked on a bcftools upgrade (round-trip-critical decisions especially), also index it in `BCFTOOLS_VERSION_DEPENDENCIES.md`.
 
 When hts-specs itself is silent (no fixture covers the exact case), running vcf_validator (the EBI reference validator; the tool hts-specs itself uses to generate its `passed`/`failed` corpus) directly against a hand-built input is informative but is *not* equivalent to a documented hts-specs fixture -- cite it as a direct tool run ("vcf_validator `<version>`"), not as "the suite says." vcf_validator tends to be stricter than bcftools on zero-length-field cases in structural fields (ID/FILTER/ALT/INFO) but does not apply the same rigor to sample-column sub-structure (GT, reserved FORMAT values) -- don't treat a vcf_validator "invalid" verdict there as load-bearing. When bcftools and vcf_validator disagree, bcftools remains the tie-breaker per the hierarchy above, but document the disagreement rather than silently picking a side.
 
@@ -95,18 +95,18 @@ compile-time or runtime enforcement), so a caller can always pass `null` regardl
 - A class or method explicitly documented as not part of this library's supported public API -- currently
   `InternalUtils` (renamed from `VcfUtils`; most of its members are `public` only because Java has no
   cross-package-within-a-library visibility modifier, not because they're designed for external callers)
-  and `VcfMetadata.validateAlt`/`isEmptyMetadataValue` (the same situation, on an otherwise fully-supported
-  class) -- is exempt from this policy's null-rejection requirement. Both are marked with
-  `@RestrictedApi`/`@hidden` and a class- or method-level Javadoc disclaimer; `@RestrictedApi` has no
-  compile-time or runtime enforcement in this codebase (no ErrorProne plugin is configured), so this is a
-  purely documentation-level exemption, exactly like the JSpecify annotations this whole policy exists
-  because of. A caller who calls one of these methods directly despite the documentation and hits a raw
-  `NullPointerException` is getting an acceptable outcome for ignoring an explicit "not supported" contract
-  -- unlike anywhere else this policy applies. Two of `InternalUtils`'s null-guards were judged genuinely
-  load-bearing regardless of this exemption and were kept: `unquote` (see its own comment) and the
-  per-element checks in `dropEmptyEntries`/`fillEmptyEntriesWithDot` (reachable via `VcfPosition`'s
-  documented live-mutation contract on its own genuinely-supported getters, not through `InternalUtils`
-  itself).
+  and `VcfMetadata.validateAlt`/`isEmptyMetadataValue`/`collidesWithAttributeListGrammar` (the same
+  situation, on an otherwise fully-supported class) -- is exempt from this policy's null-rejection
+  requirement. Both are marked with `@RestrictedApi`/`@hidden` and a class- or method-level Javadoc
+  disclaimer; `@RestrictedApi` has no compile-time or runtime enforcement in this codebase (no ErrorProne
+  plugin is configured), so this is a purely documentation-level exemption, exactly like the JSpecify
+  annotations this whole policy exists because of. A caller who calls one of these methods directly despite
+  the documentation and hits a raw `NullPointerException` is getting an acceptable outcome for ignoring an
+  explicit "not supported" contract -- unlike anywhere else this policy applies. Two of `InternalUtils`'s
+  null-guards were judged genuinely load-bearing regardless of this exemption and were kept: `unquote` (see
+  its own comment) and the per-element checks in `dropEmptyEntries`/`fillEmptyEntriesWithDot` (reachable via
+  `VcfPosition`'s documented live-mutation contract on its own genuinely-supported getters, not through
+  `InternalUtils` itself).
 
 
 ## Repository Guidelines
@@ -115,7 +115,7 @@ compile-time or runtime enforcement), so a caller can always pass `null` regardl
 - **Keep parser changes streaming-friendly**. Do not load an entire VCF into memory unless the affected class explicitly provides an in-memory data store.
 - Commit messages use conventional-commits style (`type(scope): summary`). `scope` is drawn from `parser`, `writer`, `memoryMappedImpl`, and `spec` -- never a class name. `org.pharmgkb.parser.vcf.model` classes use `parser` (there is no separate `model` scope); `VcfWriter.java` and its `Builder` use `writer`; `MemoryMappedVcfDataStore.java`/`MemoryMappedVcfLineParser.java` use `memoryMappedImpl`, including doc-only changes to either; `spec` covers commits touching `src/test/java/org/pharmgkb/parser/vcf/spec/` (the hts-specs conformance test infrastructure). A commit touching more than one of these areas may list multiple, comma-separated (e.g. `type(parser,writer): summary`), rather than picking one to cover the rest.
 - A single logical change should land as one commit. Squash incidental churn (fix-loop iterations, a reconsidered design, a follow-up correction) into the commit for the item it belongs to rather than leaving it split across commits, and bundle several individually-trivial fixes -- pure documentation/comment changes especially -- into one commit even when they're unrelated to each other. Reserve a dedicated commit for anything with a real design decision, a behavior change, or genuine risk, so it can be reviewed and reverted independently. See `SOP.md`'s Standing Conventions for the squashing/bundling mechanics used when following the findings-review batch workflow.
-- A rename (a class, method, or other identifier that appears by name in prose, not just in code) isn't finished until the repo's own tracked `*.md` docs are checked for the old name too -- at minimum `AGENTS.md` itself, `WONT_FIX.md`, `EMPTY_FIELD_HANDLING.md`, `DUPLICATE_METADATA_ID_HANDLING.md`, `HTS_SPECS_BASELINE_STATUS.md`, and `README.md` (not `CHANGELOG.md`, which is semantic-release-owned history, never hand-edited). A code-scoped diff review only covers the code; a doc citing the old identifier in an example or a cross-reference goes stale silently and won't surface unless something specifically greps for it. This slipped through once: `AGENTS.md`, `EMPTY_FIELD_HANDLING.md`, and `WONT_FIX.md` all still named `VcfUtils` after it was renamed to `InternalUtils`, caught only because a broad final-review pass happened to check.
+- A rename (a class, method, or other identifier that appears by name in prose, not just in code) isn't finished until the repo's own tracked `*.md` docs are checked for the old name too -- at minimum `AGENTS.md` itself, `WONT_FIX.md`, `EMPTY_FIELD_HANDLING.md`, `DUPLICATE_METADATA_ID_HANDLING.md`, `HTS_SPECS_BASELINE_STATUS.md`, `BCFTOOLS_VERSION_DEPENDENCIES.md`, and `README.md` (not `CHANGELOG.md`, which is semantic-release-owned history, never hand-edited). `BCFTOOLS_VERSION_DEPENDENCIES.md` in particular names test methods by exact name and is exactly as rename-fragile as the others. A code-scoped diff review only covers the code; a doc citing the old identifier in an example or a cross-reference goes stale silently and won't surface unless something specifically greps for it. This slipped through once: `AGENTS.md`, `EMPTY_FIELD_HANDLING.md`, and `WONT_FIX.md` all still named `VcfUtils` after it was renamed to `InternalUtils`, caught only because a broad final-review pass happened to check.
 
 ### Repository Layout
 

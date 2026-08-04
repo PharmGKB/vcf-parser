@@ -454,8 +454,8 @@ public class VcfMetadata {
       return;
     }
     if (collidesWithAttributeListGrammar(value)) {
-      warnOrThrow(m_warnings, "Metadata property \"assembly\" is wrapped in angle brackets, which bcftools " +
-          "cannot parse as a generic property value, and was dropped: {}", value);
+      warnOrThrow(m_warnings, "Metadata property \"assembly\" is wrapped in angle brackets with no key=value " +
+          "content, which bcftools cannot parse as a generic property value, and was dropped: {}", value);
       return;
     }
     m_properties.put("assembly", value);
@@ -470,7 +470,8 @@ public class VcfMetadata {
     // "##pedigreeDB=URL". hts-specs' own passed/passed_meta_pedigreedb.vcf fixture (all versions) is bracket-less
     // and expected to parse; confirmed bcftools 1.23.1 accepts it. Brackets are not required or expected here
     // (unlike ##ALT/##INFO/etc, which use <ID=...> attribute-list syntax) -- see collidesWithAttributeListGrammar's own
-    // comment for why any bracket-wrapped value (not just an empty one) is rejected below.
+    // comment for why a bracket-wrapped value whose inner content is empty or has no '=' (not just an empty value)
+    // is rejected below; a bracket-wrapped value that does contain '=' (e.g. "<ID=foo>") is accepted.
     // value is typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting
     // isEmptyMetadataValue(value) below throw a raw NullPointerException at value.trim()
     if (value == null) {
@@ -482,8 +483,8 @@ public class VcfMetadata {
       return;
     }
     if (collidesWithAttributeListGrammar(value)) {
-      warnOrThrow(m_warnings, "Metadata property \"pedigreeDB\" is wrapped in angle brackets, which bcftools " +
-          "cannot parse as a generic property value, and was dropped: {}", value);
+      warnOrThrow(m_warnings, "Metadata property \"pedigreeDB\" is wrapped in angle brackets with no key=value " +
+          "content, which bcftools cannot parse as a generic property value, and was dropped: {}", value);
       return;
     }
     m_properties.put("pedigreeDB", value);
@@ -860,8 +861,8 @@ public class VcfMetadata {
       if (collidesWithAttributeListGrammar(value)) {
         // see collidesWithAttributeListGrammar's own comment: htslib special-cases any generic property value shaped
         // like this regardless of key, so this is not scoped to "assembly"/"pedigreeDB" specifically
-        warnOrThrow(m_warnings, "Metadata property \"{}\" is wrapped in angle brackets, which bcftools cannot " +
-            "parse as a generic property value, and was dropped: {}", name, value);
+        warnOrThrow(m_warnings, "Metadata property \"{}\" is wrapped in angle brackets with no key=value content, " +
+            "which bcftools cannot parse as a generic property value, and was dropped: {}", name, value);
         return this;
       }
       m_properties.put(name, value);

@@ -471,7 +471,7 @@ public class VcfWriter implements Closeable {
           // structurally-unparseable-output case AGENTS.md's Writer Validation and Round-Trip Policy calls out
           // as the one thing validateBeforeWrite() must reject rather than warn about.
           throw new VcfFormatException("Metadata property \"" + key + "\" (" + value + ") is wrapped in angle " +
-              "brackets, which bcftools cannot parse as a generic property value");
+              "brackets with no key=value content, which bcftools cannot parse as a generic property value");
         }
       }
     }

@@ -93,9 +93,10 @@ invalid:
   own `validate()` method always warns instead, matching the metadata classes above. A separate 11-argument
   overload, taking an explicit [`VcfWarnings`](#vcfwarnings-explicit-warning-routing) instance as its last
   parameter, restores exactly that warn-and-recover behavior; this is the overload `VcfParser` itself uses.
-- `VcfMetadata.Builder` throws for a missing/duplicate declaration ID, an invalid `##ALT` structural code, or
-  an empty `assembly`/`pedigreeDB` value, unless built with `.lenient(VcfWarnings)`, which restores today's
-  warn-and-keep-first behavior (matching bcftools; see
+- `VcfMetadata.Builder` throws for a missing/duplicate declaration ID, an invalid `##ALT` structural code, an
+  empty `assembly`/`pedigreeDB` value, or an `assembly`/`pedigreeDB`/other generic property value shaped like
+  an empty or no-`=` bracketed attribute list (e.g. `<>` or `<http://foo.com>`), unless built with
+  `.lenient(VcfWarnings)`, which restores today's warn-and-keep-first behavior (matching bcftools; see
   [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md)) routed to the supplied instance.
   `VcfParser`'s own internal use always calls `.lenient(...)`, so parsing a file's behavior is unchanged by
   any of this.
@@ -349,6 +350,27 @@ round-trip byte-identically, along with each entry's status and rationale — se
 Every `htsSpecsTest`/`htsSpecsUpdateBaseline` run writes two (gitignored, not committed) reports under
 `build/reports/hts-specs-conformance/`: `summary.md` (counts by version x check type) and `findings.tsv` (only
 NEW/STALE rows — empty except for the header on a clean run).
+
+
+## bcftools dependency test
+
+`./gradlew bcftoolsDependencyTest` runs `BcftoolsDependencyTest` against a real, installed `bcftools` binary
+(version 1.23.1) to verify every decision this library has made based on bcftools's specific current behavior
+— the same decisions cited throughout `VCF_SPEC_AMBIGUITIES.md` and elsewhere as "confirmed live with
+bcftools." Like `htsSpecsTest`, it is opt-in and is **not** part of the required `./gradlew test` check.
+
+- `testBcftoolsIsExpectedVersion` checks the installed `bcftools --version` output against the pinned
+  `1.23.1` independently of every other test in the class; a version mismatch here does not block the other
+  tests from running, since seeing exactly which specific behaviors changed under a new bcftools version is
+  the point of the suite.
+- A missing or unlaunchable `bcftools` binary, by contrast, fails the whole class loudly via a `@BeforeAll`
+  check — deliberate, since the task is already opt-in, so there's no risk of breaking an environment that
+  never invited this check, and a silent skip could be mistaken for "everything passed."
+- The task does not require network access: each test shells out only to a local `bcftools` binary on
+  `PATH`, never to a remote host.
+
+For the index of every decision this test class verifies, see
+[`BCFTOOLS_VERSION_DEPENDENCIES.md`](BCFTOOLS_VERSION_DEPENDENCIES.md).
 
 
 ## Get It

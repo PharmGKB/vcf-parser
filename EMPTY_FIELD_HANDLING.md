@@ -195,7 +195,13 @@ for rejection purposes, but they are still a data-loss case in practice.
   (a live-mutated empty value that looks identical to a Flag) would otherwise silently corrupt the field's
   semantic type on the default write path too, not just under full diagnostics.
 - `VcfMetadata.Builder.addRawProperty()`, and `VcfMetadata.addAssembly()` / `addPedigreeDatabase()` -- warn and
-  drop a generic metadata property with an empty value, or an empty bracket pair (`<>`), in lenient mode;
-  `Builder`'s strict default (no `.lenient(...)`) throws `VcfFormatException` for the same condition instead --
-  see `VALIDATION_PHILOSOPHY.md`. `VcfWriter.Builder.validateBeforeWrite()` runs the identical lenient-mode
-  check but only warns, without dropping.
+  drop a generic metadata property with an empty value (`isEmptyMetadataValue`), or one wrapped in angle
+  brackets whose inner content is empty or has no `=` (`collidesWithAttributeListGrammar`, e.g. `<>` or
+  `<http://foo.com>`), in lenient mode; `Builder`'s strict default (no `.lenient(...)`) throws
+  `VcfFormatException` for either condition instead -- see `VALIDATION_PHILOSOPHY.md`. The two conditions
+  differ in `VcfWriter.Builder.validateBeforeWrite()`, though: the plain-empty-value case only warns, without
+  dropping, since bcftools tolerates a plain empty value and there is no round-trip hazard; the
+  bracket-collision case instead **throws** `VcfFormatException`, since bcftools cannot parse a value shaped
+  like this back in at all -- writing it out would produce output this library's own bcftools-informed
+  decisions treat as invalid, so `validateBeforeWrite()` rejects it as structurally unparseable rather than
+  merely warning.
