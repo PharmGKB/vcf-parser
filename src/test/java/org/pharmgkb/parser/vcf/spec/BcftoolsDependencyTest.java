@@ -279,5 +279,55 @@ class BcftoolsDependencyTest {
     assertFalse(result.output().contains("length=999"), result.output());
   }
 
+  @Test
+  void testFormatDeclaredNoSampleColumnsBcftoolsHardErrors() throws IOException, InterruptedException {
+    String vcf = "##fileformat=VCFv4.2\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertTrue(result.exitCode() != 0 &&
+        result.output().contains("either FORMAT is missing or spaces are present instead of tabs"),
+        result.output());
+  }
+
+  @Test
+  void testEmptySampleNameInHeaderBcftoolsHardErrors() throws IOException, InterruptedException {
+    String vcf = "##fileformat=VCFv4.2\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t\ts2\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT\t0/1\t0/1\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertTrue(result.exitCode() != 0 && result.output().contains("Empty sample name"), result.output());
+  }
+
+  @Test
+  void testChromContiguityViolationBcftoolsDoesNotReject() throws IOException, InterruptedException {
+    // justifies this library's own warn-not-throw choice: bcftools doesn't reject a CHROM block interrupted by
+    // a different CHROM and then resumed
+    String vcf = "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000000>\n##contig=<ID=chr2,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT\t.\tPASS\t.\n" +
+        "chr2\t1\trs2\tA\tT\t.\tPASS\t.\nchr1\t2\trs3\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+  }
+
+  @Test
+  void testTrailingBlankLineAtEofBcftoolsRejects() throws IOException, InterruptedException {
+    String vcf = "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT\t.\tPASS\t.\n\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(8, result.exitCode(), result.output());
+  }
+
+  @Test
+  void testDuplicateChromSampleColumnNameBcftoolsHardErrors() throws IOException, InterruptedException {
+    // the contrast case from DUPLICATE_METADATA_ID_HANDLING.md: unlike a duplicate declaration ID, a duplicate
+    // #CHROM sample-column name is a hard error for bcftools too, since sample columns are positional
+    String vcf = "##fileformat=VCFv4.2\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\tS1\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT\t0/1\t0/1\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertTrue(result.exitCode() != 0 && result.output().contains("Duplicated sample name"), result.output());
+  }
+
   private record BcftoolsResult(int exitCode, String output) {}
 }
