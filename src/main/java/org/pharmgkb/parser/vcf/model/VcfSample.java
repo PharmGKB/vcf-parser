@@ -207,7 +207,10 @@ public class VcfSample {
    * cardinality check entirely when ploidy can't be determined. A cardinality mismatch warns rather than
    * throwing; a genuine {@code Type} mismatch still throws {@link VcfFormatException}, unchanged from
    * {@link #getProperty(ReservedFormatProperty)}'s existing behavior. Returns {@code null} -- without any
-   * cardinality warning -- when the value is absent or is the missing-value sentinel {@code "."}.
+   * cardinality warning -- when the value is absent or is the missing-value sentinel {@code "."}. A
+   * non-reserved key's {@code ##FORMAT} declaration missing its own {@code Number} attribute is treated as
+   * {@code Number=.} (matching bcftools's own "Assuming '.'" behavior for the same case, uniformly regardless
+   * of {@code Type}) -- so the value is returned list-shaped even for {@code Type=String}.
    *
    * @param <T> the type {@code key}'s declared {@code Type} specifies if it (or, for a non-reserved key, its
    * {@code ##FORMAT} declaration's {@code Number}) is not list-shaped; otherwise {@code List<V>} where {@code V}
@@ -251,13 +254,31 @@ public class VcfSample {
         return null;
       }
       number = format.getNumber();
+      if (number == null) {
+        // a ##FORMAT declaration missing its own Number attribute: Number is spec-required for INFO
+        // (VCFv4.2.tex line 66, "first four keys are required"), and FORMAT inherits this verbatim
+        // (VCFv4.2.tex line 97: "this field is otherwise defined precisely as the INFO field"); VCFv4.4.tex
+        // line 187/VCFv4.5.tex line 185 later restate the requirement directly for FORMAT, without the
+        // inheritance hop. BaseMetadata.checkNumberProperty already warned about this when the declaration
+        // was parsed, so it isn't re-warned here. bcftools 1.23.1 treats a missing Number exactly like an
+        // explicit Number=. declaration ("A FORMAT field has no Number defined. Assuming '.'"), uniformly
+        // regardless of Type -- confirmed empirically: for a Type=String field with no Number and value
+        // "a,b,c", `bcftools query -f '[%KEY{0} | %KEY{1} | %KEY{2}]'` returns three separate list elements
+        // ("a | b | c"), not one opaque scalar string. Substituting "." here matches that. Every
+        // undeclared-Number value becomes list-shaped this way, not just a genuinely multi-valued one (a
+        // single value like "5" now returns a one-element list, not a bare scalar).
+        // InternalUtils.getExpectedCardinality already treats null and "." identically (both skip the
+        // cardinality check, since a wide-open Number has nothing to compare against), so this changes only
+        // the list-vs-scalar shape decision below, never the cardinality-warning behavior.
+        number = ".";
+      }
       // Number=1 means a single value and any other integer means that many values (VCFv4.3.tex line 158: "if the
       // INFO field contains a single number, then this value must be 1; if the INFO field describes a pair of
       // numbers, then this value must be 2"), which FORMAT inherits verbatim (line 190: FORMAT's fields are
       // "otherwise defined precisely as the INFO field"). Number=0 is spec-tied exclusively to Type=Flag (line
       // 171), a type FormatType doesn't have, so it can never legitimately appear on a real ##FORMAT declaration
       // -- treating it as scalar here is a defensive default for non-compliant input, not a real case.
-      isList = number != null && !number.equals("0") && !number.equals("1");
+      isList = !number.equals("0") && !number.equals("1");
     }
     String[] pieces = InternalUtils.splitFormatValue(key, rawValue);
     if (!InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck(key)) {
@@ -269,13 +290,12 @@ public class VcfSample {
           ploidy, m_warnings);
     }
     // more than one comma-piece for a scalar (isList=false) key is a cardinality violation already warned about
-    // above (when number is known; a key with no declared Number at all has nothing to judge cardinality against,
-    // so its value passes through untruncated instead -- truncating there would silently discard data with no
-    // accompanying warning) -- convert only the first piece (the same "keep the first, warn about the rest"
-    // convention this library already uses for a duplicate metadata ID and a duplicate INFO key), rather than
-    // passing the whole multi-piece value through as one opaque element, which would silently swallow a
-    // String-typed key's extra pieces or crash a numeric/Boolean-typed one
-    String valueToConvert = (!isList && number != null && pieces.length > 1) ? pieces[0] : rawValue;
+    // above -- convert only the first piece (the same "keep the first, warn about the rest" convention this
+    // library already uses for a duplicate metadata ID and a duplicate INFO key), rather than passing the whole
+    // multi-piece value through as one opaque element, which would silently swallow a String-typed key's extra
+    // pieces or crash a numeric/Boolean-typed one. number is never null by this point: the reserved branch above
+    // always sets a real value, and the non-reserved branch just substituted "." for an absent declaration.
+    String valueToConvert = (!isList && pieces.length > 1) ? pieces[0] : rawValue;
     if (reserved != null) {
       return InternalUtils.convertProperty(reserved, valueToConvert, m_warnings);
     }

@@ -166,7 +166,11 @@ still throws -- see the strict section above):
   See [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md) for the full per-type
   bcftools/vcf_validator comparison and the empty-vs-missing rationale.
 - A missing or invalid `Number`, `Type`, or `Description`; an unquoted `Description`; or `Type=Flag` with a `Number`
-  other than `0`. An unparseable `Type` leaves the metadata's type `null`.
+  other than `0`. An unparseable `Type` leaves the metadata's type `null`. A non-reserved `##FORMAT` declaration
+  missing `Number` is treated as `Number=.` (list-shaped) when its value is later read via
+  `VcfSample.getProperty(VcfPosition, VcfMetadata, String)`, uniformly regardless of `Type` -- matching bcftools
+  1.23.1's own "Assuming '.'" behavior for the identical case -- rather than the scalar interpretation this
+  library previously (incorrectly) forced.
 - An `##INFO`/`##FORMAT` `ID` that doesn't match the required tag-name grammar (the same grammar the strict
   section above enforces at construction time): warned, not dropped -- the declaration is still stored and
   usable. `##FILTER`/`##SAMPLE`/`##ALT` declaration IDs are not held to this stricter grammar (only

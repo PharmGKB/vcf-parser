@@ -649,9 +649,13 @@ class VcfSampleTest {
   }
 
   @Test
-  void testGetPropertyWithPositionAndMetadataDoesNotTruncateWhenNumberIsUndeclared() {
-    // a leniently-parsed ##FORMAT declaration missing Number leaves getNumber() null -- there's nothing to judge
-    // cardinality against, so no warning fires; truncating to the first piece would then silently discard data
+  void testGetPropertyWithPositionAndMetadataTreatsUndeclaredNumberAsListRegardlessOfType() {
+    // a leniently-parsed ##FORMAT declaration missing Number leaves getNumber() null. bcftools 1.23.1 treats
+    // this exactly like an explicit Number=. declaration ("A FORMAT field has no Number defined. Assuming
+    // '.'"), uniformly regardless of Type -- confirmed empirically that bcftools genuinely splits a
+    // Type=String value like this one into separate list elements rather than keeping it as one opaque
+    // scalar string, so this test matches that rather than the scalar shape this method previously returned.
+    // There's nothing to judge cardinality against either way, so no cardinality warning fires.
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0/1");
     map.put("XX", "a,b,c");
@@ -669,12 +673,74 @@ class VcfSampleTest {
     appender.start();
     root.addAppender(appender);
     try {
-      assertEquals("a,b,c", sample.getProperty(position, metadata, "XX"));
+      assertEquals(List.of("a", "b", "c"), sample.getProperty(position, metadata, "XX"));
       assertFalse(appender.anyMessageContains("value(s), but Number="));
     } finally {
       root.detachAppender(appender);
       appender.stop();
     }
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataDoesNotCrashOnMultiValuedNonStringTypeWithUndeclaredNumber() {
+    // regression test: before this fix, a non-String Type (Integer/Float/Character) with undeclared Number
+    // was still forced to scalar shape, so a genuinely multi-valued sample value crashed with
+    // VcfFormatException ("Expected integer; got 1,2,3") even though every individual piece was a perfectly
+    // valid Integer -- treating undeclared Number as Number=. (matching bcftools) fixes this by returning
+    // the value list-shaped instead of attempting (and failing) a scalar conversion
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0/1");
+    map.put("XX", "1,2,3");
+    VcfSample sample = new VcfSample(map);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    FormatMetadata xxFormat = new FormatMetadata(InternalUtils.extractProperties(
+        new String[] {"ID=XX", "Type=Integer", "Description=\"no Number\""}, VcfWarnings.DEFAULT),
+        VcfWarnings.DEFAULT);
+    assertNull(xxFormat.getNumber());
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(xxFormat).build();
+
+    assertEquals(List.of(1L, 2L, 3L), sample.getProperty(position, metadata, "XX"));
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataUndeclaredNumberSingleValueStillWorksForNonStringType() {
+    // sanity check: a single-value (no comma) sample value for an undeclared-Number non-String key must
+    // still convert correctly once treated as list-shaped -- a one-element list, not a crash
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0/1");
+    map.put("XX", "5");
+    VcfSample sample = new VcfSample(map);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    FormatMetadata xxFormat = new FormatMetadata(InternalUtils.extractProperties(
+        new String[] {"ID=XX", "Type=Integer", "Description=\"no Number\""}, VcfWarnings.DEFAULT),
+        VcfWarnings.DEFAULT);
+    assertNull(xxFormat.getNumber());
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(xxFormat).build();
+
+    assertEquals(List.of(5L), sample.getProperty(position, metadata, "XX"));
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataUndeclaredNumberStillThrowsOnGenuineTypeMismatch() {
+    // regression test for the new list-shaped conversion path itself (not just the old, now-unreachable
+    // scalar path): a genuinely malformed element must still throw VcfFormatException, per this method's own
+    // documented "a genuine Type mismatch still throws" contract -- confirms the fix didn't silently trade
+    // the crash for swallowing real type errors
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0/1");
+    map.put("XX", "1.0,abc");
+    VcfSample sample = new VcfSample(map);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    FormatMetadata xxFormat = new FormatMetadata(InternalUtils.extractProperties(
+        new String[] {"ID=XX", "Type=Float", "Description=\"no Number\""}, VcfWarnings.DEFAULT),
+        VcfWarnings.DEFAULT);
+    assertNull(xxFormat.getNumber());
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(xxFormat).build();
+
+    assertThrows(VcfFormatException.class, () -> sample.getProperty(position, metadata, "XX"));
   }
 
   @Test
