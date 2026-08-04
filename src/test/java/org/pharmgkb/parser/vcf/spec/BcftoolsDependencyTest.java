@@ -329,5 +329,29 @@ class BcftoolsDependencyTest {
     assertTrue(result.exitCode() != 0 && result.output().contains("Duplicated sample name"), result.output());
   }
 
+  @Test
+  void testFilterPassCombinedWithOtherCodesBcftoolsAcceptsSilently() throws IOException, InterruptedException {
+    String vcf = "##fileformat=VCFv4.2\n##FILTER=<ID=q10,Description=\"qual below 10\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tq10;PASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("q10;PASS"), result.output());
+  }
+
+  @Test
+  void testFilterClearNeverPromotesToPassBcftoolsConvention() throws IOException, InterruptedException {
+    // bcftools annotate -x FILTER converts every FILTER value, including a real failing code, to "." when
+    // clearing it, never to "PASS" -- the convention VcfPosition's FilterStatus derivation matches
+    String vcf = "##fileformat=VCFv4.2\n##FILTER=<ID=q10,Description=\"qual below 10\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tq10\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "annotate", "-x", "FILTER");
+    assertEquals(0, result.exitCode(), result.output());
+    // QUAL=. FILTER=. INFO=. -- the failing code "q10" is cleared to ".", never promoted to "PASS"
+    assertTrue(result.output().contains("chr1\t1\trs1\tA\tT\t.\t.\t."), result.output());
+    assertFalse(result.output().contains("PASS"), result.output());
+  }
+
   private record BcftoolsResult(int exitCode, String output) {}
 }
