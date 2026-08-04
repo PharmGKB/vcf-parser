@@ -137,11 +137,146 @@ class BcftoolsDependencyTest {
     return execute(command);
   }
 
+  /** Converts {@code vcfContent} to BCF, then runs {@code bcftools query -f <queryFormat>} against it, since
+   * plain-text VCF doesn't enforce a FORMAT/INFO key's declared Type the way binary BCF does. */
+  private static String convertToBcfThenQuery(String vcfContent, String queryFormat)
+      throws IOException, InterruptedException {
+    Path vcfFile = Files.createTempFile("bcftools-dependency-test-", ".vcf");
+    Path bcfFile = Files.createTempFile("bcftools-dependency-test-", ".bcf");
+    try {
+      Files.writeString(vcfFile, vcfContent, StandardCharsets.UTF_8);
+      BcftoolsResult convert = execute(List.of("bcftools", "view", "-Ob", "-o", bcfFile.toAbsolutePath().toString(),
+          vcfFile.toAbsolutePath().toString()));
+      assertEquals(0, convert.exitCode(), "VCF-to-BCF conversion failed: " + convert.output());
+      BcftoolsResult query = execute(List.of("bcftools", "query", "-f", queryFormat,
+          bcfFile.toAbsolutePath().toString()));
+      return query.output();
+    } finally {
+      Files.deleteIfExists(vcfFile);
+      Files.deleteIfExists(bcfFile);
+    }
+  }
+
   private static BcftoolsResult execute(List<String> command) throws IOException, InterruptedException {
     Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
     String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
     int exitCode = process.waitFor();
     return new BcftoolsResult(exitCode, output);
+  }
+
+  @Test
+  void testDuplicateAttributeWithinDeclarationBcftoolsKeepsLast() throws IOException, InterruptedException {
+    // a repeated attribute within one declaration (distinct from a duplicate declaration ID across separate
+    // lines -- see DUPLICATE_METADATA_ID_HANDLING.md for that case) resolves to the LAST-declared value once
+    // forced through actual BCF binary encoding, which enforces the declared Type unlike plain-text VCF
+    String typeStringLast = "##fileformat=VCFv4.2\n" +
+        "##FORMAT=<ID=XX,Type=Integer,Type=String,Number=1,Description=\"dup type\">\n" +
+        "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:XX\t0/1:abc\n";
+    assertEquals("abc\n", convertToBcfThenQuery(typeStringLast, "[%XX]\n"));
+
+    String typeIntegerLast = "##fileformat=VCFv4.2\n" +
+        "##FORMAT=<ID=XX,Type=String,Type=Integer,Number=1,Description=\"dup type\">\n" +
+        "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:XX\t0/1:abc\n";
+    // with Type=Integer resolved as the last-declared type, "abc" is not a valid Integer -- bcftools hard-errors
+    // converting to BCF rather than silently coercing it, confirming the last-declared type genuinely governs
+    Path vcfFile = Files.createTempFile("bcftools-dependency-test-", ".vcf");
+    Path bcfFile = Files.createTempFile("bcftools-dependency-test-", ".bcf");
+    try {
+      Files.writeString(vcfFile, typeIntegerLast, StandardCharsets.UTF_8);
+      BcftoolsResult result = execute(List.of("bcftools", "view", "-Ob", "-o", bcfFile.toAbsolutePath().toString(),
+          vcfFile.toAbsolutePath().toString()));
+      assertTrue(result.exitCode() != 0 && result.output().contains("Invalid character"),
+          "Expected a hard parse error for a non-Integer value under Type=Integer, got: " + result.output());
+    } finally {
+      Files.deleteIfExists(vcfFile);
+      Files.deleteIfExists(bcfFile);
+    }
+  }
+
+  @Test
+  void testFormatDeclarationIdRejectsAsteriskButFilterAccepts() throws IOException, InterruptedException {
+    // confirms the stricter ##FORMAT/##INFO tag-name grammar does not extend to ##FILTER/##SAMPLE/##ALT
+    String formatVcf = "##fileformat=VCFv4.2\n##FORMAT=<ID=A*B,Number=1,Type=String,Description=\"bad\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult formatResult = runBcftools(formatVcf, "view", "-h");
+    assertTrue(formatResult.output().contains("Invalid tag name"), formatResult.output());
+
+    String filterVcf = "##fileformat=VCFv4.2\n##FILTER=<ID=A*B,Description=\"bad\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult filterResult = runBcftools(filterVcf, "view", "-h");
+    assertEquals(0, filterResult.exitCode(), filterResult.output());
+    assertTrue(filterResult.output().contains("##FILTER=<ID=A*B,Description=\"bad\">"), filterResult.output());
+  }
+
+  @Test
+  void testInfo1000GLegacyTagNameBcftoolsAccepts() throws IOException, InterruptedException {
+    String vcf = "##fileformat=VCFv4.2\n##INFO=<ID=1000G,Number=1,Type=Integer,Description=\"legacy\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t1000G=5\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertFalse(result.output().contains("Invalid tag name"), result.output());
+    assertTrue(result.output().contains("ID=1000G"), result.output());
+  }
+
+  @Test
+  void testContigIdCharacterSetBcftoolsRejectsCommaSameAsChromDoes() throws IOException, InterruptedException {
+    // a comma is one of the characters VCFv4.3.tex's "Changes to VCFv4.3" errata invalidates for a VCF contig
+    // name (shared by CHROM values and ##contig IDs alike -- see InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN)
+    String vcf = "##fileformat=VCFv4.2\n##contig=<ID=chr,1,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertTrue(result.output().contains("Could not parse the header line"), result.output());
+  }
+
+  @Test
+  void testContigExtraAttributeBcftoolsAcceptsSilently() throws IOException, InterruptedException {
+    String vcf = "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000000,accession=foo>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertTrue(result.output().contains("accession=foo"), result.output());
+  }
+
+  @Test
+  void testGenericPropertyEmptyValueBcftoolsPreservesButWeAreStricter() throws IOException, InterruptedException {
+    // documents a deliberate divergence: bcftools silently preserves a fully empty generic property value
+    // unchanged, but this library drops it with a warning instead (see VcfMetadata.isEmptyMetadataValue)
+    String vcf = "##fileformat=VCFv4.2\n##reference=\n##contig=<ID=chr1,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("##reference=\n") || result.output().contains("##reference=\r\n"),
+        result.output());
+  }
+
+  @Test
+  void testPedigreeNoIdDuplicatesBcftoolsKeepsBoth() throws IOException, InterruptedException {
+    String vcf = "##fileformat=VCFv4.2\n##PEDIGREE=<Name_0=A,Name_1=B>\n##PEDIGREE=<Name_0=A,Name_1=B>\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    long count = result.output().lines().filter(line -> line.startsWith("##PEDIGREE=")).count();
+    assertEquals(2, count, result.output());
+  }
+
+  @Test
+  void testDuplicateContigIdBcftoolsKeepsFirst() throws IOException, InterruptedException {
+    // representative case from DUPLICATE_METADATA_ID_HANDLING.md; that doc's own table is the fuller reference
+    // covering all six keyed declaration types
+    String vcf = "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1>\n##contig=<ID=chr1,length=999>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("##contig=<ID=chr1,length=1>"), result.output());
+    assertFalse(result.output().contains("length=999"), result.output());
   }
 
   private record BcftoolsResult(int exitCode, String output) {}
