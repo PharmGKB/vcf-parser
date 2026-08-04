@@ -88,6 +88,11 @@ public class ContigMetadata extends IdMetadata {
   public ContigMetadata(Map<String, String> properties, VcfWarnings warnings) {
     super("CONTIG", properties, warnings);
     init();
+    // ContigMetadata extends IdMetadata directly, not IdDescriptionMetadata -- IdMetadata's own Map-based
+    // constructor doesn't call checkAttributeOrder() (only validate() does), unlike IdDescriptionMetadata's
+    // Map-based constructor, which calls it directly and is how InfoMetadata/FormatMetadata (which extend
+    // IdDescriptionMetadata) inherit the same check at construction time. Call it explicitly here to match.
+    checkAttributeOrder();
   }
 
   /**

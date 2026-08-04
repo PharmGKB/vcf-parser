@@ -184,15 +184,20 @@ still throws -- see the strict section above):
   express, so they're checked separately, both when a typed value is requested and by
   `VcfWriter.Builder.validateBeforeWrite()`.
 - A reserved `FORMAT/PL`/`GL`/`GP`/`PP` value whose element count doesn't match the `Number=G` cardinality
-  implied by the sample's ploidy and the record's ALT allele count (`GLE`/`CNP` are specifically exempted from
-  this check despite declaring `Number=G` themselves: neither key's "G" describes this ploidy-derived ordering
-  -- `GLE`'s value isn't a comma-delimited list at all, and `CNP`'s own list is indexed by "potential copy
-  number," a dimension unrelated to ploidy/ALT allele count; `CNL` is unaffected by this exemption since its
-  own declared `Number` is `.`, not `G`, under this library's VCFv4.2 target), or any `FORMAT` key's value whose
-  element count doesn't match its declared `Number`, or whose value doesn't match its declared `Type` (a
-  non-reserved key needs an explicit `##FORMAT` declaration for either check to run; a reserved key's own
-  canonical `Number`/`Type` apply even with no declaration at all): the first two are checked and warned about
-  (never thrown) both when `VcfSample.getProperty(VcfPosition, VcfMetadata, String)` is called and by
+  implied by the sample's ploidy and the record's ALT allele count. When `GT` is absent, ploidy can't
+  otherwise be determined at all, but these four keys specifically default to assumed diploidy rather than
+  skipping the check, since their own spec definition states that default explicitly -- no other `Number=G`
+  field, reserved or not, has any such spec-stated default, so this is scoped to exactly these four keys.
+  (`GLE`/`CNP` are separately exempted from this check entirely, despite declaring `Number=G` themselves:
+  neither key's "G" describes this ploidy-derived ordering -- `GLE`'s value isn't a comma-delimited list at
+  all, and `CNP`'s own list is indexed by "potential copy number," a dimension unrelated to ploidy/ALT allele
+  count; `CNL` is unaffected by this exemption since its own declared `Number` is `.`, not `G`, under this
+  library's VCFv4.2 target.) Also, any `FORMAT` key's value whose element count doesn't match its declared
+  `Number`, or whose value doesn't match its declared `Type` (a non-reserved key needs an explicit `##FORMAT`
+  declaration for either check to run; a reserved key's own canonical `Number`/`Type` apply even with no
+  declaration at all): both cardinality checks (the reserved `Number=G` check above and this declared-`Number`
+  check) are checked and warned about (never thrown) both when
+  `VcfSample.getProperty(VcfPosition, VcfMetadata, String)` is called and by
   `VcfWriter.Builder.validateBeforeWrite()`; a genuine `Type` mismatch throws `VcfFormatException` when read via
   `VcfSample.getProperty(VcfPosition, VcfMetadata, String)`, unchanged from
   `getProperty(ReservedFormatProperty)`'s existing behavior for a reserved key -- but

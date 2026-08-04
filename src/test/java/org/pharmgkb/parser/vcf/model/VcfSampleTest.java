@@ -428,7 +428,36 @@ class VcfSampleTest {
 
   @Test
   void testGetPropertyWithPositionAndMetadataSkipsCardinalityCheckWhenPloidyUnknown() {
-    // GT absent -> ploidy can't be determined -> skip rather than guess
+    // a non-reserved Number=G field has no spec-stated ploidy default the way GL/PL/GP/PP do (see the dedicated
+    // PL test below) -- GT absent -> ploidy can't be determined -> skip rather than guess
+    FormatMetadata xxFormat = new FormatMetadata("XX", "Custom Number=G field", "G", FormatType.Integer);
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("XX", "1,2");
+    VcfSample sample = new VcfSample(map);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(xxFormat).build();
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertEquals(java.util.Arrays.asList(1L, 2L), sample.getProperty(position, metadata, "XX"));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataAssumesDiploidyForPlWhenGtAbsent() {
+    // PL's own spec definition (VCFv4.2.tex line 224 and unchanged through 4.5, via GL's definition PL defers
+    // to) states "without GT field, diploidy is assumed" -- unlike the non-reserved Number=G field above, this
+    // is a real, spec-stated default, not a guess. 1 ALT allele + assumed ploidy 2 -> expected 3 values, but
+    // only 2 are given, so this must warn (regression test for a prior bug: this used to silently skip the
+    // check entirely whenever GT was absent, for GL/PL/GP/PP same as any other Number=G field)
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("PL", "1,2");
     VcfSample sample = new VcfSample(map);
@@ -442,6 +471,30 @@ class VcfSampleTest {
     root.addAppender(appender);
     try {
       assertEquals(java.util.Arrays.asList(1L, 2L), sample.getProperty(position, metadata, "PL"));
+      assertTrue(appender.anyMessageContains("FORMAT PL has 2 value(s), but Number=G requires 3"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataAssumedDiploidyForPlMatchesCorrectValueCount() {
+    // same assumed-diploidy default as above, but with the correct 3-value count for a diploid, biallelic
+    // sample -- must not warn
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("PL", "1,2,3");
+    VcfSample sample = new VcfSample(map);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertEquals(java.util.Arrays.asList(1L, 2L, 3L), sample.getProperty(position, metadata, "PL"));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);

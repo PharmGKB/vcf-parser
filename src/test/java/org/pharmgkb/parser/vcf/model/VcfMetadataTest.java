@@ -194,6 +194,27 @@ public class VcfMetadataTest {
   }
 
   @Test
+  public void testRemoveAssemblyRejectsNullInsteadOfSilentlyNoOpping() {
+    // previously silently no-opped on null instead of throwing, unlike its six removeXxx siblings above and
+    // addAssembly (which does reject null) -- LinkedListMultimap.remove(key, null) is null-tolerant, not a raw
+    // NullPointerException, so this bug never surfaced as a crash
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.removeAssembly(null));
+  }
+
+  @Test
+  public void testRemovePedigreeDbRejectsNullInsteadOfSilentlyNoOpping() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.removePedigreeDb(null));
+  }
+
+  @Test
+  public void testRemovePedigreeRejectsNullInsteadOfSilentlyNoOpping() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.removePedigree(null));
+  }
+
+  @Test
   public void testBuilderAddAltRejectsNullInsteadOfThrowingNpe() {
     VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
     assertThrows(VcfFormatException.class, () -> builder.addAlt(null));

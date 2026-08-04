@@ -575,4 +575,23 @@ public class ContigMetadataTest {
     assertTrue(sink.toString().contains("is malformed"));
   }
 
+  @Test
+  public void testMapConstructorChecksAttributeOrder() {
+    // ContigMetadata extends IdMetadata directly, not IdDescriptionMetadata -- unlike InfoMetadata/
+    // FormatMetadata/IdDescriptionMetadata (ALT/FILTER/SAMPLE), its Map-based constructor previously never
+    // called checkAttributeOrder() at all, only validate() did. None of CONTIG's own modeled attributes
+    // (length/assembly/md5/species/taxonomy/URL) are in BaseMetadata's checked canonical set (ID/Number/Type/
+    // Description/Source/Version), so this needs an "extra" property that happens to collide with one of
+    // those six keys to actually demonstrate the check firing -- Description is a legal extra property for
+    // ##contig (VCFv4.2.tex line 123's "extra fields" sentence doesn't name ##contig directly, but see
+    // testExtraPropertyRetainedWithoutWarning above for the actual basis: the ##contig worked example's own
+    // trailing "..." and hts-specs' passed_meta_contig.vcf fixture), and declaring it before ID violates the
+    // canonical order.
+    StringWriter sink = new StringWriter();
+    VcfWarnings warnings = new VcfWarnings(sink);
+    new ContigMetadata(InternalUtils.extractProperties(
+        new String[] {"Description=\"d\"", "ID=1"}, warnings), warnings);
+    assertTrue(sink.toString().contains("declared out of canonical order"));
+  }
+
 }

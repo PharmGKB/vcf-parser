@@ -752,6 +752,40 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteAssumesDiploidyForPlWhenGtAbsent() throws Exception {
+    // PL's own spec definition states "without GT field, diploidy is assumed" (see
+    // InternalUtils.resolvePloidyForCardinalityCheck's own comment for the full citation) -- regression test
+    // for a prior bug where this default was never applied on the write path either, silently skipping the
+    // whole cardinality check whenever GT was absent for GL/PL/GP/PP, same as any other Number=G field
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .addFormat(new FormatMetadata("PL", "Phred-scaled genotype likelihoods", "G", FormatType.Integer))
+        .build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getAltBases().add("T");
+    position.getFormat().add("PL");
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    sample.putProperty("PL", "1,2"); // assumed diploidy + 1 ALT allele expects 3 values, only 2 given
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, Collections.singletonList(sample));
+      assertTrue(appender.anyMessageContains("FORMAT PL for sample #0 has 2 value(s), but Number=G requires 3"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testValidateBeforeWriteRejectsMetadataDelimiterInjectedThroughRawView() throws Exception {
     InfoMetadata info = new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null);
     info.getPropertiesRaw().put("Description", "unquoted,comma");

@@ -501,6 +501,12 @@ public class VcfMetadata {
   }
 
   public void removeAssembly(String value) {
+    // value is typed non-@Nullable, but nothing enforces that at runtime; without this, a null would silently
+    // no-op below (LinkedListMultimap.remove(key, null) is null-tolerant, not a raw NullPointerException) --
+    // matching addAssembly's own null rejection rather than letting it through unnoticed
+    if (value == null) {
+      throw new VcfFormatException("Metadata property \"assembly\" has a null value");
+    }
     m_properties.remove("assembly", value);
   }
 
@@ -509,6 +515,10 @@ public class VcfMetadata {
    * @param value Should not be wrapped in angle brackets
    */
   public void removePedigreeDb(String value) {
+    // see removeAssembly's identical comment -- same null-tolerant Multimap.remove, same fix
+    if (value == null) {
+      throw new VcfFormatException("Metadata property \"pedigreeDB\" has a null value");
+    }
     m_properties.remove("pedigreeDB", value);
   }
 
@@ -518,6 +528,7 @@ public class VcfMetadata {
    * {@link #getPedigrees()}.
    */
   public void removePedigree(PedigreeMetadata value) {
+    requireNonNull(value, "PEDIGREE");
     m_pedigree.remove(value);
   }
 

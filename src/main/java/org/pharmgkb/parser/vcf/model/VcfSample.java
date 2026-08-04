@@ -201,8 +201,11 @@ public class VcfSample {
    * declared {@code Number}, using {@code position}'s ALT allele count and this sample's own ploidy (derived
    * from its own {@code GT} value) -- including {@code Number=G}'s ploidy-dependent genotype-ordering formula,
    * which {@link #getProperty(ReservedFormatProperty)} alone cannot compute, since it has no access to
-   * {@code position} or {@code metadata}. A cardinality mismatch warns rather than throwing; a genuine
-   * {@code Type} mismatch still throws {@link VcfFormatException}, unchanged from
+   * {@code position} or {@code metadata}. {@code GL}/{@code PL}/{@code GP}/{@code PP} assume ploidy 2 when
+   * {@code GT} is absent (their own spec-stated default -- see
+   * {@code InternalUtils.resolvePloidyForCardinalityCheck}); every other {@code Number=G} key instead skips the
+   * cardinality check entirely when ploidy can't be determined. A cardinality mismatch warns rather than
+   * throwing; a genuine {@code Type} mismatch still throws {@link VcfFormatException}, unchanged from
    * {@link #getProperty(ReservedFormatProperty)}'s existing behavior. Returns {@code null} -- without any
    * cardinality warning -- when the value is absent or is the missing-value sentinel {@code "."}.
    *
@@ -259,6 +262,9 @@ public class VcfSample {
     String[] pieces = InternalUtils.splitFormatValue(key, rawValue);
     if (!InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck(key)) {
       Integer ploidy = InternalUtils.getPloidy(position, getProperty("GT"), "FORMAT " + key, m_warnings);
+      // GL/PL/GP/PP's own spec-stated "diploidy is assumed" default when GT is absent -- see
+      // InternalUtils.resolvePloidyForCardinalityCheck's own comment for the full citation
+      ploidy = InternalUtils.resolvePloidyForCardinalityCheck(key, ploidy);
       InternalUtils.warnIfWrongCardinality("FORMAT " + key, number, pieces.length, position.getAltBases().size(),
           ploidy, m_warnings);
     }

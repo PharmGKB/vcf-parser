@@ -748,9 +748,13 @@ public class VcfWriter implements Closeable {
       // value IS a genuine comma-delimited list, but its own Number=G means "per potential copy number," not
       // the ploidy-derived genotype ordering this combinatorial count assumes -- see
       // InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck and
-      // ReservedFormatProperty.CopyNumberPosteriorProbabilities' own comment.
+      // ReservedFormatProperty.CopyNumberPosteriorProbabilities' own comment. GL/PL/GP/PP's own spec-stated
+      // "diploidy is assumed" default when GT is absent -- see
+      // InternalUtils.resolvePloidyForCardinalityCheck's own comment for the full citation -- is applied per
+      // key here rather than once for the whole sample, since ploidy is computed once per sample (in
+      // validateSamples, shared across every FORMAT key) and this default applies only to these four keys.
       InternalUtils.warnIfWrongCardinality("FORMAT " + key + " for sample #" + sampleIndex, number, values.length,
-          numAltAlleles, ploidy, m_warnings);
+          numAltAlleles, InternalUtils.resolvePloidyForCardinalityCheck(key, ploidy), m_warnings);
     }
     if (type == null) {
       return;
@@ -768,7 +772,10 @@ public class VcfWriter implements Closeable {
   /**
    * @return the ploidy inferred from this sample's GT value, or {@code null} if GT is absent and ploidy can
    * therefore not be determined (previously defaulted to 2, which could produce a false Number=G cardinality
-   * warning for a haploid, or higher-ploidy, sample whose GT simply isn't present in this record)
+   * warning for a haploid, or higher-ploidy, sample whose GT simply isn't present in this record). GL/PL/GP/PP
+   * still get an assumed ploidy of 2 when this returns {@code null} -- their own spec-stated default, unlike
+   * the blanket default this method itself no longer applies -- but that substitution happens per key, in
+   * {@code validateFormatValue} via {@code InternalUtils.resolvePloidyForCardinalityCheck}, not here.
    */
   private @Nullable Integer getPloidy(VcfPosition position, VcfSample sample, int sampleIndex) {
     return InternalUtils.getPloidy(position, sample.getProperty("GT"), "Sample #" + sampleIndex, m_warnings);

@@ -655,6 +655,36 @@ public class InternalUtils {
     return KEYS_EXEMPT_FROM_GENOTYPE_ORDERING_CARDINALITY_CHECK.contains(key);
   }
 
+  // GL's own spec definition (VCFv4.2.tex line 224: "In presence of the GT field the same ploidy is expected
+  // and the canonical order is used; without GT field, diploidy is assumed" -- restated without the "canonical
+  // order" clause, but otherwise unchanged, at VCFv4.3.tex line 505/4.4.tex line 531/4.5.tex line 630) states an
+  // explicit ploidy default for the one case getPloidy() otherwise can't resolve at all (GT absent). PL is
+  // "otherwise defined precisely as the GL field" and GP "otherwise defined precisely as the GL field" (both
+  // VCFv4.2.tex lines 226/227 -- the target spec itself states the inheritance directly for these two, no 4.3+
+  // clarification needed). PP has no VCFv4.2.tex declaration at all; VCFv4.3.tex line 563 ("defined in the same
+  // way as the GP field") is used as clarifying guidance per AGENTS.md for this one key only. All four inherit
+  // GL's own diploidy-assumed rule transitively, not just the one key the spec states it for directly. No other
+  // Number=G field, reserved or not, has any such spec-stated default, so this default is scoped to exactly
+  // these four keys rather than generalized to getExpectedCardinality's "G" branch itself.
+  private static final Set<String> KEYS_ASSUMING_DIPLOIDY_WITHOUT_GT = Set.of(
+      ReservedFormatProperty.GenotypeLikelihoods.getId(),
+      ReservedFormatProperty.PhredScaledGenotypeLikelihoods.getId(),
+      ReservedFormatProperty.GenotypePosteriorProbabilitiesPhredScaled.getId(),
+      ReservedFormatProperty.PhredScaledPosteriorProbabilities.getId());
+
+  /**
+   * @return {@code ploidy} unchanged, unless it's {@code null} (GT absent, per {@link #getPloidy}) and
+   * {@code key} is one of GL/PL/GP/PP, in which case this returns {@code 2} (diploidy), per those keys' own
+   * spec-stated default.
+   */
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
+  public static @Nullable Integer resolvePloidyForCardinalityCheck(String key, @Nullable Integer ploidy) {
+    if (ploidy == null && KEYS_ASSUMING_DIPLOIDY_WITHOUT_GT.contains(key)) {
+      return 2;
+    }
+    return ploidy;
+  }
+
   /**
    * Warns if {@code actual} doesn't match the cardinality {@code number} implies for {@code numAltAlleles} ALT
    * alleles (and, for {@code Number=G}, {@code ploidy}). Relocated from {@code VcfWriter} (was a private instance
