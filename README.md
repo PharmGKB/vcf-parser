@@ -140,8 +140,9 @@ validity and diagnostic check is required, build the writer with `VcfWriter.Buil
 mode, structurally invalid output is rejected and detected semantic non-compliance is reported with a warning. This
 mode also enforces that every `INFO`/`FORMAT`/`FILTER`/`ALT`/`contig`/`SAMPLE` metadata entry's own `ID` property must
 still match the key it's stored under in `VcfMetadata`'s maps (mutating an entry's raw `ID` through
-`getPropertiesRaw()` without it being reflected in the map key would otherwise make the header declare a different ID
-than what records reference by that entry's map key).
+`getPropertiesRaw()` -- changing it to a different value, or removing it entirely -- without it being reflected in
+the map key would otherwise make the header declare a different (or missing) ID than what records reference by that
+entry's map key).
 
 The writer detects a write failure (disk full, broken pipe, or an encoding failure) and reports it as an
 unchecked `java.io.UncheckedIOException`, but only checks periodically (every 1000 lines) and at

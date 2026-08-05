@@ -540,9 +540,10 @@ public class VcfWriter implements Closeable {
    * {@code ID} property still matches the map key it's stored under. That invariant normally holds automatically
    * (these maps are keyed by {@code getId()} when built), but {@link VcfMetadata#getInfo()} and its siblings return
    * the backing map directly, so a caller can mutate an entry's raw {@code ID} property (via
-   * {@link BaseMetadata#getPropertiesRaw()}) without it being reflected in the map key. Left undetected, the header
-   * would then declare a different ID than what data lines actually reference by that entry's map key, and a
-   * duplicate-ID check across entries would also be unable to catch a real collision this way (see below).
+   * {@link BaseMetadata#getPropertiesRaw()}) -- changing it to a different value, or removing it entirely --
+   * without it being reflected in the map key. Left undetected, the header would then declare a different (or
+   * missing) ID than what data lines actually reference by that entry's map key, and a duplicate-ID check across
+   * entries would also be unable to catch a real collision this way (see below).
    */
   private void validateKeyedMetadataEntries(String kind, Map<String, ? extends BaseMetadata> entriesByKey) {
     for (Map.Entry<String, ? extends BaseMetadata> mapEntry : entriesByKey.entrySet()) {
@@ -557,10 +558,19 @@ public class VcfWriter implements Closeable {
       String id = properties.get("ID");
       // duplicate IDs across different entries can't occur once every entry's ID is confirmed to match its own
       // (necessarily unique) map key, so no separate "duplicate ID" check is needed here
-      if (id != null && !mapKey.equals(id)) {
-        throw new VcfFormatException(kind + " metadata is stored under key \"" + mapKey + "\" but its own ID " +
-            "property is \"" + id + "\"; the header would declare a different ID than records referencing this " +
-            "entry by its map key");
+      // mapKey is never null on any supported path (it's a Map key populated from a non-null getId() when the
+      // entry was added -- VcfMetadata's/Builder's addXxx methods all reject/drop a null-getId() entry before
+      // put), so !mapKey.equals(id) is also true -- and therefore also caught here -- when id has been removed
+      // entirely (id == null), not just changed to a different non-null value. VCFv4.3.tex line 121 ("All
+      // structured lines require an ID...") makes ID mandatory for all six keyed types; VCFv4.2 doesn't use the
+      // word "required" but its own templates for all six types show ID unconditionally first -- same guidance
+      // IdMetadata's own constructor already cites (IdMetadata.java:20-21; see DUPLICATE_METADATA_ID_HANDLING.md)
+      // -- so an entirely-missing ID is just as much a drift from the map key as a changed one.
+      if (!mapKey.equals(id)) {
+        String actual = id == null ? "no ID property at all" : "an ID property of \"" + id + "\"";
+        throw new VcfFormatException(kind + " metadata is stored under key \"" + mapKey + "\" but has " + actual +
+            "; the header would declare a different (or missing) ID than records referencing this entry by its " +
+            "map key");
       }
     }
   }

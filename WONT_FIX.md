@@ -314,7 +314,14 @@ from the `PedigreeMetadata` case:
    `VcfWriter.validateKeyedMetadataEntries()` (used by `VcfWriter.Builder.validateBeforeWrite()`) verifies every
    entry's own reported `ID` matches its map key and throws `VcfFormatException` if they've drifted apart --
    see `VcfWriterTest.testHeaderContentRejectionAllowsCorrectedRetry`, which pins exactly this ("MISMATCHED" ID)
-   scenario.
+   scenario. (This check originally only fired when the drifted-to `ID` was a different non-null value; a
+   later sweep found that removing `ID` entirely, rather than changing it, escaped detection --
+   `validateKeyedMetadataEntries()`'s `id != null` guard short-circuited before the mismatch check ever ran,
+   so `validateBeforeWrite()` silently wrote a spec-invalid declaration with no `ID` at all; this was confirmed
+   to cause real round-trip data loss on re-parse. Fixed by removing that guard -- a missing `ID` (`null`) can
+   never equal a non-null map key, so the existing `!mapKey.equals(id)` comparison alone now correctly catches
+   both shapes; see `VcfWriterTest.testValidateBeforeWriteRejectsEntirelyRemovedId`. This point's claim is now
+   accurate for both the changed-ID and removed-ID shapes.)
 3. **Not reachable from untrusted file content at all.** A normal `VcfParser` parse only ever adds each
    declaration once; nothing during parsing mutates an already-added entry's `ID`. This gap requires
    deliberate, first-party post-parse programmatic mutation (e.g. a `VcfTransformation` that renames an `ID`),
@@ -323,4 +330,5 @@ from the `PedigreeMetadata` case:
    alone.
 
 Revisit if a real caller reports actually hitting this (as opposed to it being found by deliberate
-investigation), or if `validateBeforeWrite()`'s existing mismatch check is ever found to have its own gap.
+investigation), or if `validateBeforeWrite()`'s existing mismatch check is ever found to have another gap of its
+own beyond the removed-ID one already found and fixed above.

@@ -1782,6 +1782,29 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteRejectsEntirelyRemovedId() throws Exception {
+    // regression test: removing ID entirely (rather than changing it to a different value, the
+    // testHeaderContentRejectionAllowsCorrectedRetry scenario above) must be rejected too -- previously the
+    // id != null guard in validateKeyedMetadataEntries() let a null id skip the mismatch check, so
+    // validateBeforeWrite() silently wrote a spec-invalid "##INFO=<Number=A,...>" declaration with no ID at all
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata("AF", "d", InfoType.Float, "A", null, null))
+        .build();
+    metadata.getInfo().get("AF").getPropertiesRaw().remove("ID"); // now stored under key "AF" but has no ID at all
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+    assertTrue(writer.isValid()); // content rejection, not a write failure -- must not invalidate
+
+    metadata.getInfo().get("AF").putPropertyRaw("ID", "AF"); // fix it
+    writer.writeHeader(metadata); // must succeed now
+    // re-adding ID after remove() appends it at the end of the property map rather than restoring its original
+    // first position, so (unlike testHeaderContentRejectionAllowsCorrectedRetry's putPropertyRaw-only fix above)
+    // ID=AF lands at the end of the attribute list here, not the start
+    assertTrue(sw.toString().contains("ID=AF>"));
+  }
+
+  @Test
   public void testCloseDetectsErrorAndStillReleasesTheWriter() throws Exception {
     // close() must check for a write failure that happened after the last periodic check (or after
     // writeHeader(), if no data lines were written at all) AND still release the underlying resource even
