@@ -161,3 +161,27 @@ have no other coupling today) for a purely cosmetic double-warning that only a d
 caller would ever observe. Revisit if a real (non-test-harness) caller reports this as genuinely noisy, or
 if `getPloidy` and `getGenotype` are unified onto one shared GT-parsing helper for an unrelated reason that
 would make deduplication free.
+
+## `BaseMetadata`/`IdDescriptionMetadata` constructors' `label` parameter has no null-guard, unlike every sibling parameter in the same constructors
+
+`BaseMetadata(String label, Map<String, String> properties)`, `IdDescriptionMetadata(String label, String
+id, String description)`, and `IdDescriptionMetadata(String label, Map<String, String> properties,
+VcfWarnings warnings)` are all `public` constructors on `public` classes -- externally callable, not
+internal-only, though the only in-repo caller (`VcfParser.java`) always passes a hardcoded literal
+(`"ALT"`, `"FILTER"`, `"SAMPLE"`). Every other parameter in each of these constructors (`properties`, `id`,
+`description`, `warnings`) is null-checked and throws `VcfFormatException` per the Public API Null-Safety
+Policy; `label` is not. A caller passing `label = null` gets a fully-constructed object whose `getLabel()`
+permanently returns `null`, and every future diagnostic this instance produces embeds the literal text
+`"null"` (SLF4J's `MessageFormatter`, which every `m_warnings.warn("{} ...", getLabel(), ...)` call site
+routes through, explicitly renders a `null` argument as `"null"`, not blank) -- e.g. `"null metadata ID is
+blank"` instead of a message clearly attributed to `FILTER`/`INFO`/etc.
+
+**Decision: won't fix.** `label` is caller-configuration, not VCF content, the same category
+`VcfParser.Builder`'s required-argument setters (above) are exempted from this policy for: at every real
+call site -- in this repo's own code, and for any external caller building `VcfMetadata` programmatically
+without going through `VcfParser` -- `label` is a hardcoded classification string the calling code chooses
+for itself (`"FILTER"`, `"INFO"`, a caller's own custom tag), never something derived from parsed VCF file
+content the way `properties`/`id`/`description` are. A `null` here is the caller's own programming mistake,
+not a data-quality problem an untrusted `.vcf` file could trigger. Revisit if a real caller reports this as
+a genuine (non-hypothetical) source of confusing diagnostics, or if `label` ever becomes something this
+library itself derives from parsed content rather than something every caller always supplies as a literal.
