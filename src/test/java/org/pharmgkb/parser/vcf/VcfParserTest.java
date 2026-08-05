@@ -12,8 +12,10 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -989,6 +991,88 @@ public class VcfParserTest {
       assertTrue(appender.anyMessageContains("FILTER metadata ID"));
       assertTrue(appender.anyMessageContains("SAMPLE metadata ID"));
       assertFalse(appender.anyMessageContains("IdDescriptionMetadata"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testThousandGenomesChrYFixtureProducesExactlyThreeKnownWarnings() throws IOException {
+    // Real-world regression fixture: the unmodified header (125 metadata lines + #CHROM, 1233 samples) plus 20
+    // real data records from 1000 Genomes Phase 3 chrY
+    // (ALL.chrY.phase3_integrated_v2b.20130502.genotypes.vcf.gz, downloaded from
+    // https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/). All three warnings below are metadata-level
+    // (fire once during header parsing, independent of how many data records follow), each a genuine quirk in
+    // the real file's own header: `##INFO=<ID=DP,...>` is declared twice with different descriptions;
+    // `##FORMAT=<ID=CNP,Number=.,...>` doesn't match `CNP`'s reserved Number=G; and no `##SAMPLE` declarations
+    // exist for the 1233 samples in `#CHROM`. Confirmed directly that bcftools 1.23.1 emits none of these three
+    // (silently keeps the first `DP` declaration -- same outcome as this library, just no diagnostic; accepts
+    // `CNP`'s declared `Number=.` unquestioned; doesn't check for `##SAMPLE` declarations at all) -- this test
+    // pins the exact warning set so a regression (either a new warning appearing, or one of these three
+    // silently stopping) is caught, not just "a warning fired."
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/thousandgenomes_chrY_excerpt.vcf"));
+           VcfParser parser = new VcfParser.Builder()
+               .fromReader(reader)
+               .parseWith((metadata, position, sampleData) -> {})
+               .build()) {
+        parser.parse();
+      }
+      Set<String> actual = new HashSet<>(appender.getRelevantWarnOrHigherMessages(Set.of()));
+      Set<String> expected = Set.of(
+          "There are 1233 samples in the header but 0 in the metadata",
+          "Duplicate ID \"DP\" for INFO metadata declaration ignored; keeping the first declaration",
+          "FORMAT CNP has Number '.' but the reserved definition expects 'G'");
+      assertEquals(expected, actual);
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testGnomadSvChrYFixtureProducesExactlyTwoKnownWarnings() throws IOException {
+    // Real-world regression fixture: the unmodified header (696 metadata lines + #CHROM) from gnomAD v4.1's
+    // structural-variant sites release (gnomad.v4.1.sv.sites.vcf.gz, streamed via remote tabix access from
+    // https://storage.googleapis.com/gcp-public-data--gnomad/release/4.1/genome_sv/), plus 21 real chrY records
+    // -- POS-sorted, two per distinct ALT structural-variant type actually present on chrY (BND, DEL, DUP,
+    // INS, INS:ME:ALU, INS:ME:LINE1, CPX, CNV, DEL:ME:LINE1, DEL:ME:HERVK; only one INV exists on chrY at all)
+    // -- so AltStructuralVariant's full breadth of real-world reserved/mobile-element/complex codes gets
+    // exercised, not just DEL/DUP. This file is site-only: no FORMAT/sample columns in any data line at all.
+    // Both warnings below are metadata-level (fire once during header parsing, independent of how many data
+    // records follow), each a genuine quirk in the real file's own header: `##INFO=<ID=SVLEN,Number=1,...>`
+    // doesn't match SVLEN's reserved Number=.; `##FORMAT=<ID=CNQ,Number=1,Type=Integer,...>` doesn't match
+    // CNQ's reserved Type=Float -- declared despite the file never having any FORMAT/sample columns at all,
+    // a leftover from the multi-sample pipeline this site-only release was derived from. Confirmed directly
+    // that bcftools 1.23.1 emits neither (accepts both declared Number/Type mismatches unquestioned, same
+    // pattern already seen for the 1000 Genomes chrY fixture above) -- this test pins the exact warning set
+    // so a regression (a new warning appearing, or one of these two silently stopping) is caught either way.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/gnomad_sv_chrY_excerpt.vcf"));
+           VcfParser parser = new VcfParser.Builder()
+               .fromReader(reader)
+               .parseWith((metadata, position, sampleData) -> {})
+               .build()) {
+        parser.parse();
+      }
+      Set<String> actual = new HashSet<>(appender.getRelevantWarnOrHigherMessages(Set.of()));
+      Set<String> expected = Set.of(
+          "INFO SVLEN has Number '1' but the reserved definition expects '.'",
+          "FORMAT CNQ has Type 'Integer' but the reserved definition expects 'VcfFloat'");
+      assertEquals(expected, actual);
     } finally {
       root.detachAppender(appender);
       appender.stop();
