@@ -413,6 +413,8 @@ public class VcfSample {
      * @param phasedBoundaries one entry per allele boundary (size {@code alleles.size() - 1}); {@code true} if
      * that boundary is phased ({@code |}), {@code false} if unphased ({@code /})
      * @throws IllegalArgumentException if {@code phasedBoundaries}'s size does not match {@code alleles}'s
+     * @throws VcfFormatException if {@code alleles} or {@code phasedBoundaries} is {@code null} or contains a
+     * null entry
      */
     public Genotype(List<String> alleles, List<Boolean> phasedBoundaries) {
       requireNonNullAlleles(alleles);
@@ -423,6 +425,19 @@ public class VcfSample {
       if (phasedBoundaries.size() != expected) {
         throw new IllegalArgumentException("phasedBoundaries must have " + expected + " element(s) for " +
             alleles.size() + " allele(s), got " + phasedBoundaries.size());
+      }
+      // List.copyOf throws a raw, message-less NullPointerException on a null element; check explicitly first so
+      // this VCF-content parameter fails the same way VcfPosition.checkAltBases/checkFormat's own null-element
+      // checks do, per AGENTS.md's Public API Null-Safety Policy
+      for (String allele : alleles) {
+        if (allele == null) {
+          throw new VcfFormatException("alleles contains a null entry");
+        }
+      }
+      for (Boolean boundary : phasedBoundaries) {
+        if (boundary == null) {
+          throw new VcfFormatException("phasedBoundaries contains a null entry");
+        }
       }
       m_alleles = List.copyOf(alleles);
       m_phasedBoundaries = List.copyOf(phasedBoundaries);

@@ -859,6 +859,17 @@ class VcfSampleTest {
   }
 
   @Test
+  void testGenotypeConstructorsRejectNullElementInsteadOfThrowingNpe() {
+    // the whole-list-null case above is already covered; List.of() itself rejects a null element at
+    // construction time, so a non-null list containing a null entry needs Arrays.asList() to build. Both
+    // constructors must reject that with VcfFormatException, not List.copyOf's raw, message-less NPE
+    assertThrows(VcfFormatException.class,
+        () -> new VcfSample.Genotype(Arrays.asList("A", null), false));
+    assertThrows(VcfFormatException.class,
+        () -> new VcfSample.Genotype(Arrays.asList("A", "T"), Arrays.asList((Boolean) null)));
+  }
+
+  @Test
   void testGenotypeLegacyConstructorSingleAlleleIsNeverPhased() {
     // a single-allele genotype has zero boundaries, so isPhased() is now always false regardless of the flag
     // passed to the legacy constructor -- matches what getGenotype's real parsing already produced for a
