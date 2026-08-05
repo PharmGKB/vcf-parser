@@ -1021,7 +1021,7 @@ public class VcfParserTest {
       try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/thousandgenomes_chrY_excerpt.vcf"));
            VcfParser parser = new VcfParser.Builder()
                .fromReader(reader)
-               .parseWith((metadata, position, sampleData) -> {})
+               .parseWith(new org.pharmgkb.parser.vcf.spec.DeferredValidationLineParser())
                .build()) {
         parser.parse();
       }
@@ -1064,7 +1064,7 @@ public class VcfParserTest {
       try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/gnomad_sv_chrY_excerpt.vcf"));
            VcfParser parser = new VcfParser.Builder()
                .fromReader(reader)
-               .parseWith((metadata, position, sampleData) -> {})
+               .parseWith(new org.pharmgkb.parser.vcf.spec.DeferredValidationLineParser())
                .build()) {
         parser.parse();
       }
@@ -1104,7 +1104,7 @@ public class VcfParserTest {
       try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/eva_cat_saa1.vcf"));
            VcfParser parser = new VcfParser.Builder()
                .fromReader(reader)
-               .parseWith((metadata, position, sampleData) -> {})
+               .parseWith(new org.pharmgkb.parser.vcf.spec.DeferredValidationLineParser())
                .build()) {
         parser.parse();
       }
@@ -1140,6 +1140,13 @@ public class VcfParserTest {
     // fragile. Pinning the *count* and the *shape* still catches the same regressions (a new warning category
     // appearing, or the invalid-GT warning silently stopping).
     //
+    // Switching to the full DeferredValidationLineParser surfaces a second warning per malformed record (the
+    // "contains an empty allele" one) on top of the original "invalid GT" one: a leading separator's empty
+    // leading base trips both getProperty(position, metadata, "GT")'s ploidy check and VcfSample.getGenotype's
+    // own empty-base handling -- two independent, both-correct observations of the same malformed input, not a
+    // new defect. This is expected behavior: multiple deferred checks correctly flagging the same malformed
+    // input from different angles.
+    //
     // Maintenance note: htslib's test/ directory is a living resource for exactly this kind of edge-case
     // fixture (new VCF-version features get their own adversarial test files as they're added -- this is
     // presently the only VCFv4.4 one and there is no VCFv4.5 one yet). Worth periodically re-checking
@@ -1155,18 +1162,18 @@ public class VcfParserTest {
       try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/htslib_vcf44_phasing.vcf"));
            VcfParser parser = new VcfParser.Builder()
                .fromReader(reader)
-               // the invalid-GT check is deferred (triggered by a typed getter, not by parsing alone) --
-               // explicitly call it per sample, matching how a real consumer reading GT would trigger it
-               .parseWith((metadata, position, sampleData) -> sampleData.forEach(
-                   sample -> sample.getProperty(position, metadata, "GT")))
+               // exercises every deferred check, not just GT -- see DeferredValidationLineParser's own Javadoc
+               // for why a partial hand-rolled lambda here previously missed 36 of 38 expected warnings
+               .parseWith(new org.pharmgkb.parser.vcf.spec.DeferredValidationLineParser())
                .build()) {
         parser.parse();
       }
       List<String> actual = appender.getRelevantWarnOrHigherMessages(Set.of());
-      assertEquals(38, actual.size(), actual::toString);
+      assertEquals(75, actual.size(), actual::toString);
       assertEquals(1, actual.stream().filter(m -> m.equals("There are 2 samples in the header but 0 in the metadata")).count(),
           actual::toString);
       assertEquals(37, actual.stream().filter(m -> m.startsWith("FORMAT GT has invalid GT ")).count(), actual::toString);
+      assertEquals(37, actual.stream().filter(m -> m.contains("contains an empty allele")).count(), actual::toString);
     } finally {
       root.detachAppender(appender);
       appender.stop();
@@ -1687,11 +1694,7 @@ public class VcfParserTest {
       root.addAppender(appender);
       try (VcfParser parser = new VcfParser.Builder()
           .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.2/failed", fixtureName))
-          .parseWith((metadata, position, sampleData) -> {
-            for (VcfSample sample : sampleData) {
-              sample.getProperty(position, metadata, "PL");
-            }
-          })
+          .parseWith(new org.pharmgkb.parser.vcf.spec.DeferredValidationLineParser())
           .build()) {
         parser.parse();
       } finally {
