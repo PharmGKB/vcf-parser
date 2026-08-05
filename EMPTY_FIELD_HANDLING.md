@@ -182,7 +182,7 @@ for rejection purposes, but they are still a data-loss case in practice.
 - `InternalUtils.convertProperty` — warns and substitutes `.` (`null`) for an empty entry in a reserved list-typed
   property's comma-separated value; warns and drops an empty semicolon-separated code in a reserved `FORMAT/FT`
   value (`InternalUtils.checkReservedFormatConstraints`).
-- `MemoryMappedVcfDataStore.doGetGenotype` — warns and substitutes `.` for an empty GT allele.
+- `VcfSample.getGenotype` — warns and substitutes `.` for an empty GT allele.
 - `VcfSample.validate()` — warns and substitutes `.` for a sample property whose value was mutated to empty through
   `propertyEntrySet()`, consistent with `VcfWriter`'s own warn-only treatment (in `validateBeforeWrite()` mode) of
   an empty comma-separated FORMAT element.

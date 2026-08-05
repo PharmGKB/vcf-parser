@@ -83,7 +83,7 @@ public class MemoryMappedVcfDataStoreParserTest {
   public void testParseLineRejectsNullElementInSampleDataInsteadOfStoringItAsIs() {
     // regression test: before this fix, a sampleData list containing a null element (as opposed to the list
     // itself being null, the sibling case above) was accepted and stored as-is; getGenotypeAtLocus/
-    // getGenotypeForId then raw-crashed with NullPointerException at doGetGenotype's sample.getProperty(...)
+    // getGenotypeForId then raw-crashed with NullPointerException at the genotype-parsing logic's sample.getProperty(...)
     // call, while getSampleAtLocus/getSampleForId silently returned the null, indistinguishable from
     // "not present". The null is placed at index 1 (behind one valid sample), and the exception message is
     // asserted, so this pins that the check scans every element -- not just index 0 -- and reports the
@@ -110,7 +110,7 @@ public class MemoryMappedVcfDataStoreParserTest {
       VcfSample sample = dataStore.getSampleForId("rsb", "sample1");
       assertNotNull(sample);
       assertEquals("0|1", sample.getProperty(ReservedFormatProperty.Genotype));
-      MemoryMappedVcfDataStore.Genotype genotype = dataStore.getGenotypeForId("rsb", "sample1");
+      VcfSample.Genotype genotype = dataStore.getGenotypeForId("rsb", "sample1");
       assertNotNull(genotype);
       assertTrue(genotype.isPhased());
       assertEquals("A", genotype.getAlleles().get(0));
@@ -143,7 +143,7 @@ public class MemoryMappedVcfDataStoreParserTest {
       assertNull(dataStore.getGenotypeAtLocus("chr1", 2, 0, "nosuchsample"));
 
       // a partial no-call ("0/.") keeps the missing allele as "." instead of failing to parse it
-      MemoryMappedVcfDataStore.Genotype partial = dataStore.getGenotypeForId("rse", "sample1");
+      VcfSample.Genotype partial = dataStore.getGenotypeForId("rse", "sample1");
       assertNotNull(partial);
       assertEquals("A", partial.getAlleles().get(0));
       assertEquals(".", partial.getAlleles().get(1));
@@ -266,7 +266,7 @@ public class MemoryMappedVcfDataStoreParserTest {
           .fromReader(reader)
           .parseWith(lineParser)
           .build().parse();
-      MemoryMappedVcfDataStore.Genotype genotype = lineParser.getDataStore().getGenotypeForId("rsx", "sample1");
+      VcfSample.Genotype genotype = lineParser.getDataStore().getGenotypeForId("rsx", "sample1");
       assertNotNull(genotype);
       assertEquals(2, genotype.getAlleles().size());
       assertEquals("A", genotype.getAlleles().get(0));
@@ -285,9 +285,12 @@ public class MemoryMappedVcfDataStoreParserTest {
           .fromReader(reader)
           .parseWith(lineParser)
           .build().parse();
+      MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
+      VcfSample sample = dataStore.getSampleForId("rsx", "sample1");
+      assertNotNull(sample);
       StringWriter sink = new StringWriter();
-      lineParser.getDataStore().setWarningsSink(new VcfWarnings(sink));
-      lineParser.getDataStore().getGenotypeForId("rsx", "sample1");
+      sample.setWarningsSink(new VcfWarnings(sink));
+      dataStore.getGenotypeForId("rsx", "sample1");
       assertTrue(sink.toString().contains("empty allele"));
     }
   }
@@ -326,84 +329,11 @@ public class MemoryMappedVcfDataStoreParserTest {
       assertNotNull(secondSample);
       assertEquals("1/1", secondSample.getProperty(ReservedFormatProperty.Genotype));
 
-      MemoryMappedVcfDataStore.Genotype genotype = dataStore.getGenotypeAtLocus("chr1", 1, 1, "sample1");
+      VcfSample.Genotype genotype = dataStore.getGenotypeAtLocus("chr1", 1, 1, "sample1");
       assertNotNull(genotype);
       assertEquals("C", genotype.getAlleles().get(0));
       assertEquals("C", genotype.getAlleles().get(1));
     }
-  }
-
-  @Test
-  public void testGenotypeAllelesAreImmutable() {
-    List<String> alleles = new ArrayList<>(Arrays.asList("A", "T"));
-    MemoryMappedVcfDataStore.Genotype genotype = new MemoryMappedVcfDataStore.Genotype(alleles, true);
-
-    // mutating the list passed to the constructor must not affect the Genotype (defensive copy)
-    alleles.add("G");
-    assertEquals(Arrays.asList("A", "T"), genotype.getAlleles());
-
-    // the returned list must itself be immutable
-    assertThrows(UnsupportedOperationException.class, () -> genotype.getAlleles().add("G"));
-  }
-
-  @Test
-  public void testGenotypePhasedBoundariesAreImmutable() {
-    List<Boolean> phasedBoundaries = new ArrayList<>(Arrays.asList(true, false));
-    MemoryMappedVcfDataStore.Genotype genotype =
-        new MemoryMappedVcfDataStore.Genotype(Arrays.asList("A", "T", "G"), phasedBoundaries);
-
-    // mutating the list passed to the constructor must not affect the Genotype (defensive copy)
-    phasedBoundaries.add(true);
-    assertEquals(Arrays.asList(true, false), genotype.getPhasedBoundaries());
-
-    // the returned list must itself be immutable
-    assertThrows(UnsupportedOperationException.class, () -> genotype.getPhasedBoundaries().add(true));
-  }
-
-  @Test
-  public void testGenotypeToStringPreservesMixedPhasing() {
-    // "0|1/2" -- boundary 0-1 is phased, boundary 1-2 is unphased; a single whole-genotype boolean cannot
-    // represent this, so toString() must reconstruct using the actual per-boundary separator, not one uniform one
-    MemoryMappedVcfDataStore.Genotype genotype =
-        new MemoryMappedVcfDataStore.Genotype(List.of("0", "1", "2"), List.of(true, false));
-    assertEquals("0|1/2", genotype.toString());
-    assertEquals(List.of(true, false), genotype.getPhasedBoundaries());
-    // isPhased() reports "fully phased" -- false here, since the second boundary is unphased
-    assertFalse(genotype.isPhased());
-  }
-
-  @Test
-  public void testGenotypeToStringHandlesEmptyAllelesList() {
-    // toString() must not throw for an empty alleles list -- the old Joiner-based implementation returned "" here;
-    // a naive rewrite that special-cases the first element (m_alleles.get(0)) would throw IndexOutOfBoundsException
-    MemoryMappedVcfDataStore.Genotype genotype = new MemoryMappedVcfDataStore.Genotype(List.of(), List.of());
-    assertEquals("", genotype.toString());
-  }
-
-  @Test
-  public void testGenotypePhasedBoundariesArityValidation() {
-    assertThrows(IllegalArgumentException.class, () ->
-        new MemoryMappedVcfDataStore.Genotype(List.of("0", "1", "2"), List.of(true)));
-  }
-
-  @Test
-  public void testGenotypeConstructorsRejectNullInsteadOfThrowingNpe() {
-    // alleles/phasedBoundaries are typed non-@Nullable, but nothing enforces that at compile time; both
-    // constructors must reject a null with VcfFormatException, not raw-NPE at alleles.size()/phasedBoundaries.size()
-    assertThrows(VcfFormatException.class, () -> new MemoryMappedVcfDataStore.Genotype(null, true));
-    assertThrows(VcfFormatException.class, () -> new MemoryMappedVcfDataStore.Genotype(null, List.of(true)));
-    assertThrows(VcfFormatException.class,
-        () -> new MemoryMappedVcfDataStore.Genotype(List.of("A", "T"), (List<Boolean>) null));
-  }
-
-  @Test
-  public void testGenotypeLegacyConstructorSingleAlleleIsNeverPhased() {
-    // a single-allele genotype has zero boundaries, so isPhased() is now always false regardless of the flag
-    // passed to the legacy constructor -- matches what doGetGenotype's real parsing already produced for a
-    // haploid GT (no separator to be "|"), so this only affects direct construction, not parsing
-    MemoryMappedVcfDataStore.Genotype genotype = new MemoryMappedVcfDataStore.Genotype(List.of("1"), true);
-    assertFalse(genotype.isPhased());
-    assertTrue(genotype.getPhasedBoundaries().isEmpty());
   }
 
   @Test
@@ -420,7 +350,7 @@ public class MemoryMappedVcfDataStoreParserTest {
           .fromReader(reader)
           .parseWith(lineParser)
           .build().parse();
-      MemoryMappedVcfDataStore.Genotype genotype = lineParser.getDataStore().getGenotypeForId("rsx", "sample1");
+      VcfSample.Genotype genotype = lineParser.getDataStore().getGenotypeForId("rsx", "sample1");
       assertNotNull(genotype);
       assertEquals(List.of("A", "T", "C"), genotype.getAlleles());
       assertEquals(List.of(true, false), genotype.getPhasedBoundaries());
@@ -430,7 +360,7 @@ public class MemoryMappedVcfDataStoreParserTest {
 
   @Test
   public void testGenotypeWithMoreThanTwoAllelesParsesCorrectly() throws IOException {
-    // regression test for the doGetGenotype scan refactor (substring-based, pre-sized lists) -- a genotype with
+    // regression test for the VcfSample.getGenotype scan refactor (substring-based, pre-sized lists) -- a genotype with
     // more than the common diploid 2 alleles exercises the separator-counting pre-sizing path with a non-trivial
     // count
     String vcf = "##fileformat=VCFv4.2\n" +
@@ -442,7 +372,7 @@ public class MemoryMappedVcfDataStoreParserTest {
           .fromReader(reader)
           .parseWith(lineParser)
           .build().parse();
-      MemoryMappedVcfDataStore.Genotype genotype = lineParser.getDataStore().getGenotypeForId("rsx", "sample1");
+      VcfSample.Genotype genotype = lineParser.getDataStore().getGenotypeForId("rsx", "sample1");
       assertNotNull(genotype);
       assertEquals(List.of("A", "T", "C", "G"), genotype.getAlleles());
       assertEquals(List.of(true, true, true), genotype.getPhasedBoundaries());

@@ -14,6 +14,7 @@ import org.pharmgkb.parser.vcf.spec.WarnCapturingAppender;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -754,5 +755,144 @@ class VcfSampleTest {
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build(); // no ##FORMAT=<ID=DS,...>
 
     assertNull(sample.getProperty(position, metadata, "DS"));
+  }
+
+  @Test
+  void testGenotypeAllelesAreImmutable() {
+    List<String> alleles = new ArrayList<>(Arrays.asList("A", "T"));
+    VcfSample.Genotype genotype = new VcfSample.Genotype(alleles, true);
+
+    // mutating the list passed to the constructor must not affect the Genotype (defensive copy)
+    alleles.add("G");
+    assertEquals(Arrays.asList("A", "T"), genotype.getAlleles());
+
+    // the returned list must itself be immutable
+    assertThrows(UnsupportedOperationException.class, () -> genotype.getAlleles().add("G"));
+  }
+
+  @Test
+  void testGenotypePhasedBoundariesAreImmutable() {
+    List<Boolean> phasedBoundaries = new ArrayList<>(Arrays.asList(true, false));
+    VcfSample.Genotype genotype =
+        new VcfSample.Genotype(Arrays.asList("A", "T", "G"), phasedBoundaries);
+
+    // mutating the list passed to the constructor must not affect the Genotype (defensive copy)
+    phasedBoundaries.add(true);
+    assertEquals(Arrays.asList(true, false), genotype.getPhasedBoundaries());
+
+    // the returned list must itself be immutable
+    assertThrows(UnsupportedOperationException.class, () -> genotype.getPhasedBoundaries().add(true));
+  }
+
+  @Test
+  void testGenotypeToStringPreservesMixedPhasing() {
+    // "0|1/2" -- boundary 0-1 is phased, boundary 1-2 is unphased; a single whole-genotype boolean cannot
+    // represent this, so toString() must reconstruct using the actual per-boundary separator, not one uniform one
+    VcfSample.Genotype genotype =
+        new VcfSample.Genotype(List.of("0", "1", "2"), List.of(true, false));
+    assertEquals("0|1/2", genotype.toString());
+    assertEquals(List.of(true, false), genotype.getPhasedBoundaries());
+    // isPhased() reports "fully phased" -- false here, since the second boundary is unphased
+    assertFalse(genotype.isPhased());
+  }
+
+  @Test
+  void testGenotypeToStringHandlesEmptyAllelesList() {
+    // toString() must not throw for an empty alleles list -- the old Joiner-based implementation returned "" here;
+    // a naive rewrite that special-cases the first element (m_alleles.get(0)) would throw IndexOutOfBoundsException
+    VcfSample.Genotype genotype = new VcfSample.Genotype(List.of(), List.of());
+    assertEquals("", genotype.toString());
+  }
+
+  @Test
+  void testGenotypePhasedBoundariesArityValidation() {
+    assertThrows(IllegalArgumentException.class, () ->
+        new VcfSample.Genotype(List.of("0", "1", "2"), List.of(true)));
+  }
+
+  @Test
+  void testGenotypeConstructorsRejectNullInsteadOfThrowingNpe() {
+    // alleles/phasedBoundaries are typed non-@Nullable, but nothing enforces that at compile time; both
+    // constructors must reject a null with VcfFormatException, not raw-NPE at alleles.size()/phasedBoundaries.size()
+    assertThrows(VcfFormatException.class, () -> new VcfSample.Genotype(null, true));
+    assertThrows(VcfFormatException.class, () -> new VcfSample.Genotype(null, List.of(true)));
+    assertThrows(VcfFormatException.class,
+        () -> new VcfSample.Genotype(List.of("A", "T"), (List<Boolean>) null));
+  }
+
+  @Test
+  void testGenotypeLegacyConstructorSingleAlleleIsNeverPhased() {
+    // a single-allele genotype has zero boundaries, so isPhased() is now always false regardless of the flag
+    // passed to the legacy constructor -- matches what getGenotype's real parsing already produced for a
+    // haploid GT (no separator to be "|"), so this only affects direct construction, not parsing
+    VcfSample.Genotype genotype = new VcfSample.Genotype(List.of("1"), true);
+    assertFalse(genotype.isPhased());
+    assertTrue(genotype.getPhasedBoundaries().isEmpty());
+  }
+
+  @Test
+  void testGetGenotypeReturnsNullForAbsentOrEmptyGt() {
+    VcfSample noGt = new VcfSample(List.of("DP"), List.of("10"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    assertNull(noGt.getGenotype(position));
+
+    VcfSample emptyGt = new VcfSample(List.of("GT"), new ArrayList<>(List.of("")));
+    assertNull(emptyGt.getGenotype(position));
+  }
+
+  @Test
+  void testGetGenotypeReturnsNullForFullyMissingCall() {
+    VcfSample sample = new VcfSample(List.of("GT"), List.of("./."));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    assertNull(sample.getGenotype(position));
+  }
+
+  @Test
+  void testGetGenotypeResolvesAllelesAndPreservesMixedPhasing() {
+    // "0|1/2" -- boundary 0-1 is phased, boundary 1-2 is unphased
+    VcfSample sample = new VcfSample(List.of("GT"), List.of("0|1/2"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    position.getAltBases().add("C");
+    VcfSample.Genotype genotype = sample.getGenotype(position);
+    assertNotNull(genotype);
+    assertEquals(List.of("A", "T", "C"), genotype.getAlleles());
+    assertEquals(List.of(true, false), genotype.getPhasedBoundaries());
+    assertEquals("A|T/C", genotype.toString());
+  }
+
+  @Test
+  void testGetGenotypeThrowsForOutOfRangeAlleleIndex() {
+    // ALT has one allele (T), so valid indices are 0 (REF) and 1; index 5 is out of range
+    VcfSample sample = new VcfSample(List.of("GT"), List.of("5/0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    assertThrows(VcfFormatException.class, () -> sample.getGenotype(position));
+  }
+
+  @Test
+  void testGetGenotypeThrowsForNonNumericAlleleIndex() {
+    VcfSample sample = new VcfSample(List.of("GT"), List.of("X/0"));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    assertThrows(VcfFormatException.class, () -> sample.getGenotype(position));
+  }
+
+  @Test
+  void testGetGenotypeEmptyAlleleWarnsToConfiguredSink() {
+    // a trailing '/' (e.g. "0/") is a zero-length allele where '.' should have been used
+    VcfSample sample = new VcfSample(List.of("GT"), new ArrayList<>(List.of("0/")));
+    java.io.StringWriter sink = new java.io.StringWriter();
+    sample.setWarningsSink(new VcfWarnings(sink));
+    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+    VcfSample.Genotype genotype = sample.getGenotype(position);
+    assertNotNull(genotype);
+    assertEquals(2, genotype.getAlleles().size());
+    assertEquals("A", genotype.getAlleles().get(0));
+    assertEquals(".", genotype.getAlleles().get(1));
+    assertTrue(sink.toString().contains("empty allele"));
   }
 }
