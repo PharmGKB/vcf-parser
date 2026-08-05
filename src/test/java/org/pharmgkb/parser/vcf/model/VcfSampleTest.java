@@ -895,4 +895,13 @@ class VcfSampleTest {
     assertEquals(".", genotype.getAlleles().get(1));
     assertTrue(sink.toString().contains("empty allele"));
   }
+
+  @Test
+  void testGetGenotypeReturnsNullForNullPosition() {
+    // matches getProperty(VcfPosition, VcfMetadata, String)'s and VcfPosition.getInfo(ReservedInfoProperty)'s
+    // null-tolerant contract -- must use a real (non-empty, non-missing) GT so this actually exercises the
+    // position-dependent allele-resolution code path, not the earlier absent/missing-GT short-circuit
+    VcfSample sample = new VcfSample(List.of("GT"), List.of("0/1"));
+    assertNull(sample.getGenotype(null));
+  }
 }

@@ -317,6 +317,11 @@ public class VcfSample {
    * position.getAltBases().size()}, inclusive)
    */
   public @Nullable Genotype getGenotype(VcfPosition position) {
+    // matches getProperty(VcfPosition, VcfMetadata, String)'s and VcfPosition.getInfo(ReservedInfoProperty)'s
+    // null-tolerant contract: a null lookup key/position means "not present", not a crash
+    if (position == null) {
+      return null;
+    }
     String genotype = getProperty(ReservedFormatProperty.Genotype);
     if (genotype == null || genotype.isEmpty()) {
       return null;

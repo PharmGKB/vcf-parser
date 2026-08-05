@@ -134,3 +134,30 @@ real-world occurrence is unlikely. Deduplicating the warning output would requir
 or restructuring the per-element loop into two passes -- real complexity for a purely cosmetic issue with no
 functional impact. Revisit if a caller reports genuinely noisy warning output from this pattern, or if
 `checkFilters`/`checkIds` are restructured for an unrelated reason that would make deduplication free.
+
+## A malformed `GT` value with a leading phase marker produces two independent warnings, not one
+
+`VcfSample.getProperty(VcfPosition, VcfMetadata, String)` and `VcfSample.getGenotype(VcfPosition)` each parse
+a sample's raw `GT` string independently, for different purposes: the former calls
+`InternalUtils.getPloidy` to resolve ploidy for a *different* key's `Number=G` cardinality check (or when
+`GT` itself is the key requested), while the latter interprets `GT`'s own allele indices. Both split the
+same raw string on `[|/]` and both react to the same defect -- a leading separator (VCFv4.4 syntax this
+library's VCFv4.2 target doesn't implement, e.g. `"/0"`) producing an empty leading allele token -- from
+their own independent code paths: `getPloidy` reports `"{} has invalid GT {}"` when `Integer.parseInt` fails
+on the empty token, and `getGenotype` separately reports `"GT \"{}\" contains an empty allele..."` from its
+own empty-base handling.
+
+A consumer who calls both methods for the same sample (e.g. this library's own test-only
+`DeferredValidationLineParser`, which deliberately exercises every deferred check) sees both warnings for
+the one malformed value. A consumer who calls only one of the two methods -- the common case -- only ever
+sees the warning from whichever one they called.
+
+**Decision: won't fix.** These are two genuinely independent, correctly-functioning checks in two
+independently-reachable public methods, each legitimately flagging the same bad input from its own angle --
+not one check firing twice (the shape the `checkFilters`/`PASS` entry above describes). No data is lost or
+corrupted in either path. Coordinating the two to suppress a second warning would require new cross-method
+state (e.g. threading a "already warned about this GT" flag between `getPloidy` and `getGenotype`, which
+have no other coupling today) for a purely cosmetic double-warning that only a deliberately exhaustive
+caller would ever observe. Revisit if a real (non-test-harness) caller reports this as genuinely noisy, or
+if `getPloidy` and `getGenotype` are unified onto one shared GT-parsing helper for an unrelated reason that
+would make deduplication free.

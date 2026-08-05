@@ -55,7 +55,8 @@ invalid:
   the value, and a leading `*` or `=` -- matching the SAM reference-sequence-name character set VCFv4.3 aligned
   CHROM to. A colon is explicitly allowed.
 - A sample with more sub-fields than its `FORMAT` declares (trailing sub-fields may be dropped, but not added).
-- A malformed or out-of-range `GT` allele index looked up through `MemoryMappedVcfDataStore`, or a failed
+- A malformed or out-of-range `GT` allele index looked up through `VcfSample.getGenotype(VcfPosition)` (or
+  `MemoryMappedVcfDataStore`'s `getGenotypeForId`/`getGenotypeAtLocus`, which delegate to it), or a failed
   conversion when a typed value is requested.
 - A key or value set through `BaseMetadata`'s, `VcfSample`'s, or `VcfMetadata`'s mutators (e.g. a `Description`, a
   sample's `GT` value, or an `##assembly` line) containing a line terminator.
