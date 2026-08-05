@@ -450,6 +450,19 @@ public class InternalUtilsTest {
   }
 
   @Test
+  public void testCheckReservedInfoConstraintsAlleleFrequencyDoesNotHangOnPathologicallyLongValue() {
+    // regression test: checkUnitInterval used to call `new BigDecimal(value)` with no length bound --
+    // BigDecimal/BigInteger's decimal-string parsing is quadratic in digit count, so an attacker-controlled
+    // AF value with no length bound was a CPU-exhaustion vector. A oversized value is now treated the same
+    // as "not a number at all" (skipped, no warning here -- the real Type conversion reports it) without
+    // ever attempting the expensive parse. 3 seconds is a wide margin above the fixed behavior's near-instant
+    // rejection at this size; the unfixed code took seconds even at a fraction of this length.
+    String pathologicallyLong = "1".repeat(500_000);
+    assertTimeoutPreemptively(java.time.Duration.ofSeconds(3), () ->
+        InternalUtils.checkReservedInfoConstraints("AF", pathologicallyLong, VcfWarnings.DEFAULT));
+  }
+
+  @Test
   public void testConvertPropertyAlleleFrequencyGrammarMismatchWarnsOnce() {
     // regression test: checkReservedInfoConstraints's AF range check previously used VcfFloat.parse(...) to get
     // a comparable value, which has its own "does not match the VCF Float grammar" warning as a side effect for

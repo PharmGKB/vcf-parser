@@ -102,8 +102,8 @@ here. The rest of this section states the concrete per-shape rules that follow f
   `InternalUtils` (renamed from `VcfUtils`; most of its members are `public` only because Java has no
   cross-package-within-a-library visibility modifier, not because they're designed for external callers),
   `VcfMetadata.validateAlt`/`isEmptyMetadataValue`/`collidesWithAttributeListGrammar`, and
-  `VcfFloat.parse(String, VcfWarnings)`/`isSpecialValue` (the same situation, on otherwise fully-supported
-  classes) -- is exempt from this policy's null-rejection requirement. All three are marked with
+  `VcfFloat.parse(String, VcfWarnings)`/`isSpecialValue`/`exceedsMaxDecimalLength` (the same situation, on
+  otherwise fully-supported classes) -- is exempt from this policy's null-rejection requirement. All three are marked with
   `@RestrictedApi`/`@hidden` and a class- or method-level Javadoc disclaimer; see `VALIDATION_PHILOSOPHY.md`
   for why that disclaimer is a documentation-only exemption, not a technical guarantee. Two of
   `InternalUtils`'s null-guards were judged genuinely load-bearing regardless of this exemption and were

@@ -624,6 +624,12 @@ public class InternalUtils {
     // the real Type conversion that runs immediately after this check in every caller (convertProperty(key.getType(),
     // ...) on the read path, convertProperty(type, value, ...) on the write path) already emits that exact
     // warning once on its own -- calling VcfFloat.parse here as well would double it
+    if (VcfFloat.exceedsMaxDecimalLength(value)) {
+      // too long to be a legitimate value; treated the same as "not a number at all" below -- see
+      // VcfFloat.exceedsMaxDecimalLength's own comment for why this guard exists (new BigDecimal(value) is
+      // quadratic-time in digit count, a CPU-exhaustion vector on an unbounded attacker-controlled string)
+      return;
+    }
     BigDecimal decimal;
     try {
       decimal = new BigDecimal(value);

@@ -41,6 +41,30 @@ public final class VcfFloat {
   // warn-and-preserve parser policy.
   private static final Pattern FLOAT_PATTERN = Pattern.compile("[-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?");
 
+  // The longest value parseDecimal() (and, via exceedsMaxDecimalLength() below, InternalUtils.checkUnitInterval())
+  // accepts before rejecting it outright, without attempting new BigDecimal(value) at all. BigDecimal's (really
+  // BigInteger's) decimal-string parsing is quadratic in digit count -- confirmed empirically: ~140ms at 100,000
+  // digits, ~1.8s at 400,000 -- so an attacker-controlled value with no length bound is a CPU-exhaustion vector
+  // reachable through any Float-typed reserved key (QUAL, AF, BQ, MQ, GL, GP, CNQ, CNP, ...). 128 characters is
+  // generous by orders of magnitude for any legitimate VCF Float value (see FLOAT_PATTERN's grammar above -- even
+  // a heavily-padded real value like "0.000000000000000000000000000001" is nowhere close), and comfortably inside
+  // the range where BigDecimal construction cost is unmeasurable.
+  private static final int MAX_DECIMAL_LENGTH = 128;
+
+  /**
+   * @return true if {@code value} is too long to safely attempt {@code new BigDecimal(value)} against -- see
+   * {@link #MAX_DECIMAL_LENGTH}'s own comment for the full rationale.
+   * <p>Public only because {@link org.pharmgkb.parser.vcf.InternalUtils#checkUnitInterval} needs the identical
+   * guard for its own direct {@code new BigDecimal(value)} call (deliberately not routed through {@link #parse}/
+   * {@link #parseDecimal} -- see that method's own comment for why); not part of this library's supported
+   * public API.
+   * @hidden
+   */
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
+  public static boolean exceedsMaxDecimalLength(String value) {
+    return value.length() > MAX_DECIMAL_LENGTH;
+  }
+
   public enum Special {
     NAN,
     POSITIVE_INFINITY,
@@ -127,6 +151,15 @@ public final class VcfFloat {
    * @throws NumberFormatException if {@code value} is not a valid decimal number at all
    */
   static BigDecimal parseDecimal(String fieldName, String value, VcfWarnings warnings) {
+    // checked before attempting new BigDecimal(value) below -- see MAX_DECIMAL_LENGTH's own comment for why.
+    // A NumberFormatException here is indistinguishable to callers from BigDecimal's own "not a number at
+    // all" rejection, which is exactly the existing policy dispatch this reuses (VcfPosition.getQuality()
+    // warns and falls back to the missing value; parse() throws VcfFormatException) -- no new warning/error
+    // shape is introduced for this case.
+    if (value.length() > MAX_DECIMAL_LENGTH) {
+      throw new NumberFormatException("Value is too long to be a valid VCF Float (" + value.length() +
+          " characters, max " + MAX_DECIMAL_LENGTH + ")");
+    }
     BigDecimal decimal = new BigDecimal(value);
     if (!FLOAT_PATTERN.matcher(value).matches()) {
       warnings.warn("{} value '{}' does not match the VCF Float grammar (VCFv4.3.tex line 100); " +

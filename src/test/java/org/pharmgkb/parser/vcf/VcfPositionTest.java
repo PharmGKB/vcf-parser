@@ -50,6 +50,18 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testGetQualityDoesNotHangOnPathologicallyLongAdversarialValue() {
+    // regression test: getQuality() ultimately calls VcfFloat.parseDecimal, which used to call
+    // `new BigDecimal(value)` with no length bound -- a CPU-exhaustion vector via an attacker-controlled QUAL
+    // value. An oversized value is now rejected before the expensive parse is attempted, treated the same as
+    // any other unparseable QUAL (warns, falls back to the missing value). 3 seconds is a wide margin above
+    // the fixed behavior's near-instant fallback at this size.
+    VcfPosition pathological = newPosition();
+    pathological.setRawQuality("1".repeat(500_000));
+    assertTimeoutPreemptively(java.time.Duration.ofSeconds(3), () -> assertNull(pathological.getQuality()));
+  }
+
+  @Test
   public void testQualityWarnsOnGrammarMismatchButStillParses() {
     // regression test: BigDecimal accepts "5." (a trailing decimal point with no digits after it), but
     // VCFv4.3.tex line 100's Float grammar (QUAL is VCF-spec-typed Float) requires at least one digit after

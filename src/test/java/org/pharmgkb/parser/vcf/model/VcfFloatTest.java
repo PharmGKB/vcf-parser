@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -88,6 +89,36 @@ public class VcfFloatTest {
   @Test
   public void testParseInvalidValueThrows() {
     assertThrows(VcfFormatException.class, () -> VcfFloat.parse("not-a-number"));
+  }
+
+  @Test
+  public void testParseRejectsValueExceedingMaxDecimalLength() {
+    // regression test: parseDecimal used to call `new BigDecimal(value)` with no length bound at all --
+    // BigDecimal/BigInteger's decimal-string parsing is quadratic in digit count, so an attacker-controlled
+    // value with no length bound was a CPU-exhaustion vector reachable through any Float-typed reserved key.
+    // An oversized value is now rejected before the expensive parse is ever attempted, using the same
+    // NumberFormatException-to-VcfFormatException policy dispatch as any other unparseable value.
+    String tooLong = "1".repeat(129);
+    assertThrows(VcfFormatException.class, () -> VcfFloat.parse(tooLong));
+  }
+
+  @Test
+  public void testParseAcceptsValueAtMaxDecimalLengthBoundary() {
+    // pins the boundary itself: exactly 128 characters must still parse normally, not be swept up by an
+    // off-by-one in the new length guard
+    String atBoundary = "1".repeat(128);
+    VcfFloat value = VcfFloat.parse(atBoundary);
+    assertEquals(new BigDecimal(atBoundary), value.getValue());
+  }
+
+  @Test
+  public void testParseDoesNotHangOnPathologicallyLongAdversarialValue() {
+    // 3 seconds is a wide margin above the fixed behavior's near-instant rejection at this size; the unfixed
+    // code (new BigDecimal(value) with no length bound) took ~3 seconds at this exact size, empirically, per
+    // the finding that motivated this fix
+    String pathologicallyLong = "1".repeat(500_000);
+    assertTimeoutPreemptively(java.time.Duration.ofSeconds(3), () ->
+        assertThrows(VcfFormatException.class, () -> VcfFloat.parse(pathologicallyLong)));
   }
 
   @Test
