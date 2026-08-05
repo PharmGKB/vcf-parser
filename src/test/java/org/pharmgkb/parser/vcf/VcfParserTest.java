@@ -1080,6 +1080,44 @@ public class VcfParserTest {
   }
 
   @Test
+  void testEvaCatSaa1FixtureProducesExactlyOneKnownWarning() throws IOException {
+    // Real-world regression fixture, committed in full (unlike the excerpted fixtures above -- this file is
+    // already tiny): a real individual study submission to the European Variation Archive (EVA), PRJEB105544
+    // (Felis catus, SAA1 gene region, https://ftp.ebi.ac.uk/pub/databases/eva/PRJEB105544/cat_SAA1.vcf.gz),
+    // 107 records across 50 samples. Notably, this is a genuinely ##fileformat=VCFv4.3-declared file -- every
+    // other real-world fixture and every centralized production pipeline checked (1000 Genomes, gnomAD,
+    // ClinVar, and even EVA's own re-accessioned version of this same study) declares VCFv4.1/4.2 regardless
+    // of how recent the release is; an individual researcher's own submission, using their own tooling before
+    // EVA's centralized accessioning pipeline reprocesses it, is the one place a newer declared version
+    // actually shows up. The one warning below is metadata-level (fires once during header parsing,
+    // independent of how many data records follow): no ##SAMPLE declarations exist for the 50 samples in
+    // #CHROM -- the same real-world gap already seen in both fixtures above, now confirmed a third time
+    // across a third, unrelated dataset and species. Confirmed directly that bcftools 1.23.1 emits nothing
+    // for this file at all (exit 0, no warnings) -- consistent with every other fixture here.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/eva_cat_saa1.vcf"));
+           VcfParser parser = new VcfParser.Builder()
+               .fromReader(reader)
+               .parseWith((metadata, position, sampleData) -> {})
+               .build()) {
+        parser.parse();
+      }
+      Set<String> actual = new HashSet<>(appender.getRelevantWarnOrHigherMessages(Set.of()));
+      Set<String> expected = Set.of("There are 50 samples in the header but 0 in the metadata");
+      assertEquals(expected, actual);
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   void testPositionOrderingWarnsOnDecreasingPosWithinSameChromosome() throws IOException {
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
