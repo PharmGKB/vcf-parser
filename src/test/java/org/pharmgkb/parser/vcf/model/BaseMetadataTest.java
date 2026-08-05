@@ -3,6 +3,7 @@ package org.pharmgkb.parser.vcf.model;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.VcfFormatException;
 
@@ -47,16 +48,32 @@ public class BaseMetadataTest {
   }
 
   @Test
-  public void testGetPropertyKeysReturnsACopyNotALiveView() {
+  public void testGetPropertyKeysRejectsDirectMutationInsteadOfSilentlyDefeatingIt() {
     // regression test: getPropertyKeys() used to return m_properties.keySet() directly -- a standard
     // Map.keySet() view where remove() deletes the entry from the backing map, bypassing every check
-    // putPropertyRaw/putAndQuoteProperty perform. It now returns a copy, matching getPropertiesUnquoted()'s
-    // and VcfMetadata.getRawPropertyKeys()'s existing pattern.
+    // putPropertyRaw/putAndQuoteProperty perform, with no signal to the caller that anything unusual
+    // happened. It now returns an unmodifiable view: a mutation attempt fails fast with
+    // UnsupportedOperationException instead of either corrupting the backing map (the original bug) or
+    // silently no-opping on a detached copy (this project's first-drafted fix for this same bug, reconsidered
+    // in favor of fail-fast).
     Map<String, String> map = new LinkedHashMap<>();
     map.put("Number", "1");
     BaseMetadata metadata = new BaseMetadata("TEST", map);
-    metadata.getPropertyKeys().remove("Number");
+    assertThrows(UnsupportedOperationException.class, () -> metadata.getPropertyKeys().remove("Number"));
     assertEquals("1", metadata.getPropertyRaw("Number"));
+  }
+
+  @Test
+  public void testGetPropertyKeysReflectsALaterMutationMadeThroughOtherMethods() {
+    // companion test: unlike a snapshot copy, getPropertyKeys() remains a view over the live backing map --
+    // a mutation made through putPropertyRaw() after the fact is visible through a set obtained beforehand
+    Map<String, String> map = new LinkedHashMap<>();
+    map.put("ID", "DP");
+    BaseMetadata metadata = new BaseMetadata("TEST", map);
+    Set<String> keys = metadata.getPropertyKeys();
+    assertFalse(keys.contains("Number"));
+    metadata.putPropertyRaw("Number", "1");
+    assertTrue(keys.contains("Number"));
   }
 
   @Test

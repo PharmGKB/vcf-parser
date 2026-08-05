@@ -5,6 +5,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import ch.qos.logback.classic.Logger;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.InternalUtils;
@@ -34,6 +36,28 @@ class VcfSampleTest {
     VcfSample sample = new VcfSample(keys, values);
     assertEquals(2, sample.getPropertyKeys().size());
     assertEquals("value1", sample.getProperty("key1"));
+  }
+
+  @Test
+  void testGetPropertyKeysRejectsDirectMutationInsteadOfSilentlyDefeatingIt() {
+    // regression test: getPropertyKeys() used to return properties().keySet() directly -- a standard
+    // Map.keySet() view where remove() deletes the entry from the backing map with no validation and no
+    // signal to the caller. It now returns an unmodifiable view: a mutation attempt fails fast with
+    // UnsupportedOperationException instead of silently corrupting the sample.
+    VcfSample sample = new VcfSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
+    assertThrows(UnsupportedOperationException.class, () -> sample.getPropertyKeys().remove("GT"));
+    assertEquals("0/1", sample.getProperty("GT"));
+  }
+
+  @Test
+  void testGetPropertyKeysReflectsALaterMutationMadeThroughOtherMethods() {
+    // companion test: unlike a snapshot copy, getPropertyKeys() remains a view over the live backing map --
+    // a mutation made through putProperty() after the fact is visible through a set obtained beforehand
+    VcfSample sample = new VcfSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
+    Set<String> keys = sample.getPropertyKeys();
+    assertFalse(keys.contains("DP"));
+    sample.putProperty("DP", "10");
+    assertTrue(keys.contains("DP"));
   }
 
   @Test

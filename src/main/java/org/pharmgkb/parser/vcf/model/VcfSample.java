@@ -529,11 +529,16 @@ public class VcfSample {
   }
 
   /**
-   * @return A set of the property keys, which has guaranteed order
+   * @return An order-preserving, unmodifiable view of the property keys. Unlike {@link #propertyEntrySet()}, a
+   * mutation attempt directly on the returned set (e.g. {@link Set#remove}) throws
+   * {@link UnsupportedOperationException} rather than silently affecting this instance -- a later mutation made
+   * through {@link #putProperty}/{@link #removeProperty}/{@link #propertyEntrySet()} is, however, still
+   * reflected here, since this remains a view over the live backing map, not a snapshot copy.
    */
   public Set<String> getPropertyKeys() {
-    // LinkedHashMap.keySet() returns a LinkedKeySet, which has guaranteed order
-    return properties().keySet();
+    // LinkedHashMap.keySet() returns a LinkedKeySet, which has guaranteed order; Collections.unmodifiableSet
+    // preserves that ordering since it's a thin wrapper, not a copy
+    return Collections.unmodifiableSet(properties().keySet());
   }
 
   /**

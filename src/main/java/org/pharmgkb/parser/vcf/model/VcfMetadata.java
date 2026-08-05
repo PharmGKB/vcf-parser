@@ -1,8 +1,8 @@
 package org.pharmgkb.parser.vcf.model;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -625,10 +625,14 @@ public class VcfMetadata {
    * </ul>
    * However, contains any in {@link #getAssemblies} and {@link #getPedigreeDatabases}.
    * <p>
-   * Iterates in the order each key was first added, not alphabetically.
+   * Iterates in the order each key was first added, not alphabetically. Unlike {@link #getRawProperties()}, a
+   * mutation attempt directly on the returned set (e.g. {@link Set#remove}) throws
+   * {@link UnsupportedOperationException} rather than silently affecting this instance -- a later mutation made
+   * through {@link #getRawProperties()}/{@link #addAssembly}/{@link #addPedigreeDatabase} is, however, still
+   * reflected here, since this remains a view over the live backing multimap, not a snapshot copy.
    */
   public Set<String> getRawPropertyKeys() {
-    return new LinkedHashSet<>(m_properties.keySet());
+    return Collections.unmodifiableSet(m_properties.keySet());
   }
 
   /**

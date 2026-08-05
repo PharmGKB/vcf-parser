@@ -4,6 +4,7 @@ import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.InternalUtils;
 import org.pharmgkb.parser.vcf.VcfFormatException;
@@ -281,6 +282,31 @@ public class VcfMetadataTest {
         .addRawProperty("assembly", "file://somewhere")
         .build();
     assertEquals(Arrays.asList("phasing", "source", "assembly"), new ArrayList<>(metadata.getRawPropertyKeys()));
+  }
+
+  @Test
+  public void testGetRawPropertyKeysRejectsDirectMutationInsteadOfSilentlyDefeatingIt() {
+    // regression test: getRawPropertyKeys() must fail fast on a direct mutation attempt (matching
+    // BaseMetadata.getPropertyKeys()'s identical fix) rather than silently no-opping on a detached copy or
+    // corrupting the live backing multimap
+    VcfMetadata metadata = new VcfMetadata.Builder()
+        .setFileFormat("VCFv4.2")
+        .addRawProperty("phasing", "partial")
+        .build();
+    assertThrows(UnsupportedOperationException.class, () -> metadata.getRawPropertyKeys().remove("phasing"));
+    assertTrue(metadata.getRawPropertyKeys().contains("phasing"));
+  }
+
+  @Test
+  public void testGetRawPropertyKeysReflectsALaterMutationMadeThroughOtherMethods() {
+    // companion test: unlike a snapshot copy, getRawPropertyKeys() remains a view over the live backing
+    // multimap -- a mutation made through getRawProperties() (the documented live-multimap accessor) after
+    // the fact is visible through a set obtained beforehand
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    Set<String> keys = metadata.getRawPropertyKeys();
+    assertFalse(keys.contains("phasing"));
+    metadata.getRawProperties().put("phasing", "partial");
+    assertTrue(keys.contains("phasing"));
   }
 
   @Test

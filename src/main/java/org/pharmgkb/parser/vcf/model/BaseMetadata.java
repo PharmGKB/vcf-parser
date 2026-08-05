@@ -1,9 +1,9 @@
 package org.pharmgkb.parser.vcf.model;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -134,11 +134,14 @@ public class BaseMetadata {
   }
 
   /**
-   * @return A new, order-preserving set of every property key. Unlike {@link #getPropertiesRaw()}, this is a
-   * copy: mutating the returned set (e.g. via {@link Set#remove}) has no effect on this instance.
+   * @return An order-preserving, unmodifiable view of every property key. Unlike {@link #getPropertiesRaw()},
+   * a mutation attempt directly on the returned set (e.g. {@link Set#remove}) throws
+   * {@link UnsupportedOperationException} rather than silently affecting this instance -- a later mutation made
+   * through {@link #getPropertiesRaw()}/{@link #putPropertyRaw}/{@link #putAndQuoteProperty} is, however, still
+   * reflected here, since this remains a view over the live backing map, not a snapshot copy.
    */
   public Set<String> getPropertyKeys() {
-    return new LinkedHashSet<>(m_properties.keySet());
+    return Collections.unmodifiableSet(m_properties.keySet());
   }
 
   public void putAndQuoteProperty(String key, String value) {
