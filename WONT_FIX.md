@@ -269,3 +269,58 @@ mutation pattern is already used elsewhere in this codebase's own tests, just on
 low-level `List` API misuse with no existing analog anywhere in this project. Revisit if a real caller or
 fixture ever demonstrates this pattern in practice, or if `getPedigrees()`'s live-view contract is ever
 revisited more broadly.
+
+## The six `HashMap`-keyed metadata types' `warnIfDuplicate` can be fooled by an in-place `ID` mutation on an already-added entry
+
+`VcfMetadata`'s/`Builder`'s six keyed types (INFO/FORMAT/FILTER/ALT/contig/SAMPLE) dedupe via
+`warnIfDuplicate(Map<String, XxxMetadata>, id, ...)`, an O(1) `HashMap.containsKey(id)` check keyed by
+`md.getId()` captured at add time. `IdMetadata.getId()` reads live from the object's own mutable raw-properties
+map, and every `BaseMetadata` subclass exposes `putPropertyRaw`/`putAndQuoteProperty` plus a live
+`getPropertiesRaw()` map as a real, tested, load-bearing mutation path (the `VcfTransformation` pipeline
+feature) -- `VcfWriterTest.java:1775/1779` and `TransformingVcfLineParserTest.java:330` both call
+`metadata.getInfo().get("AF").putPropertyRaw("ID", ...)` directly on an already-added, already-keyed entry.
+
+So an already-added entry's `ID` can change without the map's key ever updating: it stays reachable at its OLD
+key, but `getId()` reports the NEW value. If a caller later adds a new declaration whose ID happens to match
+that new value, `warnIfDuplicate`'s `containsKey` check misses it (the map's key set still only has the old
+value), and the add silently succeeds -- leaving two entries in the map, under different keys, that both report
+the same `getId()`.
+
+**Verified empirically** (`FILTER`, representative of all six -- same shared `warnIfDuplicate` mechanism): add
+`md1` (id="A") and `md2` (id="B"); mutate `md2.getPropertiesRaw().put("ID", "C")` (now reports `getId()=="C"`,
+still keyed under `"B"`); add `md5` (id="C") -- wrongly accepted, since the map has no key `"C"` yet. Result:
+`{A: md1, B: md2(getId=C), C: md5(getId=C)}` -- two entries reporting `getId()==C`.
+
+Discovered while fixing an unrelated `PedigreeMetadata` O(n^2) DoS (see the `TrackedPedigreeList` entries
+above), which raised the natural question of whether the same fix (making the type immutable) should
+propagate here too.
+
+**Decision: won't fix; not a comparable situation to `PedigreeMetadata`'s fix.** Two things distinguish this
+from the `PedigreeMetadata` case:
+
+1. **Immutability isn't available as an option here.** `PedigreeMetadata` was made immutable because nothing
+   anywhere in this codebase mutates it post-construction -- the fix was free. The exact mutation pattern that
+   triggers this gap (`putPropertyRaw("ID", ...)` on an already-added entry) is itself real, existing, tested
+   functionality for these six types (the `VcfTransformation` pipeline feature). Removing it would break
+   real behavior, not just close a theoretical gap.
+2. **The failure mode is one-directional and already caught downstream, unlike `PedigreeMetadata`'s bug.**
+   A stale `HashMap` key can only ever cause a false-negative (silently accepting a duplicate) -- it can never
+   cause a false-positive rejection of valid content, since mutating an existing entry's `ID` can only break an
+   association the map already had, never fabricate a new key the map didn't have. `PedigreeMetadata`'s bug
+   (in the add-time duplicate-ID cache introduced by the DoS fix, not in any write-time check) could go the
+   *other* way too -- wrongly rejecting or silently dropping genuinely valid content at the moment of the
+   `addPedigree` call, before it was ever stored, which no write-time check could ever recover. This gap's one
+   failure direction, by contrast, is already independently caught before anything is written:
+   `VcfWriter.validateKeyedMetadataEntries()` (used by `VcfWriter.Builder.validateBeforeWrite()`) verifies every
+   entry's own reported `ID` matches its map key and throws `VcfFormatException` if they've drifted apart --
+   see `VcfWriterTest.testHeaderContentRejectionAllowsCorrectedRetry`, which pins exactly this ("MISMATCHED" ID)
+   scenario.
+3. **Not reachable from untrusted file content at all.** A normal `VcfParser` parse only ever adds each
+   declaration once; nothing during parsing mutates an already-added entry's `ID`. This gap requires
+   deliberate, first-party post-parse programmatic mutation (e.g. a `VcfTransformation` that renames an `ID`),
+   not something a crafted `.vcf` file could trigger -- a materially different risk profile than the
+   `PedigreeMetadata` DoS or the `BigDecimal`/CIGAR findings, all of which were reachable from file content
+   alone.
+
+Revisit if a real caller reports actually hitting this (as opposed to it being found by deliberate
+investigation), or if `validateBeforeWrite()`'s existing mismatch check is ever found to have its own gap.
