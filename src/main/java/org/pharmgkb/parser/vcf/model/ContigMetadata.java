@@ -187,8 +187,8 @@ public class ContigMetadata extends IdMetadata {
         }
       }
     }
-    // No ensureNoExtras() call here, matching InfoMetadata/FormatMetadata/IdDescriptionMetadata's identical
-    // no-warn-on-extras treatment: VCFv4.2.tex line 123's "extra fields can be included after the default
+    // No unrecognized-attribute check here, matching InfoMetadata/FormatMetadata/IdDescriptionMetadata's
+    // identical no-warn-on-extras treatment: VCFv4.2.tex line 123's "extra fields can be included after the default
     // fields" sentence doesn't name ##contig directly, but ##contig's own worked example a few lines later
     // (line 140) ends in "..." (`##contig=<ID=ctg1,URL=ftp://somewhere.org/assembly.fa,...>`), signaling the
     // identical "more tags may follow" contract. Confirmed against hts-specs' own passed/passed_meta_contig.vcf

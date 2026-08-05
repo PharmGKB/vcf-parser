@@ -1,10 +1,9 @@
 package org.pharmgkb.parser.vcf.model;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -134,8 +133,12 @@ public class BaseMetadata {
     return m_properties;
   }
 
+  /**
+   * @return A new, order-preserving set of every property key. Unlike {@link #getPropertiesRaw()}, this is a
+   * copy: mutating the returned set (e.g. via {@link Set#remove}) has no effect on this instance.
+   */
   public Set<String> getPropertyKeys() {
-    return m_properties.keySet();
+    return new LinkedHashSet<>(m_properties.keySet());
   }
 
   public void putAndQuoteProperty(String key, String value) {
@@ -160,22 +163,6 @@ public class BaseMetadata {
     }
     InternalUtils.checkNoLineTerminator(key, value);
     m_properties.put(key, value);
-  }
-
-  /**
-   * Should be used only for base classes.
-   * Warns (via {@link VcfWarnings#warn}) if this metadata contains a property key not in the array passed. The
-   * warning message embeds this declaration's {@link #getLabel() label} so it is attributed to the correct VCF
-   * declaration kind -- necessary because some concrete classes (e.g. {@code IdDescriptionMetadata}) are shared
-   * by multiple declaration kinds with no other distinguishing field.
-   * @param names An array of permitted property keys
-   */
-  protected void ensureNoExtras(String... names) {
-    Set<String> set = new HashSet<>();
-    Collections.addAll(set, names);
-    m_properties.keySet().stream().filter(property -> !set.contains(property)).forEach(property -> {
-      m_warnings.warn("{} metadata line contains unexpected property {}", getLabel(), property);
-    });
   }
 
   /**

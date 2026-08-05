@@ -1,12 +1,10 @@
 package org.pharmgkb.parser.vcf.model;
 
-import java.io.StringWriter;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.VcfFormatException;
-import org.pharmgkb.parser.vcf.VcfWarnings;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -46,6 +44,19 @@ public class BaseMetadataTest {
     map.put("extra", "should not appear");
     assertEquals("one", metadata.getPropertyRaw("test"));
     assertFalse(metadata.getPropertyKeys().contains("extra"));
+  }
+
+  @Test
+  public void testGetPropertyKeysReturnsACopyNotALiveView() {
+    // regression test: getPropertyKeys() used to return m_properties.keySet() directly -- a standard
+    // Map.keySet() view where remove() deletes the entry from the backing map, bypassing every check
+    // putPropertyRaw/putAndQuoteProperty perform. It now returns a copy, matching getPropertiesUnquoted()'s
+    // and VcfMetadata.getRawPropertyKeys()'s existing pattern.
+    Map<String, String> map = new LinkedHashMap<>();
+    map.put("Number", "1");
+    BaseMetadata metadata = new BaseMetadata("TEST", map);
+    metadata.getPropertyKeys().remove("Number");
+    assertEquals("1", metadata.getPropertyRaw("Number"));
   }
 
   @Test
@@ -218,15 +229,6 @@ public class BaseMetadataTest {
   }
 
   @Test
-  public void testEnsureNoExtrasWarnsToConfiguredSink() {
-    BaseMetadata md = new BaseMetadata("TESTLABEL", Map.of("Extra", "value"));
-    StringWriter sink = new StringWriter();
-    md.setWarningsSink(new VcfWarnings(sink));
-    md.ensureNoExtras("ID");
-    assertTrue(sink.toString().contains("TESTLABEL metadata line contains unexpected property Extra"));
-  }
-
-  @Test
   public void testSetWarningsSinkRejectsNull() {
     BaseMetadata md = new BaseMetadata("TESTLABEL", Map.of());
     assertThrows(NullPointerException.class, () -> md.setWarningsSink(null));
@@ -234,16 +236,19 @@ public class BaseMetadataTest {
 
   @Test
   public void testDefaultWarningsSinkIsSharedLogger() {
-    // no setWarningsSink call at all -- must warn to the shared logger, not throw or silently no-op
-    BaseMetadata md = new BaseMetadata("TESTLABEL", Map.of("Extra", "value"));
+    // no setWarningsSink call at all -- must warn to the shared logger, not throw or silently no-op.
+    // warnIfMissing is protected, not part of any concrete declaration kind's own public behavior, but
+    // accessible here (same package) purely as a vehicle to trigger a warning through m_warnings -- any
+    // warn() call site would do equally well for this test's actual point.
+    BaseMetadata md = new BaseMetadata("TESTLABEL", Map.of());
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender = new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
     try {
-      md.ensureNoExtras("ID");
-      assertTrue(appender.anyMessageContains("unexpected property Extra"));
+      md.warnIfMissing("SomeProp", null);
+      assertTrue(appender.anyMessageContains("TESTLABEL required metadata property \"SomeProp\" is missing"));
     } finally {
       root.detachAppender(appender);
       appender.stop();
