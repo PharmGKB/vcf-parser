@@ -224,6 +224,10 @@ public class VcfParser implements Closeable {
           + "syntax", m_lineNumber);
     }
 
+    String chromosome;
+    long position;
+    VcfPosition pos;
+    List<VcfSample> samples;
     try {
       List<String> data = toList(TAB, line);
       // a line with no tab at all (data.size() == 1) and nothing but whitespace is genuinely empty -- report
@@ -271,10 +275,9 @@ public class VcfParser implements Closeable {
       }
 
       // CHROM
-      String chromosome = data.get(0);
+      chromosome = data.get(0);
 
       // POS
-      long position;
       try {
         position = Long.parseLong(data.get(1));
       } catch (NumberFormatException e) {
@@ -306,11 +309,11 @@ public class VcfParser implements Closeable {
       boolean noFormatFields = format != null && format.isEmpty();
 
       // QUAL and INFO are parsed lazily by VcfPosition (see setRawQuality/setRawInfo); many consumers never read them.
-      VcfPosition pos = new VcfPosition(chromosome, position, ids, ref, alt,
+      pos = new VcfPosition(chromosome, position, ids, ref, alt,
           null, filters, null, format, m_lineNumber, m_warnings);
       pos.setRawQuality(data.get(5));
       pos.setRawInfo(data.get(7));
-      List<VcfSample> samples = new ArrayList<>();
+      samples = new ArrayList<>();
       // VcfSample must never share the same List object as VcfPosition's own m_format: VcfPosition.getFormat() is
       // documented and tested as safe to mutate in place (e.g. by a VcfTransformation), but VcfSample's own
       // parallel keys/values lists require keys.size() == values.size() to hold, and are corrupted by an
@@ -345,21 +348,32 @@ public class VcfParser implements Closeable {
         samples.add(sample);
       }
 
-      // only run once every check above that can reject this line -- notably VcfPosition's own structural
-      // checks and VcfSample's FORMAT/sample-arity check -- has passed, so the ordering/contiguity state
-      // reflects exactly the records delivered to the VcfLineParser below, never a line rejected before
-      // reaching it. Deliberately runs before parseLine() itself, not after: a VcfLineParser callback that
-      // throws is the caller's own problem with an already-valid record, not this parser rejecting it.
-      checkPositionOrdering(chromosome, position);
-      m_vcfLineParser.parseLine(m_vcfMetadata, pos, samples);
-      return true;
-
     } catch (VcfFormatException ex) {
       ex.addMetadata(m_lineNumber, "data");
       throw ex;
     } catch (RuntimeException e) {
       throw new VcfFormatException(m_lineNumber, "data", e);
     }
+
+    // only run once every check above that can reject this line -- notably VcfPosition's own structural
+    // checks and VcfSample's FORMAT/sample-arity check -- has passed, so the ordering/contiguity state
+    // reflects exactly the records delivered to the VcfLineParser below, never a line rejected before
+    // reaching it. Deliberately runs before parseLine() itself, not after: a VcfLineParser callback that
+    // throws is the caller's own problem with an already-valid record, not this parser rejecting it.
+    //
+    // Both calls below are deliberately OUTSIDE the try/catch above: a RuntimeException from the
+    // VcfLineParser callback itself (a bug in the caller's own code, not a VCF-content problem) must
+    // propagate with its original type, not get relabeled as VcfFormatException the way a genuine
+    // content-parsing failure above does. A VcfFormatException the callback throws on purpose (to reject an
+    // already-structurally-valid record) still gets this line's number attached, same as before.
+    checkPositionOrdering(chromosome, position);
+    try {
+      m_vcfLineParser.parseLine(m_vcfMetadata, pos, samples);
+    } catch (VcfFormatException ex) {
+      ex.addMetadata(m_lineNumber, "data");
+      throw ex;
+    }
+    return true;
   }
 
   /**

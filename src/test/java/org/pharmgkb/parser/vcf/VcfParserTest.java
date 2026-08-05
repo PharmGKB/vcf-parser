@@ -1210,6 +1210,46 @@ public class VcfParserTest {
   }
 
   @Test
+  void testVcfLineParserCallbackRuntimeExceptionPropagatesWithOriginalType() throws IOException {
+    // regression test: a RuntimeException thrown by the caller's OWN VcfLineParser callback (a bug in their
+    // code, not a VCF-content problem) must propagate as-is, not get silently relabeled as VcfFormatException
+    // -- indistinguishable from a genuine "this line is malformed" rejection to any caller who branches on
+    // exception type
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT\t.\t.\t.\n";
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .parseWith((metadata, position, sampleData) -> {
+          throw new NullPointerException("caller bug: some field was null");
+        })
+        .build()) {
+      NullPointerException e = assertThrows(NullPointerException.class, parser::parse);
+      assertEquals("caller bug: some field was null", e.getMessage());
+    }
+  }
+
+  @Test
+  void testVcfLineParserCallbackDeliberateVcfFormatExceptionStillGetsLineNumberAttached() throws IOException {
+    // companion regression test to the one above: a callback that deliberately throws VcfFormatException (to
+    // reject an already-structurally-valid record) must still get this line's number attached, exactly as
+    // before this method was split into two try/catch blocks
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT\t.\t.\t.\n";
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .parseWith((metadata, position, sampleData) -> {
+          throw new VcfFormatException("caller rejects this record");
+        })
+        .build()) {
+      VcfFormatException e = assertThrows(VcfFormatException.class, parser::parse);
+      assertThat(e.getMessage(), containsString("caller rejects this record"));
+      assertThat(e.getMessage(), containsString("Line #"));
+    }
+  }
+
+  @Test
   void testPositionOrderingAllowsRepeatedPosOnSameChromosome() throws IOException {
     // VCFv4.2.tex line 180: "It is permitted to have multiple records with the same POS."
     ch.qos.logback.classic.Logger root =

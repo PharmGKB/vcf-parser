@@ -238,6 +238,11 @@ public class TransformingVcfLineParserTest {
 
   @Test
   public void testTransformDataLineFailureDoesNotInvalidate() throws Exception {
+    // a RuntimeException from transformDataLine is a bug in the caller's own VcfTransformation, not a
+    // VCF-content problem -- VcfParser.parseNextLine() no longer relabels it as VcfFormatException (see the
+    // regression tests in VcfParserTest for the general case this specializes), so it must propagate with
+    // its original type here too. isValid() staying true is this test's real point: a transformation bug
+    // must not permanently invalidate the parser/writer, regardless of what exception type propagates.
     String vcf = "##fileformat=VCFv4.2\n" +
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
         "1\t1\t.\tA\tT\t.\t.\t.\n";
@@ -254,7 +259,8 @@ public class TransformingVcfLineParserTest {
         .parseWith(lineParser)
         .fromReader(new BufferedReader(new StringReader(vcf)))
         .build()) {
-      assertThrows(VcfFormatException.class, parser::parse);
+      RuntimeException e = assertThrows(RuntimeException.class, parser::parse);
+      assertEquals("simulated per-record failure", e.getMessage());
     }
     assertTrue(lineParser.isValid());
   }
