@@ -172,7 +172,26 @@ public class InternalUtils {
   // unavailable, or one-or-more (positive-integer length, single-letter operation) pairs, operation one of
   // M/I/D/N/S/H/P/=/X) -- not itself vendored in this repo, so cited here as the common bioinformatics
   // convention vcf_validator's message implies, not as a VCF-spec-mandated rule.
-  public static final Pattern CIGAR_PATTERN = Pattern.compile("\\*|(?:[0-9]+[MIDNSHPX=])+");
+  //
+  // The outer group is possessive ("++"), for the stack-depth reason already documented on
+  // sf_simpleAltPattern's own outer quantifier above: Java's regex engine recurses one call frame per
+  // repetition of a quantified group, so a long sequence of short "<digits><op>" pairs previously threw an
+  // uncaught StackOverflowError instead of failing the match cleanly -- verified directly: "1M" repeated
+  // 2000+ times plus one trailing bare digit (~4KB) crashed with the non-possessive version, reachable
+  // end-to-end via VcfPosition.getInfo(ReservedInfoProperty.Cigar). Safe to make possessive: each repetition
+  // here is unambiguously anchored (a digit run is never ambiguous with the mandatory single operation
+  // letter that follows it), so no legitimate match ever needs to backtrack across repetitions of this group.
+  //
+  // The inner "[0-9]++" is also possessive, but unlike sf_simpleAltPattern's inner nucleotide quantifier,
+  // this one isn't fixing a verified catastrophic-backtracking blowup -- confirmed empirically that a long
+  // all-digit run followed by an invalid trailing character (e.g. "1"-repeated-20000 + "!") already fails in
+  // ~O(N) time even without it, since digits and the fixed operation-letter set (MIDNSHPX=) are disjoint
+  // character classes: backtracking [0-9]+ one position at a time always immediately re-fails the
+  // just-freed digit against the operation-letter check, so there's no combinatorial split to blow up the
+  // way ALT's ambiguous nucleotide-vs-symbolic-ID alternation can. Kept possessive anyway for the same
+  // "no legitimate match ever needs it" safety argument and parity with the sibling pattern -- free
+  // hardening, not a fix for a distinct observed bug.
+  public static final Pattern CIGAR_PATTERN = Pattern.compile("\\*|(?:[0-9]++[MIDNSHPX=])++");
 
   private static final Pattern sf_whitespacePattern = Pattern.compile("\\s");
 

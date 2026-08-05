@@ -529,6 +529,21 @@ public class InternalUtilsTest {
   }
 
   @Test
+  public void testCigarPatternDoesNotStackOverflowOnLongRepetition() {
+    // regression test: CIGAR_PATTERN's outer quantified group must be possessive. Java's regex engine
+    // recurses one Java call frame per repetition of a quantified group, so a long sequence of short
+    // "<digits><op>" pairs previously blew the JVM call stack directly (StackOverflowError), confirmed
+    // reachable end-to-end via VcfPosition.getInfo(ReservedInfoProperty.Cigar) on a fixture-shaped CIGAR
+    // value before this fix. 5,000 repetitions (10,000 chars) is a wide margin above the threshold that
+    // crashed the unfixed pattern. (The inner "[0-9]++" possessive quantifier is also present, for parity
+    // with sf_simpleAltPattern's inner quantifier, but isn't fixing a distinct verified bug here -- see
+    // CIGAR_PATTERN's own comment for why this grammar's disjoint digit/operation-letter character classes
+    // don't actually blow up combinatorially the way ALT's ambiguous alternation can.)
+    String manyPairs = "1M".repeat(5_000);
+    assertTrue(InternalUtils.CIGAR_PATTERN.matcher(manyPairs).matches());
+  }
+
+  @Test
   public void testConvertPropertyDoesNotApplyInfoConstraintsToNonInfoReservedProperty() {
     // regression test: a ReservedProperty implementation whose ID happens to equal "AC" (the same ID as
     // ReservedInfoProperty.AlleleCount) must NOT have AC's INFO-only non-negative constraint applied, since
