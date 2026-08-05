@@ -176,6 +176,25 @@ public class TransformingVcfLineParserTest {
   }
 
   @Test
+  public void testTransformationWithNullTransformationAndPathDoesNotLeakFileHandle(
+      @org.junit.jupiter.api.io.TempDir Path tempDir) throws Exception {
+    // regression test for a deeper gap than the sibling test above: that test only confirms NullPointerException
+    // is thrown, which the 3-argument delegate's own null-check already guaranteed even before this fix (via
+    // Preconditions.checkNotNull(transformation) in commit 7515a1a) -- it doesn't confirm WHEN the check runs
+    // relative to opening the output file. Before this fix, the Path overload's own body constructed
+    // "new VcfWriter.Builder().toFile(outputFile).build()" as an argument to the delegate call, and Java
+    // evaluates a method's arguments before invoking it -- so that build() call (which eagerly opens a real OS
+    // file handle, creating outputFile on disk) ran BEFORE the delegate's null-check ever had a chance to reject
+    // the null transformation. The abandoned VcfWriter/file handle was never closed, and outputFile was left on
+    // disk despite the whole call having thrown. This test asserts the file does NOT get created at all.
+    Path outputFile = tempDir.resolve("leaked.vcf");
+    assertFalse(java.nio.file.Files.exists(outputFile));
+    assertThrows(NullPointerException.class,
+        () -> new TransformingVcfLineParser.Builder().transformation((VcfTransformation) null, outputFile));
+    assertFalse(java.nio.file.Files.exists(outputFile));
+  }
+
+  @Test
   public void testTransformationWithPathOverload(@org.junit.jupiter.api.io.TempDir Path tempDir) throws Exception {
     // the Path overload had zero test coverage anywhere in the repo before this batch, despite being the
     // overload most exposed to the file-handle-leak consequence the null-transformation guard exists to

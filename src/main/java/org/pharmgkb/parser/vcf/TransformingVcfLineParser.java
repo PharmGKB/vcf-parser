@@ -134,12 +134,26 @@ public class TransformingVcfLineParser implements VcfLineParser, Closeable {
     public Builder transformation(VcfTransformation transformation, Path outputFile)
         throws IOException {
       checkNotAlreadySet();
+      // must run before new VcfWriter.Builder().toFile(outputFile).build() below: that call opens a real OS
+      // file handle (creating/truncating outputFile) as soon as it runs, since Java evaluates a method's
+      // arguments before invoking it -- checking transformation only inside the 3-argument overload below
+      // (which it still does, redundantly) is too late to prevent that open from ever happening. A null
+      // transformation here would otherwise leak that handle and leave a stray empty file on disk, with
+      // nothing left holding a reference to close it. Ordered after checkNotAlreadySet() (rather than
+      // before) so an already-configured Builder called again with a null transformation still reports
+      // "Transformation already set" -- the more specific, pre-existing misuse diagnostic -- rather than a
+      // bare NullPointerException; only ordering relative to build() below actually matters for the leak.
+      Preconditions.checkNotNull(transformation);
       return transformation(transformation, new VcfWriter.Builder().toFile(outputFile).build());
     }
 
     public Builder transformation(VcfTransformation transformation, PrintWriter writer)
         throws IOException {
       checkNotAlreadySet();
+      // see the Path overload's identical comment above -- this overload doesn't open a NEW OS file handle
+      // (the caller already owns and opened writer), but the wrapping VcfWriter this constructs would still
+      // be silently discarded on a null transformation, for the same reason.
+      Preconditions.checkNotNull(transformation);
       return transformation(transformation, new VcfWriter.Builder().toWriter(writer).build());
     }
 
