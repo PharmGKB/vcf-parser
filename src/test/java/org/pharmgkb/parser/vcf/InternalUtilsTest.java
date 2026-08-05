@@ -377,6 +377,17 @@ public class InternalUtilsTest {
   }
 
   @Test
+  public void testCheckReservedFormatConstraintsFtAllEmptyCodesNormalizesToMissingValueSentinel() {
+    // regression test: when every semicolon-separated code is empty, the previous behavior returned "" (from
+    // String.join(";", emptyList)), not "." -- convertProperty's only "treat as absent" check is
+    // value == null || ".".equals(value), so "" silently reached type conversion unchanged, making
+    // VcfSample.getProperty(ReservedFormatProperty.Filter) return a non-null empty string instead of null for a
+    // sample whose FT content was entirely empty artifacts
+    assertEquals(".", InternalUtils.checkReservedFormatConstraints("FT", ";;", VcfWarnings.DEFAULT));
+    assertEquals(".", InternalUtils.checkReservedFormatConstraints("FT", ";", VcfWarnings.DEFAULT));
+  }
+
+  @Test
   public void testCheckReservedFormatConstraintsPsWarnsButDoesNotThrow() {
     // PS must be a non-negative 32-bit integer, but that constraint isn't expressible through its declared
     // Type=Integer (which maps to a 64-bit Long), so it's checked separately; this is non-structural sample
@@ -401,6 +412,15 @@ public class InternalUtilsTest {
     // matching the "warn and drop" convention used for FILTER's own empty entries
     String value = InternalUtils.convertProperty(ReservedFormatProperty.Filter, "q10;;q20", VcfWarnings.DEFAULT);
     assertEquals("q10;q20", value);
+  }
+
+  @Test
+  public void testConvertPropertyFilterAllEmptyCodesReturnsNullNotEmptyString() {
+    // end-to-end regression test: convertProperty(ReservedProperty, ...) must return null, matching this
+    // library's established null-means-absent contract, not "" -- see
+    // testCheckReservedFormatConstraintsFtAllEmptyCodesNormalizesToMissingValueSentinel for the underlying fix
+    String value = InternalUtils.convertProperty(ReservedFormatProperty.Filter, ";;", VcfWarnings.DEFAULT);
+    assertNull(value);
   }
 
   @Test

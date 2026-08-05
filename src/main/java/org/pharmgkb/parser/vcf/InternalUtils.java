@@ -492,8 +492,12 @@ public class InternalUtils {
    * @return the value to use for subsequent type conversion: unchanged, except for FT, whose empty
    * semicolon-separated codes are dropped -- the same "warn and drop" convention already used for an empty entry in
    * FILTER (FT's grammar is explicitly modeled on FILTER's) and every other position-independent list in this
-   * library. A caller that only wants the validation side effect (e.g. a writer in diagnostics mode, which preserves
-   * raw content rather than rewriting it) may discard the return value.
+   * library. If every code was dropped this way, returns {@code "."} (this library's established missing-value
+   * sentinel), not an empty string -- {@code convertProperty}, this method's only caller, only treats {@code "."}
+   * as absent, so returning {@code ""} here would have surfaced as a non-null empty string from
+   * {@code VcfSample.getProperty(ReservedFormatProperty.Filter)} instead of {@code null}. A caller that only wants
+   * the validation side effect (e.g. a writer in diagnostics mode, which preserves raw content rather than
+   * rewriting it) may discard the return value.
    */
   static @Nullable String checkReservedFormatConstraints(String key, @Nullable String value, VcfWarnings warnings) {
     if (value == null || value.equals(".")) {
@@ -527,6 +531,15 @@ public class InternalUtils {
     }
     if (kept.size() > 1 && hasPassOrMissing) {
       warnings.warn("FORMAT {} value \"{}\" combines PASS or '.' with other filter codes", key, value);
+    }
+    if (kept.isEmpty()) {
+      // every code was empty and dropped above; "." is this codebase's established missing-value sentinel for
+      // every other "reduces to nothing" case (INFO values, ALT entries, sample values, FILTER lists), and
+      // checkReservedFormatConstraints's caller (convertProperty) only treats "." as absent, not "" -- returning
+      // "" here would silently produce a non-null empty string from VcfSample.getProperty(ReservedFormatProperty.
+      // Filter) instead of null, violating this API's established null-means-absent contract (see
+      // EMPTY_FIELD_HANDLING.md's "Reserved FORMAT/FT value" row)
+      return ".";
     }
     return String.join(";", kept);
   }

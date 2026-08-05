@@ -104,6 +104,7 @@ newer-version prose, not vcf_validator's stricter regex reading, for the reasons
 | GT allele (`:`-separated by `/` or `\|`) | `0/` | **Hard error** (exit code 8: "Couldn't read GT data: value not a number or '.'") | Valid | Warn + substitute `.` (deliberate divergence, see note below) | `0/.` |
 | Reserved list-typed FORMAT value (e.g. `HQ`) | `1,2,` | Warns ("Extreme FORMAT/HQ value ... set to missing") and substitutes `.` | Valid | Warn + substitute `.` (`null` in the returned list) | n/a (read-side conversion only) |
 | Reserved `FORMAT/FT` value | `q10;;q20` | Silent passthrough, no warning (FT is an opaque String to bcftools; it has no knowledge of `FT`'s reserved grammar) | Valid | Warn + drop (read-side only, like the row above) | n/a (read-side conversion only) |
+| Reserved `FORMAT/FT` value, all codes empty | `;;` | Silent passthrough, no warning (same reasoning as above) | Valid | Warn + drop every code, then normalize to `.` (see note below) | n/a (read-side conversion only) |
 | Generic metadata property (`##reference=`, `##assembly=`, `##pedigreeDB=`, or any other) | `##reference=` | Silent passthrough, no warning (verified for `reference`/`assembly`/`pedigreeDB`) | Invalid | Warn + drop the entire property entry | Line omitted entirely |
 
 The INFO flag row is included as a contrast, not an empty-field case: a flag key with no `=` sign (e.g. `DB`) is
@@ -128,6 +129,14 @@ Policy classifies sample values (which GT is) as a deliberately permissive categ
 tool's behavior, and an empty GT sub-allele creates no structural ambiguity (splitting `0/` by `/` is unambiguous)
 — so this was never a "spec silent, defer to bcftools" case. The reserved-list-value row (`HQ`) is now also
 confirmed against bcftools directly: it warns and substitutes `.`, matching `vcf-parser`'s existing choice.
+
+The "all codes empty" `FORMAT/FT` row is a completion of the row above it, not a new rule: when every
+semicolon-separated code is dropped, `InternalUtils.checkFilterLikeValue` normalizes the result to `.` rather
+than an empty string, since `convertProperty`'s only "treat as absent" check is `value == null ||
+".".equals(value)` -- an empty string would otherwise reach type conversion unchanged, making
+`VcfSample.getProperty(ReservedFormatProperty.Filter)` return a non-null empty string instead of `null` for a
+sample whose FT content was entirely empty artifacts. This matches the same `.`-sentinel convention every
+other "reduces to nothing" case in this table already follows.
 
 The generic-metadata-property row differs from every other row in this table in what gets dropped: every other
 row drops or substitutes one *element* of a delimited list, but a generic property (`##reference=`, `##assembly=`,

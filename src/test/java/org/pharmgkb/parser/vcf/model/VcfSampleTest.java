@@ -174,6 +174,20 @@ class VcfSampleTest {
   }
 
   @Test
+  void testGetPropertyFilterAllEmptyCodesReturnsNullNotEmptyString() {
+    // regression test: when every semicolon-separated FT code is empty (e.g. ";;"), InternalUtils.
+    // checkFilterLikeValue used to return "" (from String.join(";", emptyList)) instead of ".", this library's
+    // established missing-value sentinel -- convertProperty's only "treat as absent" check is
+    // value == null || ".".equals(value), so "" reached type conversion unchanged, making this getter return a
+    // non-null empty string for a sample whose FT content was entirely empty artifacts, violating the
+    // null-means-absent contract every other reserved property getter follows
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("FT", ";;");
+    VcfSample sample = new VcfSample(map);
+    assertNull(sample.getProperty(ReservedFormatProperty.Filter));
+  }
+
+  @Test
   void testStructuralVariantFormatPropertiesAreIntegerTyped() {
     // NQ, HAP, and AHAP were previously declared with the wrong Type (Float/String); VCFv4.2's own ##FORMAT
     // declarations for these keys all state Type=Integer
