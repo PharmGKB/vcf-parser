@@ -1118,6 +1118,62 @@ public class VcfParserTest {
   }
 
   @Test
+  void testHtslibVcf44PhasingFixtureWarnsOnEveryLeadingPhaseMarkerGenotype() throws IOException {
+    // Real-world regression fixture, committed in full (already tiny): htslib's own test/vcf44_1.vcf
+    // (https://github.com/samtools/htslib/blob/develop/test/vcf44_1.vcf), a deliberately adversarial fixture
+    // htslib itself uses to test VCFv4.4's new leading-phase-marker GT syntax -- a genotype may now start with
+    // an explicit '/' or '|' before its first allele (e.g. "/0", "|1/0") to state phasing relative to a
+    // previous record/phase set, a feature this library's VCFv4.2 target predates and does not implement.
+    //
+    // This library's GT-splitting (InternalUtils.getPloidy, reached via VcfSample.getProperty(VcfPosition,
+    // VcfMetadata, String)'s ploidy-for-cardinality-check resolution) has no special case for a leading
+    // separator: splitting "/0" on `[/|]` yields a leading empty allele token, which fails Integer.parseInt
+    // and is reported as an "invalid GT" warning -- not a crash, and not a misinterpretation of any value this
+    // library actually claims to support, just this library's permissive-parser policy correctly recognizing
+    // syntax it doesn't understand as malformed rather than silently misreading it. Confirmed directly that
+    // bcftools 1.23.1 (which does implement VCFv4.4's leading-phase-marker semantics) accepts this same file
+    // with zero warnings or errors -- a genuine, expected capability gap, not a bug to fix.
+    //
+    // Asserted as an exact count plus a shape check, rather than a literal Set of every warning message like
+    // the fixtures above: this file deliberately exercises ~28 distinct GT value combinations, each producing
+    // its own "invalid GT <value>" message, so pinning 37 literal strings would be both unreadable and
+    // fragile. Pinning the *count* and the *shape* still catches the same regressions (a new warning category
+    // appearing, or the invalid-GT warning silently stopping).
+    //
+    // Maintenance note: htslib's test/ directory is a living resource for exactly this kind of edge-case
+    // fixture (new VCF-version features get their own adversarial test files as they're added -- this is
+    // presently the only VCFv4.4 one and there is no VCFv4.5 one yet). Worth periodically re-checking
+    // https://github.com/samtools/htslib/tree/develop/test for new fixtures covering VCF features this
+    // library doesn't yet have real-world regression coverage for.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/htslib_vcf44_phasing.vcf"));
+           VcfParser parser = new VcfParser.Builder()
+               .fromReader(reader)
+               // the invalid-GT check is deferred (triggered by a typed getter, not by parsing alone) --
+               // explicitly call it per sample, matching how a real consumer reading GT would trigger it
+               .parseWith((metadata, position, sampleData) -> sampleData.forEach(
+                   sample -> sample.getProperty(position, metadata, "GT")))
+               .build()) {
+        parser.parse();
+      }
+      List<String> actual = appender.getRelevantWarnOrHigherMessages(Set.of());
+      assertEquals(38, actual.size(), actual::toString);
+      assertEquals(1, actual.stream().filter(m -> m.equals("There are 2 samples in the header but 0 in the metadata")).count(),
+          actual::toString);
+      assertEquals(37, actual.stream().filter(m -> m.startsWith("FORMAT GT has invalid GT ")).count(), actual::toString);
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   void testPositionOrderingWarnsOnDecreasingPosWithinSameChromosome() throws IOException {
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
