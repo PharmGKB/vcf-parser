@@ -185,3 +185,25 @@ content the way `properties`/`id`/`description` are. A `null` here is the caller
 not a data-quality problem an untrusted `.vcf` file could trigger. Revisit if a real caller reports this as
 a genuine (non-hypothetical) source of confusing diagnostics, or if `label` ever becomes something this
 library itself derives from parsed content rather than something every caller always supplies as a literal.
+
+## `BaseMetadata.checkAttributeOrder()` doesn't detect a custom/unrecognized attribute wedged between two canonical ones
+
+`checkAttributeOrder()` (`BaseMetadata.java:224-240`) only checks relative order among the six well-known VCF
+metadata keys (`ID`/`Number`/`Type`/`Description`/`Source`/`Version`); any other key is filtered out before
+the order comparison. Empirically confirmed: an `InfoMetadata` declared in the order `ID, Number,
+CustomExtra, Type, Description` produces zero warnings -- `CustomExtra` sitting between `Number` and `Type`
+is silently accepted, even though `VCFv4.2.tex`'s prose ("extra fields can be included after the default
+fields") implies extras belong at the end, not interleaved. The three hts-specs fixtures this method's own
+Javadoc cites (`failed_meta_{info,format}_003.vcf`, `failed_meta_alt_004.vcf`) only rearrange canonical
+fields relative to each other -- none test an extra field wedged between two canonical ones, so this exact
+shape is genuinely untested by the cited evidence, not merely unfixed despite being covered.
+
+**Decision: won't fix.** The method's own Javadoc already documents this scope limitation explicitly ("A key
+this declaration kind doesn't use, or any other extra/unrecognized key, is ignored"), so this is a
+documented design choice, not a hidden gap. It also matches this project's broader deliberate leniency
+toward extra/custom fields elsewhere (e.g. `ContigMetadata.ensureNoExtras()` was removed per
+`VCF_SPEC_AMBIGUITIES.md`, choosing not to reject unrecognized `##contig` attributes). Tightening this to
+also flag an interleaved extra would be a real behavior change (a new warning for a previously-silent case)
+with no bcftools/vcf_validator evidence motivating it. Revisit if a real fixture or caller report surfaces a
+concrete case where this ordering gap causes actual confusion, or if bcftools/vcf_validator consultation
+finds either tool treats an interleaved extra attribute as invalid.
