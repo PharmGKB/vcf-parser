@@ -75,7 +75,9 @@ public class BaseMetadata {
   }
 
   /**
-   * Re-validates the current properties after possible mutation through {@link #getPropertiesRaw()}.
+   * Re-validates the current properties after possible mutation through {@link #getPropertiesRaw()}. ({@link
+   * PedigreeMetadata} overrides {@link #getPropertiesRaw()} to be unmodifiable, so this is a no-op re-check for
+   * that subclass specifically -- there is nothing for it to have mutated.)
    */
   public void validate() {
     validateProperties();
@@ -128,6 +130,8 @@ public class BaseMetadata {
   /**
    * @return The backing, mutable properties map. Unlike {@link #putPropertyRaw} and {@link #putAndQuoteProperty},
    * mutations made directly through this map do not run {@link InternalUtils#checkNoLineTerminator}.
+   * <strong>{@link PedigreeMetadata} overrides this to return an unmodifiable view instead</strong> -- see its
+   * own class javadoc for why; that subclass's properties are immutable after construction.
    */
   public Map<String, String> getPropertiesRaw() {
     return m_properties;
@@ -138,7 +142,9 @@ public class BaseMetadata {
    * a mutation attempt directly on the returned set (e.g. {@link Set#remove}) throws
    * {@link UnsupportedOperationException} rather than silently affecting this instance -- a later mutation made
    * through {@link #getPropertiesRaw()}/{@link #putPropertyRaw}/{@link #putAndQuoteProperty} is, however, still
-   * reflected here, since this remains a view over the live backing map, not a snapshot copy.
+   * reflected here, since this remains a view over the live backing map, not a snapshot copy. ({@link
+   * PedigreeMetadata} is the one exception: since its {@link #getPropertiesRaw()} override is itself
+   * unmodifiable, there is no later mutation for this view to reflect.)
    */
   public Set<String> getPropertyKeys() {
     return Collections.unmodifiableSet(m_properties.keySet());

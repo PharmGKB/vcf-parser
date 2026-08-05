@@ -240,3 +240,32 @@ for no documented reason, since PEDIGREE was never granted that stricter-than-bc
 first place. `DUPLICATE_METADATA_ID_HANDLING.md`'s PEDIGREE table has been updated with this empty-`ID=`
 case so a future sweep doesn't re-derive the same question. Revisit only if a future bcftools version
 changes this specific behavior (see `BCFTOOLS_VERSION_DEPENDENCIES.md`).
+
+## `VcfMetadata.addPedigree`'s duplicate-ID cache can't detect an in-place `List.set(i, ...)`/`ListIterator.set(...)` replacement on the live list returned by `getPedigrees()`
+
+`VcfMetadata.addPedigree`/`Builder.addPedigree` cache seen PEDIGREE IDs for performance (an O(n^2) header-parsing
+DoS fix -- see the commit that introduced `TrackedPedigreeList`/`hasPedigreeIdCollision`). The cache's staleness
+signal is `TrackedPedigreeList.modCountSnapshot()`, which mirrors `java.util.ArrayList`'s own internal `modCount`
+bookkeeping: it increments on every *structural* modification (`add`, `remove`, `clear`, iterator removal, a
+remove-then-add pair, etc.), so all of those are correctly detected and force a cache rebuild. `List.set(int,
+Object)` is, by `java.util.AbstractList`'s own definition, NOT a structural modification (it doesn't change the
+list's size or otherwise invalidate an in-progress iteration) and does not increment `modCount` -- so replacing
+an already-added `PedigreeMetadata` with a different one at the same list index, via `metadata.getPedigrees().set(i,
+replacement)`, would go undetected: the cache would still associate that slot with the OLD entry's ID, not the
+new one, until some other structural change forces a rebuild. `ListIterator.set(...)` (obtained via
+`metadata.getPedigrees().listIterator()`) is the same underlying operation -- `ArrayList`'s own iterator
+implementation routes it to the identical non-structural `set` -- so it shares this exact gap too, not a separate
+one.
+
+**Decision: won't fix.** No existing test, precedent, or documented usage anywhere in this codebase calls
+`List.set(...)`/`ListIterator.set(...)` on the value returned by `getPedigrees()` (or on any of the other "live
+view" getters this library exposes) -- every real mutation pattern this library's own tests exercise for a live
+list/map getter is add/remove/put, never an in-place index replacement. `PedigreeMetadata` was separately made
+immutable after construction (see its own class javadoc) specifically to close a *related but distinct* vector --
+mutating an already-added entry's own `ID` property in place -- because that one WAS realistically reachable (the
+identical
+mutation pattern is already used elsewhere in this codebase's own tests, just on other metadata types). This
+`List.set`/`ListIterator.set` vector requires a caller to deliberately replace a list slot's occupant via
+low-level `List` API misuse with no existing analog anywhere in this project. Revisit if a real caller or
+fixture ever demonstrates this pattern in practice, or if `getPedigrees()`'s live-view contract is ever
+revisited more broadly.

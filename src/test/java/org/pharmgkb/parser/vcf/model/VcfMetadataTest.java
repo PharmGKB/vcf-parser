@@ -1075,6 +1075,176 @@ public class VcfMetadataTest {
   }
 
   @Test
+  public void testBuilderAddPedigreeDoesNotDegradeQuadraticallyWithManyUniqueIds() {
+    // 3 seconds is a wide margin above the fixed behavior's near-instant completion at this size; the unfixed
+    // O(n) m_pedigree-rescan-per-add code was empirically ~1.2s at n=16,000 and scaled quadratically (~4x cost
+    // for 2x n), so n=30,000 unfixed would take several seconds -- per the finding that motivated this fix
+    assertTimeoutPreemptively(java.time.Duration.ofSeconds(3), () -> {
+      VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+      for (int i = 0; i < 30_000; i++) {
+        java.util.Map<String, String> props = new java.util.LinkedHashMap<>();
+        props.put("ID", "P" + i);
+        props.put("Name_0", "G0-" + i);
+        builder.addPedigree(new PedigreeMetadata(props));
+      }
+      assertEquals(30_000, builder.build().getPedigrees().size());
+    });
+  }
+
+  @Test
+  public void testInstanceAddPedigreeDoesNotDegradeQuadraticallyWithManyUniqueIds() {
+    assertTimeoutPreemptively(java.time.Duration.ofSeconds(3), () -> {
+      VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+      for (int i = 0; i < 30_000; i++) {
+        java.util.Map<String, String> props = new java.util.LinkedHashMap<>();
+        props.put("ID", "P" + i);
+        props.put("Name_0", "G0-" + i);
+        metadata.addPedigree(new PedigreeMetadata(props));
+      }
+      assertEquals(30_000, metadata.getPedigrees().size());
+    });
+  }
+
+  @Test
+  public void testAddPedigreeCacheNotDesyncedByAttemptedInPlaceIdMutation() {
+    // regression test for a real defect found reviewing addPedigree's duplicate-ID cache (added to fix an
+    // O(n^2) header-parsing DoS): a size-only staleness signal can't detect a PedigreeMetadata already in the
+    // list having its own ID mutated in place, which could give the cache a stale (wrong in either direction)
+    // answer. PedigreeMetadata is now immutable specifically to rule this out -- this test proves the exact
+    // mutation the original finding used to demonstrate the problem is no longer even possible.
+    java.util.Map<String, String> childProps = new java.util.LinkedHashMap<>();
+    childProps.put("ID", "B");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addPedigree(new PedigreeMetadata(childProps))
+        .build();
+    PedigreeMetadata existing = metadata.getPedigrees().get(0);
+    assertThrows(UnsupportedOperationException.class, () -> existing.getPropertiesRaw().put("ID", "C"));
+    // existing's ID is still "B" -- the mutation attempt above did not succeed, so the cache (which still
+    // correctly associates "B" with this entry) cannot have been desynced by it
+    assertEquals("B", existing.getPropertyRaw("ID"));
+    java.util.Map<String, String> newProps = new java.util.LinkedHashMap<>();
+    newProps.put("ID", "C");
+    metadata.addPedigree(new PedigreeMetadata(newProps));
+    assertEquals(2, metadata.getPedigrees().size());
+    long countReportingC = metadata.getPedigrees().stream()
+        .filter(p -> "C".equals(p.getPropertyRaw("ID"))).count();
+    assertEquals(1, countReportingC, "Exactly one PEDIGREE entry should report ID \"C\"");
+  }
+
+  @Test
+  public void testAddPedigreeCacheDetectsRemoveThenAddPairOnLiveListDespiteUnchangedSize() {
+    // regression test for a Critical finding: the cache's original staleness signal (m_pedigree.size()) missed
+    // a remove-then-add pair on the live list returned by getPedigrees() -- both operations are structural, but
+    // together they leave size() unchanged, so a size-only check wrongly treated the cache as still valid. The
+    // fix switched to TrackedPedigreeList's modCount, which increments on every structural change regardless of
+    // net size, so this exact sequence is now correctly detected.
+    //
+    // Priming matters here: the initial adds MUST go through the instance's own addPedigree (not
+    // Builder.addPedigree, which has its own separate, independent cache) -- otherwise the instance's cache is
+    // never populated before the direct-list mutation below, and the bug this test targets can't manifest (a
+    // null/never-built cache always triggers a full, correct rebuild; only an already-valid, since-gone-stale
+    // cache can give a wrong answer).
+    java.util.Map<String, String> propsA = new java.util.LinkedHashMap<>();
+    propsA.put("ID", "A");
+    java.util.Map<String, String> propsB = new java.util.LinkedHashMap<>();
+    propsB.put("ID", "B");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .lenient(org.pharmgkb.parser.vcf.VcfWarnings.DEFAULT)
+        .build();
+    metadata.addPedigree(new PedigreeMetadata(propsA));
+    metadata.addPedigree(new PedigreeMetadata(propsB));
+    java.util.Map<String, String> propsC = new java.util.LinkedHashMap<>();
+    propsC.put("ID", "C");
+    // remove A, then add C directly through the live list -- bypasses addPedigree entirely; size stays 2
+    metadata.getPedigrees().remove(0);
+    metadata.getPedigrees().add(new PedigreeMetadata(propsC));
+    assertEquals(2, metadata.getPedigrees().size());
+    // A is no longer present -- re-adding it must succeed, not be wrongly rejected as a stale "duplicate"
+    java.util.Map<String, String> newPropsA = new java.util.LinkedHashMap<>();
+    newPropsA.put("ID", "A");
+    metadata.addPedigree(new PedigreeMetadata(newPropsA));
+    assertEquals(3, metadata.getPedigrees().size());
+    long countReportingA = metadata.getPedigrees().stream()
+        .filter(p -> "A".equals(p.getPropertyRaw("ID"))).count();
+    assertEquals(1, countReportingA, "Exactly one PEDIGREE entry should report ID \"A\"");
+    // C IS present (added directly above) -- adding another "C" must be rejected as a duplicate, not silently
+    // accepted
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      java.util.Map<String, String> anotherPropsC = new java.util.LinkedHashMap<>();
+      anotherPropsC.put("ID", "C");
+      metadata.addPedigree(new PedigreeMetadata(anotherPropsC));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(3, metadata.getPedigrees().size());
+    long countReportingC = metadata.getPedigrees().stream()
+        .filter(p -> "C".equals(p.getPropertyRaw("ID"))).count();
+    assertEquals(1, countReportingC, "Exactly one PEDIGREE entry should report ID \"C\"");
+  }
+
+  @Test
+  public void testAddPedigreeCacheHandlesRemoveThenReAddSameId() {
+    // primed via the INSTANCE's own addPedigree, not Builder.addPedigree (which has its own separate cache) --
+    // otherwise the instance's cache is still null when removePedigree runs below, the later addPedigree takes
+    // the always-correct never-built-cache rebuild path regardless of whether invalidation works, and this test
+    // would pass even with cache invalidation broken (see the sibling test above for the same pitfall caught
+    // during this fix's own review).
+    java.util.Map<String, String> propsA = new java.util.LinkedHashMap<>();
+    propsA.put("ID", "A");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    metadata.addPedigree(new PedigreeMetadata(propsA));
+    metadata.removePedigree(metadata.getPedigrees().get(0));
+    assertEquals(0, metadata.getPedigrees().size());
+    java.util.Map<String, String> newPropsA = new java.util.LinkedHashMap<>();
+    newPropsA.put("ID", "A");
+    metadata.addPedigree(new PedigreeMetadata(newPropsA));
+    assertEquals(1, metadata.getPedigrees().size());
+    assertEquals("A", metadata.getPedigrees().get(0).getPropertyRaw("ID"));
+  }
+
+  @Test
+  public void testAddPedigreeCacheHandlesIdLessAddsInterleavedWithIdBearingAdds() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .lenient(org.pharmgkb.parser.vcf.VcfWarnings.DEFAULT)
+        .build();
+    java.util.Map<String, String> idLess1 = new java.util.LinkedHashMap<>();
+    idLess1.put("Name_0", "G0-1");
+    metadata.addPedigree(new PedigreeMetadata(idLess1));
+    java.util.Map<String, String> propsA = new java.util.LinkedHashMap<>();
+    propsA.put("ID", "A");
+    metadata.addPedigree(new PedigreeMetadata(propsA));
+    java.util.Map<String, String> idLess2 = new java.util.LinkedHashMap<>();
+    idLess2.put("Name_0", "G0-2");
+    metadata.addPedigree(new PedigreeMetadata(idLess2));
+    assertEquals(3, metadata.getPedigrees().size());
+    // a genuine duplicate of "A" must still be caught after the ID-less adds in between
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      java.util.Map<String, String> dupA = new java.util.LinkedHashMap<>();
+      dupA.put("ID", "A");
+      metadata.addPedigree(new PedigreeMetadata(dupA));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(3, metadata.getPedigrees().size());
+  }
+
+  @Test
   public void testInstanceAddAltWarnsAndKeepsFirstOnDuplicateId() {
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);

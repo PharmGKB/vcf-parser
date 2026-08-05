@@ -98,6 +98,13 @@ vs-parsing distinction; see that policy for why these specific fields stay uncon
 - **`PedigreeMetadata`**: also not part of either shape -- it has no `init()` and no construction-time warn
   site of its own to route. Its only interesting behavior, duplicate-ID handling, lives in
   `VcfMetadata.addPedigree`/`Builder.addPedigree`, which are covered by the `VcfMetadata`/`Builder` entry above.
+  Unlike every other `BaseMetadata` subclass, its properties are immutable after construction -- `getPropertiesRaw()`
+  returns an unmodifiable view, and `putPropertyRaw`/`putAndQuoteProperty` unconditionally throw
+  `UnsupportedOperationException`, not `VcfFormatException` -- this isn't a content-validity rejection subject to
+  the strict/lenient split, it's "this operation is never supported on this type," the same category as any other
+  JDK unmodifiable-collection contract. See `PedigreeMetadata`'s own class javadoc for why (it exists so
+  `VcfMetadata.addPedigree`'s duplicate-ID cache can trust that a stored entry's `ID` can never change out from
+  under it).
 - **`VcfFloat`**: a different case again. A genuinely malformed value (neither the special-value pattern nor a
   valid decimal) always throws from `parse(String)` -- in both the public single-argument overload and the
   `public` (but `@RestrictedApi`/`@hidden`, not part of this library's supported public API --
