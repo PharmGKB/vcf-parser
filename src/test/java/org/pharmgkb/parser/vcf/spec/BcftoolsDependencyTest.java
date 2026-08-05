@@ -272,6 +272,20 @@ class BcftoolsDependencyTest {
   }
 
   @Test
+  void testPedigreeEmptyIdDuplicatesBcftoolsKeepsFirst() throws IOException, InterruptedException {
+    // contrast case for the test above: an *empty* ID= (not merely absent) is treated as a real,
+    // dedupe-worthy value by bcftools, unlike the six keyed types' own "blank ID == no ID" leniency -- see
+    // WONT_FIX.md's "PedigreeMetadata duplicate-ID dedup treats a present-but-blank ID the same as a real ID"
+    String vcf = "##fileformat=VCFv4.2\n##PEDIGREE=<ID=,Name_0=G0-A>\n##PEDIGREE=<ID=,Name_0=G0-B>\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("##PEDIGREE=<ID=,Name_0=G0-A>"), result.output());
+    assertFalse(result.output().contains("G0-B"), result.output());
+  }
+
+  @Test
   void testDuplicateContigIdBcftoolsKeepsFirst() throws IOException, InterruptedException {
     // representative case from DUPLICATE_METADATA_ID_HANDLING.md; that doc's own table is the fuller reference
     // covering all six keyed declaration types

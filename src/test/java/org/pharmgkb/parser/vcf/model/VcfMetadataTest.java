@@ -1046,6 +1046,35 @@ public class VcfMetadataTest {
   }
 
   @Test
+  public void testDirectBuilderUseThrowsOnDuplicateIdForPedigree() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    java.util.Map<String, String> childProps = new java.util.LinkedHashMap<>();
+    childProps.put("ID", "Child");
+    childProps.put("Father", "Dad");
+    builder.addPedigree(new PedigreeMetadata(childProps));
+    java.util.Map<String, String> duplicateProps = new java.util.LinkedHashMap<>();
+    duplicateProps.put("ID", "Child");
+    duplicateProps.put("Mother", "Mom");
+    PedigreeMetadata dup = new PedigreeMetadata(duplicateProps);
+    assertThrows(VcfFormatException.class, () -> builder.addPedigree(dup));
+  }
+
+  @Test
+  public void testAddPedigreeOnBuiltMetadataThrowsOnDuplicateIdInStrictMode() {
+    java.util.Map<String, String> childProps = new java.util.LinkedHashMap<>();
+    childProps.put("ID", "Child");
+    childProps.put("Father", "Dad");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addPedigree(new PedigreeMetadata(childProps))
+        .build();
+    java.util.Map<String, String> duplicateProps = new java.util.LinkedHashMap<>();
+    duplicateProps.put("ID", "Child");
+    duplicateProps.put("Mother", "Mom");
+    PedigreeMetadata dup = new PedigreeMetadata(duplicateProps);
+    assertThrows(VcfFormatException.class, () -> metadata.addPedigree(dup));
+  }
+
+  @Test
   public void testInstanceAddAltWarnsAndKeepsFirstOnDuplicateId() {
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);

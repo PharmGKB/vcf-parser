@@ -207,3 +207,36 @@ also flag an interleaved extra would be a real behavior change (a new warning fo
 with no bcftools/vcf_validator evidence motivating it. Revisit if a real fixture or caller report surfaces a
 concrete case where this ordering gap causes actual confusion, or if bcftools/vcf_validator consultation
 finds either tool treats an interleaved extra attribute as invalid.
+
+## `PedigreeMetadata` duplicate-ID dedup treats a present-but-blank `ID` the same as a real ID
+
+`VcfMetadata.addPedigree`/`VcfMetadata.Builder.addPedigree` (`VcfMetadata.java:500-510`, `:822-833`) and
+`VcfWriter.validateMetadata()`'s PEDIGREE loop gate their duplicate-ID dedup on `id != null` only, with no
+blank-string check -- unlike the six keyed types (INFO/FORMAT/FILTER/ALT/contig/SAMPLE), whose own `addXxx`
+methods explicitly drop a declaration with a missing OR blank `ID` before ever reaching the duplicate check
+(`DUPLICATE_METADATA_ID_HANDLING.md`'s "Missing or empty ID" section). This looked, on first read, like an
+inconsistency: two `##PEDIGREE=<ID=,...>` lines each declaring a literal empty `ID=` collide on that empty
+string and the second is silently dropped, where the six-keyed-type convention would keep both.
+
+It isn't an inconsistency once bcftools is actually consulted. `DUPLICATE_METADATA_ID_HANDLING.md`'s own
+"Empty/whitespace ID is a deliberate stricter-than-bcftools choice" section already establishes that the
+six keyed types' blank-ID exemption is a project-specific editorial decision that bcftools itself does NOT
+follow (bcftools keeps an empty-ID `INFO`/`FORMAT`/`contig`/`FILTER` declaration). PEDIGREE was never given
+that same editorial exemption -- its own rule, per the same file's "`##PEDIGREE`: a conditional case"
+section, is simply "dedupe on `ID` when present, regardless of tag name," chosen specifically to match
+bcftools's actual observed behavior (bcftools keeps both of two ID-*less* PEDIGREE lines, but drops the
+second of two sharing a literal `ID=P1`).
+
+**Verified directly (bcftools 1.23.1, htslib 1.23.1):** a hand-built fixture with two `##PEDIGREE=<ID=,...>`
+lines (empty `ID=`, differing `Name_0`) fed to `bcftools view -h` keeps only the first line and silently
+drops the second -- confirming bcftools treats an empty `ID=` on `##PEDIGREE` as a real, dedupe-worthy
+value, the opposite of its own leniency for the six keyed types. This specific case (empty, not merely
+missing, `ID=` on `##PEDIGREE`) was not previously covered by `DUPLICATE_METADATA_ID_HANDLING.md`'s existing
+bcftools-verified table, which only tested "no `ID` property at all" vs. "two lines sharing `ID=P1`."
+
+**Decision: won't fix.** The current behavior already matches bcftools; adding a blank-ID exemption to
+`addPedigree` (mirroring the six keyed types) would make PEDIGREE diverge from bcftools's actual behavior
+for no documented reason, since PEDIGREE was never granted that stricter-than-bcftools carve-out in the
+first place. `DUPLICATE_METADATA_ID_HANDLING.md`'s PEDIGREE table has been updated with this empty-`ID=`
+case so a future sweep doesn't re-derive the same question. Revisit only if a future bcftools version
+changes this specific behavior (see `BCFTOOLS_VERSION_DEPENDENCIES.md`).

@@ -171,6 +171,7 @@ Empirical testing shows bcftools still dedupes PEDIGREE by `ID` whenever a line 
 |---|---|---|
 | Two `##PEDIGREE` lines, no `ID` property, otherwise identical | Keeps **both** | Valid |
 | Two `##PEDIGREE` lines sharing `ID=P1` | Keeps **first**, drops duplicate | Valid |
+| Two `##PEDIGREE` lines each with an empty `ID=` | Keeps **first**, drops duplicate | Valid |
 
 So the rule generalizes: bcftools dedupes by `ID` wherever that key is present, regardless of the declaration's
 tag name — not six special cases plus an unrelated PEDIGREE rule, but one rule (dedupe on `ID` when present) that

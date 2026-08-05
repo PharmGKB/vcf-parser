@@ -60,6 +60,11 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
 - Test: `BcftoolsDependencyTest#testPedigreeNoIdDuplicatesBcftoolsKeepsBoth`
 - Reasoning: `DUPLICATE_METADATA_ID_HANDLING.md`, "`##PEDIGREE`: a conditional case" section
 
+### Duplicate `##PEDIGREE` lines with an empty (not absent) `ID=`
+- Test: `BcftoolsDependencyTest#testPedigreeEmptyIdDuplicatesBcftoolsKeepsFirst`
+- Reasoning: `WONT_FIX.md`, "`PedigreeMetadata` duplicate-ID dedup treats a present-but-blank `ID` the same as
+  a real ID" entry
+
 ### Duplicate metadata declaration ID (six keyed types)
 - Test: `BcftoolsDependencyTest#testDuplicateContigIdBcftoolsKeepsFirst` (representative; not every declaration
   type is independently re-verified here)
