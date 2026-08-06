@@ -23,6 +23,8 @@ import org.junit.jupiter.api.io.TempDir;
 import org.pharmgkb.common.util.PathUtils;
 import org.pharmgkb.parser.vcf.model.ContigMetadata;
 import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
+import org.pharmgkb.parser.vcf.model.InfoMetadata;
+import org.pharmgkb.parser.vcf.model.InfoType;
 import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
 import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
 import org.pharmgkb.parser.vcf.model.VcfFloat;
@@ -1914,6 +1916,95 @@ public class VcfParserTest {
       parser.parse();
     }
     assertTrue(Files.readString(warningsFile).contains("PEDIGREE metadata attributes declared out of canonical order"));
+  }
+
+  @Test
+  public void testMalformedMetadataAttributeWarnsAndDropsInsteadOfAbortingFile(@TempDir Path tempDir) throws IOException {
+    // regression test: InternalUtils.extractProperties previously rethrew unconditionally when a comma-delimited
+    // attribute inside a metadata declaration's <...> list failed to parse (here, an interior double comma
+    // producing an empty attribute), aborting the ENTIRE file parse over one cosmetic header defect -- contradicting
+    // AGENTS.md's Parser Validation Policy, which lists metadata declarations among the fields this parser is
+    // lenient about. Confirmed live against bcftools 1.23.1 (htslib 1.23.1): it drops just the one malformed
+    // declaration and continues (exit 0), never aborting the file. This fix is finer-grained than bcftools -- it
+    // drops only the one malformed attribute, preserving the rest of the same declaration.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##INFO=<ID=AF,,Number=1,Type=Float,Description=\"Allele frequency\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT\t.\t.\tAF=0.5\n";
+    Path vcfFile = tempDir.resolve("sample.vcf");
+    Files.writeString(vcfFile, vcf);
+    Path warningsFile = tempDir.resolve("warnings.log");
+
+    VcfMetadata[] metadataHolder = new VcfMetadata[1];
+    List<VcfPosition> positions = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(vcfFile)
+        .warningsToFile(warningsFile)
+        .parseWith((metadata, position, sampleData) -> {
+          metadataHolder[0] = metadata;
+          positions.add(position);
+        })
+        .build()) {
+      parser.parse();
+    }
+    // the data line after the malformed declaration was reached -- the file parse did not abort
+    assertEquals(1, positions.size());
+    assertTrue(Files.readString(warningsFile).contains("Could not parse metadata attribute"));
+    InfoMetadata af = metadataHolder[0].getInfo().get("AF");
+    assertNotNull(af);
+    assertEquals("1", af.getNumber());
+    assertEquals(InfoType.Float, af.getType());
+    assertEquals("Allele frequency", af.getDescription());
+  }
+
+  @Test
+  public void testMetadataDeclarationWithDroppedAttributeSurvivesWriteAndReparse(@TempDir Path tempDir) throws IOException {
+    // AGENTS.md's Writer Validation and Round-Trip Policy: "A record accepted by the parser must be writable
+    // without losing fields or producing malformed column structure." Change 1 makes the parser accept a
+    // declaration it previously rejected outright (a malformed attribute, dropped with a warning) -- this pins
+    // that the resulting metadata still writes and reparses cleanly, with every SURVIVING attribute intact.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##INFO=<ID=AF,,Number=1,Type=Float,Description=\"Allele frequency\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT\t.\t.\tAF=0.5\n";
+    Path vcfFile = tempDir.resolve("sample.vcf");
+    Files.writeString(vcfFile, vcf);
+
+    VcfMetadata[] metadataHolder = new VcfMetadata[1];
+    List<VcfPosition> positions = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(vcfFile)
+        .parseWith((metadata, position, sampleData) -> {
+          metadataHolder[0] = metadata;
+          positions.add(position);
+        })
+        .build()) {
+      parser.parse();
+    }
+
+    StringWriter output = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(output)).build();
+    writer.writeHeader(metadataHolder[0]);
+    writer.writeLine(metadataHolder[0], positions.get(0), List.of());
+
+    VcfMetadata[] reparsedMetadata = new VcfMetadata[1];
+    List<VcfPosition> reparsedPositions = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(output.toString())))
+        .parseWith((metadata, position, sampleData) -> {
+          reparsedMetadata[0] = metadata;
+          reparsedPositions.add(position);
+        })
+        .build()) {
+      parser.parse();
+    }
+    assertEquals(1, reparsedPositions.size());
+    InfoMetadata reparsedAf = reparsedMetadata[0].getInfo().get("AF");
+    assertNotNull(reparsedAf);
+    assertEquals("1", reparsedAf.getNumber());
+    assertEquals(InfoType.Float, reparsedAf.getType());
+    assertEquals("Allele frequency", reparsedAf.getDescription());
+    assertEquals(List.of("0.5"), reparsedPositions.get(0).getInfo("AF"));
   }
 
   @Test

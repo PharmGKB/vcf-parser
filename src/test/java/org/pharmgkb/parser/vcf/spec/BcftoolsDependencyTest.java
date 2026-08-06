@@ -202,6 +202,22 @@ class BcftoolsDependencyTest {
   }
 
   @Test
+  void testMalformedMetadataAttributeBcftoolsDropsDeclarationAndContinues() throws IOException, InterruptedException {
+    // confirms this project's own citation: bcftools never aborts the whole file for a malformed attribute
+    // inside a metadata declaration's <...> list -- it drops just the one malformed declaration and continues
+    // (exit 0). This library is more lenient still: it drops only the one malformed ATTRIBUTE, keeping the
+    // rest of the same declaration -- see VCF_SPEC_AMBIGUITIES.md's "Malformed attribute inside a metadata
+    // declaration's <...> list" entry.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##INFO=<ID=AF,,Number=1,Type=Float,Description=\"Allele frequency\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("Could not parse the header line"), result.output());
+  }
+
+  @Test
   void testFormatDeclarationIdRejectsAsteriskButFilterAccepts() throws IOException, InterruptedException {
     // confirms the stricter ##FORMAT/##INFO tag-name grammar does not extend to ##FILTER/##SAMPLE/##ALT
     String formatVcf = "##fileformat=VCFv4.2\n##FORMAT=<ID=A*B,Number=1,Type=String,Description=\"bad\">\n" +

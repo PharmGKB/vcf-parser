@@ -259,8 +259,32 @@ public class InternalUtils {
       Pair<String, String> pair;
       try {
         pair = splitProperty(prop);
-      } catch (RuntimeException e) {
-        throw new VcfFormatException("Error parsing property \"" + prop + "\"", e);
+      } catch (VcfFormatException e) {
+        // Warn and drop just this one malformed attribute rather than aborting the whole metadata declaration
+        // (previously: rethrew, which propagated uncaught out of VcfParser.parseMetadata() and aborted the
+        // entire file over one cosmetic header defect). AGENTS.md's Parser Validation Policy lists metadata
+        // declarations among the fields this parser is lenient about; confirmed live against bcftools 1.23.1
+        // (htslib 1.23.1) that it never aborts the whole file for this -- it drops the one malformed
+        // declaration and continues (exit 0). This drops only the offending attribute, not the whole
+        // declaration: every downstream metadata constructor's lenient (Map, VcfWarnings) path already warns
+        // rather than throws for a missing required attribute (e.g. InfoMetadata.init()'s warnIfMissing(TYPE,
+        // ...)), so a declaration left short one attribute here is already a supported, tested state.
+        //
+        // hts-specs' own conformance suite disagrees with this leniency for one narrow sub-case -- an
+        // unescaped comma inside an unquoted ID splitting it into two bogus top-level attributes --
+        // test/vcf/{4.1,4.2}/failed/failed_meta_contig_002.vcf (##CauseOfFailure=contig ID contains a comma,
+        // ##contig=<ID=1,A,length=123456>) and test/vcf/{4.1,4.2}/failed/failed_meta_alt_007.vcf
+        // (##CauseOfFailure=The ALT ID contains a comma, ##ALT=<ID=DEL:A,B,Description="...">) are both marked
+        // failed/ for this exact shape. This decision still sides with bcftools: this project's own leniency
+        // philosophy (AGENTS.md's "'Strict' in this project means structural correctness... not eager rejection
+        // of every semantic VCF violation") treats an unquoted comma inside an ID as a semantic grammar defect,
+        // not the structural kind this library hard-rejects for -- see VCF_SPEC_AMBIGUITIES.md's "Malformed
+        // attribute inside a metadata declaration's <...> list" entry for the full reasoning. Only splitProperty's
+        // own VcfFormatException is caught here (never a broader RuntimeException): a bug elsewhere in
+        // splitTopLevel must still surface as a real crash, not get silently reported as "could not parse this
+        // attribute".
+        warnings.warn("Could not parse metadata attribute \"{}\" ({}); dropping it", prop, e.getMessage());
+        continue;
       }
       if (map.containsKey(pair.getKey())) {
         // Keeping the LAST value here is deliberate and differs from every other duplicate-key case in this

@@ -32,6 +32,7 @@ before assuming it generalizes to a similar-looking case.
 | Topic | Decision | Status |
 |---|---|---|
 | Duplicate attribute within one metadata declaration | Keep last (matches bcftools) | ✅ |
+| Malformed attribute inside a metadata declaration's `<...>` list | Warn and drop just that attribute (matches bcftools; more lenient than two hts-specs `failed/` fixtures) | ✅ |
 | Whitespace in `##FILTER`/`##SAMPLE` declaration IDs | Reject (bcftools's silence is a coverage gap) | ✅ |
 | `##FORMAT`/`##INFO` ID grammar vs. `##FILTER`/`##SAMPLE`/`##ALT` | Stricter grammar for FORMAT/INFO only | ✅ |
 | `"1000G"` legacy INFO tag-name exception | Allowed (matches bcftools) | ✅ |
@@ -72,6 +73,37 @@ structural-field reading is non-authoritative here.
 
 **Decision:** keep the last value (the opposite of every other duplicate-key case in this codebase, which
 keep the first), with a warning. Implemented in `InternalUtils.extractProperties`.
+
+### Malformed attribute inside a metadata declaration's `<...>` list
+
+A comma-delimited attribute that doesn't split into exactly one `key=value` pair (a stray/trailing/interior
+comma producing an empty attribute, a bare token with no `=` at all, or an unquoted value that happens to
+contain `=`) previously made `InternalUtils.extractProperties` rethrow unconditionally, aborting the entire
+file parse over one malformed attribute in one declaration — contradicting `AGENTS.md`'s own Parser Validation
+Policy, which lists metadata declarations among the fields this parser is lenient about. Confirmed live
+against bcftools 1.23.1 (htslib 1.23.1): it never aborts the whole file for this — it drops the one malformed
+*declaration* and continues (`[E::bcf_hdr_parse_line] Could not parse the header line`, exit 0); the
+unquoted-`=`-in-value shape is accepted completely silently, no warning at all.
+
+hts-specs' own conformance suite disagrees with unconditional leniency for one narrow sub-case: an unescaped
+comma inside an unquoted ID, splitting it into two bogus top-level attributes.
+`test/vcf/{4.1,4.2}/failed/failed_meta_contig_002.vcf` (`##CauseOfFailure=contig ID contains a comma`,
+`##contig=<ID=1,A,length=123456>`) and `test/vcf/{4.1,4.2}/failed/failed_meta_alt_007.vcf`
+(`##CauseOfFailure=The ALT ID contains a comma`, `##ALT=<ID=DEL:A,B,Description="Deletion with invalid
+suffix">`) are both marked `failed/` for exactly this shape — both fixtures have a single data line, so
+`HtsSpecsConformanceTest`'s `parser-throw-or-warn` check (which only requires *some* warning, not a specific
+one, for a single-data-line fixture) accepts either a throw or a warn here and doesn't force a decision; no
+`hts-specs-baseline.tsv` entry results either way.
+
+**Decision:** side with bcftools over the fixtures for this sub-case: warn and drop just the one malformed
+attribute (not the whole declaration — finer-grained than bcftools), continuing to parse the rest of the
+declaration and the file. This project's leniency philosophy (`AGENTS.md`: "'Strict' in this project means
+structural correctness and transparent diagnostics, not eager rejection of every semantic VCF violation")
+treats an unquoted comma inside an ID as a semantic grammar defect, not the structural kind this library hard-
+rejects for. Every downstream metadata constructor's lenient `(Map, VcfWarnings)` path already warns rather
+than throws for a missing required attribute (e.g. `InfoMetadata.init()`'s `warnIfMissing(TYPE, ...)`), so a
+declaration left short one attribute by this drop was already a supported, tested state before this decision.
+Implemented in `InternalUtils.extractProperties`.
 
 ### Whitespace in `##FILTER`/`##SAMPLE` declaration IDs
 

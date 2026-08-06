@@ -814,6 +814,34 @@ public class InternalUtilsTest {
   }
 
   @Test
+  public void testExtractPropertiesWarnsAndDropsMalformedAttributeInsteadOfThrowing() {
+    // regression test: a comma-delimited attribute that doesn't split into exactly one "key=value" pair (here, an
+    // empty attribute produced by an interior double comma) previously made extractProperties rethrow
+    // unconditionally, aborting the entire metadata declaration -- and, via VcfParser, the entire file parse. It
+    // must instead warn and drop just that one attribute, keeping every other attribute that did parse.
+    StringWriter sink = new StringWriter();
+    Map<String, String> props = InternalUtils.extractProperties(
+        new String[] {"ID=AF", "", "Number=1", "Type=Float"}, new VcfWarnings(sink));
+    assertEquals(Map.of("ID", "AF", "Number", "1", "Type", "Float"), props);
+    assertTrue(sink.toString().contains("Could not parse metadata attribute"));
+  }
+
+  @Test
+  public void testExtractPropertiesWarnsAndDropsAttributeWithUnquotedEmbeddedEqualsSign() {
+    // pins the chosen recovery for an attribute whose unquoted value itself contains "=" -- splitProperty finds
+    // more than one top-level "=" and can't unambiguously determine the key/value split, so the whole attribute
+    // is dropped rather than guessed at, same recovery as the interior-empty-attribute case above. A quoted value
+    // containing "=" (e.g. Description="a=b") never reaches this path at all: splitTopLevel's quote-awareness
+    // means only the first, unquoted "=" is ever top-level.
+    StringWriter sink = new StringWriter();
+    Map<String, String> props = InternalUtils.extractProperties(
+        new String[] {"ID=X", "Number=1", "Type=String", "Description=a=b"}, new VcfWarnings(sink));
+    assertEquals(Map.of("ID", "X", "Number", "1", "Type", "String"), props);
+    assertFalse(props.containsKey("Description"));
+    assertTrue(sink.toString().contains("Could not parse metadata attribute \"Description=a=b\""));
+  }
+
+  @Test
   public void testSpecialNumberCardinality() {
     assertEquals(2L, InternalUtils.getExpectedCardinality("A", 2, 2, VcfWarnings.DEFAULT));
     assertEquals(3L, InternalUtils.getExpectedCardinality("R", 2, 2, VcfWarnings.DEFAULT));

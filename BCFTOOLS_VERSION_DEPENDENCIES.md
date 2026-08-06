@@ -35,6 +35,10 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
 - Test: `BcftoolsDependencyTest#testDuplicateAttributeWithinDeclarationBcftoolsKeepsLast`
 - Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Duplicate attribute within one metadata declaration" entry
 
+### Malformed attribute inside a metadata declaration's `<...>` list
+- Test: `BcftoolsDependencyTest#testMalformedMetadataAttributeBcftoolsDropsDeclarationAndContinues`
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Malformed attribute inside a metadata declaration's `<...>` list" entry
+
 ### `##FORMAT`/`##INFO` declaration ID grammar vs. `##FILTER`/`##SAMPLE`/`##ALT`
 - Test: `BcftoolsDependencyTest#testFormatDeclarationIdRejectsAsteriskButFilterAccepts`
 - Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "`##FORMAT`/`##INFO` declaration ID grammar is stricter than
