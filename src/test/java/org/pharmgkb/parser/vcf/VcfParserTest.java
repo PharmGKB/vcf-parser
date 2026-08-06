@@ -1250,6 +1250,62 @@ public class VcfParserTest {
   }
 
   @Test
+  void testVcfLineParserParseMetadataCallbackDeliberateVcfFormatExceptionGetsLineNumberAttached() throws IOException {
+    // regression test: previously, a VcfFormatException thrown deliberately by the callback's own
+    // parseMetadata(VcfMetadata) override (e.g. TransformingVcfLineParser.parseMetadata() -> writeHeader() ->
+    // VcfWriter.Builder().validateBeforeWrite() rejecting invalid header content) propagated completely raw --
+    // no line number, no "Error parsing metadata: " prefix -- even though this is structurally identical to
+    // testVcfLineParserCallbackDeliberateVcfFormatExceptionStillGetsLineNumberAttached's parseLine() case above,
+    // which already got this treatment
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT\t.\t.\t.\n";
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .parseWith(new VcfLineParser() {
+          @Override
+          public void parseMetadata(VcfMetadata metadata) {
+            throw new VcfFormatException("caller rejects this header");
+          }
+
+          @Override
+          public void parseLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
+          }
+        })
+        .build()) {
+      VcfFormatException e = assertThrows(VcfFormatException.class, parser::parse);
+      assertThat(e.getMessage(), containsString("caller rejects this header"));
+      assertThat(e.getMessage(), containsString("Line #"));
+    }
+  }
+
+  @Test
+  void testVcfLineParserParseMetadataCallbackRuntimeExceptionPropagatesWithOriginalType() throws IOException {
+    // companion regression test: a RuntimeException from the parseMetadata(VcfMetadata) callback (a bug in the
+    // caller's own code, not a VCF-content problem) must still propagate as-is, not get wrapped -- mirrors
+    // testVcfLineParserCallbackRuntimeExceptionPropagatesWithOriginalType's parseLine() case above
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT\t.\t.\t.\n";
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .parseWith(new VcfLineParser() {
+          @Override
+          public void parseMetadata(VcfMetadata metadata) {
+            throw new NullPointerException("caller bug: some field was null");
+          }
+
+          @Override
+          public void parseLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
+          }
+        })
+        .build()) {
+      NullPointerException e = assertThrows(NullPointerException.class, parser::parse);
+      assertEquals("caller bug: some field was null", e.getMessage());
+    }
+  }
+
+  @Test
   void testPositionOrderingAllowsRepeatedPosOnSameChromosome() throws IOException {
     // VCFv4.2.tex line 180: "It is permitted to have multiple records with the same POS."
     ch.qos.logback.classic.Logger root =

@@ -1837,6 +1837,35 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteRejectsNullMetadataEntryInsteadOfThrowingNpe() throws Exception {
+    // regression test: getInfo()/getFilters()/getFormats()/getAlts()/getContigs()/getSamples()/getPedigrees()
+    // all return their live backing collection directly, so a caller can insert a null entry after
+    // writeHeader() already ran claimMetadataWarningsSinks()'s own one-time null check. writeLine()'s
+    // post-header-mutation guard calls buildHeaderLines() -> addMetadataLines() -> getAllProperties() BEFORE
+    // validateMetadata()'s own (equally-unguarded) checks ever run, so this previously raw-crashed with
+    // NullPointerException instead of VcfFormatException -- verified for both a Map-based kind (INFO) and the
+    // List-based kind (PEDIGREE), since addMetadataLines() is the single shared implementation for both shapes
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata("AF", "d", InfoType.Float, "A", null, null))
+        .build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+
+    metadata.getInfo().put("BADKEY", null);
+    VcfFormatException infoEx = assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.emptyList()));
+    assertTrue(infoEx.getMessage().contains("INFO metadata contains a null entry"));
+    metadata.getInfo().remove("BADKEY"); // fix it for the next scenario
+
+    metadata.getPedigrees().add(null);
+    VcfFormatException pedigreeEx = assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.emptyList()));
+    assertTrue(pedigreeEx.getMessage().contains("PEDIGREE metadata contains a null entry"));
+  }
+
+  @Test
   public void testCloseDetectsErrorAndStillReleasesTheWriter() throws Exception {
     // close() must check for a write failure that happened after the last periodic check (or after
     // writeHeader(), if no data lines were written at all) AND still release the underlying resource even

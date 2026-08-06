@@ -205,6 +205,8 @@ public class VcfPosition {
     if (chr == null) {
       throw new VcfFormatException("CHROM is null");
     }
+    // hts-specs test/vcf/4.2/failed/failed_body_chrom_002.vcf, ##CauseOfFailure=contig ID contains a
+    // whitespace (literal CHROM="chr 1").
     if (chr.isEmpty() || InternalUtils.containsWhitespace(chr)) {
       throw new VcfFormatException("CHROM column \"" + chr + "\" is empty or contains whitespace");
     }
@@ -219,6 +221,10 @@ public class VcfPosition {
     if (content.isEmpty()) {
       throw new VcfFormatException("CHROM column \"" + chr + "\" is empty or contains whitespace");
     }
+    // VCFv4.3.tex's appendix: "* is now valid when not the first character"; "*"/"=" as the first character
+    // "were already invalid and remain so" -- see also this class's own INVALID_CONTIG_NAME_CHAR_PATTERN,
+    // whose character class deliberately does not include '*'/'=' since they're only invalid in this one
+    // first-character position, not everywhere in CHROM.
     char first = content.charAt(0);
     if (first == '*' || first == '=') {
       throw new VcfFormatException("CHROM column \"" + chr + "\" must not start with '" + first + "'");

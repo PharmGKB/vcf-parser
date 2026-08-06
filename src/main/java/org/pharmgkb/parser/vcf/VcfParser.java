@@ -148,8 +148,20 @@ public class VcfParser implements Closeable {
           m_vcfMetadata.getSamples().size());
     }
 
-    // deliver the metadata to the line parser once, before any data lines (this method runs at most once)
-    m_vcfLineParser.parseMetadata(m_vcfMetadata);
+    // deliver the metadata to the line parser once, before any data lines (this method runs at most once).
+    // Mirrors parseLine()'s identical try/catch below: a VcfFormatException the callback throws on purpose (to
+    // reject an already-parsed header, e.g. TransformingVcfLineParser.parseMetadata() -> writeHeader() ->
+    // VcfWriter.Builder().validateBeforeWrite() rejecting invalid header content) gets this line's number
+    // attached, the same as a parseLine() callback rejection does -- previously it propagated completely raw,
+    // with no line number and no "Error parsing metadata: " prefix, even though m_lineNumber here correctly
+    // holds the #CHROM header line's number. A RuntimeException from the callback itself (a bug in the
+    // caller's own code, not a VCF-content problem) still propagates with its original type, unwrapped.
+    try {
+      m_vcfLineParser.parseMetadata(m_vcfMetadata);
+    } catch (VcfFormatException ex) {
+      ex.addMetadata(m_lineNumber, "metadata");
+      throw ex;
+    }
 
     return m_vcfMetadata;
   }

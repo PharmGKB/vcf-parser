@@ -408,6 +408,17 @@ public class VcfWriter implements Closeable {
     // compare against; duplicate IDs across entries must still be checked directly here
     Set<String> pedigreeIds = new HashSet<>();
     for (BaseMetadata pedigree : metadata.getPedigrees()) {
+      // getPedigrees() is a live view, so a caller can insert a null element after writeHeader() already ran
+      // claimMetadataWarningsSinks()'s own null check -- same reasoning as validateKeyedMetadataEntries()'s
+      // identical guard above. Currently masked on both of validateMetadata()'s call sites: in writeHeader(),
+      // validateMetadata() runs BEFORE buildHeaderLines()/addMetadataLines(), so claimMetadataWarningsSinks()'s
+      // own checkNoNullMetadataEntries() (called even earlier, at line 127) is what actually catches it there;
+      // in writeLine()'s post-header-mutation check, buildHeaderLines()/addMetadataLines() runs first instead.
+      // Kept anyway so this method stays a correct, self-contained validation pass on its own terms -- not
+      // dependent on call-order elsewhere in this class remaining exactly as it is today.
+      if (pedigree == null) {
+        throw new VcfFormatException("PEDIGREE metadata contains a null entry");
+      }
       pedigree.validate();
       Map<String, String> properties = pedigree.getPropertiesRaw();
       validateMetadataProperties("PEDIGREE", properties);
@@ -555,6 +566,17 @@ public class VcfWriter implements Closeable {
     for (Map.Entry<String, ? extends BaseMetadata> mapEntry : entriesByKey.entrySet()) {
       String mapKey = mapEntry.getKey();
       BaseMetadata entry = mapEntry.getValue();
+      // entriesByKey is a live view (see this method's own Javadoc), so a caller can insert a null value after
+      // writeHeader() already ran claimMetadataWarningsSinks()'s own null check. Currently masked on both of
+      // this method's call sites: in writeHeader(), this method runs BEFORE buildHeaderLines()/
+      // addMetadataLines(), so claimMetadataWarningsSinks()'s own checkNoNullMetadataEntries() (called even
+      // earlier, at line 127) is what actually catches it there; in writeLine()'s post-header-mutation check,
+      // buildHeaderLines()/addMetadataLines() runs first instead. Kept anyway so validateMetadata() stays a
+      // correct, self-contained validation pass on its own terms -- not dependent on call-order elsewhere in
+      // this class remaining exactly as it is today.
+      if (entry == null) {
+        throw new VcfFormatException(kind + " metadata contains a null entry");
+      }
       entry.validate();
       if ("ALT".equals(kind) && entry instanceof IdDescriptionMetadata idDescriptionMetadata) {
         VcfMetadata.validateAlt(idDescriptionMetadata, m_warnings);
@@ -1048,6 +1070,18 @@ public class VcfWriter implements Closeable {
 
   private void addMetadataLines(List<String> lines, String name, Collection<? extends BaseMetadata> list) {
     for (BaseMetadata metadata : list) {
+      // list is a live view of a VcfMetadata collection (see getAllProperties()'s own comment on
+      // metadata.getPropertiesRaw() for the identical live-view concern one level down); a caller can insert a
+      // null element after writeHeader() has already run. This guard is reachable only in validateBeforeWrite()
+      // mode: the default write path never calls buildHeaderLines() from writeLine() at all, and on the first
+      // writeHeader() call, claimMetadataWarningsSinks() already rejects a null entry earlier (line 127) before
+      // buildHeaderLines() (and this method, via it) ever runs. The one place this guard actually fires is
+      // writeLine()'s post-header-mutation check in validateBeforeWrite() mode, where buildHeaderLines() (and so
+      // this method) runs BEFORE validateMetadata()'s equivalent null checks -- so this guard is not redundant
+      // with those, it's the one that actually runs first there.
+      if (metadata == null) {
+        throw new VcfFormatException(name + " metadata contains a null entry");
+      }
       lines.add(getAllProperties(name, metadata));
     }
   }
