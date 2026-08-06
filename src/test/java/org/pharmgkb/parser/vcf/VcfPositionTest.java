@@ -1065,6 +1065,114 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testStrictConstructorThrowsForInfoDotCombinedWithOtherProperties() {
+    // regression test: the eager (ListMultimap) constructor previously bypassed this check entirely --
+    // testLazyInfoDotCannotCombineWithOtherProperties above already covers the lazy raw-text path
+    com.google.common.collect.ListMultimap<String, String> info = com.google.common.collect.LinkedListMultimap.create();
+    info.put(".", "");
+    info.put("DP", "5");
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new VcfPosition(
+        "1", 100, null, "A", null, null, null, info, null, -1));
+    assertTrue(ex.getMessage().contains("'.' (missing value) along with other properties"));
+  }
+
+  @Test
+  public void testStrictConstructorAcceptsInfoKeyLiterallyNamedDotWithARealValue() {
+    // regression test: a caught-too-broadly first draft of the "'.' combined with other properties" check
+    // (checkInfoEntries, keyed off info.size() > 1) newly rejected this, which the lazy raw-text path
+    // (equivalent to raw text ".=5;DP=1") has always accepted -- its own props.contains(".") only matches a
+    // bare "." token, never ".=value", so a "." key with a real, non-empty value is a merely-unusual literal
+    // key name, not the "no INFO at all" sentinel, and must not be conflated with it
+    com.google.common.collect.ListMultimap<String, String> info = com.google.common.collect.LinkedListMultimap.create();
+    info.put(".", "5");
+    info.put("DP", "1");
+    VcfPosition position = new VcfPosition("1", 100, null, "A", null, null, null, info, null, -1);
+    assertEquals(Collections.singletonList("5"), position.getInfo("."));
+    assertEquals(Collections.singletonList("1"), position.getInfo("DP"));
+  }
+
+  @Test
+  public void testStrictConstructorAcceptsInfoDotKeyWithMultipleValuesAndNoOtherProperty() {
+    // regression test: a caught-too-broadly first draft of the "'.' combined with other properties" check used
+    // info.size() (which counts key-VALUE pairs, not distinct keys), so a single "." key with more than one
+    // comma-derived value (raw text ".=1,2") false-positived as "combined with other properties" even though no
+    // other property is present at all
+    com.google.common.collect.ListMultimap<String, String> info = com.google.common.collect.LinkedListMultimap.create();
+    info.put(".", "1");
+    info.put(".", "2");
+    VcfPosition position = new VcfPosition("1", 100, null, "A", null, null, null, info, null, -1);
+    assertEquals(Arrays.asList("1", "2"), position.getInfo("."));
+  }
+
+  @Test
+  public void testStrictConstructorThrowsFormattedExceptionNotNpeForNullInfoValueUnderDotKey() {
+    // regression test: an earlier draft of checkInfoEntries computed the "." exclusivity check BEFORE the
+    // per-entry null-value check, so a null value under key "." alone raw-crashed with NullPointerException
+    // (from dotValues.stream().anyMatch(v -> !v.isEmpty())) instead of the intended VcfFormatException -- the
+    // "." check now runs after the loop, over the already-null-checked result, so the loop's own null-value
+    // check fires first
+    com.google.common.collect.ListMultimap<String, String> info = com.google.common.collect.LinkedListMultimap.create();
+    info.put(".", null);
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new VcfPosition(
+        "1", 100, null, "A", null, null, null, info, null, -1));
+    assertTrue(ex.getMessage().contains("INFO value for key \".\" is null"));
+  }
+
+  @Test
+  public void testLenientConstructorAcceptsInfoDotSentinelAfterEmptyKeyIsDropped() {
+    // regression test: an earlier draft's "." exclusivity check ran BEFORE the loop dropped the empty-key
+    // entry, so {"": "5", ".": ""} wrongly hard-threw in lenient mode ("combined with other properties") even
+    // though the only OTHER entry present is the empty-key one lenient mode is supposed to warn-and-drop --
+    // once dropped, only "." remains, which must be accepted, not rejected
+    com.google.common.collect.ListMultimap<String, String> info = com.google.common.collect.LinkedListMultimap.create();
+    info.put("", "5");
+    info.put(".", "");
+    StringWriter sink = new StringWriter();
+    VcfPosition position = new VcfPosition("1", 100, null, "A", null, null, null, info, null, -1,
+        new VcfWarnings(sink));
+    assertTrue(sink.toString().contains("has an empty key"));
+    // the eager constructor does not drop a lone "." key the way the lazy raw-text path does (a documented,
+    // separately-tracked residual asymmetry, not part of this fix's scope) -- the point of this test is only
+    // that the empty-key entry's drop must happen BEFORE the "." exclusivity check runs, not that this
+    // asymmetry itself is resolved
+    assertEquals(Collections.singletonList(""), position.getInfo("."));
+  }
+
+  @Test
+  public void testLenientConstructorDropsInfoEmptyKeyWithWarning() {
+    // regression test: the eager (ListMultimap) constructor and validate() previously bypassed this check
+    // entirely -- info()'s own raw-text-parsing branch (VcfParser's path) already drops an empty INFO key
+    // with a warning; a caller building a ListMultimap directly got neither the drop nor the warning
+    com.google.common.collect.ListMultimap<String, String> info = com.google.common.collect.LinkedListMultimap.create();
+    info.put("", "5");
+    info.put("DP", "10");
+    StringWriter sink = new StringWriter();
+    VcfPosition position = new VcfPosition("1", 100, null, "A", null, null, null, info, null, -1,
+        new VcfWarnings(sink));
+    assertEquals(Collections.singletonList("10"), position.getInfo("DP"));
+    assertNull(position.getInfo(""));
+    assertTrue(sink.toString().contains("has an empty key"));
+
+    // re-validating an already-constructed position (e.g. after a live mutation via getInfo()) must catch the
+    // same defect, not just the constructor
+    VcfPosition mutated = newPosition();
+    mutated.getInfo().put("", "1");
+    mutated.getInfo().put("AF", "0.5");
+    mutated.validate();
+    assertEquals(Collections.singletonList("0.5"), mutated.getInfo("AF"));
+    assertNull(mutated.getInfo(""));
+  }
+
+  @Test
+  public void testStrictConstructorThrowsForInfoEmptyKey() {
+    com.google.common.collect.ListMultimap<String, String> info = com.google.common.collect.LinkedListMultimap.create();
+    info.put("", "5");
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new VcfPosition(
+        "1", 100, null, "A", null, null, null, info, null, -1));
+    assertTrue(ex.getMessage().contains("has an empty key"));
+  }
+
+  @Test
   public void testStrictConstructorThrowsForEmptyFormatSubfield() {
     List<String> format = new java.util.ArrayList<>(List.of("GT", "", "DP"));
     VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new VcfPosition(

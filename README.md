@@ -89,9 +89,9 @@ invalid:
   [`VcfWarnings`](#vcfwarnings-explicit-warning-routing) instance to route the warnings to (see that section
   below).
 - `new VcfPosition(...)`'s 10-argument constructor throws, at construction time, for FILTER combining `PASS`
-  with another code, a duplicate value within `ID` or `FILTER`, an INFO value containing `=`, an empty FORMAT
-  sub-field name, or an empty ID/ALT/FILTER entry -- the same conditions the lenient section below describes
-  as warned-and-recovered when parsed; its
+  with another code, a duplicate value within `ID` or `FILTER`, an INFO value containing `=`, an empty INFO
+  key, an empty FORMAT sub-field name, or an empty ID/ALT/FILTER entry -- the same conditions the lenient
+  section below describes as warned-and-recovered when parsed; its
   own `validate()` method always warns instead, matching the metadata classes above. A separate 11-argument
   overload, taking an explicit [`VcfWarnings`](#vcfwarnings-explicit-warning-routing) instance as its last
   parameter, restores exactly that warn-and-recover behavior; this is the overload `VcfParser` itself uses.

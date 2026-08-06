@@ -2,12 +2,12 @@
 
 This document describes the parser's (lenient) behavior -- reached via `VcfParser`, `VcfPosition.validate()`,
 or `VcfPosition`'s own 11-argument lenient constructor. `VcfPosition`'s 10-argument (default) constructor
-throws `VcfFormatException` immediately for an empty ID/ALT/FILTER entry or an empty FORMAT sub-field name
-instead of warning-and-normalizing per the table below; see `VALIDATION_PHILOSOPHY.md`. `VcfWriter`'s default
-write path applies this same warn-and-normalize behavior for a live-mutated empty ID/ALT/FILTER entry or
-sample FORMAT value that reaches `writeLine()` without validation having re-run (see "Where this is
-implemented" below) -- it is not part of `VALIDATION_PHILOSOPHY.md`'s strict/lenient constructor split, since
-the writer has no "direct construction" analogue to be strict about.
+throws `VcfFormatException` immediately for an empty ID/ALT/FILTER entry, an empty INFO key, or an empty
+FORMAT sub-field name instead of warning-and-normalizing per the table below; see `VALIDATION_PHILOSOPHY.md`.
+`VcfWriter`'s default write path applies this same warn-and-normalize behavior for a live-mutated empty
+ID/ALT/FILTER entry or sample FORMAT value that reaches `writeLine()` without validation having re-run (see
+"Where this is implemented" below) -- it is not part of `VALIDATION_PHILOSOPHY.md`'s strict/lenient
+constructor split, since the writer has no "direct construction" analogue to be strict about.
 
 The VCF spec (explicitly stated starting with VCFv4.3; VCFv4.1/4.2 are silent on it) says:
 
@@ -97,6 +97,7 @@ newer-version prose, not vcf_validator's stricter regex reading, for the reasons
 | Sample value (FORMAT `GT:XX:GQ`, String field) | `0/1::30` | Silent; represents the empty value internally as a raw NUL byte (`0x00`), not `.` — confirmed via `cat -A` on its own text output | Invalid | Warn + substitute `.` | `0/1:.:30` |
 | INFO top-level entry | `DP=10;;AF=0.5` | Silently dropped | Invalid | Warn + drop | `DP=10;AF=0.5` |
 | INFO top-level entry | `DP=10;` | Silently dropped | Invalid | Warn + drop | `DP=10` |
+| INFO entry with an empty key | `=5;DP=10` | Silently dropped (verified live: `=5` dropped, `DP=10` kept, exit 0) | Invalid ("Info key is not a sequence of alphanumeric and/or punctuation characters") | Warn + drop | `DP=10` |
 | INFO value | `AD=1,,2` | Silently substitutes `.` (`AD=1,.,2`) | Invalid | Warn + substitute `.` | `AD=1,.,2` |
 | INFO value | `AD=1,2,` | Silently substitutes `.` (`AD=1,2,.`) | **Valid** (see note below) | Warn + substitute `.` | `AD=1,2,.` |
 | INFO value | `AD=` | Silently substitutes `.` (`AD=.`) | Invalid | Warn + substitute `.` | `AD=.` |
@@ -185,8 +186,11 @@ for rejection purposes, but they are still a data-loss case in practice.
   values below), and no longer rejects `.` combined with a real allele.
 - `VcfPosition.checkFormat` — warns and keeps an empty FORMAT key as-is; separately, throws on a duplicate
   (non-empty) FORMAT key.
-- `VcfPosition.info()` — warns and drops an empty top-level entry or empty key; warns and substitutes `.` for an
-  empty value.
+- `VcfPosition.info()` — warns and drops an empty top-level entry, and (via its own separate, pre-existing
+  inline check, before a key ever reaches a built multimap) an empty key; warns and substitutes `.` for an
+  empty value. The eager (`ListMultimap`) constructor and `validate()` share a second, equivalent empty-key
+  check in `checkInfoEntries` (the same method both call) -- those two other entry points previously silently
+  accepted an empty INFO key with no warning at all.
 - `VcfParser`'s per-sample value parsing — warns and substitutes `.` for an empty sample value.
 - `InternalUtils.convertProperty` — warns and substitutes `.` (`null`) for an empty entry in a reserved list-typed
   property's comma-separated value; warns and drops an empty semicolon-separated code in a reserved `FORMAT/FT`

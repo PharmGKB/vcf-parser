@@ -136,7 +136,7 @@ public class VcfPosition {
       filter = checkFilters(filter, checkWarnings);
     }
     if (info != null) {
-      checkInfoEntries(info.entries(), checkWarnings);
+      info = checkInfoEntries(info, checkWarnings);
     }
     if (format != null) {
       format = checkFormat(format, checkWarnings);
@@ -379,8 +379,22 @@ public class VcfPosition {
     return filters;
   }
 
-  private static void checkInfoEntries(Iterable<Map.Entry<String, String>> entries, @Nullable VcfWarnings warnings) {
-    for (Map.Entry<String, String> entry : entries) {
+  /**
+   * @return {@code info} unchanged, or a new multimap derived from it with any empty-key entry dropped (with a
+   * warning, or a thrown {@link VcfFormatException} if {@code warnings} is {@code null} -- strict mode); see
+   * {@code EMPTY_FIELD_HANDLING.md}. Also throws {@link VcfFormatException} -- unconditionally, even when
+   * {@code warnings} is non-null, the same as {@link #checkFilters}'s identical {@code '.'}-combined-with-other-
+   * filters check -- if a bare {@code "."} (missing value) entry is combined with any other property.
+   */
+  private static ListMultimap<String, String> checkInfoEntries(ListMultimap<String, String> info,
+      @Nullable VcfWarnings warnings) {
+    // same reasoning: info()'s own raw-text-parsing branch already drops an empty key (with a warning) before it
+    // ever reaches a built multimap there, so this only has bite for a ListMultimap passed directly to the eager
+    // constructor or set later via getInfo() -- previously, neither this constructor nor validate() (which also
+    // calls this method) ever detected or dropped it
+    boolean hasEmptyKey = info.containsKey("");
+    ListMultimap<String, String> result = hasEmptyKey ? LinkedListMultimap.create() : info;
+    for (Map.Entry<String, String> entry : info.entries()) {
       String key = entry.getKey();
       String value = entry.getValue();
       // a parsed entry's key/value can never be null; only a value set directly via getInfo().put(...) could be
@@ -390,6 +404,14 @@ public class VcfPosition {
       }
       if (value == null) {
         throw new VcfFormatException("INFO value for key \"" + key + "\" is null");
+      }
+      if (key.isEmpty()) {
+        if (warnings == null) {
+          throw new VcfFormatException("INFO entry \"=" + value + "\" has an empty key");
+        }
+        warnings.warn("INFO entry \"{}\" has an empty key (VCF does not allow zero-length fields); dropping it",
+            "=" + value);
+        continue;
       }
       if (InternalUtils.containsWhitespace(key) || InternalUtils.containsWhitespace(value)) {
         throw new VcfFormatException("INFO column entry \"" + key + "=" + value + "\" contains whitespace");
@@ -416,7 +438,34 @@ public class VcfPosition {
         warnings.warn("INFO value \"{}\" for key \"{}\" contains '='; VCFv4.2's grammar doesn't permit this, but " +
             "bcftools 1.23.1 accepts it silently, so it is preserved as-is", value, key);
       }
+      if (hasEmptyKey) {
+        result.put(key, value);
+      }
     }
+    // "." (missing value: no INFO at all) cannot be combined with a real property, the same as FILTER's own
+    // exclusivity rule for its "." sentinel (see checkFilters above) -- unconditional (not gated on
+    // warnings == null), matching that precedent: "." has no legitimate combined-with-another-property use
+    // documented anywhere. Deliberately runs AFTER the loop above, over the already-cleaned `result` (empty
+    // keys dropped, null keys/values already rejected) rather than the raw `info` argument: checking beforehand
+    // let a null value under key "." reach a raw NullPointerException here instead of the loop's own
+    // VcfFormatException, and let a "." entry alongside only an empty-key entry (which the loop above drops)
+    // wrongly hard-throw in lenient mode instead of correctly reducing to just "." once the empty key is
+    // dropped. Scoped to a "." key whose OWN value is blank (the bare-sentinel shape): a "." key holding a
+    // real, non-empty value (raw text ".=5") is a merely-unusual literal key name info()'s own
+    // raw-text-parsing branch below has always left alone -- its props.contains(".") only matches a bare "."
+    // token, never ".=value" -- so conflating the two here would newly reject input the parser has always
+    // accepted. This scoping also means result.size() (which counts key-VALUE pairs, not distinct keys) can't
+    // be used directly: a single "." key with multiple comma-derived values (raw text ".=1,2") would otherwise
+    // false-positive with no other property present at all.
+    if (result.containsKey(".")) {
+      List<String> dotValues = result.get(".");
+      boolean hasBareDotSentinel = dotValues.contains("");
+      boolean hasOtherContent = result.keySet().size() > 1 || dotValues.stream().anyMatch(v -> !v.isEmpty());
+      if (hasBareDotSentinel && hasOtherContent) {
+        throw new VcfFormatException("INFO contains '.' (missing value) along with other properties");
+      }
+    }
+    return result;
   }
 
   /**
@@ -519,7 +568,7 @@ public class VcfPosition {
       m_altBases = checkAltBases(m_altBases, m_warnings);
       m_filter = checkFilters(m_filter, m_warnings);
       normalizeFilters();
-      checkInfoEntries(info().entries(), m_warnings);
+      m_info = checkInfoEntries(info(), m_warnings);
       m_format = checkFormat(m_format, m_warnings);
     } catch (VcfFormatException ex) {
       if (m_lineNumber >= 0) {
@@ -763,7 +812,7 @@ public class VcfPosition {
           }
         }
         try {
-          checkInfoEntries(info.entries(), m_warnings);
+          info = checkInfoEntries(info, m_warnings);
         } catch (VcfFormatException ex) {
           if (m_lineNumber >= 0) {
             ex.addMetadata(m_lineNumber, "data");

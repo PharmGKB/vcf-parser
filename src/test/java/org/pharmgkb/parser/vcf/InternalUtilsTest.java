@@ -377,6 +377,40 @@ public class InternalUtilsTest {
   }
 
   @Test
+  public void testCheckReservedFormatConstraintsFtDoesNotWarnWhenPassOrMissingIsNotActuallyCombinedWithAnotherCode() {
+    // regression test: kept.size() > 1 alone previously triggered the "combines PASS or '.' with other filter
+    // codes" warning even when every surviving code was itself the exact SAME code repeated (e.g. "PASS;PASS")
+    // -- the warning's own wording implies a genuinely different code is present. "PASS" and "." are still
+    // distinct codes from each other, though (PASS means "passed all filters", "." means "no filter information
+    // recorded" -- genuinely contradictory, matching VcfPosition.checkFilters's identical treatment of the same
+    // shape for the FILTER column), so "PASS;." must still warn, unlike same-code repetition.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertEquals("PASS;PASS", InternalUtils.checkReservedFormatConstraints("FT", "PASS;PASS", VcfWarnings.DEFAULT));
+      assertFalse(appender.anyMessageContains("combines PASS or '.' with other filter codes"));
+
+      assertEquals(".;.", InternalUtils.checkReservedFormatConstraints("FT", ".;.", VcfWarnings.DEFAULT));
+      assertFalse(appender.anyMessageContains("combines PASS or '.' with other filter codes"));
+
+      // PASS and "." are distinct codes, so this must still warn, unlike the two same-code cases above
+      assertEquals("PASS;.", InternalUtils.checkReservedFormatConstraints("FT", "PASS;.", VcfWarnings.DEFAULT));
+      assertTrue(appender.anyMessageContains("combines PASS or '.' with other filter codes"));
+
+      // sanity check: a genuinely different code alongside PASS/'.' must still warn
+      assertEquals("PASS;q10", InternalUtils.checkReservedFormatConstraints("FT", "PASS;q10", VcfWarnings.DEFAULT));
+      assertTrue(appender.anyMessageContains("combines PASS or '.' with other filter codes"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testCheckReservedFormatConstraintsFtAllEmptyCodesNormalizesToMissingValueSentinel() {
     // regression test: when every semicolon-separated code is empty, the previous behavior returned "" (from
     // String.join(";", emptyList)), not "." -- convertProperty's only "treat as absent" check is

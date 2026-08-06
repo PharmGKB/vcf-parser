@@ -2,6 +2,7 @@ package org.pharmgkb.parser.vcf;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -529,7 +530,14 @@ public class InternalUtils {
       }
       kept.add(code);
     }
-    if (kept.size() > 1 && hasPassOrMissing) {
+    // kept.size() > 1 alone isn't enough: "PASS;PASS" also has size 2 and hasPassOrMissing == true, but repeating
+    // the same code isn't "combined with another" one -- distinct-code count is what matters. "PASS;." IS two
+    // distinct codes and must still warn: PASS means "passed all filters", "." means "no filter information
+    // recorded", genuinely contradictory -- matching VcfPosition.checkFilters's identical unconditional
+    // rejection of the same shape for the FILTER column (VcfPosition.java's own checkFilters, hts-specs
+    // test/vcf/4.2/failed/failed_body_filter_000.vcf, ##CauseOfFailure=FILTER contains missing in addition to a
+    // value); FT is documented as sharing FILTER's own grammar, so the same distinction applies here.
+    if (hasPassOrMissing && new HashSet<>(kept).size() > 1) {
       warnings.warn("FORMAT {} value \"{}\" combines PASS or '.' with other filter codes", key, value);
     }
     if (kept.isEmpty()) {

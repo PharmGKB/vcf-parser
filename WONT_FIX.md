@@ -332,3 +332,59 @@ from the `PedigreeMetadata` case:
 Revisit if a real caller reports actually hitting this (as opposed to it being found by deliberate
 investigation), or if `validateBeforeWrite()`'s existing mismatch check is ever found to have another gap of its
 own beyond the removed-ID one already found and fixed above.
+
+## `VcfPosition`'s eager (`ListMultimap`) constructor still keeps a lone `.` INFO key that the lazy raw-text path drops entirely
+
+`VcfPosition.checkInfoEntries` (used by the eager constructor and `validate()`) rejects a `.` (missing-value
+sentinel) key combined with any other property, matching `info()`'s own lazy raw-text-parsing path. But when
+a `.` key is the *only* entry present (e.g. `info.put(".", "")` with nothing else), the eager path keeps it
+as a real property named `.` in the resulting map; the lazy path instead produces a completely empty map for
+the equivalent raw text (a bare `"."` or `".;"`), per `testLazyInfoDotCannotCombineWithOtherProperties`.
+
+**Verified empirically**: `new VcfPosition(..., info)` where `info` contains only `{".": [""]}` succeeds, and
+`position.getInfo(".")` returns `[""]` -- not an empty map the way the equivalent raw-text case produces.
+
+**Decision: won't fix; low-impact, narrow residual asymmetry.** Discovered incidentally while fixing a real,
+confirmed bug in `VcfPosition.checkInfoEntries` (the eager constructor/`validate()` INFO exclusivity/
+empty-key gap; see that method's own code and Javadoc); this narrower case is not comparable in severity:
+
+1. **No data loss or corruption.** The writer emits this position's INFO column as literally `.` (a
+   single-key multimap with an empty value under `.` round-trips to the `.` sentinel on write), which
+   re-parses via this library's own `VcfParser` as "no INFO at all" -- the same end state the lazy path
+   reaches directly. The two paths converge on write/re-parse; they only differ in what `getInfo()` reports
+   for the position object's in-memory lifetime before that.
+2. **Only reachable via direct/programmatic construction** with a hand-built `ListMultimap` explicitly
+   containing a `.` key -- not reachable from untrusted file content, since the parser always uses the lazy
+   path.
+
+Revisit if a real caller reports actually depending on `getInfo()` reporting no INFO at all (rather than a
+literal `.` key) for this exact input shape, or if the two paths are ever unified more broadly.
+
+## `InternalUtils.checkFilterLikeValue`'s FT grammar diverges from `VcfPosition.checkFilters`'s FILTER-column grammar for repeated `PASS`/`.` codes
+
+`checkFilterLikeValue`'s "combines PASS or '.' with other filter codes" warning was fixed to use a
+distinct-code count instead of a raw kept-code count (see its own code comment at `InternalUtils.java` and
+the regression test `InternalUtilsTest.testCheckReservedFormatConstraintsFtDoesNotWarnWhenPassOrMissingIsNotActuallyCombinedWithAnotherCode`);
+it now only fires when at least two *distinct* kept codes are present, one of which is `PASS`/`.`. This means
+`FT="PASS;PASS"` and `FT=".;."` now produce zero diagnostics -- no warning at all, not even for the
+repetition itself.
+
+`VcfPosition.checkFilters` (the FILTER *column*, a different method for a different field) does not treat
+these the same way: `["PASS","PASS"]` warns ("Duplicate FILTER code", see this file's own
+"`VcfPosition.checkFilters` emits redundant warnings..." entry above), and `[".","."]` throws unconditionally
+(`.` combined with anything, including another `.`, is never allowed for FILTER). FT's own method's code
+comment cites `checkFilters`'s `.`-exclusivity precedent for why `PASS;.` must still warn, which could read
+as implying full parity with `checkFilters` -- it does not extend to same-code repetition.
+
+**Decision: won't fix; deliberate, narrower scope than full FILTER/FT grammar parity.** `checkFilterLikeValue`
+already diverges from `checkFilters` in enforcement style for good, previously-established reasons: FT is
+non-structural sample content (warns, never throws, unlike FILTER's own structural floor for the `.`-combined
+case), and bcftools 1.23.1 treats `FT` as an opaque `String` with no knowledge of its own reserved grammar
+(verified live: `FT=q10;q10` round-trips silently, no warning) -- FT duplicate-code detection was never
+implemented to begin with, independent of this fix. This fix's scope was narrowly the misleading wording of
+one specific warning (firing for same-code repetition when its own text implies a genuinely different code is
+present), not introducing new diagnostics FT never had. Extending full `checkFilters`-parity duplicate-code
+detection to FT is a legitimate future enhancement, not a defect this fix introduced or regressed.
+
+Revisit if a real caller reports actually wanting FT duplicate-code detection, or if `checkFilterLikeValue`
+and `checkFilters` are ever intentionally unified into one shared implementation.
