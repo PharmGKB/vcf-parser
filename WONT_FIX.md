@@ -388,3 +388,31 @@ detection to FT is a legitimate future enhancement, not a defect this fix introd
 
 Revisit if a real caller reports actually wanting FT duplicate-code detection, or if `checkFilterLikeValue`
 and `checkFilters` are ever intentionally unified into one shared implementation.
+
+## `MemoryMappedVcfDataStore.getSamplesAtLocus`'s inner per-record sample lists are still live-mutable after the outer-list fix
+
+`getPositionsAtLocus`/`getSamplesAtLocus` were fixed to return `Collections.unmodifiableList(...)` views of
+their outer lists, closing a real bug where an ordinary `List.remove()`/`.clear()` on either list (via the
+public getter) desynced `getGenotypeAtLocus`'s `recordIndex` alignment between the two, causing either a raw
+`IndexOutOfBoundsException` or a silently wrong genotype-to-position pairing.
+
+That fix is scoped to the *outer* list only. Each element of `getSamplesAtLocus`'s returned
+`List<List<VcfSample>>` is still the same live, directly-mutable `List<VcfSample>` also returned by
+`getSamplesForId(id)` -- `MemoryMappedVcfLineParser.parseLine()` stores the one object in both places. A
+caller who mutates one of those inner lists (e.g. `dataStore.getSamplesAtLocus(...).get(0).remove(0)`) can
+similarly desync `getSampleAtLocus`/`getGenotypeAtLocus`'s (and the by-ID overloads') sample-index lookups
+*within that one record*: `m_metadata.getSampleIndex(sampleId)` returns a fixed index derived from the
+`#CHROM` line's declared sample columns, so removing an element shifts every later sample by one, silently
+returning the wrong sample's data (or `null` if the shifted index now falls off the end).
+
+**Decision: won't fix in this pass; deliberately narrower scope than fully closing this class of bug.**
+Wrapping the inner lists too would require either wrapping on every `getSamplesAtLocus`/`getSamplesForId`
+call (an allocation per element per call, on a class whose whole purpose is being the fast in-memory
+convenience API) or eagerly wrapping at storage time (a deliberate design change to how
+`MemoryMappedVcfLineParser` populates these maps, not a narrow fix). The outer-list fix closes the
+specific, confirmed bug found this cycle (recordIndex-vs-recordIndex misalignment); this inner-list gap
+is the same failure *shape* one level down (sample-index-vs-`#CHROM`-columns misalignment), found
+incidentally while reviewing that fix, not independently confirmed to have caused a real failure.
+
+Revisit if a real caller reports actually hitting this, or if `getSamplesAtLocus`/`getSamplesForId` are ever
+redesigned to return copies or otherwise fully immutable views.

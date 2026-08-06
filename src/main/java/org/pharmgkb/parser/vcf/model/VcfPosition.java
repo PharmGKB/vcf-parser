@@ -333,6 +333,8 @@ public class VcfPosition {
     filters = InternalUtils.dropEmptyEntries("FILTER", filters, warnings);
     Set<String> seenFilters = new HashSet<>();
     for (String f : filters) {
+      // hts-specs test/vcf/4.2/failed/failed_body_filter_003.vcf, ##CauseOfFailure=FILTER contains whitespaces
+      // (literal FILTER="my filter").
       if (InternalUtils.containsWhitespace(f)) {
         throw new VcfFormatException("FILTER column entry \"" + f + "\" contains whitespace");
       }
@@ -413,6 +415,8 @@ public class VcfPosition {
             "=" + value);
         continue;
       }
+      // hts-specs test/vcf/4.2/failed/failed_body_info_028.vcf, ##CauseOfFailure=INFO contains a whitespace
+      // (literal INFO="RS Q=123").
       if (InternalUtils.containsWhitespace(key) || InternalUtils.containsWhitespace(value)) {
         throw new VcfFormatException("INFO column entry \"" + key + "=" + value + "\" contains whitespace");
       }

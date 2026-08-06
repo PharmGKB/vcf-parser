@@ -314,10 +314,16 @@ public class VcfWriter implements Closeable {
     // to be rejected during parsing before reaching the writer. More significantly, VcfPosition.getFilterStatus()
     // now derives FilterStatus.PASSED from a literal ["PASS"] list, so this stream sees a literal "PASS" entry
     // for every ordinary passing record now, not just the combined-with-another-code edge case.
+    // "." (FILTER "not applied") is excluded for the same reason: it's VCF's other reserved FILTER sentinel, also
+    // never expected to have its own ##FILTER=<ID=.,...> declaration. Not normally reachable as a list element --
+    // VcfPosition.normalizeFilters() collapses a lone "." into an empty list, and checkFilters() rejects "."
+    // combined with another code -- but a caller can still produce it via direct mutation of the live list
+    // returned by getFilters() without calling validate() afterward.
     position.getFilters().stream()
-        .filter(key -> !key.equals("PASS") && !metadata.getFilters().containsKey(key)).forEach(key ->
-        m_warnings.warn("Position {}:{} has FILTER {}, but there is no FILTER metadata with that name (on line {})",
-            position.getChromosome(), position.getPosition(), key, lineBeingWritten()));
+        .filter(key -> !key.equals("PASS") && !key.equals(".") && !metadata.getFilters().containsKey(key))
+        .forEach(key ->
+            m_warnings.warn("Position {}:{} has FILTER {}, but there is no FILTER metadata with that name (on line {})",
+                position.getChromosome(), position.getPosition(), key, lineBeingWritten()));
 
     // these columns can be skipped completely
     addFormatConditionally(position, numSamples, sb);

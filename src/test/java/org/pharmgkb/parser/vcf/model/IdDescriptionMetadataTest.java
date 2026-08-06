@@ -1,6 +1,7 @@
 package org.pharmgkb.parser.vcf.model;
 
 import java.io.StringWriter;
+import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.InternalUtils;
@@ -110,6 +111,23 @@ public class IdDescriptionMetadataTest {
     StringWriter sink = new StringWriter();
     new IdDescriptionMetadata("TEST", props, new VcfWarnings(sink));
     assertTrue(sink.toString().contains("metadata ID is blank"));
+  }
+
+  @Test
+  public void testWhitespaceOnlyIdWarnsAsBlankNotAsContainingWhitespace() {
+    // regression test: a whitespace-only ID (e.g. "   ") previously fell through to only the "must not contain
+    // whitespace" warning below, never the "is blank" one -- id.isEmpty() is false for a non-zero-length
+    // whitespace-only string, so the blank check above never fired. That wording misleadingly reads as "trim it
+    // and it's fine," when there is no usable content at all once trimmed. Built via a hand-populated Map
+    // (not InternalUtils.extractProperties) so the raw "   " value definitely survives unmodified into the ID
+    // property, the same way ContigMetadataTest's own whitespace test builds its map directly.
+    Map<String, String> map = new HashMap<>();
+    map.put("ID", "   ");
+    map.put("Description", "\"d\"");
+    StringWriter sink = new StringWriter();
+    new IdDescriptionMetadata("TEST", map, new VcfWarnings(sink));
+    assertTrue(sink.toString().contains("metadata ID is blank"));
+    assertFalse(sink.toString().contains("must not contain whitespace"));
   }
 
   @Test

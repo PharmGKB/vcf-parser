@@ -337,6 +337,45 @@ public class MemoryMappedVcfDataStoreParserTest {
   }
 
   @Test
+  public void testPositionsAndSamplesAtLocusRejectCallerMutationInsteadOfSilentlyDesyncingIndexAlignment() throws IOException {
+    // regression test: getPositionsAtLocus()/getSamplesAtLocus() previously returned the live, directly-mutable
+    // backing lists. getGenotypeAtLocus()'s recordIndex indexes into both in lockstep (its own comment relies on
+    // positions.size() == samplesList.size() always holding for a locus) -- an ordinary List.remove() on either
+    // list, via the public getter, silently broke that alignment: removing index 0 from one list while the other
+    // stayed full-size made a later valid-looking recordIndex either raw-crash with an unrelated
+    // IndexOutOfBoundsException, or (worse) silently pair a sample with the WRONG position, no exception at all.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n" +
+        "chr1\t1\trsx\tA\tT\t.\tPASS\t.\tGT\t0/1\n" +
+        "chr1\t1\trsy\tC\tG\t.\tPASS\t.\tGT\t1/1\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf))) {
+      MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+      new VcfParser.Builder()
+          .fromReader(reader)
+          .parseWith(lineParser)
+          .build().parse();
+      MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
+
+      List<VcfPosition> positions = dataStore.getPositionsAtLocus("chr1", 1);
+      assertNotNull(positions);
+      assertThrows(UnsupportedOperationException.class, () -> positions.remove(0));
+
+      List<List<VcfSample>> samplesList = dataStore.getSamplesAtLocus("chr1", 1);
+      assertNotNull(samplesList);
+      assertThrows(UnsupportedOperationException.class, () -> samplesList.remove(0));
+
+      // the lists remain usable for reading, and index alignment is intact (would have desynced under the old
+      // live-mutable behavior if the mutation above had silently succeeded)
+      assertEquals(2, positions.size());
+      assertEquals(2, samplesList.size());
+      VcfSample.Genotype genotype = dataStore.getGenotypeAtLocus("chr1", 1, 1, "sample1");
+      assertNotNull(genotype);
+      assertEquals("G", genotype.getAlleles().get(0));
+      assertEquals("G", genotype.getAlleles().get(1));
+    }
+  }
+
+  @Test
   public void testMixedPhasingGenotypeRoundTripsThroughParser() throws IOException {
     // "0|1/2" (3 alleles, REF=A ALT=T,C) -- previously isPhased=true (since the whole string "contains |") caused
     // toString() to reconstruct "A|T|C" instead of the actual "A|T/C"; the fix tracks each boundary's separator

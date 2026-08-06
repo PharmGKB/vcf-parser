@@ -508,6 +508,38 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testWriteLineDoesNotWarnAboutDotFilter() throws Exception {
+    // regression test: "." (FILTER "not applied") is VCF's other reserved FILTER sentinel, also never expected
+    // to have its own ##FILTER=<ID=.,...> declaration -- the undeclared-FILTER warning below previously excluded
+    // only "PASS", not this one. Not normally reachable as a getFilters() element (normalizeFilters() collapses
+    // a lone "." to an empty list, and checkFilters() rejects "." combined with another code), but reachable via
+    // direct mutation of the live list returned by getFilters() without a subsequent validate() call.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addFilter(new IdDescriptionMetadata("FILTER", "STD_FILTER", "Standard filter"))
+        .build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getFilters().add("STD_FILTER");
+    position.getFilters().add(".");
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertFalse(appender.anyMessageContains("has FILTER ."));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testValidateBeforeWriteWarnsWhenChromSampleMissingFromSampleMetadata() throws Exception {
     // regression test: writeHeader() previously never checked this at all, even though the same mismatch would
     // have been caught had the file been re-parsed from scratch (VcfParser has the identical check, with the

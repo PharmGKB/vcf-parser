@@ -2,6 +2,7 @@ package org.pharmgkb.parser.vcf;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -89,18 +90,32 @@ public class MemoryMappedVcfDataStore {
   }
 
   /**
-   * @return Every record at this locus, in the order they were read, or null if this locus was never read.
+   * @return An unmodifiable view of every record at this locus, in the order they were read, or null if this
+   * locus was never read. {@link #getGenotypeAtLocus}'s {@code recordIndex} indexes into this list and into
+   * {@link #getSamplesAtLocus}'s in lockstep -- returning a live-mutable list here would let a caller desync
+   * that alignment with an ordinary {@code List.remove()}/{@code clear()}, silently misattributing a sample's
+   * genotype to the wrong position (or throwing an unrelated {@code IndexOutOfBoundsException}) with no
+   * indication anything went wrong. This view still reflects this store's own later mutations (e.g. during
+   * parsing), the same as before -- only caller-side mutation is now blocked, at the point of the caller's own
+   * mistake, not somewhere far away.
    */
   public @Nullable List<VcfPosition> getPositionsAtLocus(String chromosome, long position) {
-    return m_locusToPositions.get(new Locus(chromosome, position));
+    List<VcfPosition> positions = m_locusToPositions.get(new Locus(chromosome, position));
+    return positions == null ? null : Collections.unmodifiableList(positions);
   }
 
   /**
-   * @return The samples for every record at this locus, index-aligned with {@link #getPositionsAtLocus}, or null if
-   * this locus was never read.
+   * @return An unmodifiable view of the samples for every record at this locus, index-aligned with
+   * {@link #getPositionsAtLocus}, or null if this locus was never read. See that method's own Javadoc for why
+   * this outer list is unmodifiable rather than the live-mutable list returned before. This view is shallow --
+   * each element (one record's per-sample list) is still the same live, directly-mutable {@code List<VcfSample>}
+   * also returned by {@link #getSamplesForId}; mutating one of those can similarly desync
+   * {@link #getSampleAtLocus}'s/{@link #getGenotypeAtLocus}'s sample-index lookups within that one record. Not
+   * addressed here -- deliberately out of scope for this fix; see {@code WONT_FIX.md}.
    */
   public @Nullable List<List<VcfSample>> getSamplesAtLocus(String chromosome, long position) {
-    return m_locusToSamplesList.get(new Locus(chromosome, position));
+    List<List<VcfSample>> samplesList = m_locusToSamplesList.get(new Locus(chromosome, position));
+    return samplesList == null ? null : Collections.unmodifiableList(samplesList);
   }
 
   public @Nullable VcfSample getSampleForId(String positionId, String sampleId) {

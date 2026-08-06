@@ -59,19 +59,24 @@ public abstract class IdMetadata extends BaseMetadata {
     // (VCFv4.3.tex line 121: "All structured lines require an ID..."); this closes the identical gap for the
     // Map-based constructor and for validate() re-running on a live-mutated blank ID, via the same
     // already-active validate()/VcfWriter.validateBeforeWrite() mechanism the checks below rely on.
-    if (id != null && id.isEmpty()) {
+    // id.trim().isEmpty() (not id.isEmpty()) also catches a whitespace-only ID (e.g. "   "): that constructor's
+    // own blank check uses the same trim()-based test, so this mirrors it instead of letting a whitespace-only
+    // ID fall through to only the whitespace check below, which would misleadingly read as "trim it and it's
+    // fine" when there is no usable content at all once trimmed. The two checks are mutually exclusive (else
+    // if): a blank-when-trimmed ID gets exactly one warning, not both.
+    if (id != null && id.trim().isEmpty()) {
       m_warnings.warn("{} metadata ID is blank", getLabel());
-    }
-    // VCFv4.2.tex/VCFv4.3.tex line 105/200 only states this rule for ##ALT's own ID explicitly, but hts-specs'
-    // own conformance fixtures (test/vcf/{4.1,4.2,4.3}/failed/failed_meta_contig_001.vcf,
-    // test/vcf/4.3/failed/failed_meta_sample_001.vcf) extend it to ##contig and ##SAMPLE, bcftools 1.23.1
-    // empirically warns ("Invalid tag name"/"Invalid contig name") for ##INFO/##FORMAT/##contig ID whitespace,
-    // and vcf_validator 0.10.2 rejects whitespace uniformly across every structured metadata ID type. For
-    // ##FILTER/##SAMPLE specifically, bcftools 1.23.1 accepts whitespace silently -- it has no dedicated header
-    // check for either -- directly contradicting hts-specs' own failed_meta_sample_001.vcf fixture; this is
-    // treated as a bcftools coverage gap rather than a considered position, so the hts-specs fixture and
-    // vcf_validator's uniform treatment govern instead, per this project's decision hierarchy.
-    if (id != null && InternalUtils.containsWhitespace(id)) {
+    } else if (id != null && InternalUtils.containsWhitespace(id)) {
+      // VCFv4.2.tex/VCFv4.3.tex line 105/200 only states this rule for ##ALT's own ID explicitly, but hts-specs'
+      // own conformance fixtures (test/vcf/{4.1,4.2,4.3}/failed/failed_meta_contig_001.vcf,
+      // test/vcf/4.3/failed/failed_meta_sample_001.vcf) extend it to ##contig and ##SAMPLE, bcftools 1.23.1
+      // empirically warns ("Invalid tag name"/"Invalid contig name") for ##INFO/##FORMAT/##contig ID
+      // whitespace, and vcf_validator 0.10.2 rejects whitespace uniformly across every structured metadata ID
+      // type. For ##FILTER/##SAMPLE specifically, bcftools 1.23.1 accepts whitespace silently -- it has no
+      // dedicated header check for either -- directly contradicting hts-specs' own failed_meta_sample_001.vcf
+      // fixture; this is treated as a bcftools coverage gap rather than a considered position, so the
+      // hts-specs fixture and vcf_validator's uniform treatment govern instead, per this project's decision
+      // hierarchy.
       m_warnings.warn("{} metadata ID \"{}\" must not contain whitespace", getLabel(), id);
     }
     // Every ##INFO/##FILTER/##FORMAT/##ALT/##contig/##SAMPLE worked example in VCFv4.2.tex (e.g. line 35:

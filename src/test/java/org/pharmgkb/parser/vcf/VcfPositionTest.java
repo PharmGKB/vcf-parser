@@ -1056,6 +1056,28 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testStrictConstructorThrowsForWhitespaceInFilter() {
+    // regression test: no prior coverage existed for this unconditional throw (reachable regardless of strict/
+    // lenient mode) -- hts-specs test/vcf/4.2/failed/failed_body_filter_003.vcf, ##CauseOfFailure=FILTER
+    // contains whitespaces (literal FILTER="my filter")
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new VcfPosition(
+        "1", 100, null, "A", null, null, List.of("my filter"), null, null, -1));
+    assertTrue(ex.getMessage().contains("contains whitespace"));
+  }
+
+  @Test
+  public void testStrictConstructorThrowsForWhitespaceInInfo() {
+    // regression test: no prior coverage existed for this unconditional throw (reachable regardless of strict/
+    // lenient mode) -- hts-specs test/vcf/4.2/failed/failed_body_info_028.vcf, ##CauseOfFailure=INFO contains a
+    // whitespace (literal INFO="RS Q=123")
+    com.google.common.collect.ListMultimap<String, String> info = com.google.common.collect.LinkedListMultimap.create();
+    info.put("RS Q", "123");
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new VcfPosition(
+        "1", 100, null, "A", null, null, null, info, null, -1));
+    assertTrue(ex.getMessage().contains("contains whitespace"));
+  }
+
+  @Test
   public void testStrictConstructorThrowsForInfoValueContainingEquals() {
     com.google.common.collect.ListMultimap<String, String> info = com.google.common.collect.LinkedListMultimap.create();
     info.put("DP", "1=2");
