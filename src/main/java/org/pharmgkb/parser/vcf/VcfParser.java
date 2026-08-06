@@ -355,7 +355,10 @@ public class VcfParser implements Closeable {
             }
           }
         }
-        VcfSample sample = new VcfSample(sampleFormat, values);
+        // sampleFormat/values are always produced above by splitting on ':'/tab and padding with ".", so they can
+        // never contain a structural delimiter -- see VcfSample.newTrusted()'s own Javadoc for the measured cost
+        // this skips and why it's safe only for this exact call site.
+        VcfSample sample = VcfSample.newTrusted(sampleFormat, values);
         sample.setWarningsSink(m_warnings);
         samples.add(sample);
       }

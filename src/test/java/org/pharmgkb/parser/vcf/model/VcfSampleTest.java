@@ -94,6 +94,41 @@ class VcfSampleTest {
   }
 
   @Test
+  void testNewTrustedSkipsStructuralDelimiterCheckThatThePublicConstructorEnforces() {
+    // regression/contract test: newTrusted() is VcfParser's fast path -- it must skip checkNoStructuralDelimiter's
+    // scan (the ~92% of construction cost this factory exists to avoid), unlike the public constructor, which must
+    // still reject the identical input. This pins the actual difference in behavior between the two entry points,
+    // not just that newTrusted() doesn't crash.
+    List<String> keys = Collections.singletonList("key1");
+    List<String> values = Collections.singletonList("value:with:colons");
+    assertThrows(VcfFormatException.class, () -> new VcfSample(keys, values));
+    VcfSample sample = VcfSample.newTrusted(keys, values);
+    assertEquals("value:with:colons", sample.getProperty("key1"));
+  }
+
+  @Test
+  void testNewTrustedStillRejectsMismatchedKeyValueLengths() {
+    // the cheap, O(1) length-mismatch check is NOT part of what newTrusted() skips -- only the O(n) per-element
+    // structural-delimiter scan is
+    List<String> keys = Arrays.asList("key1", "key2");
+    List<String> values = Collections.singletonList("value1");
+    assertThrows(VcfFormatException.class, () -> VcfSample.newTrusted(keys, values));
+  }
+
+  @Test
+  void testNewTrustedProducesEquivalentSampleToPublicConstructorForWellFormedInput() {
+    // for input the public constructor would accept anyway (VcfParser's actual, always-well-formed output),
+    // newTrusted() must produce an observably identical VcfSample
+    List<String> keys = Arrays.asList("GT", "DP");
+    List<String> values = Arrays.asList("0/1", "10");
+    VcfSample trusted = VcfSample.newTrusted(keys, values);
+    VcfSample untrusted = new VcfSample(keys, values);
+    assertEquals(untrusted.getPropertyKeys(), trusted.getPropertyKeys());
+    assertEquals(untrusted.getProperty("GT"), trusted.getProperty("GT"));
+    assertEquals(untrusted.getProperty("DP"), trusted.getProperty("DP"));
+  }
+
+  @Test
   void testPutPropertyRejectsLineTerminator() {
     // putProperty previously had no line-terminator check at all, unlike the constructors
     VcfSample sample = new VcfSample(new LinkedHashMap<>());

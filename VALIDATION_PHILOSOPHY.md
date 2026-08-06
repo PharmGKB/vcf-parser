@@ -91,10 +91,14 @@ vs-parsing distinction; see that policy for why these specific fields stay uncon
   `ID` or `FILTER`, `=` inside an INFO value) all go through the `@Nullable VcfWarnings`-as-signal mechanism
   above.
 - **`VcfMetadata`/`Builder`**: covered in "How principles 1 and 2 are dispatched" above.
-- **`VcfSample`**: not part of either dispatch shape -- both of its constructors already only throw (a null or
-  mismatched-size key/value list, or a structural delimiter in a key/value), never warn, so there is no
-  throw-vs-warn choice to make at construction for this class. Its two warn sites (`validate()`'s empty-value
-  normalization, `properties()`'s duplicate-FORMAT-key handling) are both post-construction.
+- **`VcfSample`**: not part of either dispatch shape -- its public constructors and `newTrusted()` factory
+  already only throw (a null or mismatched-size key/value list, or -- outside `newTrusted()` -- a structural
+  delimiter in a key/value), never warn, so there is no throw-vs-warn choice to make at construction for this
+  class. Its two warn sites (`validate()`'s empty-value normalization, `properties()`'s duplicate-FORMAT-key
+  handling) are both post-construction. `newTrusted()` is a principle-3 case, not principle 1/2: it skips the
+  structural-delimiter check entirely (rather than warning in place of throwing) for `VcfParser`'s own
+  already-guaranteed-clean input, restricted via `@RestrictedApi`/`@hidden` to prevent unsafe external use --
+  see its own Javadoc for the measured cost this avoids.
 - **`PedigreeMetadata`**: also not part of either shape -- it has no `init()` and no construction-time warn
   site of its own to route. Its only interesting behavior, duplicate-ID handling, lives in
   `VcfMetadata.addPedigree`/`Builder.addPedigree`, which are covered by the `VcfMetadata`/`Builder` entry above.
@@ -141,6 +145,14 @@ vs-parsing distinction; see that policy for why these specific fields stay uncon
   caller who calls one of these methods directly despite the disclaimer and hits a raw `NullPointerException`
   is getting an acceptable outcome for ignoring an explicit "not supported" contract. See `AGENTS.md`'s
   Null-Safety Policy for the current list of exempt members.
+- `VcfSample.newTrusted()`'s `@RestrictedApi`/`@hidden` disclaimer is a different case from the one above: it
+  fully enforces the same null/mismatched-length checks the public constructor does (it is not on
+  `AGENTS.md`'s null-safety exemption list, and does not need to be), and is restricted instead because it
+  skips a VCF-semantic content check (principle 3's hot-path validation skip, not the null-safety axis). The
+  `@RestrictedApi`/`@hidden` mechanism is reused here for the same reason it's used above -- a documentation-
+  only "don't call this from outside its one trusted call site" signal -- but the risk it's guarding against is
+  different (structurally-invalid VCF content reaching the writer unvalidated) and not part of the null-safety
+  policy's own scope.
 
 ## Known, permanent deviations
 

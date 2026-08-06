@@ -9,6 +9,7 @@ import java.util.Objects;
 import java.util.Set;
 import com.google.common.base.Preconditions;
 import com.google.errorprone.annotations.Immutable;
+import com.google.errorprone.annotations.RestrictedApi;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.InternalUtils;
 import org.pharmgkb.parser.vcf.VcfFormatException;
@@ -49,6 +50,30 @@ public class VcfSample {
    * construction. See also {@link #VcfSample(LinkedHashMap)}, which has the same no-copy contract.
    */
   public VcfSample(@Nullable List<String> keys, @Nullable List<String> values) {
+    this(keys, values, false);
+  }
+
+  /**
+   * Creates a {@code VcfSample} for {@code keys}/{@code values} that {@code VcfParser} has already produced by
+   * splitting a data line on the tab/colon delimiters {@link #checkNoStructuralDelimiter} exists to reject --
+   * skipping that check's per-key/value scan, which micro-benchmarking measured as ~92% of the public
+   * constructor's own cost (43.4% of all execution samples on a 163-sample-per-record JFR profile). The
+   * non-null/matching-length checks {@link #VcfSample(List, List)} performs are still applied; only the O(n)
+   * structural-delimiter scan is skipped, since a parser-produced key/value can never contain a colon, tab, or
+   * line terminator (already split on / stripped before reaching here). Restricted to {@code VcfParser}'s own
+   * call site: nothing enforces this invariant at compile time, so this must never be called with an
+   * externally supplied or user-mutable list -- see {@link RestrictedApi}'s explanation.
+   * @hidden
+   */
+  @RestrictedApi(explanation = "Internal fast path for VcfParser only. Skips per-element structural-delimiter "
+      + "validation that VcfParser's own split-then-pad output can never fail; never call with externally "
+      + "supplied or user-mutable lists. Not part of this library's supported public API and may change or be "
+      + "removed without notice.")
+  public static VcfSample newTrusted(List<String> keys, List<String> values) {
+    return new VcfSample(keys, values, true);
+  }
+
+  private VcfSample(@Nullable List<String> keys, @Nullable List<String> values, boolean trusted) {
     if (keys == null) {
       if (values == null || values.isEmpty()) {
         m_keys = Collections.emptyList();
@@ -62,8 +87,10 @@ public class VcfSample {
     if (keys.size() != values.size()) {
       throw new VcfFormatException("Number of FORMAT entries does not match number of sample entries");
     }
-    for (int x = 0; x < keys.size(); x++) {
-      checkNoStructuralDelimiter(keys.get(x), values.get(x));
+    if (!trusted) {
+      for (int x = 0; x < keys.size(); x++) {
+        checkNoStructuralDelimiter(keys.get(x), values.get(x));
+      }
     }
     m_keys = keys;
     m_values = values;
