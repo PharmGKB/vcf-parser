@@ -112,20 +112,18 @@ here. The rest of this section states the concrete per-shape rules that follow f
   The `VcfWarnings` instance a lenient constructor or `VcfMetadata.Builder.lenient(...)` requires is the same
   category of caller-configuration object, not VCF content -- it is rejected the same way (raw
   `NullPointerException` via `Preconditions.checkNotNull`), not with `VcfFormatException`.
-- A class or method explicitly documented as not part of this library's supported public API -- currently
-  `InternalUtils` (renamed from `VcfUtils`; most of its members are `public` only because Java has no
-  cross-package-within-a-library visibility modifier, not because they're designed for external callers),
+- A class or method explicitly documented as not part of this library's supported public API is exempt from
+  this policy's null-rejection requirement -- currently `InternalUtils` (renamed from `VcfUtils`; most of its
+  members are `public` only because Java has no cross-package-within-a-library visibility modifier),
   `VcfMetadata.validateAlt`/`isEmptyMetadataValue`/`collidesWithAttributeListGrammar`,
   `VcfFloat.parse(String, VcfWarnings)`/`isSpecialValue`/`exceedsMaxDecimalLength`, and
-  `VcfPosition.newWithTrustedFormat` (the same situation, on otherwise fully-supported classes) -- is exempt
-  from this policy's null-rejection requirement. All four are marked with `@RestrictedApi`/`@hidden` and a
-  class- or method-level Javadoc disclaimer; see `VALIDATION_PHILOSOPHY.md` for why that disclaimer is a
-  documentation-only exemption, not a technical guarantee. `VcfPosition.newWithTrustedFormat` is restricted to
-  `VcfParser`'s own per-record FORMAT-validation cache (see `VALIDATION_PHILOSOPHY.md`'s `VcfPosition` entry)
-  and, unlike `VcfSample.newTrusted()`'s narrower single-check skip, bypasses `checkFormat` entirely --
-  including its null-element check -- since the caller-guaranteed invariant (an already-validated,
-  independently-owned copy) makes a null structurally unreachable there. Two of `InternalUtils`'s null-guards
-  were judged genuinely load-bearing regardless of this exemption and were kept: `unquote` (see its own
+  `VcfPosition.newWithTrustedFormat` (the same situation, on otherwise fully-supported classes). All are
+  marked `@RestrictedApi`/`@hidden` -- a documentation-only exemption, not a technical guarantee; see
+  `VALIDATION_PHILOSOPHY.md`'s "How the principles interact" section for why, and for the
+  `newWithTrustedFormat`-vs-`VcfSample.newTrusted()` distinction (the two look like the same "trusted
+  fast path" pattern but sit on opposite sides of this exemption -- check which checks a given trusted-bypass
+  method actually skips before assuming either precedent applies). Two of `InternalUtils`'s null-guards are
+  kept as exceptions to its own exemption, since they're genuinely load-bearing: `unquote` (see its own
   comment) and the per-element checks in `dropEmptyEntries`/`fillEmptyEntriesWithDot` (reachable via
   `VcfPosition`'s documented live-mutation contract on its own genuinely-supported getters, not through
   `InternalUtils` itself).
@@ -151,19 +149,19 @@ here. The rest of this section states the concrete per-shape rules that follow f
 
 Run commands from the repository root.
 
-```powershell
-.\gradlew.bat test
+```
+./gradlew test
 ```
 
 Run a focused test while iterating:
 
-```powershell
-.\gradlew.bat test --tests "org.pharmgkb.parser.vcf.VcfParserTest"
+```
+./gradlew test --tests "org.pharmgkb.parser.vcf.VcfParserTest"
 ```
 
-On Unix-like systems, use `./gradlew` instead. The full `test` task is the required verification for code changes and also generates the JaCoCo report used by CI.
+On Windows, use `.\gradlew.bat` instead. The full `test` task is the required verification for code changes and also generates the JaCoCo report used by CI.
 
-Two further opt-in tasks are excluded from `test` (network access or an external binary, respectively) but should be run when relevant: `./gradlew htsSpecsTest` (the hts-specs conformance suite described above; see README for details) and `./gradlew bcftoolsDependencyTest` (verifies every bcftools-informed decision this library has made against a real installed `bcftools` binary -- see `BCFTOOLS_VERSION_DEPENDENCIES.md` and README for details). Run `bcftoolsDependencyTest` after adding any new bcftools-informed decision, per the paragraph above on consulting bcftools.
+Two further opt-in tasks are excluded from `test` (network access or an external binary, respectively) but should be run when relevant: `./gradlew htsSpecsTest` (the hts-specs conformance suite described above; see `HTS_SPECS_BASELINE_STATUS.md` for details) and `./gradlew bcftoolsDependencyTest` (verifies every bcftools-informed decision this library has made against a real installed `bcftools` binary -- see `BCFTOOLS_VERSION_DEPENDENCIES.md` for details). Run `bcftoolsDependencyTest` after adding any new bcftools-informed decision, per the paragraph above on consulting bcftools.
 
 ### Code Conventions
 
