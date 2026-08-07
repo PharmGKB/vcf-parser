@@ -114,12 +114,19 @@ empty" cases above. `vcf-parser` distinguishes them at parse time (before the se
 whether an `=` sign was present at all — a flag's absent value is never touched by this normalization.
 
 The `AD=1,2,` row is a confirmed asymmetry within vcf_validator's own handling of INFO fields specifically: every
-other INFO/ID/FILTER/ALT empty-field case, interior or trailing, is reported invalid — except a *trailing* empty
-entry on an unbounded (`Number=.`) INFO field, which vcf_validator reports as valid (confirmed directly from its
-own text report, which shows no error for this case, only unrelated header-completeness warnings). An *interior*
-empty entry in the same field (`AD=1,,2`) is still invalid. This doesn't change `vcf-parser`'s own behavior — both
-cases already warn and substitute `.` — it's simply worth recording as a real, reproducible quirk of vcf_validator
-itself, not a testing mistake.
+other INFO/ID/FILTER/ALT empty-field case, interior or trailing, is reported invalid — except a single *trailing*
+comma, which vcf_validator tolerates without inserting a phantom empty element (confirmed directly from its own
+text report, which shows no error for this case, only unrelated header-completeness warnings). This tolerance is
+not specific to an unbounded (`Number=.`) field the way `AD`'s own declared `Number` might suggest: directly
+verified that a *fixed*-arity field's trailing comma is tolerated the identical way, as long as the resulting
+(non-phantom) element count still matches the declared `Number` -- vcf_validator still separately, and always,
+enforces arity regardless of whether an element came from a real value or survived comma-splitting (e.g. `Number=2,
+XY=1,` and `Number=3, XY=1,2,` are both reported invalid, but only because dropping the trailing comma leaves too
+few elements for the declared count, not because the trailing comma itself is disallowed there). An *interior*
+empty entry (`AD=1,,2`) is always invalid, regardless of declared `Number`, since it inserts a real phantom element
+mid-list rather than merely trailing. This doesn't change `vcf-parser`'s own behavior — every case in this row
+already warns and substitutes `.` uniformly, with no arity-dependent distinction of its own — it's simply worth
+recording as a real, reproducible quirk of vcf_validator itself, not a testing mistake.
 
 The GT row follows the same position-dependent substitution as a sample value, not the ID/FILTER drop strategy:
 dropping an empty allele (e.g. turning `0/` into `0`) would silently change the call's ploidy from diploid to

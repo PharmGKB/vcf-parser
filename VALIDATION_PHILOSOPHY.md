@@ -66,16 +66,28 @@ shape above and take no `warnings` parameter at all -- they always throw, in eve
 Parser Validation Policy's own structural floor (record/column-boundary safety), not a direct-construction-
 vs-parsing distinction; see that policy for why these specific fields stay unconditional.
 
+`AltStructuralVariant`'s constructor is the same kind of always-throwing check (it never takes a `warnings`
+parameter at all), but reached through a third wiring, not a third dispatch shape: `VcfMetadata.validateAlt`
+(itself an ordinary shape-2 `@Nullable VcfWarnings` check) wraps `new AltStructuralVariant(id)` in a
+try/catch and re-dispatches its `VcfFormatException` through `warnOrThrow` -- so the warn-vs-throw decision
+is still made by `validateAlt`'s own `warnings` parameter, exactly shape 2's mechanism; only the underlying
+condition check is an always-throwing helper class rather than an inline branch.
+
 ## Where this applies
 
-- **`InfoMetadata`/`FormatMetadata`**: the typed constructor throws for a malformed `Number`, a `Type=Flag`/
+- **`InfoMetadata`/`FormatMetadata`**: the typed constructor throws for an ID that doesn't match the required
+  tag-name grammar (must start with a letter or underscore, followed only by letters, digits, underscores, or
+  periods -- or, for `InfoMetadata` only, the legacy value `1000G`), a malformed `Number`, a `Type=Flag`/
   non-zero-`Number` mismatch (`InfoMetadata` only -- `FormatType` has no `Flag`), and a reserved property's
   `Number`/`Type` mismatch. It cannot throw for an "invalid `Type` string" or "unquoted `Description`/
   `Source`/`Version`" -- not because these are unimplemented, but because they are structurally impossible via
   this path: the `type` parameter is already a real `InfoType`/`FormatType` enum, never a raw string, and
   `putAndQuoteProperty` always quotes whatever it's given. The Map-based constructor's shared `init()` still
   warns for all of these, including the two that are unreachable from the typed side.
-- **`ContigMetadata`**: the typed constructor throws for a malformed `URL`. A malformed `length` is similarly
+- **`ContigMetadata`**: the typed constructor throws for a malformed `URL`, an ID starting with `*`/`=`, and an
+  ID containing a character `InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN` flags (VCFv4.2-silent, VCFv4.3.tex's
+  own "Changes to VCFv4.3" errata used as clarifying guidance -- see that pattern's own comment and
+  `VCF_SPEC_AMBIGUITIES.md`'s "##contig ID character set" entry). A malformed `length` is similarly
   unreachable via this path -- the parameter is `@Nullable Long`, already parsed by the time it arrives, so
   only `null` (legitimately absent per VCFv4.2.tex line 138) or an already-valid value can be passed. `assembly`
   has no format constraint to check in either constructor.
@@ -87,8 +99,9 @@ vs-parsing distinction; see that policy for why these specific fields stay uncon
   5-argument one (`chromosome, position, refBases, quality, lineNumber` only -- no ID/ALT/FILTER/INFO/FORMAT
   checks at all, since those fields are absent), and an 11-argument lenient overload taking an explicit
   `VcfWarnings`. The content checks that differ between the two full constructors (an empty ID/ALT/FILTER
-  entry, an empty FORMAT sub-field name, FILTER combining `PASS` with another code, a duplicate value within
-  `ID` or `FILTER`, `=` inside an INFO value) all go through the `@Nullable VcfWarnings`-as-signal mechanism
+  entry, an empty INFO key, an empty FORMAT sub-field name, FILTER combining `PASS` with another code, a
+  duplicate value within `ID` or `FILTER`, `=` inside an INFO value) all go through the `@Nullable
+  VcfWarnings`-as-signal mechanism
   above. `newWithTrustedFormat()` is a principle-3 case layered on top of that dispatch, not a fourth branch of
   it: it skips `checkFormat` (and therefore both its throw-vs-warn dispatch and any warning it would emit)
   entirely, for `VcfParser`'s own per-record FORMAT-validation cache -- real VCFs often repeat the same FORMAT

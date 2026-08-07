@@ -106,7 +106,7 @@ the level-0 component to already be a recognized reserved code (the `if (type ==
 ...` guard in `AltStructuralVariant`'s constructor), and a reserved code is only accepted at the level
 matching its own `getLevelInSpecification()` (the constructor's own
 `if (type != null && level != type.getLevelInSpecification())` guard). Since the only reserved codes today
-are five level-0 codes and two
+are six level-0 codes (`Deletion`, `Insertion`, `Duplication`, `Inversion`, `Cnv`, `Breakend`) and two
 level-1 codes (`Tandem`, `MobileElement`), the parent-check block (`level > 0`) can only ever fire at level
 1, checking against the level-0 predecessor -- which is unconditionally guaranteed to already be a
 recognized reserved code by the throw above. So `realParent` can never actually be null with today's
@@ -126,7 +126,7 @@ nesting" question has a definite right answer to enforce.
 
 ## `getDevVersionName()` in build.gradle has no call site
 
-`build.gradle:21-33` defines `getDevVersionName()` (shells out to `git describe --tags` to compute a dev
+`build.gradle:21-34` defines `getDevVersionName()` (shells out to `git describe --tags` to compute a dev
 version string), but nothing in `build.gradle` or `pgkb-build.gradle` currently calls it -- `getVersionName()`
 (the function actually assigned to `project.version`) uses `git describe --tags --abbrev=0` instead.
 

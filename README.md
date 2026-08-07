@@ -190,7 +190,9 @@ still throws -- see the strict section above):
 - A non-numeric `QUAL`: the column itself is still well-formed, so this is treated as the missing value rather than
   a structural failure.
 - A reserved `FORMAT/FT` value that doesn't follow the FILTER-like grammar (`PASS`, `.`, or a semicolon-separated
-  list of codes with no whitespace, none of which may be combined with `PASS` or `.`), or a reserved `FORMAT/PS`
+  list of codes with no whitespace, where `PASS`/`.` may not be combined with a *different* code, e.g.
+  `PASS;q10` -- repeating the same code, e.g. `PASS;PASS` or `.;.`, produces no warning at all, unlike the
+  FILTER column's own duplicate-code check; see `WONT_FIX.md`), or a reserved `FORMAT/PS`
   value that isn't a non-negative 32-bit integer: both constraints go beyond what `FT`'s/`PS`'s declared `Type` can
   express, so they're checked separately, both when a typed value is requested and by
   `VcfWriter.Builder.validateBeforeWrite()`.

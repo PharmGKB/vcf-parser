@@ -73,8 +73,16 @@ Duplicated sample name 'S1'` and fails to parse; `vcf_validator` reports the fil
 
 Unlike a duplicate ID (above), a metadata declaration whose `ID` is **absent, empty, or whitespace-only** is a
 different failure mode entirely: it isn't a collision between two declarations, it's a single declaration that
-has no ID to dedupe on. `vcf-parser` warns and drops such a declaration in full, for all six keyed types --
-never stored, unlike a duplicate-ID-when-present (which keeps the first and drops the rest).
+has no ID to dedupe on. At *add* time, `vcf-parser` warns and drops such a declaration in full, for all six keyed
+types -- never stored, unlike a duplicate-ID-when-present (which keeps the first and drops the rest). This
+add-time drop is independently preceded by a first warning of its own, from the declaration object's own
+`IdMetadata.init()` at construction (before `addXxx` ever sees it) -- parsing one malformed header line produces
+both warnings; see `WONT_FIX.md`'s "Multiple independent checks warn separately about the same underlying
+defect" entry's "Missing or blank metadata ID" sub-case. "Never stored" is also specifically an add-time
+guarantee, not a lifetime one: an object *already* in storage whose `ID` is live-mutated to blank afterward
+(e.g. via `getPropertiesRaw()`) is not retroactively removed -- a `Map` can't un-key itself reactively --
+`validate()`/`IdMetadata.init()` only warns on it from then on. See `README.md`'s equivalent bullet for that
+distinct, already-stored case.
 
 ### Missing ID is spec-grounded
 
@@ -151,10 +159,16 @@ surfaces any complaint about a dropped duplicate's content either.
   `ContigMetadata` (`IdMetadata` itself is abstract and has no public constructor) -- throws
   `VcfFormatException` immediately for a missing or blank `ID`. The separate `Map<String,String>`-based
   constructors `VcfParser` uses are unaffected and remain warn-only.
+- `IdMetadata.init()` -- the Map-based (lenient) constructors' shared post-construction check, and also run
+  again by `validate()` -- separately warns ("`{} metadata ID is blank`") for a missing or blank `ID`, one
+  step before a declaration ever reaches the `addXxx`-level check below. This is a genuinely independent
+  check, not a restatement: parsing one malformed header line produces both this warning and the `addXxx`-level
+  one in the same log; see `WONT_FIX.md`'s "Missing or blank metadata ID" sub-case (referenced above) for why
+  neither is suppressed in favor of the other.
 - `VcfMetadata`'s 6 instance `addXxx` methods and `VcfMetadata.Builder`'s 6 `addXxx` methods each check for a
   missing or blank `ID` before calling `warnIfDuplicate()`, warning and dropping the declaration entirely (never
-  storing it) if so -- this is what actually catches a malformed declaration built via the parser's lenient
-  `Map`-based construction path. In strict mode (a `Builder` used without `.lenient(...)`, or a `VcfMetadata`
+  storing it) if so -- this is what actually removes a malformed declaration from storage, built via the parser's
+  lenient `Map`-based construction path. In strict mode (a `Builder` used without `.lenient(...)`, or a `VcfMetadata`
   built that way), both checks throw `VcfFormatException` instead -- see `VALIDATION_PHILOSOPHY.md`.
 
 ## `##PEDIGREE`: a conditional case
