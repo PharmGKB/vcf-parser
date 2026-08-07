@@ -1866,6 +1866,24 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteRejectsNullMetadataKeyInsteadOfThrowingNpe() throws Exception {
+    // regression test: unlike the null VALUE case above, LinkedHashMap also tolerates a null KEY, so
+    // metadata.getInfo().put(null, someInfoMetadata) reaches validateKeyedMetadataEntries with mapKey itself
+    // null. Reachable on the very FIRST writeHeader() call, not just the writeLine()-after-mutation scenario the
+    // null-entry test above needs -- claimMetadataWarningsSinks() (which runs first, in writeHeader()) only
+    // checks .values() via checkNoNullMetadataEntries, never keys.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata("AF", "d", InfoType.Float, "A", null, null))
+        .build();
+    metadata.getInfo().put(null, new InfoMetadata("AF2", "d2", InfoType.Float, "A", null, null));
+
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+    assertTrue(ex.getMessage().contains("INFO metadata contains a null key"));
+  }
+
+  @Test
   public void testCloseDetectsErrorAndStillReleasesTheWriter() throws Exception {
     // close() must check for a write failure that happened after the last periodic check (or after
     // writeHeader(), if no data lines were written at all) AND still release the underlying resource even

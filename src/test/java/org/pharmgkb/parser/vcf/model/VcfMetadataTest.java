@@ -1075,6 +1075,38 @@ public class VcfMetadataTest {
   }
 
   @Test
+  public void testAddPedigreeHandlesNullElementReachingLiveListInsteadOfThrowingNpe() {
+    // regression test: getPedigrees() returns the live backing list (documented, tested), so a caller can do
+    // metadata.getPedigrees().add(null) -- an ordinary operation on a documented live-mutable list. That
+    // .add(null) itself bumps modCount, forcing hasPedigreeIdCollision's cache-rebuild loop to run and hit the
+    // null on the very next addPedigree() call. Previously a raw NullPointerException at
+    // existing.getPropertyRaw("ID") permanently broke every subsequent addPedigree() call until the null was
+    // removed from the list; addPedigree must instead keep working once the rebuild simply skips the null.
+    //
+    // The null is inserted at index 0, BEFORE the ID-bearing element, and duplicate detection for "Child" is
+    // re-checked afterward -- a "just don't crash" version of this test (null appended last, only asserting the
+    // list grew) can't tell a correct `continue` in the rebuild loop apart from an incorrect `break`/early
+    // return: with a `break`, the cache would silently stop populating at the null and never even see "Child",
+    // so a later duplicate "Child" would go undetected instead of being rejected.
+    java.util.Map<String, String> childProps = new java.util.LinkedHashMap<>();
+    childProps.put("ID", "Child");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addPedigree(new PedigreeMetadata(childProps))
+        .build();
+    metadata.getPedigrees().add(0, null);
+
+    java.util.Map<String, String> otherProps = new java.util.LinkedHashMap<>();
+    otherProps.put("ID", "Other");
+    metadata.addPedigree(new PedigreeMetadata(otherProps));
+    assertEquals(3, metadata.getPedigrees().size());
+
+    java.util.Map<String, String> duplicateProps = new java.util.LinkedHashMap<>();
+    duplicateProps.put("ID", "Child");
+    assertThrows(VcfFormatException.class, () -> metadata.addPedigree(new PedigreeMetadata(duplicateProps)));
+    assertEquals(3, metadata.getPedigrees().size());
+  }
+
+  @Test
   public void testBuilderAddPedigreeDoesNotDegradeQuadraticallyWithManyUniqueIds() {
     // 3 seconds is a wide margin above the fixed behavior's near-instant completion at this size; the unfixed
     // O(n) m_pedigree-rescan-per-add code was empirically ~1.2s at n=16,000 and scaled quadratically (~4x cost

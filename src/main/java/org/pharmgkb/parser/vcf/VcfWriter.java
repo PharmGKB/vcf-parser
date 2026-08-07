@@ -586,14 +586,19 @@ public class VcfWriter implements Closeable {
       String id = properties.get("ID");
       // duplicate IDs across different entries can't occur once every entry's ID is confirmed to match its own
       // (necessarily unique) map key, so no separate "duplicate ID" check is needed here
-      // mapKey is never null on any supported path (it's a Map key populated from a non-null getId() when the
-      // entry was added -- VcfMetadata's/Builder's addXxx methods all reject/drop a null-getId() entry before
-      // put), so !mapKey.equals(id) is also true -- and therefore also caught here -- when id has been removed
-      // entirely (id == null), not just changed to a different non-null value. VCFv4.3.tex line 121 ("All
-      // structured lines require an ID...") makes ID mandatory for all six keyed types; VCFv4.2 doesn't use the
-      // word "required" but its own templates for all six types show ID unconditionally first -- same guidance
-      // IdMetadata's own constructor already cites (IdMetadata.java:20-21; see DUPLICATE_METADATA_ID_HANDLING.md)
-      // -- so an entirely-missing ID is just as much a drift from the map key as a changed one.
+      // mapKey is never null on any path that goes through VcfMetadata's/Builder's addXxx methods (all reject/
+      // drop a null-getId() entry before put), but entriesByKey is the same live, caller-mutable view this
+      // method already guards for a null VALUE (see the null-check above) -- LinkedHashMap tolerates a null
+      // KEY too, so metadata.getInfo().put(null, someInfoMetadata) reaches here with mapKey itself null.
+      // Guarded explicitly rather than left to a raw NullPointerException at mapKey.equals(id).
+      if (mapKey == null) {
+        throw new VcfFormatException(kind + " metadata contains a null key");
+      }
+      // VCFv4.3.tex line 121 ("All structured lines require an ID...") makes ID mandatory for all six keyed
+      // types; VCFv4.2 doesn't use the word "required" but its own templates for all six types show ID
+      // unconditionally first -- same guidance IdMetadata's own constructor already cites (IdMetadata.java:20-21;
+      // see DUPLICATE_METADATA_ID_HANDLING.md) -- so an entirely-missing ID (id == null) is just as much a drift
+      // from the map key as a changed one, and is also caught by !mapKey.equals(id) below.
       if (!mapKey.equals(id)) {
         String actual = id == null ? "no ID property at all" : "an ID property of \"" + id + "\"";
         throw new VcfFormatException(kind + " metadata is stored under key \"" + mapKey + "\" but has " + actual +

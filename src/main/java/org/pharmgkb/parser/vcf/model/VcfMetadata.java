@@ -541,6 +541,13 @@ public class VcfMetadata {
     if (!isPedigreeIdCacheValid()) {
       m_pedigreeIdCache = new HashSet<>();
       for (PedigreeMetadata existing : m_pedigree) {
+        // getPedigrees() returns m_pedigree as a live view (this method's own Javadoc above), so a caller can
+        // insert a null element directly (e.g. metadata.getPedigrees().add(null)) -- that .add(null) itself
+        // bumps modCount, forcing this rebuild to run and hit the null on its very next addPedigree() call.
+        // Guarded explicitly rather than left to a raw NullPointerException at existing.getPropertyRaw("ID").
+        if (existing == null) {
+          continue;
+        }
         String existingId = existing.getPropertyRaw("ID");
         if (existingId != null) {
           m_pedigreeIdCache.add(existingId);
