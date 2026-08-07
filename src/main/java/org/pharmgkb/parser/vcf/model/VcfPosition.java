@@ -575,10 +575,10 @@ public class VcfPosition {
     if (format.size() == 1 && ".".equals(format.get(0))) {
       return new ArrayList<>();
     }
-    // duplicate keys are explicitly disallowed by the VCF spec (VCFv4.3+ states this outright; empty keys are
-    // excluded from this check since they're already handled, and warned about, separately below). isDuplicateAt
-    // (see checkIds() above and DUPLICATE_SCAN_THRESHOLD's own comment) dispatches between an allocation-free
-    // scan and a HashSet<String> depending on list size.
+    // duplicate keys are explicitly disallowed by the VCF spec (VCFv4.3+ states this outright; empty and
+    // grammar-invalid keys are excluded from this check since they're already handled, and warned about,
+    // separately below). isDuplicateAt (see checkIds() above and DUPLICATE_SCAN_THRESHOLD's own comment)
+    // dispatches between an allocation-free scan and a HashSet<String> depending on list size.
     Set<String> seen = format.size() > DUPLICATE_SCAN_THRESHOLD ? new HashSet<>() : null;
     for (int i = 0; i < format.size(); i++) {
       String f = format.get(i);
@@ -597,9 +597,18 @@ public class VcfPosition {
         continue;
       }
       // f.contains(":") is not checked separately: FORMAT_PATTERN's character class ([0-9A-Za-z_.]) never
-      // includes ':', so matches() alone already rejects any f containing one.
+      // includes ':', so matches() alone already rejects any f containing one. Lenient, not a structural floor:
+      // matches FormatMetadata's identical warn-only treatment of this same grammar rule for a ##FORMAT
+      // declaration ID (see FormatMetadata.init()) -- a data-line FORMAT key failing it must not abort the whole
+      // parse (findings37.md item 1; confirmed against bcftools 1.23.1, which only warns on this input).
       if (!InternalUtils.FORMAT_PATTERN.matcher(f).matches()) {
-        throw new VcfFormatException("FORMAT ID does not match VCF spec");
+        if (warnings == null) {
+          throw new VcfFormatException("FORMAT ID \"" + f + "\" does not match the required tag-name grammar " +
+              "(must start with a letter or underscore, followed only by letters, digits, underscores, or periods)");
+        }
+        warnings.warn("FORMAT ID \"{}\" does not match the required tag-name grammar (must start with a letter " +
+            "or underscore, followed only by letters, digits, underscores, or periods); keeping it as-is", f);
+        continue;
       }
       if (isDuplicateAt(format, i, seen)) {
         throw new VcfFormatException("Duplicate FORMAT key \"" + f + "\"");

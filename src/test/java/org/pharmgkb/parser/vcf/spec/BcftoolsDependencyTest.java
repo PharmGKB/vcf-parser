@@ -439,6 +439,25 @@ class BcftoolsDependencyTest {
   }
 
   @Test
+  void testDataLineFormatKeyInvalidTagNameBcftoolsWarnsAndContinues() throws IOException, InterruptedException {
+    // 1KG starts with a digit, failing InternalUtils.FORMAT_PATTERN -- confirms bcftools warns and keeps
+    // parsing every record rather than aborting the whole file (VCF_SPEC_AMBIGUITIES.md, "Data-line FORMAT
+    // key fails tag-name grammar")
+    String vcf = "##fileformat=VCFv4.2\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:1KG\t0/1:5\n" +
+        "chr1\t2\trs2\tA\tT\t.\tPASS\t.\tGT\t0/1\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("Invalid tag name"), result.output());
+    // both records are still parsed and re-emitted, not just the well-formed one
+    assertTrue(result.output().lines().anyMatch(line -> line.equals("chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:1KG\t0/1:5")),
+        result.output());
+    assertTrue(result.output().lines().anyMatch(line -> line.equals("chr1\t2\trs2\tA\tT\t.\tPASS\t.\tGT\t0/1")),
+        result.output());
+  }
+
+  @Test
   void testUndeclaredFormatNumberBcftoolsAssumesDot() throws IOException, InterruptedException {
     String vcf = "##fileformat=VCFv4.2\n##FORMAT=<ID=XX,Type=String,Description=\"no Number\">\n" +
         "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +

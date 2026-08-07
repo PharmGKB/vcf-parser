@@ -119,6 +119,10 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
 - Test: `BcftoolsDependencyTest#testFormatDotMeansNoPerSampleFieldsBcftoolsAcceptsAndInterprets`
 - Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "`FORMAT=\".\"` meaning no per-sample fields" entry
 
+### Data-line FORMAT key fails tag-name grammar
+- Test: `BcftoolsDependencyTest#testDataLineFormatKeyInvalidTagNameBcftoolsWarnsAndContinues`
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Data-line FORMAT key fails tag-name grammar" entry
+
 ### Undeclared `##FORMAT` `Number` attribute
 - Test: `BcftoolsDependencyTest#testUndeclaredFormatNumberBcftoolsAssumesDot`
 - Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Undeclared `##FORMAT` `Number` attribute" entry

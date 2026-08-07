@@ -56,6 +56,7 @@ before assuming it generalizes to a similar-looking case.
 | Negative/out-of-range values for reserved INFO keys `AC`/`AN`/`DP`/`END`/`MQ0`/`NS`/`AF` | Warn (vcf_validator-sourced; bcftools silent) | ✅ |
 | CIGAR grammar (SAM compliance) | Warn on violation (vcf_validator-sourced; bcftools silent) | ✅ |
 | `FORMAT="."` meaning no per-sample fields | Accept (matches bcftools) | ✅ |
+| Data-line FORMAT key fails tag-name grammar | Warn (lenient), throw (strict/direct construction) -- matches bcftools | ✅ |
 | Undeclared `##FORMAT` `Number` attribute | Treat as `Number=.` uniformly regardless of `Type` (matches bcftools) | ✅ |
 | `CNP`'s `Number=G` vs. `GT`/`GL`/`PL`/`GP`/`PP`'s `Number=G` | Exempt `CNP` from the genotype-ordering cardinality check | ✅ |
 | `rsidsOnly()` discard semantics | Modeled on bcftools's own exclusion-filter mental model | ✅ (design analogy, not a format ambiguity) |
@@ -383,6 +384,32 @@ a sample regardless of that sample's own raw column content, and `bcftools view`
 **Decision:** accept, matching bcftools; a sample whose raw content isn't itself `.` warns (doesn't reject)
 about content that will be discarded, since this parser prefers surfacing recoverable non-compliance over
 silent, unannounced data loss. Implemented in `VcfPosition.checkFormat`/`VcfParser`.
+
+### Data-line FORMAT key fails tag-name grammar
+
+`VcfPosition.checkFormat` previously threw `VcfFormatException` unconditionally when a data-line FORMAT key
+failed `InternalUtils.FORMAT_PATTERN` (`^[A-Za-z_][0-9A-Za-z_.]*$`), with no lenient/`warnings`-gated path at
+all -- the only check in that method with this shape, unlike the empty-sub-field-name check immediately above
+it in the same method, or the identical grammar rule applied to a `##FORMAT` declaration ID in
+`FormatMetadata.init()`, both of which warn under a lenient path (`AGENTS.md`'s Parser Validation Policy lists
+FORMAT among the fields this parser is lenient about, and `VALIDATION_REFERENCE.md`'s strict-section
+enumeration for FORMAT names only two floor items -- `GT` present but not first, and a non-empty key
+duplicated -- deliberately not this grammar rule). Since `VcfParser`'s lenient constructor has no per-line
+recovery, this meant a single non-standard FORMAT key anywhere in a file aborted parsing of the entire file,
+discarding every record including ones already successfully parsed.
+
+Confirmed live against bcftools 1.23.1: `bcftools view`/`bcftools query` against a file with a data-line
+FORMAT key like `1KG` (starts with a digit, fails the pattern) only warns
+(`[W::bcf_hrec_check] Invalid tag name: "1KG"`) and correctly parses and re-emits every record, including the
+one with the offending key.
+
+**Decision:** warn (not throw) under the lenient path, keeping the offending key as-is -- matching the
+empty-sub-field-name precedent immediately above it in the same method, except that (unlike a blank ID,
+which is always dropped before storage) a grammar-invalid key *can* still be looked up in metadata if a
+matching, equally grammar-invalid `##FORMAT` declaration exists, since `FormatMetadata.init()` warns about
+that same defect rather than dropping the declaration. Throw only under the strict (no-`warnings`)
+construction path, consistent with every other non-structural content check `checkFormat` performs and with
+bcftools's own behavior. Implemented in `VcfPosition.checkFormat`. Found by the `findings37.md` sweep.
 
 ### Undeclared `##FORMAT` `Number` attribute
 

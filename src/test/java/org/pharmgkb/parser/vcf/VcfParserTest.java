@@ -2008,6 +2008,88 @@ public class VcfParserTest {
   }
 
   @Test
+  public void testMalformedFormatKeyWarnsAndContinuesInsteadOfAbortingFile(@TempDir Path tempDir) throws IOException {
+    // regression test for findings37.md item 1: VcfPosition.checkFormat previously threw VcfFormatException
+    // unconditionally for a data-line FORMAT key failing InternalUtils.FORMAT_PATTERN, with no warn-and-recover
+    // path at all -- unlike every other content check in the same method. Since VcfParser.doParse has no
+    // per-line try/catch, this aborted the ENTIRE file over one non-compliant FORMAT key on one line, discarding
+    // every other record too. Confirmed live against bcftools 1.23.1 (VCF_SPEC_AMBIGUITIES.md, "Data-line
+    // FORMAT key fails tag-name grammar" entry): it only warns and parses every record.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
+        "1\t100\t.\tA\tT\t.\t.\t.\tGT:1KG\t0/1:5\n" +
+        "1\t200\t.\tA\tT\t.\t.\t.\tGT\t0/1\n";
+    Path vcfFile = tempDir.resolve("sample.vcf");
+    Files.writeString(vcfFile, vcf);
+    Path warningsFile = tempDir.resolve("warnings.log");
+
+    List<VcfPosition> positions = new ArrayList<>();
+    List<VcfSample> samples = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(vcfFile)
+        .warningsToFile(warningsFile)
+        .parseWith((metadata, position, sampleData) -> {
+          positions.add(position);
+          samples.addAll(sampleData);
+        })
+        .build()) {
+      parser.parse();
+    }
+    // both records were reached -- the file parse did not abort after the first record's malformed FORMAT key
+    assertEquals(2, positions.size());
+    assertEquals(List.of("GT", "1KG"), positions.get(0).getFormat());
+    assertEquals("5", samples.get(0).getProperty("1KG"));
+    assertTrue(Files.readString(warningsFile).contains("tag-name grammar"));
+  }
+
+  @Test
+  public void testRecordWithMalformedFormatKeySurvivesWriteAndReparse() throws IOException {
+    // AGENTS.md's Writer Validation and Round-Trip Policy: a record accepted by the parser (here, one with a
+    // malformed FORMAT key that is now warned about and kept, not rejected) must be writable and reparseable
+    // without field loss.
+    String input = "##fileformat=VCFv4.2\n" +
+        "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
+        "1\t100\t.\tA\tT\t.\t.\t.\tGT:1KG\t0/1:5\n";
+    List<VcfPosition> positions = new ArrayList<>();
+    List<VcfSample> samples = new ArrayList<>();
+    VcfMetadata[] metadata = new VcfMetadata[1];
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(input)))
+        .parseWith(new VcfLineParser() {
+          @Override
+          public void parseMetadata(VcfMetadata value) {
+            metadata[0] = value;
+          }
+
+          @Override
+          public void parseLine(VcfMetadata ignored, VcfPosition position, List<VcfSample> values) {
+            positions.add(position);
+            samples.addAll(values);
+          }
+        })
+        .build()) {
+      parser.parse();
+    }
+    assertEquals("5", samples.get(0).getProperty("1KG"));
+
+    StringWriter output = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(output)).build();
+    writer.writeHeader(metadata[0]);
+    writer.writeLine(metadata[0], positions.get(0), samples);
+
+    List<VcfSample> reparsed = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(output.toString())))
+        .parseWith((ignored, position, values) -> reparsed.addAll(values))
+        .build()) {
+      parser.parse();
+    }
+    assertEquals("5", reparsed.get(0).getProperty("1KG"));
+  }
+
+  @Test
   public void testFormatValidationCacheReusesValidatedListAcrossRepeatedFormatColumns() throws IOException {
     // real VCFs often repeat the same FORMAT string across large blocks of consecutive records; this pins that
     // each record still gets its own correct, independent FORMAT list when the cache is reused

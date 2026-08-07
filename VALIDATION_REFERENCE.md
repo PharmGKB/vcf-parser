@@ -74,7 +74,10 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   [`VcfWarnings`](README.md#vcfwarnings-explicit-warning-routing) instance to route the warnings to.
 - `new VcfPosition(...)`'s 10-argument constructor throws, at construction time, for FILTER combining `PASS`
   with another code, a duplicate value within `ID` or `FILTER`, an INFO value containing `=`, an empty INFO
-  key, an empty FORMAT sub-field name, or an empty ID/ALT/FILTER entry -- the same conditions the lenient
+  key, an empty FORMAT sub-field name, a FORMAT sub-field name that doesn't match the required tag-name
+  grammar (the same grammar an `##INFO`/`##FORMAT` declaration `ID` enforces above -- see
+  `VCF_SPEC_AMBIGUITIES.md`'s "Data-line FORMAT key fails tag-name grammar" entry), or an empty
+  ID/ALT/FILTER entry -- the same conditions the lenient
   section below describes as warned-and-recovered when parsed; its
   own `validate()` method always warns instead, matching the metadata classes above. A separate 11-argument
   overload, taking an explicit [`VcfWarnings`](README.md#vcfwarnings-explicit-warning-routing) instance as its last
@@ -179,6 +182,13 @@ is a structural failure and still throws -- see the strict section above):
 - INFO, FILTER, FORMAT, and sample content that is semantically malformed but can be preserved or normalized safely.
 - A non-numeric `QUAL`: the column itself is still well-formed, so this is treated as the missing value rather than
   a structural failure.
+- A data-line FORMAT sub-field name that doesn't match the required tag-name grammar (the same grammar the
+  strict section above enforces at construction time, and the same one an `##INFO`/`##FORMAT` declaration
+  `ID` is warned about, not rejected for, above): warned, kept as-is. Unlike the empty-sub-field-name case it
+  sits next to in `VcfPosition.checkFormat`, this key can still be looked up in metadata if a matching (also
+  grammar-invalid) `##FORMAT` declaration exists, since that declaration is itself warned about rather than
+  dropped -- see `VCF_SPEC_AMBIGUITIES.md`'s "Data-line FORMAT key fails tag-name grammar" entry
+  (bcftools-confirmed).
 - A reserved `FORMAT/FT` value that doesn't follow the FILTER-like grammar (`PASS`, `.`, or a semicolon-separated
   list of codes with no whitespace, where `PASS`/`.` may not be combined with a *different* code -- repeating the
   same code, e.g. `PASS;PASS` or `.;.`, produces no warning at all, unlike the FILTER column's own duplicate-code

@@ -1251,6 +1251,43 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testStrictConstructorThrowsForInvalidFormatKeyGrammar() {
+    // "1KG" starts with a digit, failing InternalUtils.FORMAT_PATTERN
+    List<String> format = new java.util.ArrayList<>(List.of("GT", "1KG"));
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new VcfPosition(
+        "1", 100, null, "A", null, null, null, null, format, -1));
+    assertTrue(ex.getMessage().contains("tag-name grammar"));
+  }
+
+  @Test
+  public void testLenientConstructorWarnsInsteadOfThrowingForInvalidFormatKeyGrammar() {
+    // regression test for findings37.md item 1: this check previously had no lenient path at all -- a single
+    // non-compliant FORMAT key aborted the whole parse regardless of which constructor was used. Confirmed
+    // against bcftools 1.23.1 (VCF_SPEC_AMBIGUITIES.md, "Data-line FORMAT key fails tag-name grammar" entry)
+    // that a warn, not an abort, is the correct behavior.
+    StringWriter sink = new StringWriter();
+    List<String> format = new java.util.ArrayList<>(List.of("GT", "1KG"));
+    VcfPosition position = new VcfPosition(
+        "1", 100, null, "A", null, null, null, null, format, -1, new VcfWarnings(sink));
+    assertEquals(List.of("GT", "1KG"), position.getFormat());
+    assertTrue(sink.toString().contains("tag-name grammar"));
+  }
+
+  @Test
+  public void testLenientConstructorDoesNotFlagTwoInvalidFormatKeysAsDuplicates() {
+    // mirrors testMultipleEmptyFormatKeysNotTreatedAsDuplicates: a grammar-invalid key is excluded from the
+    // duplicate check the same way an empty key is (both continue past checkFormat's isDuplicateAt call for
+    // that index), so two identical malformed keys each warn about the grammar violation, not about being a
+    // duplicate
+    StringWriter sink = new StringWriter();
+    List<String> format = new java.util.ArrayList<>(List.of("GT", "1KG", "1KG"));
+    VcfPosition position = new VcfPosition(
+        "1", 100, null, "A", null, null, null, null, format, -1, new VcfWarnings(sink));
+    assertEquals(List.of("GT", "1KG", "1KG"), position.getFormat());
+    assertFalse(sink.toString().contains("Duplicate FORMAT key"));
+  }
+
+  @Test
   public void testStrictConstructorThrowsForEmptyIdEntry() {
     List<String> ids = new java.util.ArrayList<>(List.of("rs1", ""));
     VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new VcfPosition(
