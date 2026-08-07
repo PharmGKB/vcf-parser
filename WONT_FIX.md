@@ -83,9 +83,11 @@ a colon-delimited ID like `CustomFoo:ME` (where `ME`/`MobileElement` declares `I
 only valid parents) is accepted without any parent-relationship check at all.
 
 This is *not* reachable today with the current reserved-code set. The constructor unconditionally requires
-the level-0 component to already be a recognized reserved code (`if (type == null && level == 0) throw
-...`, `AltStructuralVariant.java:79-86`), and a reserved code is only accepted at the level matching its own
-`getLevelInSpecification()` (lines 89-102). Since the only reserved codes today are five level-0 codes and two
+the level-0 component to already be a recognized reserved code (the `if (type == null && level == 0) throw
+...` guard in `AltStructuralVariant`'s constructor), and a reserved code is only accepted at the level
+matching its own `getLevelInSpecification()` (the constructor's own
+`if (type != null && level != type.getLevelInSpecification())` guard). Since the only reserved codes today
+are five level-0 codes and two
 level-1 codes (`Tandem`, `MobileElement`), the parent-check block (`level > 0`) can only ever fire at level
 1, checking against the level-0 predecessor -- which is unconditionally guaranteed to already be a
 recognized reserved code by the throw above. So `realParent` can never actually be null with today's
@@ -188,7 +190,7 @@ library itself derives from parsed content rather than something every caller al
 
 ## `BaseMetadata.checkAttributeOrder()` doesn't detect a custom/unrecognized attribute wedged between two canonical ones
 
-`checkAttributeOrder()` (`BaseMetadata.java:224-240`) only checks relative order among the six well-known VCF
+`checkAttributeOrder()` only checks relative order among the six well-known VCF
 metadata keys (`ID`/`Number`/`Type`/`Description`/`Source`/`Version`); any other key is filtered out before
 the order comparison. Empirically confirmed: an `InfoMetadata` declared in the order `ID, Number,
 CustomExtra, Type, Description` produces zero warnings -- `CustomExtra` sitting between `Number` and `Type`
@@ -210,7 +212,7 @@ finds either tool treats an interleaved extra attribute as invalid.
 
 ## `PedigreeMetadata` duplicate-ID dedup treats a present-but-blank `ID` the same as a real ID
 
-`VcfMetadata.addPedigree`/`VcfMetadata.Builder.addPedigree` (`VcfMetadata.java:500-510`, `:822-833`) and
+`VcfMetadata.addPedigree`/`VcfMetadata.Builder.addPedigree` and
 `VcfWriter.validateMetadata()`'s PEDIGREE loop gate their duplicate-ID dedup on `id != null` only, with no
 blank-string check -- unlike the six keyed types (INFO/FORMAT/FILTER/ALT/contig/SAMPLE), whose own `addXxx`
 methods explicitly drop a declaration with a missing OR blank `ID` before ever reaching the duplicate check
@@ -277,7 +279,8 @@ revisited more broadly.
 `md.getId()` captured at add time. `IdMetadata.getId()` reads live from the object's own mutable raw-properties
 map, and every `BaseMetadata` subclass exposes `putPropertyRaw`/`putAndQuoteProperty` plus a live
 `getPropertiesRaw()` map as a real, tested, load-bearing mutation path (the `VcfTransformation` pipeline
-feature) -- `VcfWriterTest.java:1775/1779` and `TransformingVcfLineParserTest.java:330` both call
+feature) -- `VcfWriterTest.testHeaderContentRejectionAllowsCorrectedRetry` and
+`TransformingVcfLineParserTest.testHeaderContentRejectionDoesNotPermanentlyBlockRetry` both call
 `metadata.getInfo().get("AF").putPropertyRaw("ID", ...)` directly on an already-added, already-keyed entry.
 
 So an already-added entry's `ID` can change without the map's key ever updating: it stays reachable at its OLD
