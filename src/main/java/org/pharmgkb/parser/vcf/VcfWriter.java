@@ -765,6 +765,11 @@ public class VcfWriter implements Closeable {
       return;
     }
     for (String value : values) {
+      if (value.isEmpty()) {
+        // already reported generically above ("INFO {} contains an empty value"); convertProperty()'s own
+        // empty-value handling would otherwise warn about the same defect a second time, with no key context
+        continue;
+      }
       try {
         InternalUtils.convertProperty(type, value, false, m_warnings);
       } catch (VcfFormatException e) {
@@ -817,6 +822,12 @@ public class VcfWriter implements Closeable {
       return;
     }
     for (String element : values) {
+      if (element.isEmpty()) {
+        // already reported generically above ("FORMAT {} for sample #{} contains an empty value");
+        // convertProperty()'s own empty-value handling would otherwise warn about the same defect a second
+        // time, with no key/sample context
+        continue;
+      }
       try {
         InternalUtils.convertProperty(type, element, false, m_warnings);
       } catch (VcfFormatException e) {
@@ -949,6 +960,15 @@ public class VcfWriter implements Closeable {
             position.getChromosome(), position.getPosition(), key, lineBeingWritten());
       } else if (!m_validateBeforeWrite) {
         for (String value : values) {
+          if (value.isEmpty()) {
+            // the isEmptyValueList/multi-value branches below already warn appropriately for an empty value
+            // (in whichever form applies to this key's Type/declaration state) and substitute "." on write;
+            // this "just test" type-conversion probe has nothing meaningful to check for an empty value, and
+            // (since InternalUtils.convertProperty now itself warns on an empty scalar value) would otherwise
+            // emit a redundant, context-free second warning for the same defect this loop's own catch block
+            // isn't even equipped to describe usefully here (an empty value isn't "not of type X").
+            continue;
+          }
           Integer number = null;
           try {
             number = Integer.parseInt(info.getNumber());
@@ -993,9 +1013,37 @@ public class VcfWriter implements Closeable {
           sb.append("=.");
         }
       } else {
-        sb.append("=").append(values.get(0));
-        for (int i = 1; i < values.size(); i++) {
-          sb.append(",").append(values.get(i));
+        // A multi-value list (or a size-1 list whose one value is non-empty) can still contain an empty
+        // element at any position -- e.g. "1,,2" via a live getInfo() mutation -- which the isEmptyValueList
+        // branch above doesn't catch (it only recognizes the whole-list-is-one-empty-string case). Per
+        // EMPTY_FIELD_HANDLING.md, INFO's per-key values are a position-dependent list (their count can
+        // matter for a Number=-declared arity), so an empty entry is substituted with "." rather than
+        // dropped, keeping every other value's index intact.
+        // Under validateBeforeWrite(), validateInfoValue() already runs for this key whenever info != null or
+        // the key is a reserved property (see validateInfo()'s own fallback comment) -- and, when it runs, it
+        // warns something about this exact empty-value shape: ordinarily "INFO {} contains an empty value",
+        // or (for a declared/reserved Type=Flag key specifically) "INFO {} has Type=Flag but has a value"
+        // instead, since validateInfoValue()'s Type==Boolean branch returns before reaching the generic
+        // empty-value check -- either way, this method's own warning below would be redundant. For an
+        // UNDECLARED, non-reserved key, though, validateInfoValue() never runs at all, so nothing warns
+        // generically; suppressing this method's own warning unconditionally on m_validateBeforeWrite alone
+        // would silently canonicalize that case with zero warnings, worse than the default path.
+        boolean alreadyWarnedGenerically = m_validateBeforeWrite &&
+            (info != null || ReservedInfoProperty.fromId(key) != null);
+        sb.append("=");
+        for (int i = 0; i < values.size(); i++) {
+          if (i > 0) {
+            sb.append(",");
+          }
+          String value = values.get(i);
+          if (value.isEmpty()) {
+            if (!alreadyWarnedGenerically) {
+              m_warnings.warn("INFO {} contains an empty value (VCF does not allow zero-length fields); " +
+                  "treating it as the missing value '.' (on line {})", key, lineBeingWritten());
+            }
+            value = ".";
+          }
+          sb.append(value);
         }
       }
       if (keys.hasNext()) {

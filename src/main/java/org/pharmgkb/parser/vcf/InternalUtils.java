@@ -549,11 +549,9 @@ public class InternalUtils {
    * semicolon-separated codes are dropped -- the same "warn and drop" convention already used for an empty entry in
    * FILTER (FT's grammar is explicitly modeled on FILTER's) and every other position-independent list in this
    * library. If every code was dropped this way, returns {@code "."} (this library's established missing-value
-   * sentinel), not an empty string -- {@code convertProperty}, this method's only caller, only treats {@code "."}
-   * as absent, so returning {@code ""} here would have surfaced as a non-null empty string from
-   * {@code VcfSample.getProperty(ReservedFormatProperty.Filter)} instead of {@code null}. A caller that only wants
-   * the validation side effect (e.g. a writer in diagnostics mode, which preserves raw content rather than
-   * rewriting it) may discard the return value.
+   * sentinel) rather than an empty string, matching every other "reduces to nothing" case in this library. A
+   * caller that only wants the validation side effect (e.g. a writer in diagnostics mode, which preserves raw
+   * content rather than rewriting it) may discard the return value.
    */
   static @Nullable String checkReservedFormatConstraints(String key, @Nullable String value, VcfWarnings warnings) {
     if (value == null || value.equals(".")) {
@@ -597,11 +595,13 @@ public class InternalUtils {
     }
     if (kept.isEmpty()) {
       // every code was empty and dropped above; "." is this codebase's established missing-value sentinel for
-      // every other "reduces to nothing" case (INFO values, ALT entries, sample values, FILTER lists), and
-      // checkReservedFormatConstraints's caller (convertProperty) only treats "." as absent, not "" -- returning
-      // "" here would silently produce a non-null empty string from VcfSample.getProperty(ReservedFormatProperty.
-      // Filter) instead of null, violating this API's established null-means-absent contract (see
-      // EMPTY_FIELD_HANDLING.md's "Reserved FORMAT/FT value" row)
+      // every other "reduces to nothing" case (INFO values, ALT entries, sample values, FILTER lists) --
+      // returning it here, rather than "", keeps this method consistent with that convention. (convertProperty
+      // -- reached via checkReservedFormatConstraints, this method's only caller -- now also treats a plain ""
+      // the same as "." for a scalar, non-Boolean value, so returning "" here would no longer actually break
+      // VcfSample.getProperty(ReservedFormatProperty.Filter)'s null-means-absent contract the way it once did --
+      // but "." remains the more accurate, self-documenting choice for "every code was empty", not just a
+      // workaround for a since-fixed gap.)
       return ".";
     }
     return String.join(";", kept);
@@ -909,6 +909,27 @@ public class InternalUtils {
       return null;
     }
     if (!isList) {
+      // clas != Boolean.class: convertElement()'s own Boolean branch already gives an empty string a distinct,
+      // deliberate meaning (a Flag key's "present, no value" encoding -- see VcfPosition.info()'s "if (idx ==
+      // -1) info.put(key, \"\")" for where that shape comes from) -- true, not "missing". Only for every other
+      // type does an empty (but non-".") scalar value have no such meaning, matching the list branch's own
+      // per-element handling immediately below (an empty entry there already warns and substitutes the
+      // missing-value sentinel); a scalar value previously had no equivalent check at all, so an empty value
+      // reached convertElement() directly -- silently returning the empty string as-is for a String-typed key
+      // (e.g. a live-mutated INFO AA="") or throwing a confusing "Expected integer; got " for a numeric one
+      // (e.g. INFO DP="") instead of the graceful null this library's missing-value convention specifies
+      // elsewhere. See EMPTY_FIELD_HANDLING.md.
+      if (value.isEmpty() && clas != Boolean.class) {
+        // this shared method has no key/field-name context to report (see its own Javadoc: it serves callers
+        // as different as a reserved-property getter and a generic declared-Type conversion) -- the expected
+        // Java type is the only identifying detail available here. Every direct caller of this scalar branch
+        // that already has its own generic "contains an empty value" warning (VcfWriter's validateInfoValue/
+        // validateFormatValue) skips calling this method at all for an empty value, specifically to avoid
+        // this context-free line firing as a redundant second warning for the same defect.
+        warnings.warn("Value of type {} is an empty entry (VCF does not allow zero-length fields); treating " +
+            "it as the missing value '.'", clas.getSimpleName());
+        return null;
+      }
       // an unchecked cast to this method's own unbounded generic type parameter T is erased to a no-op by javac
       // (no checkcast bytecode is emitted), so it can never throw ClassCastException here -- a real type mismatch
       // only surfaces later, in the caller's own stack frame when the value is used as the wrong type
@@ -917,6 +938,14 @@ public class InternalUtils {
     List<Object> list = new ArrayList<>();
     // limit -1 preserves an empty entry (e.g. a trailing ','), handled below rather than silently dropped; VCF does
     // not allow zero-length fields. See EMPTY_FIELD_HANDLING.md.
+    //
+    // Deliberately not extended to a wholly-empty value (e.g. "" splitting to a single-element [""]) the way the
+    // scalar branch above now is: a list value's element count is part of its own arity (a Number=A/R/G/2/3/...
+    // declaration), so collapsing a single empty element to an overall "missing" null (rather than a one-element
+    // list containing a null) would silently change how many values this property reports having. The per-element
+    // substitution below already reports the defect (with a warning) and preserves positional arity; a caller
+    // that unboxes a returned list element without a null check has the same obligation it already has for any
+    // other list-typed property's genuine "." entry.
     for (String part : value.split(",", -1)) {
       if (part.isEmpty()) {
         warnings.warn("List value \"{}\" contains an empty entry (VCF does not allow zero-length fields); " +

@@ -285,7 +285,11 @@ public class VcfWriterTest {
     // empty-string value is the same internal representation VcfPosition.info() uses for a genuine Flag (no "="
     // in the original text), so writing it as a bare key here would silently reinterpret this declared
     // Type=String field as a Flag on reparse -- addInfoOrDot() must canonicalize to the "." missing-value
-    // sentinel instead, on the default path too, not just under validateBeforeWrite()
+    // sentinel instead, on the default path too, not just under validateBeforeWrite(). Also confirms this
+    // doesn't double-warn: this same value also flows through addInfoOrDot()'s own default-path "just test"
+    // type-conversion probe loop, which must skip an empty value rather than triggering
+    // InternalUtils.convertProperty's own (context-free) "is an empty entry" warning in addition to this
+    // branch's own "has an empty value but is declared Type=" one.
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
@@ -295,8 +299,21 @@ public class VcfWriterTest {
     VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
     position.getInfo().put("XX", "");
 
-    writer.writeLine(metadata, position, Collections.emptyList());
-    assertTrue(sw.toString().contains("XX=."));
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertTrue(sw.toString().contains("XX=."));
+      assertEquals(1, appender.countMessagesContaining("INFO XX has an empty value but is declared Type="));
+      assertFalse(appender.anyMessageContains("is an empty entry"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
   }
 
   @Test
@@ -377,6 +394,186 @@ public class VcfWriterTest {
     writer.writeLine(metadata, position, Collections.emptyList());
     assertTrue(sw.toString().contains("DB"));
     assertFalse(sw.toString().contains("DB="));
+  }
+
+  @Test
+  public void testDefaultWriteCanonicalizesEmptyEntryInMultiValueInfoListInsteadOfWritingLiteralZeroLengthField()
+      throws Exception {
+    // addInfoOrDot()'s isEmptyValueList branch only recognizes the whole-list-is-one-empty-string shape; a
+    // multi-value list with an empty entry at any position (e.g. a live getInfo() mutation producing
+    // ["1", "", "2"]) must also be canonicalized to "." per EMPTY_FIELD_HANDLING.md's position-dependent-list
+    // rule, on the default write path too, not just under validateBeforeWrite(). Asserts the warning itself
+    // fires (not just the output shape), so this test would fail if the m_warnings.warn(...) call were deleted.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata("XY", "d", InfoType.Integer, "3", null, null))
+        .build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getInfo().put("XY", "1");
+    position.getInfo().put("XY", "");
+    position.getInfo().put("XY", "2");
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertTrue(sw.toString().contains("XY=1,.,2"));
+      assertFalse(sw.toString().contains("XY=1,,2"));
+      assertTrue(appender.anyMessageContains("INFO XY contains an empty value"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testValidateBeforeWriteCanonicalizesEmptyEntryInMultiValueInfoListInsteadOfWritingLiteralZeroLengthField()
+      throws Exception {
+    // validateInfoValue() already warns "INFO {} contains an empty value" for this exact shape under
+    // validateBeforeWrite(), but (before this fix) that warning had no effect on what addInfoOrDot() actually
+    // wrote in the same writeLine() call -- confirms the canonicalization also applies in full-diagnostics mode.
+    // Also confirms this doesn't double-warn: addInfoOrDot()'s own warning must be suppressed here (declared
+    // key, so validateInfoValue() already ran and warned generically), and validateInfoValue()'s own per-element
+    // type-conversion loop must skip the empty element rather than triggering InternalUtils.convertProperty's
+    // own (context-free) empty-value warning a second time.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata("XY", "d", InfoType.Integer, "3", null, null))
+        .build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getInfo().put("XY", "1");
+    position.getInfo().put("XY", "");
+    position.getInfo().put("XY", "2");
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertTrue(sw.toString().contains("XY=1,.,2"));
+      assertFalse(sw.toString().contains("XY=1,,2"));
+      assertEquals(1, appender.countMessagesContaining("INFO XY contains an empty value"));
+      assertFalse(appender.anyMessageContains("is an empty entry"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testValidateBeforeWriteWarnsForEmptyEntryInMultiValueInfoListEvenWhenKeyIsUndeclared()
+      throws Exception {
+    // regression test: validateInfo() only calls validateInfoValue() for an undeclared key when it's also a
+    // reserved property -- for an undeclared, non-reserved key, nothing warns generically. addInfoOrDot()'s own
+    // warning must not be unconditionally suppressed just because m_validateBeforeWrite is true, or this exact
+    // case would canonicalize with zero warnings, worse than the default write path for the same input.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build(); // XY not declared
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getInfo().put("XY", "1");
+    position.getInfo().put("XY", "");
+    position.getInfo().put("XY", "2");
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertTrue(sw.toString().contains("XY=1,.,2"));
+      assertFalse(sw.toString().contains("XY=1,,2"));
+      assertTrue(appender.anyMessageContains("INFO XY contains an empty value"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testDefaultWriteCanonicalizesEmptyEntryAtEveryPositionInMultiValueInfoList() throws Exception {
+    // the old code special-cased values.get(0) outside the per-element loop, so an empty entry specifically at
+    // position 0 is the one case most likely to be missed by an incomplete fix; also covers the last position
+    // and multiple empty entries in the same list
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata("XY", "d", InfoType.Integer, "2", null, null))
+        .addInfo(new InfoMetadata("XZ", "d", InfoType.Integer, "3", null, null))
+        .build();
+
+    StringWriter leading = new StringWriter();
+    VcfWriter leadingWriter = new VcfWriter.Builder().toWriter(new PrintWriter(leading)).build();
+    leadingWriter.writeHeader(metadata);
+    VcfPosition leadingPos = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    leadingPos.getInfo().put("XY", "");
+    leadingPos.getInfo().put("XY", "2");
+    leadingWriter.writeLine(metadata, leadingPos, Collections.emptyList());
+    assertTrue(leading.toString().contains("XY=.,2"));
+
+    StringWriter trailing = new StringWriter();
+    VcfWriter trailingWriter = new VcfWriter.Builder().toWriter(new PrintWriter(trailing)).build();
+    trailingWriter.writeHeader(metadata);
+    VcfPosition trailingPos = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    trailingPos.getInfo().put("XY", "1");
+    trailingPos.getInfo().put("XY", "");
+    trailingWriter.writeLine(metadata, trailingPos, Collections.emptyList());
+    assertTrue(trailing.toString().contains("XY=1,."));
+
+    StringWriter allEmpty = new StringWriter();
+    VcfWriter allEmptyWriter = new VcfWriter.Builder().toWriter(new PrintWriter(allEmpty)).build();
+    allEmptyWriter.writeHeader(metadata);
+    VcfPosition allEmptyPos = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    allEmptyPos.getInfo().put("XZ", "");
+    allEmptyPos.getInfo().put("XZ", "");
+    allEmptyPos.getInfo().put("XZ", "");
+    allEmptyWriter.writeLine(metadata, allEmptyPos, Collections.emptyList());
+    assertTrue(allEmpty.toString().contains("XZ=.,.,."));
+  }
+
+  @Test
+  public void testWrittenMultiValueInfoWithCanonicalizedEmptyEntryReparsesToTheSameCanonicalValue()
+      throws Exception {
+    // round-trip check: the "." this fix writes for a live-mutated empty INFO entry must itself be valid,
+    // reparseable VCF -- not just a string that happens to look right in isolation
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata("XY", "d", InfoType.Integer, "3", null, null))
+        .build();
+    writer.writeHeader(metadata);
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getInfo().put("XY", "1");
+    position.getInfo().put("XY", "");
+    position.getInfo().put("XY", "2");
+    writer.writeLine(metadata, position, Collections.emptyList());
+    // asserted on the raw written text, not just the reparsed result: the parser's own INFO empty-value
+    // handling would independently normalize a literal "XY=1,,2" to the same [1, ".", 2] on reparse, which
+    // would let this test pass even if the writer itself never canonicalized anything -- this line is what
+    // actually makes the test load-bearing for the writer fix, not just the parser's.
+    assertTrue(sw.toString().contains("XY=1,.,2"));
+
+    List<VcfPosition> reparsed = new java.util.ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(sw.toString())))
+        .parseWith((md, pos, samples) -> reparsed.add(pos))
+        .build()) {
+      parser.parse();
+    }
+    assertEquals(1, reparsed.size());
+    assertEquals(Arrays.asList("1", ".", "2"), reparsed.get(0).getInfo("XY"));
   }
 
   @Test
@@ -709,6 +906,45 @@ public class VcfWriterTest {
       writer.writeHeader(metadata);
       writer.writeLine(metadata, position, Collections.singletonList(sample));
       assertFalse(appender.anyMessageContains("Number=G requires"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testValidateBeforeWriteDoesNotDoubleWarnAboutEmptyFormatValue() throws Exception {
+    // regression test: validateFormatValue()'s own per-element type-conversion loop previously called
+    // InternalUtils.convertProperty() for every element including empty ones, which (since convertProperty now
+    // itself warns on an empty scalar value) fired a second, context-free "is an empty entry" warning for the
+    // same defect the loop's own generic "FORMAT {} for sample #{} contains an empty value" warning, above it in
+    // the same method, already reported -- the INFO-side sibling of this exact bug (validateInfoValue).
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .addFormat(new FormatMetadata("GT", "Genotype", "1", FormatType.String))
+        .addFormat(new FormatMetadata("XY", "d", "3", FormatType.Integer))
+        .build();
+    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    position.getAltBases().add("T");
+    position.getFormat().add("GT");
+    position.getFormat().add("XY");
+    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    sample.putProperty("GT", "0/1");
+    sample.putProperty("XY", "1,,2");
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, Collections.singletonList(sample));
+      assertEquals(1, appender.countMessagesContaining("FORMAT XY for sample #0 contains an empty value"));
+      assertFalse(appender.anyMessageContains("is an empty entry"));
     } finally {
       root.detachAppender(appender);
       appender.stop();

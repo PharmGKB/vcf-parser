@@ -1205,6 +1205,44 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testGetInfoReservedPropertyTreatsEmptyValueAsMissingForScalarNumericKey() {
+    // regression test: InternalUtils.convertProperty(Class<?>, String, boolean, VcfWarnings)'s scalar (isList
+    // = false) branch previously had no empty-value check, unlike its own list branch immediately below (which
+    // already warns and substitutes null for an empty comma-separated element). An empty (but non-".") value
+    // reached convertElement() directly for a scalar reserved key -- for DP (Long-typed), that raw-crashed the
+    // typed conversion with a confusing "Expected integer; got " VcfFormatException instead of the graceful
+    // null this library's missing-value convention specifies everywhere else, even though EMPTY_FIELD_HANDLING's
+    // "invalid content silently accepted" floor is squarely triggered here.
+    VcfPosition position = newPosition();
+    position.getInfo().put("DP", "");
+    Long dp = position.getInfo(ReservedInfoProperty.Depth);
+    assertNull(dp);
+  }
+
+  @Test
+  public void testGetInfoReservedPropertyTreatsEmptyValueAsMissingForScalarStringKey() {
+    // same defect, worse symptom for a String-typed scalar reserved key (AA): convertElement() for String is a
+    // no-op passthrough, so the empty value doesn't throw -- it silently returns "" instead of null, violating
+    // the "absent -> null" contract every other reserved-property getter in this class follows
+    VcfPosition position = newPosition();
+    position.getInfo().put("AA", "");
+    String aa = position.getInfo(ReservedInfoProperty.AncestralAllele);
+    assertNull(aa);
+  }
+
+  @Test
+  public void testGetInfoReservedPropertyStillTreatsEmptyValueAsTrueForFlagKey() {
+    // regression guard for the fix above: a Boolean-typed (Flag) reserved key's empty value is a different,
+    // pre-existing, deliberate encoding (VcfPosition.info()'s own "if (idx == -1) info.put(key, \"\")" for a
+    // bare flag with no "=" at all) meaning "present", not "missing" -- convertProperty's new empty-value check
+    // must not swallow this into null the way it now does for every other scalar type
+    VcfPosition position = newPosition();
+    position.getInfo().put("H2", "");
+    Boolean h2 = position.getInfo(ReservedInfoProperty.Hapmap2);
+    assertEquals(Boolean.TRUE, h2);
+  }
+
+  @Test
   public void testStrictConstructorThrowsForEmptyFormatSubfield() {
     List<String> format = new java.util.ArrayList<>(List.of("GT", "", "DP"));
     VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new VcfPosition(

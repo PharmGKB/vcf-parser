@@ -212,14 +212,21 @@ class VcfSampleTest {
   void testGetPropertyFilterAllEmptyCodesReturnsNullNotEmptyString() {
     // regression test: when every semicolon-separated FT code is empty (e.g. ";;"), InternalUtils.
     // checkFilterLikeValue used to return "" (from String.join(";", emptyList)) instead of ".", this library's
-    // established missing-value sentinel -- convertProperty's only "treat as absent" check is
-    // value == null || ".".equals(value), so "" reached type conversion unchanged, making this getter return a
-    // non-null empty string for a sample whose FT content was entirely empty artifacts, violating the
-    // null-means-absent contract every other reserved property getter follows
+    // established missing-value sentinel, making this getter return a non-null empty string for a sample whose
+    // FT content was entirely empty artifacts, violating the null-means-absent contract every other reserved
+    // property getter follows. The plain assertNull(...) below no longer alone distinguishes a correct "."
+    // return from an incorrect "" one, now that InternalUtils.convertProperty's scalar branch also treats a
+    // plain "" as absent for a non-Boolean type (so getProperty(...) would still return null either way) -- the
+    // warnings-sink assertion re-establishes that distinction: an incorrect "" return would additionally trigger
+    // convertProperty's own (context-free) "is an empty entry" warning, which checkFilterLikeValue's correct
+    // "." return must never reach at all.
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("FT", ";;");
     VcfSample sample = new VcfSample(map);
+    java.io.StringWriter sink = new java.io.StringWriter();
+    sample.setWarningsSink(new VcfWarnings(sink));
     assertNull(sample.getProperty(ReservedFormatProperty.Filter));
+    assertFalse(sink.toString().contains("is an empty entry"));
   }
 
   @Test

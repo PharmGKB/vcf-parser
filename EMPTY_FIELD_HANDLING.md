@@ -133,11 +133,13 @@ confirmed against bcftools directly: it warns and substitutes `.`, matching `vcf
 
 The "all codes empty" `FORMAT/FT` row is a completion of the row above it, not a new rule: when every
 semicolon-separated code is dropped, `InternalUtils.checkFilterLikeValue` normalizes the result to `.` rather
-than an empty string, since `convertProperty`'s only "treat as absent" check is `value == null ||
-".".equals(value)` -- an empty string would otherwise reach type conversion unchanged, making
-`VcfSample.getProperty(ReservedFormatProperty.Filter)` return a non-null empty string instead of `null` for a
-sample whose FT content was entirely empty artifacts. This matches the same `.`-sentinel convention every
-other "reduces to nothing" case in this table already follows.
+than an empty string. (`convertProperty`'s scalar branch now also treats a plain `""` as absent for a
+non-Boolean type, same as `.` -- so this no longer changes what
+`VcfSample.getProperty(ReservedFormatProperty.Filter)` ultimately returns the way it once did. `.` remains the
+right choice anyway: it matches the same missing-value-sentinel convention every other "reduces to nothing"
+case in this table already follows, and avoids `convertProperty`'s own now-added, context-free "is an empty
+entry" warning firing as a second, less-specific report of the same defect this method's own
+"empty filter code" warning already covers above.)
 
 The generic-metadata-property row differs from every other row in this table in what gets dropped: every other
 row drops or substitutes one *element* of a delimited list, but a generic property (`##reference=`, `##assembly=`,
@@ -190,11 +192,23 @@ for rejection purposes, but they are still a data-loss case in practice.
   inline check, before a key ever reaches a built multimap) an empty key; warns and substitutes `.` for an
   empty value. The eager (`ListMultimap`) constructor and `validate()` share a second, equivalent empty-key
   check in `checkInfoEntries` (the same method both call) -- those two other entry points previously silently
-  accepted an empty INFO key with no warning at all.
+  accepted an empty INFO key with no warning at all. `checkInfoEntries` does **not** have an equivalent
+  empty-*value* check: an attempt to add one was reverted after it broke the `Flag`-value round-trip
+  (`checkInfoEntries` has no access to a key's declared `##INFO` `Type`, so it can't tell a genuine Flag's
+  empty-string "present" encoding from a real empty value the way `VcfWriter.addInfoOrDot()` below can). The
+  eager constructor's/`validate()`'s empty-*value* gap is instead addressed one layer down, at the
+  reserved-property typed-conversion step -- see `InternalUtils.convertProperty` below.
 - `VcfParser`'s per-sample value parsing — warns and substitutes `.` for an empty sample value.
-- `InternalUtils.convertProperty` — warns and substitutes `.` (`null`) for an empty entry in a reserved list-typed
-  property's comma-separated value; warns and drops an empty semicolon-separated code in a reserved `FORMAT/FT`
-  value (`InternalUtils.checkReservedFormatConstraints`).
+- `InternalUtils.convertProperty(Class<?>, String, boolean, VcfWarnings)` — for a list-typed value, warns and
+  substitutes `.` (`null`) for an empty entry in a reserved property's comma-separated value; for a scalar
+  (non-list) value, likewise warns and substitutes `.` (`null`) for an empty (but non-`"."`) value -- **except**
+  `Boolean.class` (a `Flag`-typed reserved property), whose empty string is a distinct, pre-existing "present"
+  encoding (see `VcfPosition.info()`'s bare-flag case above), not "missing"; that case is deliberately left
+  alone; separately, warns and drops an empty semicolon-separated code in a reserved `FORMAT/FT` value
+  (`InternalUtils.checkReservedFormatConstraints`). Fixes `VcfPosition.getInfo(ReservedInfoProperty)`'s
+  handling of an empty value for a scalar reserved key (e.g. `DP`, `AA`) reached via the eager constructor or a
+  live `getInfo()` mutation: previously this either raw-crashed the typed conversion (a numeric key) or
+  silently returned `""` instead of `null` (a `String`-typed key), with zero warnings either way.
 - `VcfSample.getGenotype` — warns and substitutes `.` for an empty GT allele.
 - `VcfSample.validate()` — warns and substitutes `.` for a sample property whose value was mutated to empty through
   `propertyEntrySet()`, consistent with `VcfWriter`'s own warn-only treatment (in `validateBeforeWrite()` mode) of
@@ -206,7 +220,11 @@ for rejection purposes, but they are still a data-loss case in practice.
   `VcfPosition.info()` produces the identical single-empty-string representation for both. Unlike every other row
   in this table, this runs in **both** write modes, not just `validateBeforeWrite()` — the ambiguity this resolves
   (a live-mutated empty value that looks identical to a Flag) would otherwise silently corrupt the field's
-  semantic type on the default write path too, not just under full diagnostics.
+  semantic type on the default write path too, not just under full diagnostics. Separately, and unconditionally
+  (regardless of declared `Type`, since a multi-value list can never be mistaken for a `Flag`), it also
+  substitutes `.` for an empty entry at any position in a multi-value list (e.g. a live mutation producing
+  `["1", "", "2"]`), matching the position-dependent-list rule above -- this half previously only handled the
+  single-value case, silently writing a literal zero-length field (`XY=1,,2`) for the multi-value one.
 - `VcfMetadata.Builder.addRawProperty()`, and `VcfMetadata.addAssembly()` / `addPedigreeDatabase()` -- warn and
   drop a generic metadata property with an empty value (`isEmptyMetadataValue`), or one wrapped in angle
   brackets whose inner content is empty or has no `=` (`collidesWithAttributeListGrammar`, e.g. `<>` or

@@ -175,9 +175,12 @@ vs-parsing distinction; see that policy for why these specific fields stay uncon
   to `fromFile()` has a programming error, not a data-quality problem. See `WONT_FIX.md`'s `VcfParser.Builder`
   entry, and `AGENTS.md`'s Public API Null-Safety Policy for the full boundary between this case and VCF
   content.
-- `VcfWriter.addInfoOrDot()`'s Flag-ambiguity canonicalization runs on the default path too, not only under
-  `validateBeforeWrite()` -- the one writer-side *content* check (as distinct from the null-safety checks
+- `VcfWriter.addInfoOrDot()` has two writer-side *content* checks (as distinct from the null-safety checks
   carved out under "How the principles interact" above, which are unconditional for a different reason) that
-  isn't `validateBeforeWrite()`-gated, because the ambiguity (an empty value looking identical to a
-  `Type=Flag`) would otherwise silently corrupt a field's semantic type even on the default path. This is a
-  principle-3 exception, not a principle-1/2 one -- see `EMPTY_FIELD_HANDLING.md`.
+  run on the default path too, not only under `validateBeforeWrite()`: its Flag-ambiguity canonicalization
+  (a single empty-string value looking identical to a `Type=Flag`, which would otherwise silently corrupt a
+  field's semantic type even on the default path) and its per-entry empty-value substitution for a
+  multi-value INFO list (a position-dependent list whose element count can matter for a `Number=`-declared
+  arity, so an empty entry is substituted with `.` regardless of write mode, the same reasoning
+  `checkAltBases`/sample-value handling already apply elsewhere). Both are principle-3 exceptions, not
+  principle-1/2 ones -- see `EMPTY_FIELD_HANDLING.md`.
