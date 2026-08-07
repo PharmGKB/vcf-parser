@@ -49,6 +49,16 @@ public class AltStructuralVariantTest {
   }
 
   @Test
+  public void testReservedCodeAtWrongLevelRejected() {
+    // regression test: no prior test pinned this branch. VCFv4.2.tex line 114's "Reserved subtypes" table
+    // defines TANDEM only at level 1 (as DUP:TANDEM) -- used bare, at level 0, it's a reserved code that has
+    // drifted from its one defined position in that table, a genuinely different defect from "not a reserved
+    // code at all" (testInvalidTopLevelCode) or "wrong parent for its level" (testMismatchedParent)
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new AltStructuralVariant("TANDEM"));
+    assertTrue(ex.getMessage().contains("is a reserved code of level 1, not 0"));
+  }
+
+  @Test
   public void testEmptyCodeRejected() {
     assertThrows(VcfFormatException.class, () -> new AltStructuralVariant(""));
   }

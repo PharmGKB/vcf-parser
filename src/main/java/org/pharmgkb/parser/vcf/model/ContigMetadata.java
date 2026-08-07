@@ -2,7 +2,9 @@ package org.pharmgkb.parser.vcf.model;
 
 import java.net.MalformedURLException;
 import java.net.URI;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.InternalUtils;
@@ -175,15 +177,26 @@ public class ContigMetadata extends IdMetadata {
         m_warnings.warn("{} ID \"{}\" must not start with '{}'", getLabel(), id, first);
       }
       Matcher matcher = InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN.matcher(id);
+      // a comma match is skipped (searching continues past it, rather than stopping) because IdMetadata's own
+      // dedicated comma check already warned about it earlier during construction (via super(...), before this
+      // init() ever runs) -- without "continue searching" here, an id containing both a comma and a genuinely
+      // new defect (e.g. "1,(2)") would never reach the defect this check exists to catch, since the comma
+      // would be the first match found. Searching continues past every non-comma match too (no break), so a
+      // SECOND genuinely different invalid character (e.g. "1(2)[3]" has both '(' and '[') is also reported,
+      // not silently dropped -- warnedChars dedupes only exact repeats of the same character (e.g. "1((2"),
+      // matching InfoMetadata/FormatMetadata's own "one warning per genuinely distinct defect" precedent
+      // (commit f2fed6f), adapted for a per-character scan instead of a whole-string pattern.
+      Set<String> warnedChars = null;
       while (matcher.find()) {
-        // a comma match is skipped (searching continues past it, rather than stopping) because IdMetadata's
-        // own dedicated comma check already warned about it earlier during construction (via super(...),
-        // before this init() ever runs) -- without "continue searching" here, an id
-        // containing both a comma and a genuinely new defect (e.g. "1,(2)") would never reach the defect this
-        // check exists to catch, since the comma would be the first match found
-        if (!matcher.group().equals(",")) {
-          m_warnings.warn("{} ID \"{}\" contains the invalid character '{}'", getLabel(), id, matcher.group());
-          break;
+        String invalid = matcher.group();
+        if (invalid.equals(",")) {
+          continue;
+        }
+        if (warnedChars == null) {
+          warnedChars = new HashSet<>();
+        }
+        if (warnedChars.add(invalid)) {
+          m_warnings.warn("{} ID \"{}\" contains the invalid character '{}'", getLabel(), id, invalid);
         }
       }
     }

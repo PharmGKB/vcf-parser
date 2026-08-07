@@ -46,6 +46,7 @@ before assuming it generalizes to a similar-looking case.
 | Trailing blank line at EOF | Reject (matches bcftools, stricter than vcf_validator) | ✅ |
 | BOM-prefixed file / `+`-prefixed POS | Existing behavior already matches both tools | ✅ |
 | ALT breakend contig-ID shorthand (`AC<ctg1>GT`, `<ctg1><ctg2>`) | Left permissive; neither tool is decisive | ✅ (judgment call) |
+| Reserved structural variant code re-used as a subtype (`DUP:INV`) | Reject (deliberately stricter than bcftools) | ✅ |
 | FILTER value `"0"` | Reject (reserved value) | ✅ |
 | `PASS` combined with other FILTER codes | Warn (lenient), throw (strict/direct construction) | ✅ |
 | FILTER status (`PASSED`/`FAILED`/`NONE`) derivation | Derive purely from list contents, matching bcftools's clear-never-promotes-to-PASS convention | ✅ |
@@ -241,6 +242,25 @@ all, so its acceptance carries no evidentiary weight).
 **Decision:** left intentionally permissive. Given no source can confirm or deny the broader forms, and a
 previous narrowing attempt incorrectly broke the one form that *is* confirmed valid, this is not re-attempted
 without new evidence. Implemented in `InternalUtils.sf_simpleAltPattern`.
+
+### Reserved structural variant code re-used as a subtype (e.g. `DUP:INV`)
+
+`AltStructuralVariant`'s level-mismatch check (`level != type.getLevelInSpecification()`) rejects a reserved
+code used at any level other than its own -- most obviously a level-1 subtype used bare at level 0 (e.g.
+`TANDEM`, directly unsupported by VCFv4.2.tex lines 105/107-111's top-level list). But the same check also
+rejects the *other* direction: a level-0 code re-used as a subtype under a different parent (e.g. `DUP:INV`,
+`INV` being a level-0 reserved code, not a defined subtype of `DUP`). VCFv4.2.tex:114's "Reserved subtypes
+include:" is explicitly non-exhaustive, and VCFv4.4.tex:221 ("Implementations are free to define their own
+subtypes") confirms VCF doesn't reserve the space of valid subtypes at all -- nothing in the spec forbids a
+level-0 code's name from also being used as a subtype string. Confirmed live against bcftools 1.23.1 (htslib
+1.23.1): `##ALT=<ID=DUP:INV,Description="...">` is accepted silently, exit 0, no warning.
+
+**Decision:** keep rejecting (deliberately stricter than bcftools) -- this is pre-existing, unchanged
+behavior, not a new restriction. The level-mismatch check's real purpose is catching a bare reserved subtype
+used at the wrong level (a plausible typo, e.g. writing `TANDEM` instead of `DUP:TANDEM`); a level-0 code
+reused as a subtype is a sufficiently unusual construction that treating it as suspect is a reasonable,
+conservative default even though the spec doesn't mandate it. Revisit if a real-world VCF is ever found using
+this construction legitimately. Implemented in `AltStructuralVariant`'s constructor.
 
 ## FILTER field
 

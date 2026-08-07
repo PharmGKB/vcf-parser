@@ -66,6 +66,10 @@ public class AltStructuralVariant {
 
     for (int level = 0; level < components.length; level++) {
       if (components[level].isEmpty()) {
+        // VCFv4.2 does not table this; VCFv4.3.tex line 39 ("Zero length fields are not allowed, a dot ('.')
+        // must be used instead") gives the general rule this component-level check applies, used as
+        // VCFv4.2-silent clarifying guidance per AGENTS.md -- consistent with EMPTY_FIELD_HANDLING.md's citation
+        // of the identical rule for generic metadata properties.
         throw new VcfFormatException("Structural variant code \"" + string + "\" has an empty component at level " +
             level);
       }
@@ -73,12 +77,26 @@ public class AltStructuralVariant {
 
       // Make sure the top-level code exists
       if (type == null && level == 0) {
+          // VCFv4.2.tex line 105 ("The first level type must be one of the following:") introduces the
+          // itemized list at lines 107-111 (DEL/INS/DUP/INV/CNV); ReservedStructuralVariantCode's own comment
+          // adds BND (VCFv4.3.tex:208) as a sixth accepted level-0 code -- an unrecognized level-0 code matches
+          // none of these six and has no reserved meaning to fall back on.
           throw new VcfFormatException("Top-level structural variant code was " + components[level] +
               " but must be a top-level reserved code (e.g. DEL or CNV)");
       }
 
       // If this is a reserved code, make sure the level matches
       if (type != null && level != type.getLevelInSpecification()) {
+        // VCFv4.2.tex lines 105/107-111 establish DEL/INS/DUP/INV/CNV (plus BND, VCFv4.3.tex:208) as level-0
+        // reserved codes; line 114's "Reserved subtypes" (DUP:TANDEM, DEL:ME, INS:ME) establishes TANDEM/ME as
+        // level-1 -- a level-1 reserved code used bare at level 0 (e.g. "TANDEM") has drifted from its only
+        // defined position in that table, directly supported by this text. The OTHER direction this same
+        // check also rejects -- a level-0 code re-used at a non-zero level (e.g. "DUP:INV") -- is NOT
+        // spec-mandated: VCFv4.2:114's "Reserved subtypes include:" is explicitly non-exhaustive, and
+        // VCFv4.4.tex:221 ("Implementations are free to define their own subtypes") confirms VCF doesn't
+        // reserve the space of valid subtypes at all. Rejecting that direction is this library's own stricter
+        // reading, not a spec rule -- see VCF_SPEC_AMBIGUITIES.md's "Reserved structural variant code re-used
+        // as a subtype" entry if this needs revisiting against bcftools.
         throw new VcfFormatException("Structural variant code " + components[level] +
             " is a reserved code of level " + type.getLevelInSpecification() + ", not " + level);
       }
@@ -95,6 +113,9 @@ public class AltStructuralVariant {
             }
           }
           if (!foundMatch) {
+            // VCFv4.2.tex lines 114-118's three worked examples (DUP:TANDEM, DEL:ME, INS:ME) each pair a
+            // level-1 reserved subtype with exactly one level-0 parent -- e.g. TANDEM is a reserved subtype
+            // only under DUP, never under DEL or INS.
             throw new VcfFormatException("Structural variant code " + components[level] +
                 " was not a child of reserved code " + realParent.getId());
           }

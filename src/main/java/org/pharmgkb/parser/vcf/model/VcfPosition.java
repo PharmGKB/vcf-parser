@@ -245,13 +245,16 @@ public class VcfPosition {
 
   private static void checkRef(String ref) {
     // ref is typed non-@Nullable, but setRef() (unlike the constructors) does not enforce that at runtime, by
-    // design -- see validate()'s Javadoc. Guard here rather than letting REF_BASE_PATTERN.matcher(ref) below throw
+    // design -- see validate()'s Javadoc. Guard here rather than letting isValidRefBases(ref) below throw
     // a raw NullPointerException; this runs from both constructors and validate(), so it also closes the same gap
     // there.
     if (ref == null) {
       throw new VcfFormatException("REF is null");
     }
-    if (!InternalUtils.REF_BASE_PATTERN.matcher(ref).matches()) {
+    // VCFv4.2.tex line 182: "REF - reference base(s): Each base must be one of A,C,G,T,N (case insensitive)."
+    // hts-specs test/vcf/4.2/failed/failed_body_ref_001.vcf (##CauseOfFailure=REF has a non-valid base,
+    // REF="B") confirms an out-of-alphabet base is a structural rejection, not a warn-and-recover case.
+    if (!InternalUtils.isValidRefBases(ref)) {
       throw new VcfFormatException("Invalid reference base '" + ref +
           "' (must match " + InternalUtils.REF_BASE_PATTERN + ")");
     }
@@ -265,8 +268,9 @@ public class VcfPosition {
    */
   private static List<String> checkIds(List<String> ids, @Nullable VcfWarnings warnings) {
     ids = InternalUtils.dropEmptyEntries("ID", ids, warnings);
-    Set<String> seenIds = new HashSet<>();
-    for (String id : ids) {
+    Set<String> seen = ids.size() > DUPLICATE_SCAN_THRESHOLD ? new HashSet<>() : null;
+    for (int i = 0; i < ids.size(); i++) {
+      String id = ids.get(i);
       // hts-specs' own conformance fixtures document both rejections directly: test/vcf/4.2/failed/
       // failed_body_id_000.vcf ("ID has a whitespace"), failed_body_id_001.vcf ("ID begins with a semi-colon"),
       // and failed_body_id_002.vcf ("ID ends with a semi-colon").
@@ -283,7 +287,9 @@ public class VcfPosition {
       // duplicate causes no data loss or misalignment -- matching this library's general permissive stance for
       // non-structural content. See VCF_SPEC_AMBIGUITIES.md's "Duplicate ID/FILTER entries within one record"
       // entry, and checkFilters() below for the identical treatment of the same field shape.
-      if (!seenIds.add(id)) {
+      //
+      // isDuplicateAt (see its own Javadoc for the DUPLICATE_SCAN_THRESHOLD hybrid this dispatches through).
+      if (isDuplicateAt(ids, i, seen)) {
         if (warnings == null) {
           throw new VcfFormatException("Duplicate ID \"" + id + "\"");
         }
@@ -291,6 +297,38 @@ public class VcfPosition {
       }
     }
     return ids;
+  }
+
+  // ID/FILTER/FORMAT are delimiter-separated lists inside a single column, so their element count is bounded
+  // only by line length -- attacker-controlled and unbounded, NOT bounded by this record's own column
+  // structure (an earlier version of this comment/threshold was wrong about that). Measured (see the reviewer
+  // report that caught this): a per-call HashSet<String> costs ~2.7x more than an allocation-free O(n) scan
+  // for a typical tiny list (crossover around n=8), but the scan is O(n^2) overall -- a 2.7 MB single-record
+  // file with 100,000 IDs took the scan 25.4 SECONDS vs. 91 ms for the HashSet version, the same CPU-exhaustion
+  // shape as the ##PEDIGREE O(n^2) DoS already fixed in VcfMetadata.hasPedigreeIdCollision. This threshold
+  // keeps the scan's win for the common case while falling back to a HashSet before the list can grow large
+  // enough to matter.
+  private static final int DUPLICATE_SCAN_THRESHOLD = 8;
+
+  /**
+   * @return Whether {@code list.get(index)} equals any earlier element in {@code list}. If {@code seen} is
+   * non-null, it is used (and mutated) as an accumulating membership set instead of scanning {@code list}
+   * directly -- see {@link #DUPLICATE_SCAN_THRESHOLD}'s own comment for why a caller must supply one once
+   * {@code list} is no longer small. A caller skipping this method entirely for one index (e.g. an empty
+   * FORMAT sub-field name) must not call it for that index at all, not call it and ignore the result: skipping
+   * the call is also what keeps that index's value out of {@code seen} for every later comparison.
+   */
+  private static boolean isDuplicateAt(List<String> list, int index, @Nullable Set<String> seen) {
+    String value = list.get(index);
+    if (seen != null) {
+      return !seen.add(value);
+    }
+    for (int i = 0; i < index; i++) {
+      if (list.get(i).equals(value)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -337,8 +375,9 @@ public class VcfPosition {
    */
   private static List<String> checkFilters(List<String> filters, @Nullable VcfWarnings warnings) {
     filters = InternalUtils.dropEmptyEntries("FILTER", filters, warnings);
-    Set<String> seenFilters = new HashSet<>();
-    for (String f : filters) {
+    Set<String> seen = filters.size() > DUPLICATE_SCAN_THRESHOLD ? new HashSet<>() : null;
+    for (int i = 0; i < filters.size(); i++) {
+      String f = filters.get(i);
       // hts-specs test/vcf/4.2/failed/failed_body_filter_003.vcf, ##CauseOfFailure=FILTER contains whitespaces
       // (literal FILTER="my filter").
       if (InternalUtils.containsWhitespace(f)) {
@@ -377,7 +416,10 @@ public class VcfPosition {
       // data loss or misalignment -- matching this library's general permissive stance for non-structural
       // content, and matching checkIds()'s identical treatment of the same field shape. See
       // VCF_SPEC_AMBIGUITIES.md's "Duplicate ID/FILTER entries within one record" entry.
-      if (!seenFilters.add(f)) {
+      //
+      // isDuplicateAt (see checkIds() above and DUPLICATE_SCAN_THRESHOLD's own comment) dispatches between an
+      // allocation-free scan and a HashSet<String> depending on list size.
+      if (isDuplicateAt(filters, i, seen)) {
         if (warnings == null) {
           throw new VcfFormatException("Duplicate FILTER code \"" + f + "\"");
         }
@@ -494,9 +536,12 @@ public class VcfPosition {
       return new ArrayList<>();
     }
     // duplicate keys are explicitly disallowed by the VCF spec (VCFv4.3+ states this outright; empty keys are
-    // excluded from this check since they're already handled, and warned about, separately below)
-    Set<String> seenKeys = new HashSet<>();
-    for (String f : format) {
+    // excluded from this check since they're already handled, and warned about, separately below). isDuplicateAt
+    // (see checkIds() above and DUPLICATE_SCAN_THRESHOLD's own comment) dispatches between an allocation-free
+    // scan and a HashSet<String> depending on list size.
+    Set<String> seen = format.size() > DUPLICATE_SCAN_THRESHOLD ? new HashSet<>() : null;
+    for (int i = 0; i < format.size(); i++) {
+      String f = format.get(i);
       if (f == null) {
         throw new VcfFormatException("FORMAT contains a null sub-field name");
       }
@@ -516,7 +561,7 @@ public class VcfPosition {
       if (!InternalUtils.FORMAT_PATTERN.matcher(f).matches()) {
         throw new VcfFormatException("FORMAT ID does not match VCF spec");
       }
-      if (!seenKeys.add(f)) {
+      if (isDuplicateAt(format, i, seen)) {
         throw new VcfFormatException("Duplicate FORMAT key \"" + f + "\"");
       }
     }

@@ -798,6 +798,16 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testInvalidRefBaseThrowsWithSpecificMessage() {
+    // VCFv4.2.tex line 182: "REF - reference base(s): Each base must be one of A,C,G,T,N (case insensitive)."
+    // hts-specs test/vcf/4.2/failed/failed_body_ref_001.vcf (##CauseOfFailure=REF has a non-valid base,
+    // REF="B") confirms this is a structural rejection. No prior test pinned this specific message.
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> new VcfPosition("chr1", 1, null, "B", null, null, null, null, null, -1));
+    assertTrue(ex.getMessage().contains("Invalid reference base 'B'"));
+  }
+
+  @Test
   public void testValidateAttachesLineNumberToNonInfoCheckFailures() {
     // regression test: validate() previously annotated only its checkInfoEntries(...) call with line-number
     // metadata, leaving its other checks (checkChromosome, checkPosition, checkRef, checkIds, checkAltBases,
@@ -1235,10 +1245,55 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testLenientConstructorWarnsForNonAdjacentDuplicateId() {
+    // regression test: isDuplicateAt (an allocation-free scan added to replace a per-call HashSet<String>)
+    // must scan ALL earlier elements, not just the immediately preceding one -- "rs1" and "rs2" are not
+    // adjacent to their duplicate, so a scan that only compared consecutive elements would miss this
+    StringWriter sink = new StringWriter();
+    VcfPosition position = new VcfPosition(
+        "1", 100, List.of("rs1", "rs2", "rs1"), "A", null, null, null, null, null, -1, new VcfWarnings(sink));
+    assertEquals(List.of("rs1", "rs2", "rs1"), position.getIds());
+    assertTrue(sink.toString().contains("Duplicate ID \"rs1\""));
+  }
+
+  @Test
+  public void testLenientConstructorHandlesManyIdsWithoutQuadraticSlowdown() {
+    // regression test: isDuplicateAt's allocation-free scan is O(n) per call (O(n^2) overall) -- fine for a
+    // typically-tiny ID list, but ID/FILTER/FORMAT are delimiter-separated lists inside a single column whose
+    // element count is bounded only by line length, i.e. attacker-controlled and unbounded, the same DoS shape
+    // as the already-fixed ##PEDIGREE O(n^2) issue in VcfMetadata.hasPedigreeIdCollision. An earlier version of
+    // this fix wrongly assumed this list's length was bounded by column structure; a real measurement showed a
+    // 100,000-ID single record going from 91 ms (HashSet) to 25.4 SECONDS (pure scan) -- DUPLICATE_SCAN_THRESHOLD
+    // exists to keep this bounded by falling back to a HashSet once the list is no longer small. 3 seconds is a
+    // wide margin above the fixed behavior's near-instant completion at this size.
+    List<String> ids = new java.util.ArrayList<>(50_000);
+    for (int i = 0; i < 50_000; i++) {
+      ids.add("rs" + i);
+    }
+    assertTimeoutPreemptively(java.time.Duration.ofSeconds(3), () -> {
+      StringWriter sink = new StringWriter();
+      VcfPosition position = new VcfPosition(
+          "1", 100, ids, "A", null, null, null, null, null, -1, new VcfWarnings(sink));
+      assertEquals(50_000, position.getIds().size());
+      assertEquals("", sink.toString());
+    });
+  }
+
+  @Test
   public void testStrictConstructorThrowsForDuplicateFilterCode() {
     VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new VcfPosition(
         "1", 100, null, "A", null, null, List.of("hp23", "hp23"), null, null, -1));
     assertTrue(ex.getMessage().contains("Duplicate FILTER code"));
+  }
+
+  @Test
+  public void testConstructorThrowsForNonAdjacentDuplicateFormatKey() {
+    // regression test for checkFormat's own isDuplicateAt-based duplicate check (no prior test existed for a
+    // duplicate FORMAT key at all) -- "DP" and "DP" are not adjacent, proving the scan checks all earlier
+    // elements, not just the immediately preceding one
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new VcfPosition(
+        "1", 100, null, "A", null, null, null, null, List.of("DP", "AD", "DP"), -1));
+    assertTrue(ex.getMessage().contains("Duplicate FORMAT key \"DP\""));
   }
 
   @Test

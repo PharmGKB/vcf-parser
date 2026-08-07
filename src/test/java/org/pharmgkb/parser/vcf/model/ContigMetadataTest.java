@@ -247,6 +247,50 @@ public class ContigMetadataTest {
   }
 
   @Test
+  public void testMapConstructorWarnsForTwoDistinctNonCommaInvalidCharacters() {
+    // regression test: init()'s pattern-match loop previously broke after the FIRST non-comma invalid character
+    // it found, silently dropping a SECOND, genuinely different one -- "1(2)[3]" has both '(' and '[', and both
+    // must be reported, not just '('
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      Map<String, String> map = new HashMap<>();
+      map.put(ContigMetadata.ID, "1(2)[3]");
+      new ContigMetadata(map, VcfWarnings.DEFAULT);
+      assertTrue(appender.anyMessageContains("contains the invalid character '('"));
+      assertTrue(appender.anyMessageContains("contains the invalid character '['"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testMapConstructorWarnsOnceForRepeatedSameInvalidCharacter() {
+    // companion test: a repeated occurrence of the SAME invalid character must not spam a duplicate warning per
+    // occurrence -- only genuinely distinct invalid characters get their own warning
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      Map<String, String> map = new HashMap<>();
+      map.put(ContigMetadata.ID, "1(2(3");
+      new ContigMetadata(map, VcfWarnings.DEFAULT);
+      assertEquals(1, appender.countMessagesContaining("contains the invalid character '('"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testBadLength() {
     // ContigMetadata.init()'s catch (NumberFormatException) block should warn on a non-numeric length
     ch.qos.logback.classic.Logger root =
