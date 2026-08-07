@@ -3,7 +3,8 @@
 This file tracks known, minor code-shape observations in this library that have been deliberately left
 unaddressed, along with the reasoning, so they aren't rediscovered and re-proposed as new findings. Each
 entry is self-contained: it names the exact code location and behavior, explains why it's not being fixed,
-and states what would change that decision.
+and states what would change that decision. Where several entries share the same underlying shape or
+decision, they're grouped under one heading with sub-cases, rather than repeated as separate entries.
 
 ## InfoMetadata and FormatMetadata each independently duplicate their Number/Type validation logic
 
@@ -37,40 +38,58 @@ quoting check that only apply to one side — real complexity for marginal DRY b
 fixed number of call sites. Revisit if a third sibling with the same Number/Type/reserved-property shape is
 ever added, at which point the shared-abstraction case gets stronger.
 
-## VcfParser.Builder's required-argument setters raise a raw NullPointerException, not VcfFormatException
+## Caller-configuration parameters use a raw `NullPointerException`, not `VcfFormatException`
+
+Two unrelated call sites both reject a `null` caller-configuration argument via `Preconditions.checkNotNull`
+(a plain `java.lang.NullPointerException`, no message) instead of this library's usual `VcfFormatException`
+-- the same "wrong exception type for a null argument" shape that a long fix chain closed elsewhere across
+this codebase (`VcfWriter`, `VcfPosition`, `VcfMetadata`, `BaseMetadata`, `InfoMetadata`, `FormatMetadata`,
+`InternalUtils`, `VcfSample`, `MemoryMappedVcfDataStore`, `AltStructuralVariant`, and `VcfFloat`) by
+converting it to `VcfFormatException`. Both are deliberate exceptions to that fix chain, for the same reason:
+see the shared decision below.
+
+### `VcfParser.Builder`'s required-argument setters
 
 `VcfParser.Builder.fromFile`/`fromReader`/`parseWith`/`warningsToFile(Path)` reject a null argument via
-`Preconditions.checkNotNull`, which throws a plain `java.lang.NullPointerException` with no message -- the
-same "wrong exception type for a null argument" shape that a long fix chain closed elsewhere across this
-codebase (`VcfWriter`, `VcfPosition`, `VcfMetadata`, `BaseMetadata`, `InfoMetadata`, `FormatMetadata`,
-`InternalUtils`, `VcfSample`, `MemoryMappedVcfDataStore`, `AltStructuralVariant`, and `VcfFloat`) by
-converting it to `VcfFormatException`.
+`Preconditions.checkNotNull`. These are pure `Builder` configuration entry points, called exactly once per
+parse, before any file content is read, with a `Path`/`BufferedReader`/`VcfLineParser` the calling code
+itself constructs and passes in. Confirmed by grep: the only two matches for these method names anywhere in
+`src/main` are Javadoc example snippets (in `TransformingVcfLineParser.java` and `VcfWriter.java`), not real
+code -- nothing internal to this library ever calls them, and their arguments can never be derived from a
+parsed VCF file's own data. Contrast with `TransformingVcfLineParser.Builder.transformation(VcfTransformation,
+VcfWriter)`'s `writer` argument, which also uses `Preconditions.checkNotNull` -- the correct, existing
+pattern this decision matches, not a defect.
 
-This is a different case, though: those other fixes closed a gap reachable from parsed VCF *content* --
-a caller has no control over what a file contains, so a hostile or malformed value silently corrupting
-output or crashing with an unhelpful exception is this library's problem to prevent. `fromFile`/
-`fromReader`/`parseWith`/`warningsToFile(Path)` are the opposite: they are pure `Builder` configuration
-entry points, called exactly once per parse, before any file content is read, with a `Path`/
-`BufferedReader`/`VcfLineParser` the calling code itself constructs and passes in. Confirmed by grep: the
-only two matches for these method names anywhere in `src/main` are Javadoc example snippets (in
-`TransformingVcfLineParser.java` and `VcfWriter.java`), not real code -- nothing internal to this library
-ever calls them, and their arguments can never be derived from a parsed VCF file's own data. A `null` here
-is therefore always the direct library caller's own programming mistake (forgot to check a variable before
-passing it in), never something an untrusted `.vcf` file could trigger -- exactly the case
-`Preconditions.checkNotNull`'s fail-fast-with-NPE idiom is meant for, and why converting it to
-`VcfFormatException` (a *content*-rejection exception type) would be the wrong fix even taken in
-isolation, not just an inconsistent one. Contrast with
-`TransformingVcfLineParser.Builder.transformation(VcfTransformation, VcfWriter)`'s `writer` argument,
-which also uses `Preconditions.checkNotNull` -- the correct, existing pattern this decision matches, not a
-defect.
+### `BaseMetadata`/`IdDescriptionMetadata` constructors' `label` parameter
 
-**Decision: won't fix.** Converting `Preconditions.checkNotNull`'s NPE to `VcfFormatException` here would
-mean re-litigating an established, consistently-applied convention across every `Builder` in this codebase,
-not just `VcfParser.Builder`, for arguments that can never reach parsed VCF *content* -- a caller who never
-passes a `Path`/`Reader` to `fromFile`/`fromReader` has a programming error, not a data-quality problem the
-way a null CHROM or a null metadata property is. Revisit only alongside a deliberate, codebase-wide
+`BaseMetadata(String label, Map<String, String> properties)`, `IdDescriptionMetadata(String label, String
+id, String description)`, and `IdDescriptionMetadata(String label, Map<String, String> properties,
+VcfWarnings warnings)` are all `public` constructors on `public` classes -- externally callable, not
+internal-only, though the only in-repo caller (`VcfParser.java`) always passes a hardcoded literal
+(`"ALT"`, `"FILTER"`, `"SAMPLE"`). Every other parameter in each of these constructors (`properties`, `id`,
+`description`, `warnings`) is null-checked and throws `VcfFormatException` per the Public API Null-Safety
+Policy; `label` is not. A caller passing `label = null` gets a fully-constructed object whose `getLabel()`
+permanently returns `null`, and every future diagnostic this instance produces embeds the literal text
+`"null"` (SLF4J's `MessageFormatter`, which every `m_warnings.warn("{} ...", getLabel(), ...)` call site
+routes through, explicitly renders a `null` argument as `"null"`, not blank) -- e.g. `"null metadata ID is
+blank"` instead of a message clearly attributed to `FILTER`/`INFO`/etc. `label` is caller-configuration, not
+VCF content, the same category `VcfParser.Builder`'s required-argument setters (above) are exempted from
+this policy for: at every real call site -- in this repo's own code, and for any external caller building
+`VcfMetadata` programmatically without going through `VcfParser` -- `label` is a hardcoded classification
+string the calling code chooses for itself (`"FILTER"`, `"INFO"`, a caller's own custom tag), never
+something derived from parsed VCF file content the way `properties`/`id`/`description` are.
+
+**Decision: won't fix, for both cases above.** A `null` here is always the direct caller's own programming
+mistake (forgot to check a variable before passing it in), never something an untrusted `.vcf` file could
+trigger -- exactly the case `Preconditions.checkNotNull`'s fail-fast-with-NPE idiom is meant for, and why
+converting either to `VcfFormatException` (a *content*-rejection exception type) would be the wrong fix even
+taken in isolation, not just an inconsistent one. Converting `VcfParser.Builder`'s case specifically would
+also mean re-litigating an established, consistently-applied convention across every `Builder` in this
+codebase, not just this one. Revisit `VcfParser.Builder`'s case only alongside a deliberate, codebase-wide
 decision to migrate every `Builder`'s required-argument convention away from `Preconditions.checkNotNull`,
-not as a one-off triggered by this fix chain.
+not as a one-off. Revisit `label`'s case if a real caller reports this as a genuine (non-hypothetical) source
+of confusing diagnostics, or if `label` ever becomes something this library itself derives from parsed
+content rather than something every caller always supplies as a literal.
 
 ## AltStructuralVariant's parent-check no-ops when a component's parent isn't itself a reserved code
 
@@ -117,27 +136,33 @@ wire it into the version-computation path its name suggests it was written for).
 determines which was actually intended, or needs a dev-build version-naming scheme distinct from
 `getVersionName()`'s tagged-release one.
 
-## `VcfPosition.checkFilters` emits redundant warnings for a FILTER list with multiple `PASS` entries
+## Multiple independent checks warn separately about the same underlying defect
+
+Three unrelated cases all produce more than one warning for what is, from a caller's point of view, a single
+defect. In every case, no data is lost or corrupted, and coordinating the checks to suppress a duplicate
+warning would require new complexity (a shared flag, cross-method state, or a loop restructure) for a purely
+cosmetic issue. The shape differs per case (documented in each sub-case below), which is why they're
+recorded separately rather than as one code location, but the underlying reasoning is the same in all three.
+
+### `VcfPosition.checkFilters`: repeated `PASS` entries
 
 `checkFilters` runs two independent checks within the same per-element loop over the FILTER list: one warns
 whenever an element equals `PASS` and the list has more than one entry ("FILTER contains PASS along with
 other filters"), and another warns whenever an element has already been seen earlier in the same list
 ("Duplicate FILTER code"). Neither check tracks whether it has already fired for the list as a whole --
-each re-evaluates independently, once per matching element.
+each re-evaluates independently, once per matching element. For `FILTER=["PASS","PASS"]`, this produces
+three warnings from one call: the PASS-combined check fires once per `PASS` occurrence (twice, with an
+identical message both times, since it doesn't distinguish "the first PASS" from "a later PASS"), and the
+duplicate-code check fires once more for the second occurrence.
 
-For `FILTER=["PASS","PASS"]`, this produces three warnings from one call: the PASS-combined check fires once
-per `PASS` occurrence (twice, with an identical message both times, since it doesn't distinguish "the first
-PASS" from "a later PASS"), and the duplicate-code check fires once more for the second occurrence. No data
-is lost or corrupted -- both entries are preserved as-is -- this is purely warning-output noise.
+This is the "one check firing repeatedly within itself" shape -- contrast with the two sub-cases below,
+where two *separate* checks each independently notice the same defect from their own vantage point, not one
+check re-firing. `FILTER=PASS;PASS` is already a degenerate, spec-invalid input on its own terms (`PASS` is
+defined as meaning no filters failed; repeating it conveys no additional information), so real-world
+occurrence is unlikely. Deduplicating this specific warning output would require either an early-exit flag
+or restructuring the per-element loop into two passes.
 
-**Decision: won't fix.** `FILTER=PASS;PASS` is already a degenerate, spec-invalid input on its own terms
-(`PASS` is defined as meaning no filters failed; repeating it conveys no additional information), so
-real-world occurrence is unlikely. Deduplicating the warning output would require either an early-exit flag
-or restructuring the per-element loop into two passes -- real complexity for a purely cosmetic issue with no
-functional impact. Revisit if a caller reports genuinely noisy warning output from this pattern, or if
-`checkFilters`/`checkIds` are restructured for an unrelated reason that would make deduplication free.
-
-## A malformed `GT` value with a leading phase marker produces two independent warnings, not one
+### A malformed `GT` value with a leading phase marker
 
 `VcfSample.getProperty(VcfPosition, VcfMetadata, String)` and `VcfSample.getGenotype(VcfPosition)` each parse
 a sample's raw `GT` string independently, for different purposes: the former calls
@@ -152,41 +177,30 @@ own empty-base handling.
 A consumer who calls both methods for the same sample (e.g. this library's own test-only
 `DeferredValidationLineParser`, which deliberately exercises every deferred check) sees both warnings for
 the one malformed value. A consumer who calls only one of the two methods -- the common case -- only ever
-sees the warning from whichever one they called.
+sees the warning from whichever one they called. These are two genuinely independent, correctly-functioning
+checks in two independently-reachable public methods, each legitimately flagging the same bad input from its
+own angle -- not one check firing twice, the shape the `checkFilters`/`PASS` case above describes.
+Coordinating the two to suppress a second warning would require new cross-method state (e.g. threading an
+"already warned about this GT" flag between `getPloidy` and `getGenotype`, which have no other coupling
+today) for a purely cosmetic double-warning that only a deliberately exhaustive caller would ever observe.
 
-**Decision: won't fix.** These are two genuinely independent, correctly-functioning checks in two
-independently-reachable public methods, each legitimately flagging the same bad input from its own angle --
-not one check firing twice (the shape the `checkFilters`/`PASS` entry above describes). No data is lost or
-corrupted in either path. Coordinating the two to suppress a second warning would require new cross-method
-state (e.g. threading a "already warned about this GT" flag between `getPloidy` and `getGenotype`, which
-have no other coupling today) for a purely cosmetic double-warning that only a deliberately exhaustive
-caller would ever observe. Revisit if a real (non-test-harness) caller reports this as genuinely noisy, or
-if `getPloidy` and `getGenotype` are unified onto one shared GT-parsing helper for an unrelated reason that
-would make deduplication free.
+### Missing or blank metadata ID
 
-## `BaseMetadata`/`IdDescriptionMetadata` constructors' `label` parameter has no null-guard, unlike every sibling parameter in the same constructors
+A missing or blank `ID` on any of the six keyed metadata declaration types (INFO/FORMAT/FILTER/ALT/contig/
+SAMPLE) is independently caught at two layers: first at construction time, by the declaration object's own
+`IdMetadata.init()` (e.g. "INFO metadata ID is blank"), and again at registration time, by
+`VcfMetadata`/`Builder`'s own `addXxx` method, which finds no usable ID to key the declaration by and warns
+before dropping it (e.g. "INFO metadata declaration has no ID and cannot be stored; dropped: {...}"). Like
+the `GT` case above (not the `checkFilters` case), this is two independently-reachable checks, not one check
+firing twice: parsing one malformed header line produces both warnings in the same log, both correct, both
+about the same root cause.
 
-`BaseMetadata(String label, Map<String, String> properties)`, `IdDescriptionMetadata(String label, String
-id, String description)`, and `IdDescriptionMetadata(String label, Map<String, String> properties,
-VcfWarnings warnings)` are all `public` constructors on `public` classes -- externally callable, not
-internal-only, though the only in-repo caller (`VcfParser.java`) always passes a hardcoded literal
-(`"ALT"`, `"FILTER"`, `"SAMPLE"`). Every other parameter in each of these constructors (`properties`, `id`,
-`description`, `warnings`) is null-checked and throws `VcfFormatException` per the Public API Null-Safety
-Policy; `label` is not. A caller passing `label = null` gets a fully-constructed object whose `getLabel()`
-permanently returns `null`, and every future diagnostic this instance produces embeds the literal text
-`"null"` (SLF4J's `MessageFormatter`, which every `m_warnings.warn("{} ...", getLabel(), ...)` call site
-routes through, explicitly renders a `null` argument as `"null"`, not blank) -- e.g. `"null metadata ID is
-blank"` instead of a message clearly attributed to `FILTER`/`INFO`/etc.
-
-**Decision: won't fix.** `label` is caller-configuration, not VCF content, the same category
-`VcfParser.Builder`'s required-argument setters (above) are exempted from this policy for: at every real
-call site -- in this repo's own code, and for any external caller building `VcfMetadata` programmatically
-without going through `VcfParser` -- `label` is a hardcoded classification string the calling code chooses
-for itself (`"FILTER"`, `"INFO"`, a caller's own custom tag), never something derived from parsed VCF file
-content the way `properties`/`id`/`description` are. A `null` here is the caller's own programming mistake,
-not a data-quality problem an untrusted `.vcf` file could trigger. Revisit if a real caller reports this as
-a genuine (non-hypothetical) source of confusing diagnostics, or if `label` ever becomes something this
-library itself derives from parsed content rather than something every caller always supplies as a literal.
+**Decision: won't fix, for all three sub-cases above.** Each is either a single check re-firing on a
+degenerate, unlikely-in-practice input (`checkFilters`), or two independently-reachable, independently
+correct checks with no other coupling (`GT`, missing/blank ID) -- coordinating either shape would add real
+complexity for output that is informative rather than misleading. Revisit any sub-case if a real
+(non-test-harness) caller reports it as genuinely noisy, or if the relevant methods are ever unified onto one
+shared implementation for an unrelated reason that would make deduplication free.
 
 ## `BaseMetadata.checkAttributeOrder()` doesn't detect a custom/unrecognized attribute wedged between two canonical ones
 
@@ -243,36 +257,42 @@ first place. `DUPLICATE_METADATA_ID_HANDLING.md`'s PEDIGREE table has been updat
 case so a future sweep doesn't re-derive the same question. Revisit only if a future bcftools version
 changes this specific behavior (see `BCFTOOLS_VERSION_DEPENDENCIES.md`).
 
-## `VcfMetadata.addPedigree`'s duplicate-ID cache can't detect an in-place `List.set(i, ...)`/`ListIterator.set(...)` replacement on the live list returned by `getPedigrees()`
+## Metadata duplicate-ID dedup caches have narrow staleness gaps for uncommon mutation patterns
 
-`VcfMetadata.addPedigree`/`Builder.addPedigree` cache seen PEDIGREE IDs for performance (an O(n^2) header-parsing
-DoS fix -- see the commit that introduced `TrackedPedigreeList`/`hasPedigreeIdCollision`). The cache's staleness
-signal is `TrackedPedigreeList.modCountSnapshot()`, which mirrors `java.util.ArrayList`'s own internal `modCount`
-bookkeeping: it increments on every *structural* modification (`add`, `remove`, `clear`, iterator removal, a
-remove-then-add pair, etc.), so all of those are correctly detected and force a cache rebuild. `List.set(int,
-Object)` is, by `java.util.AbstractList`'s own definition, NOT a structural modification (it doesn't change the
-list's size or otherwise invalidate an in-progress iteration) and does not increment `modCount` -- so replacing
-an already-added `PedigreeMetadata` with a different one at the same list index, via `metadata.getPedigrees().set(i,
-replacement)`, would go undetected: the cache would still associate that slot with the OLD entry's ID, not the
-new one, until some other structural change forces a rebuild. `ListIterator.set(...)` (obtained via
-`metadata.getPedigrees().listIterator()`) is the same underlying operation -- `ArrayList`'s own iterator
-implementation routes it to the identical non-structural `set` -- so it shares this exact gap too, not a separate
-one.
+Both of this library's duplicate-ID dedup caches -- `PedigreeMetadata`'s list-based one and the six
+`HashMap`-keyed types' (INFO/FORMAT/FILTER/ALT/contig/SAMPLE) map-based one -- have a residual staleness gap
+for a mutation pattern more unusual than the ones their respective fixes/DoS-prevention mechanisms already
+cover. Both were found while working on the same area of code (an O(n^2) header-parsing DoS fix for
+`PedigreeMetadata`, which raised the natural question of whether comparable gaps exist elsewhere), and both
+are left unfixed for a shared reason: see the decision below.
 
-**Decision: won't fix.** No existing test, precedent, or documented usage anywhere in this codebase calls
-`List.set(...)`/`ListIterator.set(...)` on the value returned by `getPedigrees()` (or on any of the other "live
-view" getters this library exposes) -- every real mutation pattern this library's own tests exercise for a live
-list/map getter is add/remove/put, never an in-place index replacement. `PedigreeMetadata` was separately made
-immutable after construction (see its own class javadoc) specifically to close a *related but distinct* vector --
-mutating an already-added entry's own `ID` property in place -- because that one WAS realistically reachable (the
-identical
-mutation pattern is already used elsewhere in this codebase's own tests, just on other metadata types). This
-`List.set`/`ListIterator.set` vector requires a caller to deliberately replace a list slot's occupant via
-low-level `List` API misuse with no existing analog anywhere in this project. Revisit if a real caller or
-fixture ever demonstrates this pattern in practice, or if `getPedigrees()`'s live-view contract is ever
-revisited more broadly.
+### `PedigreeMetadata`'s list-based cache: `List.set`/`ListIterator.set`
 
-## The six `HashMap`-keyed metadata types' `warnIfDuplicate` can be fooled by an in-place `ID` mutation on an already-added entry
+`VcfMetadata.addPedigree`/`Builder.addPedigree` cache seen PEDIGREE IDs for performance (the O(n^2)
+header-parsing DoS fix -- see the commit that introduced `TrackedPedigreeList`/`hasPedigreeIdCollision`). The
+cache's staleness signal is `TrackedPedigreeList.modCountSnapshot()`, which mirrors `java.util.ArrayList`'s
+own internal `modCount` bookkeeping: it increments on every *structural* modification (`add`, `remove`,
+`clear`, iterator removal, a remove-then-add pair, etc.), so all of those are correctly detected and force a
+cache rebuild. `List.set(int, Object)` is, by `java.util.AbstractList`'s own definition, NOT a structural
+modification (it doesn't change the list's size or otherwise invalidate an in-progress iteration) and does
+not increment `modCount` -- so replacing an already-added `PedigreeMetadata` with a different one at the
+same list index, via `metadata.getPedigrees().set(i, replacement)`, would go undetected: the cache would
+still associate that slot with the OLD entry's ID, not the new one, until some other structural change
+forces a rebuild. `ListIterator.set(...)` (obtained via `metadata.getPedigrees().listIterator()`) is the
+same underlying operation -- `ArrayList`'s own iterator implementation routes it to the identical
+non-structural `set` -- so it shares this exact gap too, not a separate one.
+
+No existing test, precedent, or documented usage anywhere in this codebase calls `List.set(...)`/
+`ListIterator.set(...)` on the value returned by `getPedigrees()` (or on any of the other "live view" getters
+this library exposes) -- every real mutation pattern this library's own tests exercise for a live list/map
+getter is add/remove/put, never an in-place index replacement. `PedigreeMetadata` was separately made
+immutable after construction (see its own class Javadoc) specifically to close a *related but distinct*
+vector -- mutating an already-added entry's own `ID` property in place -- because that one WAS realistically
+reachable (the identical mutation pattern is already used elsewhere in this codebase's own tests, just on
+other metadata types). This `List.set`/`ListIterator.set` vector requires a caller to deliberately replace a
+list slot's occupant via low-level `List` API misuse with no existing analog anywhere in this project.
+
+### The six `HashMap`-keyed types' `warnIfDuplicate`: in-place `ID` mutation
 
 `VcfMetadata`'s/`Builder`'s six keyed types (INFO/FORMAT/FILTER/ALT/contig/SAMPLE) dedupe via
 `warnIfDuplicate(Map<String, XxxMetadata>, id, ...)`, an O(1) `HashMap.containsKey(id)` check keyed by
@@ -294,23 +314,19 @@ the same `getId()`.
 still keyed under `"B"`); add `md5` (id="C") -- wrongly accepted, since the map has no key `"C"` yet. Result:
 `{A: md1, B: md2(getId=C), C: md5(getId=C)}` -- two entries reporting `getId()==C`.
 
-Discovered while fixing an unrelated `PedigreeMetadata` O(n^2) DoS (see the `TrackedPedigreeList` entries
-above), which raised the natural question of whether the same fix (making the type immutable) should
-propagate here too.
-
-**Decision: won't fix; not a comparable situation to `PedigreeMetadata`'s fix.** Two things distinguish this
-from the `PedigreeMetadata` case:
+Two things distinguish this from the `PedigreeMetadata` sub-case above, beyond both being cache-staleness
+gaps found in the same investigation:
 
 1. **Immutability isn't available as an option here.** `PedigreeMetadata` was made immutable because nothing
-   anywhere in this codebase mutates it post-construction -- the fix was free. The exact mutation pattern that
-   triggers this gap (`putPropertyRaw("ID", ...)` on an already-added entry) is itself real, existing, tested
-   functionality for these six types (the `VcfTransformation` pipeline feature). Removing it would break
-   real behavior, not just close a theoretical gap.
-2. **The failure mode is one-directional and already caught downstream, unlike `PedigreeMetadata`'s bug.**
+   anywhere in this codebase mutates it post-construction -- that fix was free. The exact mutation pattern
+   that triggers this gap (`putPropertyRaw("ID", ...)` on an already-added entry) is itself real, existing,
+   tested functionality for these six types (the `VcfTransformation` pipeline feature). Removing it would
+   break real behavior, not just close a theoretical gap.
+2. **The failure mode is one-directional and already caught downstream, unlike `PedigreeMetadata`'s DoS bug.**
    A stale `HashMap` key can only ever cause a false-negative (silently accepting a duplicate) -- it can never
    cause a false-positive rejection of valid content, since mutating an existing entry's `ID` can only break an
-   association the map already had, never fabricate a new key the map didn't have. `PedigreeMetadata`'s bug
-   (in the add-time duplicate-ID cache introduced by the DoS fix, not in any write-time check) could go the
+   association the map already had, never fabricate a new key the map didn't have. `PedigreeMetadata`'s DoS
+   bug (in the add-time duplicate-ID cache introduced by that fix, not in any write-time check) could go the
    *other* way too -- wrongly rejecting or silently dropping genuinely valid content at the moment of the
    `addPedigree` call, before it was ever stored, which no write-time check could ever recover. This gap's one
    failure direction, by contrast, is already independently caught before anything is written:
@@ -332,9 +348,15 @@ from the `PedigreeMetadata` case:
    `PedigreeMetadata` DoS or the `BigDecimal`/CIGAR findings, all of which were reachable from file content
    alone.
 
-Revisit if a real caller reports actually hitting this (as opposed to it being found by deliberate
-investigation), or if `validateBeforeWrite()`'s existing mismatch check is ever found to have another gap of its
-own beyond the removed-ID one already found and fixed above.
+**Decision: won't fix, for both sub-cases above.** Neither is a comparable situation to the
+`PedigreeMetadata` DoS fix that surfaced them: the `List.set` gap has no realistic caller pattern to trigger
+it at all, and the `HashMap`-key gap can't be fixed the same way (immutability isn't available, since the
+mutation it would remove is real load-bearing functionality) but is also lower-risk (one-directional,
+downstream-caught, not reachable from file content). Revisit the `List.set` sub-case if a real caller or
+fixture ever demonstrates that pattern in practice, or if `getPedigrees()`'s live-view contract is ever
+revisited more broadly. Revisit the `HashMap`-key sub-case if a real caller reports actually hitting this (as
+opposed to it being found by deliberate investigation), or if `validateBeforeWrite()`'s existing mismatch
+check is ever found to have another gap of its own beyond the removed-ID one already found and fixed above.
 
 ## `VcfPosition`'s eager (`ListMultimap`) constructor still keeps a lone `.` INFO key that the lazy raw-text path drops entirely
 
@@ -373,11 +395,12 @@ it now only fires when at least two *distinct* kept codes are present, one of wh
 repetition itself.
 
 `VcfPosition.checkFilters` (the FILTER *column*, a different method for a different field) does not treat
-these the same way: `["PASS","PASS"]` warns ("Duplicate FILTER code", see this file's own
-"`VcfPosition.checkFilters` emits redundant warnings..." entry above), and `[".","."]` throws unconditionally
-(`.` combined with anything, including another `.`, is never allowed for FILTER). FT's own method's code
-comment cites `checkFilters`'s `.`-exclusivity precedent for why `PASS;.` must still warn, which could read
-as implying full parity with `checkFilters` -- it does not extend to same-code repetition.
+these the same way: `["PASS","PASS"]` warns ("Duplicate FILTER code", see this file's own "Multiple
+independent checks warn separately about the same underlying defect" entry's `checkFilters` sub-case
+above), and `[".","."]` throws unconditionally (`.` combined with anything, including another `.`, is never
+allowed for FILTER). FT's own method's code comment cites `checkFilters`'s `.`-exclusivity precedent for why
+`PASS;.` must still warn, which could read as implying full parity with `checkFilters` -- it does not extend
+to same-code repetition.
 
 **Decision: won't fix; deliberate, narrower scope than full FILTER/FT grammar parity.** `checkFilterLikeValue`
 already diverges from `checkFilters` in enforcement style for good, previously-established reasons: FT is
