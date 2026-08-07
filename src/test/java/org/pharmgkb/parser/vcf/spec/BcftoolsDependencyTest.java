@@ -465,10 +465,11 @@ class BcftoolsDependencyTest {
   }
 
   @Test
-  void testEmptyAltEntryBcftoolsSubstitutesDotUnlikeThisLibrarysOwnDropChoice() throws IOException, InterruptedException {
-    // documents a deliberate divergence from EMPTY_FIELD_HANDLING.md's own choice: bcftools substitutes an
-    // empty ALT entry with "." (T,,C -> T,.,C), but this library drops it instead (ALT deliberately drops
-    // rather than substituting '.', since '.' mixed with a real allele already throws elsewhere)
+  void testEmptyAltEntryBcftoolsSubstitutesDotMatchingThisLibrarysOwnChoice() throws IOException, InterruptedException {
+    // confirms parity with EMPTY_FIELD_HANDLING.md's own choice: bcftools substitutes an empty ALT entry with
+    // "." (T,,C -> T,.,C), and VcfPosition.checkAltBases does the same (fixed by e763eeb to substitute rather
+    // than drop, specifically to match this bcftools behavior -- dropping would shift every later allele's GT
+    // index, which substituting "." avoids)
     String vcf = "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000000>\n" +
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT,,C\t.\tPASS\t.\n";
     BcftoolsResult result = runBcftools(vcf, "view");

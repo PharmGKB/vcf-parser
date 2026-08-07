@@ -128,6 +128,6 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
 - Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "`CNP`'s `Number=G` vs. `GT`/`GL`/`PL`/`GP`/`PP`'s `Number=G`" entry
 
 ### Empty/zero-length delimited field handling
-- Test: `BcftoolsDependencyTest#testEmptyAltEntryBcftoolsSubstitutesDotUnlikeThisLibrarysOwnDropChoice`
+- Test: `BcftoolsDependencyTest#testEmptyAltEntryBcftoolsSubstitutesDotMatchingThisLibrarysOwnChoice`
   (representative for ALT specifically; not every field's own empty-entry rule is independently re-verified here)
 - Reasoning: `EMPTY_FIELD_HANDLING.md` (its own field-by-field table is the fuller source of truth)
