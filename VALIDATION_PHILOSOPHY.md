@@ -89,7 +89,15 @@ vs-parsing distinction; see that policy for why these specific fields stay uncon
   `VcfWarnings`. The content checks that differ between the two full constructors (an empty ID/ALT/FILTER
   entry, an empty FORMAT sub-field name, FILTER combining `PASS` with another code, a duplicate value within
   `ID` or `FILTER`, `=` inside an INFO value) all go through the `@Nullable VcfWarnings`-as-signal mechanism
-  above.
+  above. `newWithTrustedFormat()` is a principle-3 case layered on top of that dispatch, not a fourth branch of
+  it: it skips `checkFormat` (and therefore both its throw-vs-warn dispatch and any warning it would emit)
+  entirely, for `VcfParser`'s own per-record FORMAT-validation cache -- real VCFs often repeat the same FORMAT
+  column text across large blocks of consecutive records, and re-validating an already-validated one is
+  redundant work. Unlike `VcfSample.newTrusted()` (which keeps its own null/size checks and skips only one
+  narrower check), this one is a full skip, including `checkFormat`'s null-element check -- see `AGENTS.md`'s
+  Null-Safety Policy for why that's still sound here. A deliberate, chosen side effect: a FORMAT that would
+  warn (e.g. an empty sub-field name) now warns once per contiguous block of identical FORMAT text, not once
+  per record, since a cache hit skips re-emitting that warning too.
 - **`VcfMetadata`/`Builder`**: covered in "How principles 1 and 2 are dispatched" above.
 - **`VcfSample`**: not part of either dispatch shape -- its public constructors and `newTrusted()` factory
   already only throw (a null or mismatched-size key/value list, or -- outside `newTrusted()` -- a structural
@@ -152,7 +160,12 @@ vs-parsing distinction; see that policy for why these specific fields stay uncon
   `@RestrictedApi`/`@hidden` mechanism is reused here for the same reason it's used above -- a documentation-
   only "don't call this from outside its one trusted call site" signal -- but the risk it's guarding against is
   different (structurally-invalid VCF content reaching the writer unvalidated) and not part of the null-safety
-  policy's own scope.
+  policy's own scope. Contrast `VcfPosition.newWithTrustedFormat()`, added later for the same "trusted
+  parser-only fast path" reason but which genuinely IS on `AGENTS.md`'s null-safety exemption list: it skips
+  its target check (`checkFormat`) entirely rather than just one narrower piece of it, so its null-element
+  check is skipped too. The two methods look like the same pattern but sit on opposite sides of this
+  distinction -- check which checks a given trusted-bypass method actually skips before assuming either
+  precedent applies.
 
 ## Known, permanent deviations
 

@@ -2008,6 +2008,155 @@ public class VcfParserTest {
   }
 
   @Test
+  public void testFormatValidationCacheReusesValidatedListAcrossRepeatedFormatColumns() throws IOException {
+    // real VCFs often repeat the same FORMAT string across large blocks of consecutive records; this pins that
+    // each record still gets its own correct, independent FORMAT list when the cache is reused
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "1\t100\t.\tA\tT\t.\t.\t.\tGT:DP:AD\t0/1:10:5,5\n" +
+        "1\t101\t.\tA\tT\t.\t.\t.\tGT:DP:AD\t0/1:20:10,10\n" +
+        "1\t102\t.\tA\tT\t.\t.\t.\tGT:DP:AD\t1/1:30:0,30\n";
+    List<VcfPosition> positions = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .parseWith((metadata, position, sampleData) -> positions.add(position))
+        .build()) {
+      parser.parse();
+    }
+    assertEquals(3, positions.size());
+    for (VcfPosition position : positions) {
+      assertEquals(List.of("GT", "DP", "AD"), position.getFormat());
+    }
+  }
+
+  @Test
+  public void testFormatValidationCacheHandlesRepeatedDotFormatColumn() throws IOException {
+    // the FORMAT cache's raw-text key and VcfParser's own separate "." -> empty-list normalization (done
+    // before the cache lookup, not inside checkFormat) overlap at exactly one point: a repeated literal "."
+    // FORMAT column. This pins that a cache hit on "." correctly reuses an empty list (not the un-normalized
+    // single-element ["."]), and that noFormatFields-driven behavior (a sample column with real content but
+    // FORMAT is ".") still applies per-record, not just to the first occurrence.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "1\t100\t.\tA\tT\t.\t.\t.\t.\t.\n" +
+        "1\t101\t.\tA\tT\t.\t.\t.\t.\t.\n";
+    List<VcfPosition> positions = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .parseWith((metadata, position, sampleData) -> positions.add(position))
+        .build()) {
+      parser.parse();
+    }
+    assertEquals(2, positions.size());
+    assertTrue(positions.get(0).getFormat().isEmpty());
+    assertTrue(positions.get(1).getFormat().isEmpty());
+  }
+
+  @Test
+  public void testFormatValidationCacheWarnsOnlyOnceForRepeatedFormatWithEmptySubField(@TempDir Path tempDir)
+      throws IOException {
+    // deliberate, chosen behavior change (per this session's design discussion): a FORMAT that would warn
+    // (here, an empty sub-field name from an interior double colon) warns only ONCE per contiguous block of
+    // identical FORMAT text, not once per record -- the cache skips checkFormat's validation (and therefore
+    // its warning) entirely on a cache hit
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "1\t100\t.\tA\tT\t.\t.\t.\tGT::DP\t0/1::10\n" +
+        "1\t101\t.\tA\tT\t.\t.\t.\tGT::DP\t0/1::10\n" +
+        "1\t102\t.\tA\tT\t.\t.\t.\tGT::DP\t0/1::10\n";
+    Path vcfFile = tempDir.resolve("sample.vcf");
+    Files.writeString(vcfFile, vcf);
+    Path warningsFile = tempDir.resolve("warnings.log");
+    List<VcfPosition> positions = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(vcfFile)
+        .warningsToFile(warningsFile)
+        .parseWith((metadata, position, sampleData) -> positions.add(position))
+        .build()) {
+      parser.parse();
+    }
+    assertEquals(3, positions.size());
+    long warningCount = Files.readAllLines(warningsFile).stream()
+        .filter(line -> line.contains("FORMAT contains an empty sub-field name"))
+        .count();
+    assertEquals(1, warningCount);
+  }
+
+  @Test
+  public void testFormatValidationCacheMissesOnDifferentFormatThenRevalidates(@TempDir Path tempDir)
+      throws IOException {
+    // the cache holds only the single most-recently-validated (raw text, list) pair, not a full history map --
+    // a different FORMAT column in between two otherwise-identical ones must still be a cache MISS on the
+    // second occurrence, forcing a full re-validation (and re-warning) rather than being satisfied by the
+    // no-longer-most-recent earlier occurrence. The trailing 4th record (repeating row 3's FORMAT again,
+    // contiguously) is what makes this test distinguish "single most-recent slot" from "no cache at all" AND
+    // from "a persistent map remembering every distinct FORMAT ever seen": no cache -> 3 warnings (every row
+    // fully re-validates); single-slot (this design) -> 2 (rows 1 and 3 miss and warn, row 4 hits and doesn't);
+    // a persistent map -> only 1 (row 3 would incorrectly hit against row 1's still-remembered entry).
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "1\t100\t.\tA\tT\t.\t.\t.\tGT::DP\t0/1::10\n" +
+        "1\t101\t.\tA\tT\t.\t.\t.\tGT:DP\t0/1:10\n" +
+        "1\t102\t.\tA\tT\t.\t.\t.\tGT::DP\t0/1::10\n" +
+        "1\t103\t.\tA\tT\t.\t.\t.\tGT::DP\t0/1::10\n";
+    Path vcfFile = tempDir.resolve("sample.vcf");
+    Files.writeString(vcfFile, vcf);
+    Path warningsFile = tempDir.resolve("warnings.log");
+    List<VcfPosition> positions = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(vcfFile)
+        .warningsToFile(warningsFile)
+        .parseWith((metadata, position, sampleData) -> positions.add(position))
+        .build()) {
+      parser.parse();
+    }
+    assertEquals(4, positions.size());
+    long warningCount = Files.readAllLines(warningsFile).stream()
+        .filter(line -> line.contains("FORMAT contains an empty sub-field name"))
+        .count();
+    assertEquals(2, warningCount);
+  }
+
+  @Test
+  public void testFormatValidationCacheDoesNotLeakMutationBetweenRecords() throws IOException {
+    // regression test for the defensive-copy-on-cache-STORE: VcfPosition.getFormat() is documented and tested
+    // as safe to mutate in place. If the cache stored the FIRST record's own list by reference instead of a
+    // defensive copy, mutating that record's FORMAT list -- from inside its own parseWith callback, i.e. before
+    // the SECOND record (a cache hit against that exact entry) is even parsed -- would corrupt every later
+    // record that reuses the same cache entry. Mutating only after parser.parse() returns (as an earlier,
+    // flawed version of this test did) can't observe this: by then no further cache reads happen at all, since
+    // the cache-hit read path itself already always copies, so the bug is only visible while the cache is
+    // still being read from.
+    //
+    // The 3rd record (mutating the 2nd, a cache HIT, and checking the 3rd, also a cache hit against the same
+    // entry) covers the reverse direction: the defensive copy on cache-READ. This direction is safe by
+    // construction today (the read path already always copies via `new ArrayList<>(m_lastValidatedFormat)`
+    // regardless of the write-side fix above), but is included so a future edit that regressed the read-side
+    // copy would also be caught here, not just reasoned about.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "1\t100\t.\tA\tT\t.\t.\t.\tGT:DP:AD\t0/1:10:5,5\n" +
+        "1\t101\t.\tA\tT\t.\t.\t.\tGT:DP:AD\t0/1:20:10,10\n" +
+        "1\t102\t.\tA\tT\t.\t.\t.\tGT:DP:AD\t1/1:30:0,30\n";
+    List<VcfPosition> positions = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .parseWith((metadata, position, sampleData) -> {
+          positions.add(position);
+          if (positions.size() == 1 || positions.size() == 2) {
+            position.getFormat().add("EXTRA-" + positions.size());
+          }
+        })
+        .build()) {
+      parser.parse();
+    }
+    assertEquals(3, positions.size());
+    assertEquals(List.of("GT", "DP", "AD", "EXTRA-1"), positions.get(0).getFormat());
+    assertEquals(List.of("GT", "DP", "AD", "EXTRA-2"), positions.get(1).getFormat());
+    assertEquals(List.of("GT", "DP", "AD"), positions.get(2).getFormat());
+  }
+
+  @Test
   public void testWarningsToFileDefaultNameDerivedFromSourcePath(@org.junit.jupiter.api.io.TempDir Path tempDir)
       throws IOException {
     // a metadata line with no ID triggers a warning during parseMetadata() -- see VcfMetadata.addInfo

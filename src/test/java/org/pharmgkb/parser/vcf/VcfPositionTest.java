@@ -1297,6 +1297,32 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testNewWithTrustedFormatSkipsFormatValidationThatThePublicConstructorEnforces() {
+    // regression/contract test: newWithTrustedFormat() is VcfParser's own per-record FORMAT-cache fast path --
+    // it must skip checkFormat's validation entirely, unlike the public constructor, which must still reject
+    // the identical malformed list ("DP" duplicated). This pins the actual difference in behavior, not just
+    // that newWithTrustedFormat() doesn't crash.
+    List<String> duplicateFormat = List.of("DP", "AD", "DP");
+    assertThrows(VcfFormatException.class, () -> new VcfPosition(
+        "1", 100, null, "A", null, null, null, null, duplicateFormat, -1));
+    VcfPosition trusted = VcfPosition.newWithTrustedFormat(
+        "1", 100, null, "A", null, null, null, null, duplicateFormat, -1, VcfWarnings.DEFAULT);
+    assertEquals(duplicateFormat, trusted.getFormat());
+  }
+
+  @Test
+  public void testNewWithTrustedFormatProducesEquivalentPositionToPublicConstructorForWellFormedInput() {
+    // for input the public constructor would accept anyway (VcfParser's actual, already-validated cache
+    // content), newWithTrustedFormat() must produce an observably identical FORMAT list
+    List<String> format = List.of("GT", "DP", "AD");
+    VcfPosition trusted = VcfPosition.newWithTrustedFormat(
+        "1", 100, null, "A", null, null, null, null, format, -1, VcfWarnings.DEFAULT);
+    VcfPosition untrusted = new VcfPosition(
+        "1", 100, null, "A", null, null, null, null, format, -1, VcfWarnings.DEFAULT);
+    assertEquals(untrusted.getFormat(), trusted.getFormat());
+  }
+
+  @Test
   public void testLenientConstructorWarnsInsteadOfThrowingForDuplicateFilterCode() {
     StringWriter sink = new StringWriter();
     VcfPosition position = new VcfPosition(

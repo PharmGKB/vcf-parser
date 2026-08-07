@@ -101,15 +101,20 @@ here. The rest of this section states the concrete per-shape rules that follow f
 - A class or method explicitly documented as not part of this library's supported public API -- currently
   `InternalUtils` (renamed from `VcfUtils`; most of its members are `public` only because Java has no
   cross-package-within-a-library visibility modifier, not because they're designed for external callers),
-  `VcfMetadata.validateAlt`/`isEmptyMetadataValue`/`collidesWithAttributeListGrammar`, and
-  `VcfFloat.parse(String, VcfWarnings)`/`isSpecialValue`/`exceedsMaxDecimalLength` (the same situation, on
-  otherwise fully-supported classes) -- is exempt from this policy's null-rejection requirement. All three are marked with
-  `@RestrictedApi`/`@hidden` and a class- or method-level Javadoc disclaimer; see `VALIDATION_PHILOSOPHY.md`
-  for why that disclaimer is a documentation-only exemption, not a technical guarantee. Two of
-  `InternalUtils`'s null-guards were judged genuinely load-bearing regardless of this exemption and were
-  kept: `unquote` (see its own comment) and the per-element checks in
-  `dropEmptyEntries`/`fillEmptyEntriesWithDot` (reachable via `VcfPosition`'s documented live-mutation
-  contract on its own genuinely-supported getters, not through `InternalUtils` itself).
+  `VcfMetadata.validateAlt`/`isEmptyMetadataValue`/`collidesWithAttributeListGrammar`,
+  `VcfFloat.parse(String, VcfWarnings)`/`isSpecialValue`/`exceedsMaxDecimalLength`, and
+  `VcfPosition.newWithTrustedFormat` (the same situation, on otherwise fully-supported classes) -- is exempt
+  from this policy's null-rejection requirement. All four are marked with `@RestrictedApi`/`@hidden` and a
+  class- or method-level Javadoc disclaimer; see `VALIDATION_PHILOSOPHY.md` for why that disclaimer is a
+  documentation-only exemption, not a technical guarantee. `VcfPosition.newWithTrustedFormat` is restricted to
+  `VcfParser`'s own per-record FORMAT-validation cache (see `VALIDATION_PHILOSOPHY.md`'s `VcfPosition` entry)
+  and, unlike `VcfSample.newTrusted()`'s narrower single-check skip, bypasses `checkFormat` entirely --
+  including its null-element check -- since the caller-guaranteed invariant (an already-validated,
+  independently-owned copy) makes a null structurally unreachable there. Two of `InternalUtils`'s null-guards
+  were judged genuinely load-bearing regardless of this exemption and were kept: `unquote` (see its own
+  comment) and the per-element checks in `dropEmptyEntries`/`fillEmptyEntriesWithDot` (reachable via
+  `VcfPosition`'s documented live-mutation contract on its own genuinely-supported getters, not through
+  `InternalUtils` itself).
 
 
 ## Repository Guidelines

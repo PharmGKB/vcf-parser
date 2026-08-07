@@ -69,6 +69,22 @@ public class VcfParser implements Closeable {
   private @Nullable String m_lastChromosome;
   private long m_lastPosition;
   private final Set<String> m_closedChromosomes = new HashSet<>();
+  // FORMAT-validation cache: real VCFs often repeat the same FORMAT column text across large blocks of
+  // consecutive records. Holds only the single most
+  // recently validated (raw text, validated list) pair -- not a growing map -- since the access pattern this
+  // targets is contiguous repetition, not an arbitrary working set; this keeps the cache's memory bounded
+  // regardless of how many distinct FORMAT strings a file contains, at the cost of one specific pathological
+  // pattern: a file that strictly ALTERNATES between two (or more) FORMAT strings every record (e.g. GATK
+  // HaplotypeCaller mixing phased and unphased FORMAT columns throughout one file) makes every single record a
+  // cache miss, each paying a wasted String.equals check and one extra ArrayList allocation/copy on top of the
+  // full validation that would have run anyway -- a small net regression versus no cache at all for that shape
+  // of file, not just "not maximally fast." Still the right tradeoff for the common contiguous-block case this
+  // was built for; a persistent multi-entry cache would recover the alternating case too but adds real
+  // complexity (unbounded memory needs a bound, eviction policy, etc.) for a pattern assumed to be rare.
+  // m_lastValidatedFormat is a private, never-externally-exposed copy -- see its use in parseNextLine() for why
+  // a defensive copy is made on write, not just on read.
+  private @Nullable String m_lastFormatRawText;
+  private @Nullable List<String> m_lastValidatedFormat;
 
 
 
@@ -310,19 +326,45 @@ public class VcfParser implements Closeable {
 
       // FORMAT
       List<String> format = null;
+      String rawFormat = null;
+      boolean formatCacheHit = false;
       if (data.size() >= 9) {
-        format = toList(COLON, data.get(8));
-        if (format.size() == 1 && format.get(0).equals(".")) {
-          // no per-sample format fields at all; see VcfPosition.checkFormat's javadoc for why this is valid
-          // (matches bcftools 1.23.1 behavior, though VCFv4.2 through 4.5 are all silent on this exact case)
-          format = new ArrayList<>();
+        rawFormat = data.get(8);
+        if (rawFormat.equals(m_lastFormatRawText)) {
+          // a fresh copy is required, never the cached prototype itself: VcfPosition.getFormat() is documented
+          // and tested as safe to mutate in place (e.g. by a VcfTransformation), and a caller doing so must
+          // never be able to corrupt a later record's cache hit
+          format = new ArrayList<>(m_lastValidatedFormat);
+          formatCacheHit = true;
+        } else {
+          format = toList(COLON, rawFormat);
+          if (format.size() == 1 && format.get(0).equals(".")) {
+            // no per-sample format fields at all; see VcfPosition.checkFormat's javadoc for why this is valid
+            // (matches bcftools 1.23.1 behavior, though VCFv4.2 through 4.5 are all silent on this exact case)
+            format = new ArrayList<>();
+          }
         }
       }
       boolean noFormatFields = format != null && format.isEmpty();
 
       // QUAL and INFO are parsed lazily by VcfPosition (see setRawQuality/setRawInfo); many consumers never read them.
-      pos = new VcfPosition(chromosome, position, ids, ref, alt,
-          null, filters, null, format, m_lineNumber, m_warnings);
+      pos = formatCacheHit
+          ? VcfPosition.newWithTrustedFormat(chromosome, position, ids, ref, alt, null, filters, null, format,
+              m_lineNumber, m_warnings)
+          : new VcfPosition(chromosome, position, ids, ref, alt, null, filters, null, format, m_lineNumber,
+              m_warnings);
+      if (!formatCacheHit && rawFormat != null) {
+        // cache a defensive COPY of pos.getFormat() -- what checkFormat actually produced -- not the
+        // pre-checkFormat `format` local: checkFormat is a normalizing check (like checkIds's own
+        // dropEmptyEntries reshaping), so a future change to it could make `format` and pos.getFormat() diverge
+        // in content, not just object identity. Caching pos.getFormat() directly keeps the invariant "the cache
+        // always holds exactly what a real VcfPosition ended up with" true by construction, not by the current
+        // coincidence that checkFormat happens to return its argument unchanged on every path VcfParser reaches.
+        // Also never the list itself: pos.getFormat() may be mutated in place later (by this callback or a
+        // VcfTransformation), and that must never corrupt a later record's cache hit.
+        m_lastFormatRawText = rawFormat;
+        m_lastValidatedFormat = new ArrayList<>(pos.getFormat());
+      }
       pos.setRawQuality(data.get(5));
       pos.setRawInfo(data.get(7));
       samples = new ArrayList<>();

@@ -95,6 +95,9 @@ invalid:
   own `validate()` method always warns instead, matching the metadata classes above. A separate 11-argument
   overload, taking an explicit [`VcfWarnings`](#vcfwarnings-explicit-warning-routing) instance as its last
   parameter, restores exactly that warn-and-recover behavior; this is the overload `VcfParser` itself uses.
+  `VcfParser` caches FORMAT-column validation across consecutive records sharing the exact same FORMAT text
+  (real VCFs often repeat one FORMAT string across large blocks of records) -- a FORMAT that would warn (e.g.
+  an empty sub-field name) warns once per contiguous block of identical FORMAT text, not once per record.
 - `VcfMetadata.Builder` throws for a missing/duplicate declaration ID, an invalid `##ALT` structural code, an
   empty `assembly`/`pedigreeDB` value, or an `assembly`/`pedigreeDB`/other generic property value shaped like
   an empty or no-`=` bracketed attribute list (e.g. `<>` or `<http://foo.com>`), unless built with

@@ -11,6 +11,7 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.LinkedListMultimap;
 import com.google.common.collect.ListMultimap;
+import com.google.errorprone.annotations.RestrictedApi;
 import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.InternalUtils;
 import org.pharmgkb.parser.vcf.VcfFormatException;
@@ -84,7 +85,7 @@ public class VcfPosition {
       @Nullable ListMultimap<String, String> info,
       @Nullable List<String> format,
       int lineNumber) {
-    this(chr, pos, ids, ref, altBases, qual, filter, info, format, lineNumber, VcfWarnings.DEFAULT, true);
+    this(chr, pos, ids, ref, altBases, qual, filter, info, format, lineNumber, VcfWarnings.DEFAULT, true, false);
   }
 
   /**
@@ -102,7 +103,45 @@ public class VcfPosition {
       int lineNumber,
       VcfWarnings warnings) {
     this(chr, pos, ids, ref, altBases, qual, filter, info, format, lineNumber,
-        Preconditions.checkNotNull(warnings, "warnings must not be null"), false);
+        Preconditions.checkNotNull(warnings, "warnings must not be null"), false, false);
+  }
+
+  /**
+   * Creates a {@code VcfPosition} for a {@code trustedFormat} list that {@code VcfParser}'s own per-record
+   * FORMAT-validation cache has already validated for this exact FORMAT column text on an earlier record in
+   * the same parse -- skips {@link #checkFormat} entirely (every check it performs, including the null-element
+   * check and any warning it would emit), relying on the caller to guarantee {@code trustedFormat} is a fresh,
+   * independently-owned copy whose elements already passed {@code checkFormat} once, unchanged. Every other
+   * check this class performs still runs, in the same lenient (warn-to-{@code warnings}) mode the 11-argument
+   * constructor uses -- this factory always passes {@code strict = false} internally, matching its one call
+   * site. Real VCFs often repeat the same FORMAT string across large blocks of consecutive records;
+   * re-validating (and, for a FORMAT that warns, re-warning) on every single one of those records is redundant
+   * work once the first has already been checked.
+   * <p>
+   * Restricted to {@code VcfParser}'s own FORMAT cache: nothing enforces the "already validated, unchanged"
+   * invariant at compile time, so this must never be called with a format list that hasn't already passed
+   * {@code checkFormat}, or with a list an external caller might still hold a mutable reference to (a caller
+   * mutating a returned {@link #getFormat()} list -- itself a documented, supported operation -- must never be
+   * able to corrupt a later record's cache hit; the caller here is responsible for copying, not this method).
+   * @hidden
+   */
+  @RestrictedApi(explanation = "Internal fast path for VcfParser's own "
+      + "per-record FORMAT-validation cache only. Skips FORMAT validation entirely (including its null-element "
+      + "check and any warning it would otherwise emit) for a caller-guaranteed already-validated, "
+      + "independently-owned list; never call with an unvalidated list or one an external caller might still "
+      + "mutate. Not part of this library's supported public API and may change or be removed without notice.")
+  public static VcfPosition newWithTrustedFormat(String chr, long pos,
+      @Nullable List<String> ids,
+      String ref,
+      @Nullable List<String> altBases,
+      @Nullable BigDecimal qual,
+      @Nullable List<String> filter,
+      @Nullable ListMultimap<String, String> info,
+      List<String> trustedFormat,
+      int lineNumber,
+      VcfWarnings warnings) {
+    return new VcfPosition(chr, pos, ids, ref, altBases, qual, filter, info, trustedFormat, lineNumber,
+        Preconditions.checkNotNull(warnings, "warnings must not be null"), false, true);
   }
 
   private VcfPosition(String chr, long pos,
@@ -115,7 +154,8 @@ public class VcfPosition {
       @Nullable List<String> format,
       int lineNumber,
       VcfWarnings warnings,
-      boolean strict) {
+      boolean strict,
+      boolean trustedFormat) {
 
     /*
       1. Check the arguments, in order. `checkWarnings` is null for the strict constructor -- every check method
@@ -138,7 +178,7 @@ public class VcfPosition {
     if (info != null) {
       info = checkInfoEntries(info, checkWarnings);
     }
-    if (format != null) {
+    if (format != null && !trustedFormat) {
       format = checkFormat(format, checkWarnings);
     }
 
