@@ -419,3 +419,47 @@ incidentally while reviewing that fix, not independently confirmed to have cause
 
 Revisit if a real caller reports actually hitting this, or if `getSamplesAtLocus`/`getSamplesForId` are ever
 redesigned to return copies or otherwise fully immutable views.
+
+## `VcfParser`'s legacy `GLE` FORMAT-value splitter can silently misattribute content from a corrupted GLE value to the next FORMAT key
+
+`GLE_VALUE_PATTERN`/`toSampleValues` (`VcfParser.java`) greedily match as many `genotype:likelihood` pairs as
+syntactically fit a GLE value, treating whatever's left as the ordinary colon-delimited remainder of later
+FORMAT fields. This match is purely syntactic: it can't distinguish "GLE legitimately ends here" from "GLE
+was corrupted and the match just happened to stop at a shorter valid prefix." A corrupted GLE value (e.g. a
+comma between two `genotype:likelihood` pairs mistyped as a colon) can still match a shorter prefix, silently
+misattributing the leftover fragment to the next FORMAT key with zero warnings -- e.g. FORMAT `GT:GLE:DP`
+with sample value `0/1:0:-75.221:-223.42` (a typo'd version of the well-formed
+`0/1:0:-75.22,1:-223.42:50`) parses with `GLE` truncated to `0:-75.221` and `DP` wrongly set to `-223.42`, a
+fragment of the broken GLE value, not a real depth.
+
+A real fix would need to know how many `genotype:likelihood` pairs GLE's value *should* contain (its
+`Number` is `G`, the same ploidy/allele-count-derived cardinality this codebase already computes elsewhere
+via `InternalUtils.getExpectedCardinality`/`combinationsWithRepetition`) so a too-short match could be
+flagged as suspicious. But `toSampleValues` is a static, context-free tokenizer that sees only the FORMAT
+key list and one sample's raw text -- it has no access to `GT`/ALT-allele-count at that point in parsing.
+Threading that context in would mean changing this hot-path method's signature and its call site's data
+flow, not a narrow fix.
+
+Checked whether bcftools or vcf_validator's behavior could substitute for designing this from scratch, per
+`AGENTS.md`'s decision hierarchy: neither can parse GLE at all, even the well-formed
+`VCFv4.2.tex` line 225 example (`GLE=0:-75.22,1:-223.42,0/0:-323.03,1/0:-99.29,1/1:-802.53`) --
+bcftools 1.23.1 rejects it (`[E::vcf_parse_format_max3] Incorrect number of FORMAT fields`) and
+vcf_validator 0.10.2 rejects it too ("Sample #1 has more fields than specified in the FORMAT column"). Both
+treat GLE as an ordinary colon-delimited scalar with no special-case handling, so there's no reference
+behavior to consult for what "correct recovery" should look like on the corrupted-input case -- this
+library's `GLE_VALUE_PATTERN` support is already more permissive than either tool attempts. `GLE` itself is
+VCFv4.1/4.2-only: VCFv4.3, 4.4, and 4.5 each remove it outright, with the identical changelog line "Removed
+unused and ill-defined GLE FORMAT tag" in all three -- the spec's own maintainers gave up on tightening its
+grammar rather than clarifying it in a later version.
+
+**Decision: won't fix.** Narrow blast radius (a VCFv4.1/4.2-only key, requiring a specifically-corrupted
+value to trigger), no reference-tool behavior or later-spec clarification to design a fix against, and a
+real fix requires threading ploidy/allele-count context into a currently context-free hot-path tokenizer --
+disproportionate design/coupling cost for a legacy field the spec itself calls "ill-defined." This does not
+affect `GLE`'s well-formed-value handling (`VcfParser.java`'s `GLE_VALUE_PATTERN` splitter and its
+possessive-quantifier StackOverflowError hardening) or the separate `Number=G` cardinality-check exemption
+for `GLE`/`CNP` (`InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck`, see
+`VCF_SPEC_AMBIGUITIES.md`) -- both remain correct and are unrelated to this gap.
+
+Revisit if a real caller reports hitting this on an actual corrupted GLE value, or if a future VCF spec
+version ever re-adds and tightens GLE's grammar.
