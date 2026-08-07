@@ -266,9 +266,11 @@ this construction legitimately. Implemented in `AltStructuralVariant`'s construc
 
 ### FILTER value `"0"`
 
-hts-specs' `failed_body_filter_004.vcf` documents `##CauseOfFailure=FILTER contains reserved value 0`.
-Independently confirmed live via vcf_validator ("FILTER string must not be 0 (reserved value)"). bcftools is
-not separately cited for this specific case in this codebase.
+hts-specs' `failed_body_filter_004.vcf` (4.1, 4.2 -- the 4.3 copy of this same filename documents an unrelated
+cause, "FILTER contains duplicate values", see "Duplicate ID/FILTER entries within one record" below)
+documents `##CauseOfFailure=FILTER contains reserved value 0`. Independently confirmed live via vcf_validator
+("FILTER string must not be 0 (reserved value)"). bcftools is not separately cited for this specific case in
+this codebase.
 
 **Decision:** reject. Implemented in `VcfPosition.checkFilters`.
 

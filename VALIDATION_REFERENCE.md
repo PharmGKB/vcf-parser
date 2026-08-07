@@ -4,7 +4,7 @@ This is the itemized, per-case reference for exactly which VCF content this libr
 (`VcfFormatException`) versus which it warns about and recovers from. It's the detailed complement to
 [`VALIDATION_PHILOSOPHY.md`](VALIDATION_PHILOSOPHY.md), which states the architectural "why" (which of the
 four principles applies, which of the two dispatch shapes a class uses) but deliberately doesn't itemize
-every individual rule. See `README.md`'s "Validation: strict vs. lenient" section for a short summary and
+every individual rule. See `README.md`'s "Validation" section for a short summary and
 where this file fits into the rest of this repo's docs.
 
 The parser draws a deliberate line between the **structure of a VCF record**, which it validates strictly, and
@@ -12,6 +12,8 @@ The parser draws a deliberate line between the **structure of a VCF record**, wh
 may validate lazily.
 
 ## Strict — throws `VcfFormatException`
+
+### File and record structure
 
 The parser rejects a file whose structure or mandatory record fields are invalid:
 
@@ -49,6 +51,8 @@ The parser rejects a file whose structure or mandatory record fields are invalid
 - `VcfWriter.writeLine` is given a number of samples that disagrees with the header's declared sample count, any
   FORMAT/sample data at all when the header declares no samples, or an empty `REF` (which has no missing-value
   sentinel in the spec, unlike `ALT`/`ID`/`FILTER`): in every case the output would not be valid, re-parseable VCF.
+### Direct/programmatic construction
+
 - A typed metadata constructor given directly (e.g. `new InfoMetadata(id, ...)`, `new FormatMetadata(id,
   ...)`, `new ContigMetadata(id, ...)`, `new IdDescriptionMetadata(label, id, description)`) throws, *at
   construction time*, for every condition that class's own declaration-level checks would otherwise flag -- a
@@ -104,6 +108,8 @@ the first place. A `VcfTransformation`-based filter can't replicate this: it onl
 `VcfPosition` has already been fully constructed and validated, so a structurally invalid record `rsidsOnly()`
 would silently discard instead aborts parsing before a transformation ever gets a chance to reject it.
 
+### Writer output
+
 Mutating `position.getFormat()` (adding or removing a FORMAT key) does *not* automatically update that line's
 `VcfSample` properties -- the two must be kept in agreement by the caller. If they diverge, the default writer path
 warns and reconciles by key name: a FORMAT key with no corresponding sample value is substituted with `.`, and a
@@ -150,6 +156,8 @@ as a declaration -- wrapped in angle brackets -- but has malformed *attribute va
 throws; most are still stored as-is, with this exception (a declaration missing its angle-bracket wrapper entirely
 is a structural failure and still throws -- see the strict section above):
 
+### Metadata declarations
+
 - A declaration missing its `ID`, or with an empty/whitespace-only `ID=` — every VCF structured metadata line
   requires an ID (VCFv4.3.tex line 121); the parser warns and drops the whole declaration rather than storing it.
   See [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md) for the full per-type
@@ -166,6 +174,8 @@ is a structural failure and still throws -- see the strict section above):
 - A header/metadata sample-count mismatch, or a sample named in the header but absent from the metadata: warned
   during parsing, and separately by `VcfWriter.Builder.validateBeforeWrite()`'s `writeHeader()` (checked once,
   since `#CHROM`'s sample columns can't change after a `VcfMetadata` is built).
+### INFO/FORMAT/sample value content
+
 - INFO, FILTER, FORMAT, and sample content that is semantically malformed but can be preserved or normalized safely.
 - A non-numeric `QUAL`: the column itself is still well-formed, so this is treated as the missing value rather than
   a structural failure.
@@ -229,6 +239,8 @@ is a structural failure and still throws -- see the strict section above):
   non-structural-variant uses this parser must not reject. A reserved code re-used as a subtype of another
   reserved code (e.g. `DUP:INV`) is a deliberate exception to bcftools -- see `VCF_SPEC_AMBIGUITIES.md`'s
   "Reserved structural variant code re-used as a subtype" entry.
+### Metadata declaration IDs: additional edge cases
+
 - Any of those same six types' `ID` that is present but blank or whitespace-only (`ID=` or `ID=   `) on an
   object that already exists in storage — as opposed to a declaration still being parsed, which is dropped
   before storage per the missing/blank-ID bullet above: warns (VCFv4.3.tex line 121, the same citation as
@@ -250,6 +262,8 @@ is a structural failure and still throws -- see the strict section above):
   comma-delimited attribute-list syntax, not a per-type policy choice, so it needs no bcftools/vcf_validator
   corroboration the way the whitespace check above does.
 
+### Other lenient behavior
+
 An empty ("zero-length") entry in a delimited record field — e.g. `ID=rs1;;rs2`, `ALT=T,`, `FILTER=q10;`,
 `FORMAT=GT:DP:`, a sample value like `0/1:`, or `INFO=AD=1,,2` — is also lenient rather than strict when it can be
 recovered without changing field alignment. See [`EMPTY_FIELD_HANDLING.md`](EMPTY_FIELD_HANDLING.md) for the full
@@ -258,7 +272,9 @@ field-by-field table of what each case normalizes to and why.
 Typed metadata accessors (e.g. `InfoMetadata.getType()` and `getNumber()`) are annotated `@Nullable` and return `null`
 when the corresponding metadata was malformed.
 
-Reserved `Float`-typed `INFO`/`FORMAT` properties (e.g. `AF`, `MQ`, `GL`) are converted to
+Reserved `Float`-typed `INFO`/`FORMAT` properties (e.g. `INFO`'s `AF`/`MQ`, `FORMAT`'s `GL`/`GP` -- note that a
+key reused on both sides isn't always the same `Type` on each; `FORMAT`'s own `MQ`, for example, is `Long`,
+not `Float`) are converted to
 [`VcfFloat`](src/main/java/org/pharmgkb/parser/vcf/model/VcfFloat.java), not a plain `BigDecimal`: VCFv4.2 doesn't
 define `Float`'s literal grammar, and VCFv4.5 clarifies it accepts `NAN`/`INF`/`INFINITY` (case-insensitive,
 optionally signed) in addition to a normal decimal number — values a plain `BigDecimal` cannot represent at all.

@@ -4,8 +4,8 @@
 [![codecov.io](https://codecov.io/github/PharmGKB/vcf-parser/coverage.svg?branch=main)](https://codecov.io/github/PharmGKB/vcf-parser?branch=main)
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/org.pharmgkb/vcf-parser/badge.svg)](https://maven-badges.herokuapp.com/maven-central/org.pharmgkb/vcf-parser)
 
-This is a streaming parser and writer for [VCF](http://en.wikipedia.org/wiki/Variant_Call_Format), a Java 17
-library requiring no runtime configuration beyond what's shown below. The target specification is VCF 4.2;
+This is a Java 17 streaming parser and writer for [VCF](http://en.wikipedia.org/wiki/Variant_Call_Format),
+requiring no runtime configuration beyond what's shown below. The target specification is VCF 4.2;
 representable VCF 4.x input from before and after that version is accepted, using VCF 4.2 semantics where
 versions differ or input is ambiguous (see `AGENTS.md`'s Spec Ambiguity Decision Hierarchy for how those
 decisions get made).

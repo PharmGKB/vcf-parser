@@ -51,7 +51,7 @@ keep the build green, then all 129 were individually triaged (bcftools 1.23.1 / 
 directly, cross-referenced against this project's own established policy docs) and are catalogued in the
 table below.
 
-## `parser-throw-or-warn` entries (129: 10 pre-existing + 129 added 2026-08-02, 10 of the resulting 139 since fixed and removed) — `failed/` fixtures whose invalidity isn't detected
+## `parser-throw-or-warn` entries (10 pre-existing + 129 added 2026-08-02 − 10 of the resulting 139 since fixed and removed = 129 today) — `failed/` fixtures whose invalidity isn't detected
 
 This check only runs `failed/` fixtures from VCF versions 4.1 and 4.2 (`HtsSpecsConformanceTest.java`'s
 `FAILED_VERSIONS = List.of("4.1", "4.2")`) — 4.3's own `failed/` fixtures are never examined at all. This is
