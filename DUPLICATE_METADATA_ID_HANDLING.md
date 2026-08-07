@@ -81,8 +81,8 @@ both warnings; see `WONT_FIX.md`'s "Multiple independent checks warn separately 
 defect" entry's "Missing or blank metadata ID" sub-case. "Never stored" is also specifically an add-time
 guarantee, not a lifetime one: an object *already* in storage whose `ID` is live-mutated to blank afterward
 (e.g. via `getPropertiesRaw()`) is not retroactively removed -- a `Map` can't un-key itself reactively --
-`validate()`/`IdMetadata.init()` only warns on it from then on. See `README.md`'s equivalent bullet for that
-distinct, already-stored case.
+`validate()`/`IdMetadata.init()` only warns on it from then on. See `VALIDATION_REFERENCE.md`'s equivalent
+bullet for that distinct, already-stored case.
 
 ### Missing ID is spec-grounded
 

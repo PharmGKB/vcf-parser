@@ -27,7 +27,7 @@ exit code 0 (except where noted), and bcftools either normalizes the empty entry
 Rejecting these outright would make `vcf-parser` stricter than bcftools on inputs that demonstrably occur and are
 tolerated in practice, so `vcf-parser` matches that practical tolerance: it logs a warning and normalizes, rather
 than throwing `VcfFormatException`. This is consistent with the "strict for structure, lenient for practical
-realities" split described in [`README.md`](README.md#validation-strict-vs-lenient) — the difference here is that
+realities" split described in [`README.md`](README.md#validation) — the difference here is that
 the "reality" is demonstrated by the reference tool itself, not just by metadata-quality concerns.
 
 **vcf_validator 0.10.2** (the EBI reference validator; the tool [hts-specs](https://github.com/samtools/hts-specs)
