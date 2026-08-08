@@ -5,9 +5,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import com.google.common.base.Preconditions;
-import org.pharmgkb.parser.vcf.model.VcfMetadata;
-import org.pharmgkb.parser.vcf.model.VcfPosition;
-import org.pharmgkb.parser.vcf.model.VcfSample;
 
 
 /**
@@ -147,7 +144,7 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
     KEEP_FIRST,
 
     /**
-     * Replace the {@link org.pharmgkb.parser.vcf.model.VcfSample VcfSamples} and {@link org.pharmgkb.parser.vcf.model.VcfPosition}.
+     * Replace the {@link org.pharmgkb.parser.vcf.VcfSample VcfSamples} and {@link org.pharmgkb.parser.vcf.VcfPosition}.
      * In other words, ignore the fact that the record is a duplicate and record it anyway.
      */
     KEEP_LAST

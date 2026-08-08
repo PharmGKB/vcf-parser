@@ -21,16 +21,6 @@ import java.util.Map;
 import java.util.Set;
 import com.google.common.base.Preconditions;
 import org.jspecify.annotations.Nullable;
-import org.pharmgkb.parser.vcf.model.BaseMetadata;
-import org.pharmgkb.parser.vcf.model.FormatMetadata;
-import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
-import org.pharmgkb.parser.vcf.model.InfoMetadata;
-import org.pharmgkb.parser.vcf.model.InfoType;
-import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
-import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
-import org.pharmgkb.parser.vcf.model.VcfMetadata;
-import org.pharmgkb.parser.vcf.model.VcfPosition;
-import org.pharmgkb.parser.vcf.model.VcfSample;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

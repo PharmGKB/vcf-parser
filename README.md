@@ -26,12 +26,12 @@ FORMAT, sample values, and metadata declarations) for performance -- see
 ## Reading a file
 
 The main parser class ([`VcfParser`](src/main/java/org/pharmgkb/parser/vcf/VcfParser.java)) reads all
-metadata and constructs each record's [`VcfPosition`](src/main/java/org/pharmgkb/parser/vcf/model/VcfPosition.java);
+metadata and constructs each record's [`VcfPosition`](src/main/java/org/pharmgkb/parser/vcf/VcfPosition.java);
 actual handling of each line is delegated to an implementation of
 [`VcfLineParser`](src/main/java/org/pharmgkb/parser/vcf/VcfLineParser.java) that the caller supplies.
 Reserved INFO/FORMAT keys (e.g. `AC`, `DP`, `GT`, `PL`) are exposed as typed values through
-[`ReservedInfoProperty`](src/main/java/org/pharmgkb/parser/vcf/model/ReservedInfoProperty.java)/
-[`ReservedFormatProperty`](src/main/java/org/pharmgkb/parser/vcf/model/ReservedFormatProperty.java), via
+[`ReservedInfoProperty`](src/main/java/org/pharmgkb/parser/vcf/ReservedInfoProperty.java)/
+[`ReservedFormatProperty`](src/main/java/org/pharmgkb/parser/vcf/ReservedFormatProperty.java), via
 `VcfPosition.getInfo(ReservedInfoProperty)`/`VcfSample.getProperty(ReservedFormatProperty)`.
 
 ```java

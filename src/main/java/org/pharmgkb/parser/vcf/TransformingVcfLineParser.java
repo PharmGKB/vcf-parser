@@ -7,9 +7,6 @@ import java.nio.file.Path;
 import java.util.List;
 import com.google.common.base.Preconditions;
 import org.jspecify.annotations.Nullable;
-import org.pharmgkb.parser.vcf.model.VcfMetadata;
-import org.pharmgkb.parser.vcf.model.VcfPosition;
-import org.pharmgkb.parser.vcf.model.VcfSample;
 
 
 /**

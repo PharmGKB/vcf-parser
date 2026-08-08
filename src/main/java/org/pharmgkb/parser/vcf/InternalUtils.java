@@ -12,20 +12,11 @@ import com.google.errorprone.annotations.RestrictedApi;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jspecify.annotations.Nullable;
-import org.pharmgkb.parser.vcf.model.FormatType;
-import org.pharmgkb.parser.vcf.model.InfoType;
-import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
-import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
-import org.pharmgkb.parser.vcf.model.ReservedProperty;
-import org.pharmgkb.parser.vcf.model.VcfFloat;
-import org.pharmgkb.parser.vcf.model.VcfPosition;
 
 
 /**
- * Internal helper methods shared across this library's own {@code org.pharmgkb.parser.vcf} and
- * {@code org.pharmgkb.parser.vcf.model} packages. Despite several members being {@code public} -- Java has
- * no cross-package-within-a-library visibility modifier, so a method needed by
- * {@code org.pharmgkb.parser.vcf.model} has no narrower option -- nothing in this class is part of this
+ * Internal helper methods shared across this library's own {@code org.pharmgkb.parser.vcf} package.
+ * Despite several members being {@code public} -- nothing in this class is part of this
  * library's supported public API. It may change or be removed without notice in any release. See the
  * {@link RestrictedApi} annotation on each such method for the same signal in a form linters/IDEs can act
  * on; also excluded from generated Javadoc entirely via the {@code @hidden} tag below, since published
@@ -127,7 +118,7 @@ public class InternalUtils {
   /**
    * A hand-written scan equivalent to {@code REF_BASE_PATTERN.matcher(s).matches()} -- measured ~5x faster
    * (12.5 ns/iter regex vs. 2.5 ns/iter manual, equivalence-verified against 2M random strings with 0
-   * mismatches) for {@link org.pharmgkb.parser.vcf.model.VcfPosition#checkRef}, called once per record on this
+   * mismatches) for {@link org.pharmgkb.parser.vcf.VcfPosition#checkRef}, called once per record on this
    * library's hot path. {@code REF_BASE_PATTERN}'s {@code +} quantifier under {@code matches()} means an empty
    * string never matches -- {@code isEmpty()} is checked explicitly here for the same reason.
    */
@@ -279,7 +270,7 @@ public class InternalUtils {
     return unescapedQuoteCount % 2 != 0;
   }
 
-  // public only because ~57 test call sites across org.pharmgkb.parser.vcf.model (InfoMetadataTest,
+  // public only because ~57 test call sites (InfoMetadataTest,
   // FormatMetadataTest, IdDescriptionMetadataTest, VcfMetadataTest, ContigMetadataTest) call this directly
   // to build a Map<String,String> from "key=value" arrays -- its only PRODUCTION caller is
   // extractPropertiesFromLine, in this same class
@@ -899,9 +890,9 @@ public class InternalUtils {
    * with a genuinely custom type the way its signature suggests. Callers wanting to convert a custom,
    * non-reserved property's raw value should do their own conversion instead.
    */
-  // public only for cross-package access: VcfSample (org.pharmgkb.parser.vcf.model package) needs to convert
+  // public only because VcfSample needs to convert
   // a raw Class<?> for non-reserved FORMAT keys the same way ReservedProperty and FormatType overloads above do.
-  // @RestrictedApi marks this as public solely for that cross-package reason, not as real external API.
+  // @RestrictedApi marks this as public solely for that reason, not as real external API.
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   @SuppressWarnings("unchecked")
   public static @Nullable <T> T convertProperty(Class<?> clas, @Nullable String value, boolean isList, VcfWarnings warnings) {

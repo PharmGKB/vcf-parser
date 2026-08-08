@@ -9,9 +9,6 @@ import java.util.List;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
 import org.junit.jupiter.api.Test;
-import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
-import org.pharmgkb.parser.vcf.model.VcfFloat;
-import org.pharmgkb.parser.vcf.model.VcfPosition;
 
 import static org.junit.jupiter.api.Assertions.*;
 

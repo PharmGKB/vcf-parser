@@ -21,16 +21,6 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.pharmgkb.common.util.PathUtils;
-import org.pharmgkb.parser.vcf.model.ContigMetadata;
-import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
-import org.pharmgkb.parser.vcf.model.InfoMetadata;
-import org.pharmgkb.parser.vcf.model.InfoType;
-import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
-import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
-import org.pharmgkb.parser.vcf.model.VcfFloat;
-import org.pharmgkb.parser.vcf.model.VcfMetadata;
-import org.pharmgkb.parser.vcf.model.VcfPosition;
-import org.pharmgkb.parser.vcf.model.VcfSample;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;

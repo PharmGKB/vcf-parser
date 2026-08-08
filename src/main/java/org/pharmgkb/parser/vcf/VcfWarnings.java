@@ -17,7 +17,7 @@ import org.slf4j.helpers.MessageFormatter;
  * caller-supplied {@link Writer} sink, or -- for {@link #DEFAULT}, or any instance after {@link #close()} has
  * run -- falls back to this class's own shared SLF4J logger.
  * <p>
- * Model classes (see {@code org.pharmgkb.parser.vcf.model}) hold a mutable reference to whichever instance is
+ * Model classes in this package hold a mutable reference to whichever instance is
  * currently responsible for their warnings, explicitly re-claimed via each class's own {@code setWarningsSink}
  * method -- there is no ambient/thread-local dispatch. See {@code VcfParser.Builder#warningsToFile()} and
  * {@code VcfWriter.Builder#warningsToFile()} for the common way an instance gets built and wired up; construct

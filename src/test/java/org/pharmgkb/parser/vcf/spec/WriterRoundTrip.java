@@ -11,11 +11,11 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.pharmgkb.parser.vcf.VcfLineParser;
+import org.pharmgkb.parser.vcf.VcfMetadata;
 import org.pharmgkb.parser.vcf.VcfParser;
+import org.pharmgkb.parser.vcf.VcfPosition;
+import org.pharmgkb.parser.vcf.VcfSample;
 import org.pharmgkb.parser.vcf.VcfWriter;
-import org.pharmgkb.parser.vcf.model.VcfMetadata;
-import org.pharmgkb.parser.vcf.model.VcfPosition;
-import org.pharmgkb.parser.vcf.model.VcfSample;
 
 
 /**

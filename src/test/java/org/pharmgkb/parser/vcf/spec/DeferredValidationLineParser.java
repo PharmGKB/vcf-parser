@@ -1,12 +1,12 @@
 package org.pharmgkb.parser.vcf.spec;
 
 import java.util.List;
+import org.pharmgkb.parser.vcf.ReservedInfoProperty;
 import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfLineParser;
-import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
-import org.pharmgkb.parser.vcf.model.VcfMetadata;
-import org.pharmgkb.parser.vcf.model.VcfPosition;
-import org.pharmgkb.parser.vcf.model.VcfSample;
+import org.pharmgkb.parser.vcf.VcfMetadata;
+import org.pharmgkb.parser.vcf.VcfPosition;
+import org.pharmgkb.parser.vcf.VcfSample;
 
 
 /**

@@ -9,9 +9,6 @@ import java.util.Map;
 import java.util.Objects;
 import com.google.errorprone.annotations.Immutable;
 import org.jspecify.annotations.Nullable;
-import org.pharmgkb.parser.vcf.model.VcfMetadata;
-import org.pharmgkb.parser.vcf.model.VcfPosition;
-import org.pharmgkb.parser.vcf.model.VcfSample;
 
 
 /**

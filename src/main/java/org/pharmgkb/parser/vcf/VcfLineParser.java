@@ -1,9 +1,5 @@
 package org.pharmgkb.parser.vcf;
 
-import org.pharmgkb.parser.vcf.model.VcfMetadata;
-import org.pharmgkb.parser.vcf.model.VcfPosition;
-import org.pharmgkb.parser.vcf.model.VcfSample;
-
 import java.util.List;
 
 

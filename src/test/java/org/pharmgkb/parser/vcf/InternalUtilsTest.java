@@ -8,12 +8,6 @@ import java.util.Map;
 import java.util.regex.Pattern;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.Test;
-import org.pharmgkb.parser.vcf.model.FormatType;
-import org.pharmgkb.parser.vcf.model.InfoType;
-import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
-import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
-import org.pharmgkb.parser.vcf.model.VcfFloat;
-import org.pharmgkb.parser.vcf.model.VcfPosition;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -721,7 +715,7 @@ public class InternalUtilsTest {
     assertThrows(VcfFormatException.class, () -> InternalUtils.unquote(null));
   }
 
-  private static final class FakeFormatIdReservedProperty implements org.pharmgkb.parser.vcf.model.ReservedProperty {
+  private static final class FakeFormatIdReservedProperty implements org.pharmgkb.parser.vcf.ReservedProperty {
     @Override
     public String getId() {
       return "FT";
@@ -748,7 +742,7 @@ public class InternalUtilsTest {
     }
   }
 
-  private static final class FakeInfoIdReservedProperty implements org.pharmgkb.parser.vcf.model.ReservedProperty {
+  private static final class FakeInfoIdReservedProperty implements org.pharmgkb.parser.vcf.ReservedProperty {
     @Override
     public String getId() {
       return "AC";

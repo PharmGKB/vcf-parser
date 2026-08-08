@@ -133,13 +133,13 @@ here. The rest of this section states the concrete per-shape rules that follow f
 
 - Use the checked-in Gradle wrapper. The Node/Yarn files support semantic-release; they are not the application build.
 - **Keep parser changes streaming-friendly**. Do not load an entire VCF into memory unless the affected class explicitly provides an in-memory data store.
-- Commit messages use conventional-commits style (`type(scope): summary`). `scope` is drawn from `parser`, `writer`, `memoryMappedImpl`, and `spec` -- never a class name. `org.pharmgkb.parser.vcf.model` classes use `parser` (there is no separate `model` scope); `VcfWriter.java` and its `Builder` use `writer`; `MemoryMappedVcfDataStore.java`/`MemoryMappedVcfLineParser.java` use `memoryMappedImpl`, including doc-only changes to either; `spec` covers commits touching `src/test/java/org/pharmgkb/parser/vcf/spec/` (the hts-specs conformance test infrastructure). A commit touching more than one of these areas may list multiple, comma-separated (e.g. `type(parser,writer): summary`), rather than picking one to cover the rest.
+- Commit messages use conventional-commits style (`type(scope): summary`). `scope` is drawn from `parser`, `writer`, `memoryMappedImpl`, and `spec` -- never a class name. Model classes (`VcfPosition`, `VcfSample`, `VcfMetadata`, etc.) use `parser` (there is no separate `model` scope); `VcfWriter.java` and its `Builder` use `writer`; `MemoryMappedVcfDataStore.java`/`MemoryMappedVcfLineParser.java` use `memoryMappedImpl`, including doc-only changes to either; `spec` covers commits touching `src/test/java/org/pharmgkb/parser/vcf/spec/` (the hts-specs conformance test infrastructure). A commit touching more than one of these areas may list multiple, comma-separated (e.g. `type(parser,writer): summary`), rather than picking one to cover the rest.
 - A single logical change should land as one commit. Squash incidental churn (fix-loop iterations, a reconsidered design, a follow-up correction) into the commit for the item it belongs to rather than leaving it split across commits, and bundle several individually-trivial fixes -- pure documentation/comment changes especially -- into one commit even when they're unrelated to each other. Reserve a dedicated commit for anything with a real design decision, a behavior change, or genuine risk, so it can be reviewed and reverted independently. See `SOP.md`'s Standing Conventions for the squashing/bundling mechanics used when following the findings-review batch workflow.
 
 ### Repository Layout
 
-- `src/main/java/org/pharmgkb/parser/vcf/`: parser, writer, transformation, and data-store code.
-- `src/main/java/org/pharmgkb/parser/vcf/model/`: VCF metadata, position, sample, and genotype models.
+- `src/main/java/org/pharmgkb/parser/vcf/`: parser, writer, transformation, data-store, and model (VCF
+  metadata, position, sample, and genotype) code.
 - `src/test/java/`: JUnit tests mirroring the production packages.
 - `src/test/resources/`: small VCF fixtures used by parser and writer tests.
 - `build.gradle` and `pgkb-build.gradle`: dependencies, Java version, tests, coverage, packaging, and publishing configuration.

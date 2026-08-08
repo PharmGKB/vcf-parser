@@ -15,17 +15,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.pharmgkb.parser.vcf.model.FormatMetadata;
-import org.pharmgkb.parser.vcf.model.FormatType;
-import org.pharmgkb.parser.vcf.model.IdDescriptionMetadata;
-import org.pharmgkb.parser.vcf.model.InfoMetadata;
-import org.pharmgkb.parser.vcf.model.InfoType;
-import org.pharmgkb.parser.vcf.model.PedigreeMetadata;
-import org.pharmgkb.parser.vcf.model.ReservedFormatProperty;
-import org.pharmgkb.parser.vcf.model.ReservedInfoProperty;
-import org.pharmgkb.parser.vcf.model.VcfMetadata;
-import org.pharmgkb.parser.vcf.model.VcfPosition;
-import org.pharmgkb.parser.vcf.model.VcfSample;
 import org.pharmgkb.parser.vcf.spec.FailingWriter;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -2531,9 +2520,9 @@ public class VcfWriterTest {
     // property directly (bypassing the constructor's own throw-on-malformed-URL check, the same way a caller
     // mutating a live view always can), so the warning is only reachable via validateBeforeWrite()'s
     // entry.validate() call inside writeHeader() -- not at construction time.
-    org.pharmgkb.parser.vcf.model.ContigMetadata contig =
-        new org.pharmgkb.parser.vcf.model.ContigMetadata("1", 1000L, "GRCh38", null, null, null, null);
-    contig.getPropertiesRaw().put(org.pharmgkb.parser.vcf.model.ContigMetadata.URL, "not a url");
+    org.pharmgkb.parser.vcf.ContigMetadata contig =
+        new org.pharmgkb.parser.vcf.ContigMetadata("1", 1000L, "GRCh38", null, null, null, null);
+    contig.getPropertiesRaw().put(org.pharmgkb.parser.vcf.ContigMetadata.URL, "not a url");
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
         .addContig(contig)
         .setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
@@ -2556,8 +2545,8 @@ public class VcfWriterTest {
     // automatically-triggered warning to observe in the default path -- this demonstrates the claim happened
     // by manually calling validate() on the SAME object after a default-mode writeHeader() call and confirming
     // it now warns to the writer's own sink instead of the shared logger, proving setWarningsSink was called.
-    org.pharmgkb.parser.vcf.model.ContigMetadata contig =
-        new org.pharmgkb.parser.vcf.model.ContigMetadata("1", 1000L, "GRCh38", null, null, null, null);
+    org.pharmgkb.parser.vcf.ContigMetadata contig =
+        new org.pharmgkb.parser.vcf.ContigMetadata("1", 1000L, "GRCh38", null, null, null, null);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
         .addContig(contig)
         .setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
@@ -2566,7 +2555,7 @@ public class VcfWriterTest {
     Path warningsFile = tempDir.resolve("warnings.log");
     try (VcfWriter writer = new VcfWriter.Builder().toFile(outFile).warningsToFile(warningsFile).build()) {
       writer.writeHeader(metadata); // default mode -- no validateBeforeWrite()
-      contig.getPropertiesRaw().put(org.pharmgkb.parser.vcf.model.ContigMetadata.URL, "not a url");
+      contig.getPropertiesRaw().put(org.pharmgkb.parser.vcf.ContigMetadata.URL, "not a url");
       contig.validate();
     }
     assertTrue(java.nio.file.Files.readString(warningsFile).contains("is malformed"));
@@ -2581,8 +2570,8 @@ public class VcfWriterTest {
     // Both writers stay open across the whole test, so a failed re-claim would be observable as a second
     // "is malformed" line in the FIRST writer's still-open warnings file rather than as a silent SLF4J
     // fallback (a closed VcfWarnings falls back to the shared logger, which would mask the failure).
-    org.pharmgkb.parser.vcf.model.ContigMetadata contig =
-        new org.pharmgkb.parser.vcf.model.ContigMetadata("1", 1000L, "GRCh38", null, null, null, null);
+    org.pharmgkb.parser.vcf.ContigMetadata contig =
+        new org.pharmgkb.parser.vcf.ContigMetadata("1", 1000L, "GRCh38", null, null, null, null);
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
         .addContig(contig)
         .setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
@@ -2592,7 +2581,7 @@ public class VcfWriterTest {
     try (VcfWriter firstWriter = new VcfWriter.Builder().toFile(tempDir.resolve("first.vcf"))
         .warningsToFile(firstWarningsFile).build()) {
       firstWriter.writeHeader(metadata); // claims contig for firstWriter
-      contig.getPropertiesRaw().put(org.pharmgkb.parser.vcf.model.ContigMetadata.URL, "not a url");
+      contig.getPropertiesRaw().put(org.pharmgkb.parser.vcf.ContigMetadata.URL, "not a url");
       contig.validate(); // warning #1 -> firstWarningsFile
 
       try (VcfWriter secondWriter = new VcfWriter.Builder().toFile(tempDir.resolve("second.vcf"))

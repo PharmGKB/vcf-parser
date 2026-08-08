@@ -1,0 +1,1901 @@
+package org.pharmgkb.parser.vcf;
+
+import java.io.StringWriter;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+
+/**
+ * Tests {@link VcfMetadata}.
+ */
+public class VcfMetadataTest {
+
+  @Test
+  public void testGetSampleIndex() {
+    VcfMetadata metadata = new VcfMetadata.Builder()
+        .setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
+            "sample1", "sample2"))
+        .build();
+    assertEquals(0, metadata.getSampleIndex("sample1"));
+    assertEquals(1, metadata.getSampleIndex("sample2"));
+    // an unknown sample name, and a name that collides with a fixed column, both return -1 (not -10)
+    assertEquals(-1, metadata.getSampleIndex("nosuchsample"));
+    assertEquals(-1, metadata.getSampleIndex("INFO"));
+    assertEquals(-1, metadata.getSampleIndex(null));
+  }
+
+  @Test
+  public void testGetColumnIndex() {
+    VcfMetadata metadata = new VcfMetadata.Builder()
+        .setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
+            "sample1", "sample2"))
+        .build();
+    assertEquals(3, metadata.getColumnIndex("REF"));
+    assertEquals(-1, metadata.getColumnIndex("nosuchcolumn"));
+    assertEquals(-1, metadata.getColumnIndex(null));
+  }
+
+  @Test
+  public void testGetAltIsNullTolerantInsteadOfThrowingNpe() {
+    // null-tolerant "not present," matching getColumnIndex()/getSampleIndex()'s own null-tolerant contract
+    // above -- id.startsWith(...) below m_alt.get(id) would otherwise raw-NPE for a null id
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertNull(metadata.getAlt(null));
+  }
+
+  @Test
+  public void testSetFileFormatRejectsNullInsteadOfThrowingNpe() {
+    // fileFormat is typed non-@Nullable, but nothing enforces that at compile time; must reject a null with
+    // VcfFormatException, not let it reach a raw NullPointerException at FILE_FORMAT_PATTERN.matcher(fileFormat)
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.setFileFormat(null));
+  }
+
+  @Test
+  public void testBuilderSetFileFormatRejectsNullInsteadOfThrowingNpe() {
+    assertThrows(VcfFormatException.class, () -> new VcfMetadata.Builder().setFileFormat(null));
+  }
+
+  @Test
+  public void testBuilderSetColumnsRejectsNullEntryInsteadOfThrowingNpe() {
+    // setColumns() does not validate its argument at set time (deferred to build(), where columns is actually
+    // consumed via List.copyOf(columns)); a null entry must be rejected with VcfFormatException there, not a raw
+    // NullPointerException from List.copyOf
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", null));
+    assertThrows(VcfFormatException.class, builder::build);
+  }
+
+  @Test
+  public void testBuilderSetColumnsRejectsNullListInsteadOfThrowingNpe() {
+    // cols is typed non-@Nullable, but nothing enforces that at compile time; a null list itself (as opposed to
+    // a null entry, covered above) must be rejected with VcfFormatException at setColumns() itself, not deferred
+    // to a raw NullPointerException from Preconditions.checkNotNull(columns) at build() time
+    assertThrows(VcfFormatException.class, () -> new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .setColumns(null));
+  }
+
+  @Test
+  public void testAddAssemblyRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.addAssembly(null));
+  }
+
+  @Test
+  public void testAddPedigreeDatabaseRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.addPedigreeDatabase(null));
+  }
+
+  @Test
+  public void testBuilderAddRawPropertyRejectsNullNameInsteadOfThrowingNpe() {
+    // name is typed non-@Nullable, but nothing enforces that at compile time; must reject a null with
+    // VcfFormatException, not let it reach a raw NullPointerException at InternalUtils.checkNoLineTerminator
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addRawProperty(null, "value"));
+  }
+
+  @Test
+  public void testBuilderAddRawPropertyRejectsNullValueInsteadOfThrowingNpe() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addRawProperty("name", null));
+  }
+
+  // Every addXxx/removeXxx method below (both VcfMetadata's own instance methods and Builder's mirrors) is typed
+  // to take a non-@Nullable metadata object, but nothing enforces that at compile time; each must reject a null
+  // with VcfFormatException via the shared requireNonNull() guard, not let it reach a raw NullPointerException at
+  // value.getId()/value.getPropertiesRaw().
+
+  @Test
+  public void testAddAltRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.addAlt(null));
+  }
+
+  @Test
+  public void testAddInfoRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.addInfo(null));
+  }
+
+  @Test
+  public void testAddFormatRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.addFormat(null));
+  }
+
+  @Test
+  public void testAddContigRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.addContig(null));
+  }
+
+  @Test
+  public void testAddFilterRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.addFilter(null));
+  }
+
+  @Test
+  public void testAddSampleRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.addSample(null));
+  }
+
+  @Test
+  public void testAddPedigreeRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.addPedigree(null));
+  }
+
+  @Test
+  public void testRemoveAltRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.removeAlt(null));
+  }
+
+  @Test
+  public void testRemoveInfoRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.removeInfo(null));
+  }
+
+  @Test
+  public void testRemoveFormatRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.removeFormat(null));
+  }
+
+  @Test
+  public void testRemoveContigRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.removeContig(null));
+  }
+
+  @Test
+  public void testRemoveFilterRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.removeFilter(null));
+  }
+
+  @Test
+  public void testRemoveSampleRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.removeSample(null));
+  }
+
+  @Test
+  public void testRemoveAssemblyRejectsNullInsteadOfSilentlyNoOpping() {
+    // previously silently no-opped on null instead of throwing, unlike its six removeXxx siblings above and
+    // addAssembly (which does reject null) -- LinkedListMultimap.remove(key, null) is null-tolerant, not a raw
+    // NullPointerException, so this bug never surfaced as a crash
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.removeAssembly(null));
+  }
+
+  @Test
+  public void testRemovePedigreeDbRejectsNullInsteadOfSilentlyNoOpping() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.removePedigreeDb(null));
+  }
+
+  @Test
+  public void testRemovePedigreeRejectsNullInsteadOfSilentlyNoOpping() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.removePedigree(null));
+  }
+
+  @Test
+  public void testBuilderAddAltRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addAlt(null));
+  }
+
+  @Test
+  public void testBuilderAddInfoRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addInfo(null));
+  }
+
+  @Test
+  public void testBuilderAddFilterRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addFilter(null));
+  }
+
+  @Test
+  public void testBuilderAddFormatRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addFormat(null));
+  }
+
+  @Test
+  public void testBuilderAddContigRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addContig(null));
+  }
+
+  @Test
+  public void testBuilderAddSampleRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addSample(null));
+  }
+
+  @Test
+  public void testBuilderAddPedigreeRejectsNullInsteadOfThrowingNpe() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addPedigree(null));
+  }
+
+  @Test
+  public void testGetInfoPreservesDeclarationOrder() {
+    // five distinct IDs added in a deliberately non-alphabetical order; HashMap's hash-bucket order for five
+    // distinct keys is extremely unlikely to coincidentally match this insertion order
+    VcfMetadata metadata = new VcfMetadata.Builder()
+        .setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata("ZED", "d", InfoType.String, "1", null, null))
+        .addInfo(new InfoMetadata("YAK", "d", InfoType.String, "1", null, null))
+        .addInfo(new InfoMetadata("XEN", "d", InfoType.String, "1", null, null))
+        .addInfo(new InfoMetadata("WOW", "d", InfoType.String, "1", null, null))
+        .addInfo(new InfoMetadata("VIM", "d", InfoType.String, "1", null, null))
+        .build();
+    assertEquals(Arrays.asList("ZED", "YAK", "XEN", "WOW", "VIM"), new ArrayList<>(metadata.getInfo().keySet()));
+  }
+
+  @Test
+  public void testGetRawPropertyKeysPreservesInsertionOrder() {
+    // "phasing" would sort after "assembly" and "source" alphabetically; this asserts insertion order instead
+    VcfMetadata metadata = new VcfMetadata.Builder()
+        .setFileFormat("VCFv4.2")
+        .addRawProperty("phasing", "partial")
+        .addRawProperty("source", "myImputationProgramV3.1")
+        .addRawProperty("assembly", "file://somewhere")
+        .build();
+    assertEquals(Arrays.asList("phasing", "source", "assembly"), new ArrayList<>(metadata.getRawPropertyKeys()));
+  }
+
+  @Test
+  public void testGetRawPropertyKeysRejectsDirectMutationInsteadOfSilentlyDefeatingIt() {
+    // regression test: getRawPropertyKeys() must fail fast on a direct mutation attempt (matching
+    // BaseMetadata.getPropertyKeys()'s identical fix) rather than silently no-opping on a detached copy or
+    // corrupting the live backing multimap
+    VcfMetadata metadata = new VcfMetadata.Builder()
+        .setFileFormat("VCFv4.2")
+        .addRawProperty("phasing", "partial")
+        .build();
+    assertThrows(UnsupportedOperationException.class, () -> metadata.getRawPropertyKeys().remove("phasing"));
+    assertTrue(metadata.getRawPropertyKeys().contains("phasing"));
+  }
+
+  @Test
+  public void testGetRawPropertyKeysReflectsALaterMutationMadeThroughOtherMethods() {
+    // companion test: unlike a snapshot copy, getRawPropertyKeys() remains a view over the live backing
+    // multimap -- a mutation made through getRawProperties() (the documented live-multimap accessor) after
+    // the fact is visible through a set obtained beforehand
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    Set<String> keys = metadata.getRawPropertyKeys();
+    assertFalse(keys.contains("phasing"));
+    metadata.getRawProperties().put("phasing", "partial");
+    assertTrue(keys.contains("phasing"));
+  }
+
+  @Test
+  public void testAddAssemblyRejectsLineTerminator() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.addAssembly("bad\nvalue"));
+    assertThrows(VcfFormatException.class, () -> metadata.addAssembly("bad\rvalue"));
+  }
+
+  @Test
+  public void testAddPedigreeDatabaseRejectsLineTerminator() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> metadata.addPedigreeDatabase("<bad\nvalue>"));
+  }
+
+  @Test
+  public void testAddAssemblyWarnsAndDropsEmptyValue() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addAssembly("");
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getAssemblies().isEmpty());
+  }
+
+  @Test
+  public void testAddPedigreeDatabaseWarnsAndDropsEmptyValue() {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_pedigreedb_000.vcf's ##pedigreeDB= (empty value)
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addPedigreeDatabase("");
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getPedigreeDatabases().isEmpty());
+  }
+
+  @Test
+  public void testAddPedigreeDatabaseWarnsAndDropsEmptyBrackets() {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_pedigreedb_001.vcf's ##pedigreeDB=<>
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addPedigreeDatabase("<>");
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getPedigreeDatabases().isEmpty());
+  }
+
+  @Test
+  public void testAddAssemblyWarnsAndDropsBracketedValue() {
+    // regression test: a non-empty bracket-wrapped value (unlike the empty "<>" case above) was previously
+    // accepted here as a literal string, even though bcftools 1.23.1 hard-errors ("Could not parse the header
+    // line") trying to read "##assembly=<...>" back -- see VcfMetadata.collidesWithAttributeListGrammar's own comment
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addAssembly("<http://foo.com>");
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getAssemblies().isEmpty());
+  }
+
+  @Test
+  public void testAddPedigreeDatabaseWarnsAndDropsBracketedValueWithNoEquals() {
+    // regression test: before this fix, a non-empty bracket-wrapped value was accepted here as a literal
+    // string with no warning at all. Confirmed directly against bcftools 1.23.1: "##pedigreeDB=<http://foo.com>"
+    // hard-errors ("Could not parse the header line") since "http://foo.com" isn't valid key=value attribute
+    // syntax. See VcfMetadata.collidesWithAttributeListGrammar's own comment.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addPedigreeDatabase("<http://foo.com>");
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getPedigreeDatabases().isEmpty());
+  }
+
+  @Test
+  public void testAddPedigreeDatabaseAcceptsBracketedValueContainingEquals() {
+    // "##pedigreeDB=<ID=foo>" is not this field's own documented grammar (VCFv4.2.tex/4.3.tex/4.4.tex's
+    // Pedigree field format section templates it bracket-less), but confirmed directly that bcftools 1.23.1
+    // accepts and round-trips it unchanged (it parses as a trivial, valid attribute list) -- so this library
+    // does not reject it either, per collidesWithAttributeListGrammar's deliberately conservative rule
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    metadata.addPedigreeDatabase("<ID=foo>");
+    assertEquals(java.util.Collections.singletonList("<ID=foo>"), metadata.getPedigreeDatabases());
+  }
+
+  @Test
+  public void testAddPedigreeDatabaseAcceptsBracketLessUrl() {
+    // regression test for the bracket-requirement bug: VCFv4.2.tex/4.3.tex/4.4.tex's Pedigree field format section
+    // all template this bracket-less ("##pedigreeDB=URL"); hts-specs' own passed/passed_meta_pedigreedb.vcf
+    // fixture (all versions) is bracket-less and expected to parse; confirmed bcftools 1.23.1 accepts it
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    metadata.addPedigreeDatabase("ftp://www.ebi.ac.uk:8080/valid/host/to/file.db");
+    assertEquals(java.util.Collections.singletonList("ftp://www.ebi.ac.uk:8080/valid/host/to/file.db"),
+        metadata.getPedigreeDatabases());
+  }
+
+  @Test
+  public void testRemovePedigreeDbAcceptsBracketLessUrl() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    metadata.addPedigreeDatabase("ftp://www.ebi.ac.uk:8080/valid/host/to/file.db");
+    metadata.removePedigreeDb("ftp://www.ebi.ac.uk:8080/valid/host/to/file.db");
+    assertTrue(metadata.getPedigreeDatabases().isEmpty());
+  }
+
+  @Test
+  public void testRemoveAssemblyRemovesEntry() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    metadata.addAssembly("file://somewhere");
+    metadata.removeAssembly("file://somewhere");
+    assertTrue(metadata.getAssemblies().isEmpty());
+  }
+
+  @Test
+  public void testBuilderAddRawPropertyRejectsLineTerminator() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addRawProperty("name", "bad\nvalue"));
+    assertThrows(VcfFormatException.class, () -> builder.addRawProperty("bad\nname", "value"));
+  }
+
+  @Test
+  public void testBuilderAddRawPropertyWarnsAndDropsEmptyValue() {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_009.vcf's ##reference= (empty value)
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+          .addRawProperty("reference", "").build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertFalse(metadata.getRawPropertyKeys().contains("reference"));
+  }
+
+  @Test
+  public void testBuilderAddRawPropertyWarnsAndDropsBracketedValue() {
+    // regression test: confirms the bracket-collision check applies to an arbitrary generic property key, not
+    // just "assembly"/"pedigreeDB" -- htslib's own header-line parser special-cases any generic property value
+    // shaped like "<...>" regardless of key. See VcfMetadata.collidesWithAttributeListGrammar's own comment.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+          .addRawProperty("myCustomKey", "<http://foo.com>").build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertFalse(metadata.getRawPropertyKeys().contains("myCustomKey"));
+  }
+
+  @Test
+  public void testBuilderAddRawPropertyAcceptsSquareBracketSubListValue() {
+    // regression test for the bug this predicate was corrected to fix: the exact hts-specs
+    // test/vcf/4.3/passed/passed_meta_meta.vcf fixture content is a real, legitimate generic property value
+    // that happens to be bracket-wrapped and contain a square-bracket sub-list -- an earlier, over-broad
+    // version of collidesWithAttributeListGrammar (reject ANY bracket-wrapped value) incorrectly rejected this;
+    // confirmed directly that bcftools 1.23.1 accepts and round-trips it unchanged
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addRawProperty("META", "<ID=Assay,Number=.,Type=String,Values=[WholeGenome, Exome]>")
+        .build();
+    assertEquals(java.util.Collections.singletonList("<ID=Assay,Number=.,Type=String,Values=[WholeGenome, Exome]>"),
+        metadata.getRawValuesOfProperty("META"));
+  }
+
+  @Test
+  public void testBuilderAddRawPropertyWarnsAndDropsReservedKey() {
+    // "INFO" collides with the structured ##INFO=<...> declaration keyword; VcfParser.parseMetadata's switch
+    // would route a reparsed "INFO" key to the structured path, not back to a raw property, so keeping it here
+    // would silently misrepresent what gets written
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+          .addRawProperty("INFO", "bad").build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertFalse(metadata.getRawPropertyKeys().contains("INFO"));
+  }
+
+  @Test
+  public void testBuilderAddRawPropertyWarnsAndDropsEmptyValueForAnyKey() {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_assembly_000.vcf's ##assembly= (empty value) -- the check
+    // applies uniformly to any key, not just a hardcoded list
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+          .addRawProperty("assembly", "")
+          .addRawProperty("myCustomKey", "")
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertFalse(metadata.getRawPropertyKeys().contains("assembly"));
+    assertFalse(metadata.getRawPropertyKeys().contains("myCustomKey"));
+  }
+
+  @Test
+  public void testBuilderAddRawPropertyDoesNotWarnForNonEmptyValue() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+          .addRawProperty("source", "myImputationProgramV3.1")
+          .build();
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(java.util.Collections.singletonList("myImputationProgramV3.1"),
+        metadata.getRawValuesOfProperty("source"));
+  }
+
+  @Test
+  public void testIsEmptyMetadataValue() {
+    assertTrue(VcfMetadata.isEmptyMetadataValue(""));
+    assertTrue(VcfMetadata.isEmptyMetadataValue("   "));
+    // "<>" is no longer classified as "empty" -- it's handled separately by collidesWithAttributeListGrammar below,
+    // since a bracket-wrapped value needs rejecting regardless of whether its content is empty
+    assertFalse(VcfMetadata.isEmptyMetadataValue("<>"));
+    assertFalse(VcfMetadata.isEmptyMetadataValue("ftp://example.com/db"));
+  }
+
+  @Test
+  public void testCollidesWithAttributeListGrammar() {
+    assertTrue(VcfMetadata.collidesWithAttributeListGrammar("<>"));
+    assertTrue(VcfMetadata.collidesWithAttributeListGrammar("<http://foo.com>"));
+    assertTrue(VcfMetadata.collidesWithAttributeListGrammar("  <http://foo.com>  "));
+    // a bracket-wrapped value containing at least one "=" is left alone, even though it isn't the field's own
+    // documented bracket-less grammar -- bcftools 1.23.1 confirmed to accept and round-trip both of these
+    assertFalse(VcfMetadata.collidesWithAttributeListGrammar("<ID=foo>"));
+    // regression test: the exact hts-specs test/vcf/4.3/passed/passed_meta_meta.vcf fixture content -- an
+    // earlier, over-broad version of this predicate (reject ANY bracket-wrapped value) incorrectly rejected
+    // this real, legitimate ##META line, which bcftools genuinely accepts and round-trips
+    assertFalse(VcfMetadata.collidesWithAttributeListGrammar(
+        "<ID=Assay,Number=.,Type=String,Values=[WholeGenome, Exome]>"));
+    assertFalse(VcfMetadata.collidesWithAttributeListGrammar("ftp://example.com/db"));
+    assertFalse(VcfMetadata.collidesWithAttributeListGrammar(""));
+    assertFalse(VcfMetadata.collidesWithAttributeListGrammar("<"));
+    assertFalse(VcfMetadata.collidesWithAttributeListGrammar(">"));
+  }
+
+  @Test
+  public void testAddAltWarnsOnInvalidStructuralVariantCode() {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_alt_005.vcf's ##CauseOfFailure=The ALT prefix is none of
+    // the supported ones (INS, DEL, etc)
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addAlt(new IdDescriptionMetadata("ALT", "THIS:IS-NOT-VALID", "Not a real code"));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testBuilderAddAltWarnsOnInvalidStructuralVariantCode() {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_alt_005.vcf's ##CauseOfFailure=The ALT prefix is none of
+    // the supported ones (INS, DEL, etc)
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+          .addAlt(new IdDescriptionMetadata("ALT", "THIS:IS-NOT-VALID", "Not a real code"));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testAddAltDoesNotWarnForValidStructuralVariantCode() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addAlt(new IdDescriptionMetadata("ALT", "DEL", "Deletion"));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testAddAltWarnsOnInvalidExtraNumber() {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_alt_001.vcf's ##CauseOfFailure=Incorrect ALT Number value
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addAlt(new IdDescriptionMetadata("ALT",
+          org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+              new String[]{"ID=DEL", "Number=B", "Type=String", "Description=\"Deletion\""}, VcfWarnings.DEFAULT),
+          VcfWarnings.DEFAULT));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testAddAltWarnsOnInvalidExtraType() {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_alt_002.vcf's ##CauseOfFailure=Incorrect ALT Type value
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addAlt(new IdDescriptionMetadata("ALT",
+          org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+              new String[]{"ID=DEL", "Number=1", "Type=Text", "Description=\"Deletion\""}, VcfWarnings.DEFAULT),
+          VcfWarnings.DEFAULT));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testAddAltDoesNotWarnForWellFormedExtraNumberAndType() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addAlt(new IdDescriptionMetadata("ALT",
+          org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+              new String[]{"ID=DEL", "Number=1", "Type=String", "Description=\"Deletion\""}, VcfWarnings.DEFAULT),
+          VcfWarnings.DEFAULT));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testAddAltDoesNotWarnForCustomSingleTokenId() {
+    // CN0 is not a reserved structural-variant code, but it's a legitimate real-world convention (1000 Genomes
+    // copy-number alleles, see src/test/resources/cnv.vcf) with no colon -- must not be rejected as an invalid SV
+    // code (see VcfMetadata.validateAlt's comment for the full reasoning)
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.1").build();
+    try {
+      metadata.addAlt(new IdDescriptionMetadata("ALT", "CN0", "Copy number allele: 0 copies"));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testAddAltWarnsOnWhitespaceEvenWithoutColon() {
+    // the whitespace check is not SV-specific -- it applies to every ALT ID regardless of colon. It now comes
+    // from IdMetadata.init() at construction time (shared across all ID-based metadata types), not from
+    // VcfMetadata.validateAlt() itself, which was narrowed to angle-brackets-only -- see IdMetadata.java.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      // IdDescriptionMetadata's typed (label, id, description) constructor now throws immediately on whitespace
+      // (IdMetadata's strict construction-time check, see IdMetadata.java) -- use the Map-based (lenient)
+      // constructor with VcfWarnings.DEFAULT instead so the whitespace check still warns here, matching this
+      // test's own intent of proving the warning still fires. This addAlt() call itself doesn't warn/throw for
+      // "AB CD" (a non-blank ID with no colon and no angle bracket), so VcfMetadata's own strict mode is
+      // unaffected by this test.
+      metadata.addAlt(new IdDescriptionMetadata("ALT",
+          InternalUtils.extractProperties(new String[]{"ID=AB CD", "Description=\"d\""}, VcfWarnings.DEFAULT),
+          VcfWarnings.DEFAULT));
+      assertTrue(appender.anyMessageContains("must not contain whitespace"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testAddAltWarnsOnAngleBracketEvenWithoutColon() {
+    // VcfMetadata.validateAlt()'s own angle-bracket check remains ALT-specific (no other type's ID grammar
+    // restricts angle brackets); this proves it still fires correctly after being narrowed from its old combined
+    // whitespace-or-angle-bracket condition to angle-brackets-only
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addAlt(new IdDescriptionMetadata("ALT", "AB<CD", "d"));
+      assertTrue(appender.anyMessageContains("must not contain angle brackets"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testAddAltWarnsOnBothWhitespaceAndInvalidStructuralVariantCodeWhenBothPresent() {
+    // "DEL:A B" combines a colon (invoking the structural-variant-code grammar) with an embedded space --
+    // regression test: after narrowing validateAlt()'s own check to angle-brackets only, both the generic
+    // whitespace warning (from IdMetadata.init(), at construction) and validateAlt()'s own "not a valid
+    // structural variant code" warning (since AltStructuralVariant("DEL:A B") itself rejects the embedded space,
+    // per AltStructuralVariantTest#testWhitespaceInComponentRejected) must fire, not just one
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      // IdDescriptionMetadata's typed (label, id, description) constructor now throws immediately on whitespace
+      // (IdMetadata's strict construction-time check, see IdMetadata.java) -- use the Map-based (lenient)
+      // constructor with VcfWarnings.DEFAULT instead so the whitespace check still warns here rather than
+      // throwing before this test can exercise VcfMetadata.validateAlt()'s own SV-code warning.
+      metadata.addAlt(new IdDescriptionMetadata("ALT",
+          InternalUtils.extractProperties(new String[]{"ID=DEL:A B", "Description=\"d\""}, VcfWarnings.DEFAULT),
+          VcfWarnings.DEFAULT));
+      assertTrue(appender.anyMessageContains("must not contain whitespace"));
+      assertTrue(appender.anyMessageContains("not a valid structural variant code"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testAddAltWarnsAndKeepsFirstOnDuplicateId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+          .addAlt(new IdDescriptionMetadata("ALT", "DEL", "First"))
+          .addAlt(new IdDescriptionMetadata("ALT", "DEL", "Second"))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals("First", metadata.getAlts().get("DEL").getDescription());
+  }
+
+  @Test
+  public void testAddInfoWarnsAndKeepsFirstOnDuplicateId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+          .addInfo(new InfoMetadata("DP", "First depth", InfoType.Integer, "1", null, null))
+          .addInfo(new InfoMetadata("DP", "Second depth", InfoType.Integer, "1", null, null))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals("First depth", metadata.getInfo().get("DP").getDescription());
+  }
+
+  @Test
+  public void testAddFormatWarnsAndKeepsFirstOnDuplicateId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+          .addFormat(new FormatMetadata("GT", "First genotype", "1", FormatType.String))
+          .addFormat(new FormatMetadata("GT", "Second genotype", "1", FormatType.String))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals("First genotype", metadata.getFormats().get("GT").getDescription());
+  }
+
+  @Test
+  public void testAddFilterWarnsAndKeepsFirstOnDuplicateId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+          .addFilter(new IdDescriptionMetadata("FILTER", "q10", "First"))
+          .addFilter(new IdDescriptionMetadata("FILTER", "q10", "Second"))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals("First", metadata.getFilters().get("q10").getDescription());
+  }
+
+  @Test
+  public void testAddContigWarnsAndKeepsFirstOnDuplicateId() {
+    // reproduces test/vcf/{4.1,4.2}/passed/passed_meta_contig.vcf's repeated ##contig ID=1 declaration
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+          .addContig(new ContigMetadata("1", 100L, "GRCh38", null, null, null, null))
+          .addContig(new ContigMetadata("1", 200L, "GRCh37", null, null, null, null))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(100L, metadata.getContigs().get("1").getLength());
+  }
+
+  @Test
+  public void testAddSampleWarnsAndKeepsFirstOnDuplicateId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+          .addSample(new IdDescriptionMetadata("SAMPLE", "S1", "First"))
+          .addSample(new IdDescriptionMetadata("SAMPLE", "S1", "Second"))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals("First", metadata.getSamples().get("S1").getDescription());
+  }
+
+  @Test
+  public void testAddPedigreeWarnsAndKeepsFirstOnDuplicateId() {
+    java.util.Map<String, String> childProps = new java.util.LinkedHashMap<>();
+    childProps.put("ID", "Child");
+    childProps.put("Father", "Dad");
+    java.util.Map<String, String> duplicateProps = new java.util.LinkedHashMap<>();
+    duplicateProps.put("ID", "Child");
+    duplicateProps.put("Mother", "Mom");
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+          .addPedigree(new PedigreeMetadata(childProps))
+          .addPedigree(new PedigreeMetadata(duplicateProps))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(1, metadata.getPedigrees().size());
+    assertEquals("Dad", metadata.getPedigrees().get(0).getPropertiesRaw().get("Father"));
+  }
+
+  @Test
+  public void testAddPedigreeKeepsBothWhenIdAbsent() {
+    // VCFv4.2.tex line 152's own grammar (##PEDIGREE=<Name_0=G0-ID,...,Name_N=GN-ID>) has no mandatory ID
+    // attribute; confirmed bcftools 1.23.1 keeps both of two ID-less duplicate PEDIGREE lines (no dedup key to
+    // compare), unlike the ID-bearing case above
+    java.util.Map<String, String> props1 = new java.util.LinkedHashMap<>();
+    props1.put("Name_0", "G0-ID");
+    props1.put("Name_1", "G1-ID");
+    java.util.Map<String, String> props2 = new java.util.LinkedHashMap<>();
+    props2.put("Name_0", "G0-ID");
+    props2.put("Name_1", "G1-ID");
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+          .addPedigree(new PedigreeMetadata(props1))
+          .addPedigree(new PedigreeMetadata(props2))
+          .build();
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(2, metadata.getPedigrees().size());
+  }
+
+  @Test
+  public void testDirectBuilderUseThrowsOnDuplicateIdForPedigree() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    java.util.Map<String, String> childProps = new java.util.LinkedHashMap<>();
+    childProps.put("ID", "Child");
+    childProps.put("Father", "Dad");
+    builder.addPedigree(new PedigreeMetadata(childProps));
+    java.util.Map<String, String> duplicateProps = new java.util.LinkedHashMap<>();
+    duplicateProps.put("ID", "Child");
+    duplicateProps.put("Mother", "Mom");
+    PedigreeMetadata dup = new PedigreeMetadata(duplicateProps);
+    assertThrows(VcfFormatException.class, () -> builder.addPedigree(dup));
+  }
+
+  @Test
+  public void testAddPedigreeOnBuiltMetadataThrowsOnDuplicateIdInStrictMode() {
+    java.util.Map<String, String> childProps = new java.util.LinkedHashMap<>();
+    childProps.put("ID", "Child");
+    childProps.put("Father", "Dad");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addPedigree(new PedigreeMetadata(childProps))
+        .build();
+    java.util.Map<String, String> duplicateProps = new java.util.LinkedHashMap<>();
+    duplicateProps.put("ID", "Child");
+    duplicateProps.put("Mother", "Mom");
+    PedigreeMetadata dup = new PedigreeMetadata(duplicateProps);
+    assertThrows(VcfFormatException.class, () -> metadata.addPedigree(dup));
+  }
+
+  @Test
+  public void testAddPedigreeHandlesNullElementReachingLiveListInsteadOfThrowingNpe() {
+    // regression test: getPedigrees() returns the live backing list (documented, tested), so a caller can do
+    // metadata.getPedigrees().add(null) -- an ordinary operation on a documented live-mutable list. That
+    // .add(null) itself bumps modCount, forcing hasPedigreeIdCollision's cache-rebuild loop to run and hit the
+    // null on the very next addPedigree() call. Previously a raw NullPointerException at
+    // existing.getPropertyRaw("ID") permanently broke every subsequent addPedigree() call until the null was
+    // removed from the list; addPedigree must instead keep working once the rebuild simply skips the null.
+    //
+    // The null is inserted at index 0, BEFORE the ID-bearing element, and duplicate detection for "Child" is
+    // re-checked afterward -- a "just don't crash" version of this test (null appended last, only asserting the
+    // list grew) can't tell a correct `continue` in the rebuild loop apart from an incorrect `break`/early
+    // return: with a `break`, the cache would silently stop populating at the null and never even see "Child",
+    // so a later duplicate "Child" would go undetected instead of being rejected.
+    java.util.Map<String, String> childProps = new java.util.LinkedHashMap<>();
+    childProps.put("ID", "Child");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addPedigree(new PedigreeMetadata(childProps))
+        .build();
+    metadata.getPedigrees().add(0, null);
+
+    java.util.Map<String, String> otherProps = new java.util.LinkedHashMap<>();
+    otherProps.put("ID", "Other");
+    metadata.addPedigree(new PedigreeMetadata(otherProps));
+    assertEquals(3, metadata.getPedigrees().size());
+
+    java.util.Map<String, String> duplicateProps = new java.util.LinkedHashMap<>();
+    duplicateProps.put("ID", "Child");
+    assertThrows(VcfFormatException.class, () -> metadata.addPedigree(new PedigreeMetadata(duplicateProps)));
+    assertEquals(3, metadata.getPedigrees().size());
+  }
+
+  @Test
+  public void testBuilderAddPedigreeDoesNotDegradeQuadraticallyWithManyUniqueIds() {
+    // 3 seconds is a wide margin above the fixed behavior's near-instant completion at this size; the unfixed
+    // O(n) m_pedigree-rescan-per-add code was empirically ~1.2s at n=16,000 and scaled quadratically (~4x cost
+    // for 2x n), so n=30,000 unfixed would take several seconds -- per the finding that motivated this fix
+    assertTimeoutPreemptively(java.time.Duration.ofSeconds(3), () -> {
+      VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+      for (int i = 0; i < 30_000; i++) {
+        java.util.Map<String, String> props = new java.util.LinkedHashMap<>();
+        props.put("ID", "P" + i);
+        props.put("Name_0", "G0-" + i);
+        builder.addPedigree(new PedigreeMetadata(props));
+      }
+      assertEquals(30_000, builder.build().getPedigrees().size());
+    });
+  }
+
+  @Test
+  public void testInstanceAddPedigreeDoesNotDegradeQuadraticallyWithManyUniqueIds() {
+    assertTimeoutPreemptively(java.time.Duration.ofSeconds(3), () -> {
+      VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+      for (int i = 0; i < 30_000; i++) {
+        java.util.Map<String, String> props = new java.util.LinkedHashMap<>();
+        props.put("ID", "P" + i);
+        props.put("Name_0", "G0-" + i);
+        metadata.addPedigree(new PedigreeMetadata(props));
+      }
+      assertEquals(30_000, metadata.getPedigrees().size());
+    });
+  }
+
+  @Test
+  public void testAddPedigreeCacheNotDesyncedByAttemptedInPlaceIdMutation() {
+    // regression test for a real defect found reviewing addPedigree's duplicate-ID cache (added to fix an
+    // O(n^2) header-parsing DoS): a size-only staleness signal can't detect a PedigreeMetadata already in the
+    // list having its own ID mutated in place, which could give the cache a stale (wrong in either direction)
+    // answer. PedigreeMetadata is now immutable specifically to rule this out -- this test proves the exact
+    // mutation the original finding used to demonstrate the problem is no longer even possible.
+    java.util.Map<String, String> childProps = new java.util.LinkedHashMap<>();
+    childProps.put("ID", "B");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addPedigree(new PedigreeMetadata(childProps))
+        .build();
+    PedigreeMetadata existing = metadata.getPedigrees().get(0);
+    assertThrows(UnsupportedOperationException.class, () -> existing.getPropertiesRaw().put("ID", "C"));
+    // existing's ID is still "B" -- the mutation attempt above did not succeed, so the cache (which still
+    // correctly associates "B" with this entry) cannot have been desynced by it
+    assertEquals("B", existing.getPropertyRaw("ID"));
+    java.util.Map<String, String> newProps = new java.util.LinkedHashMap<>();
+    newProps.put("ID", "C");
+    metadata.addPedigree(new PedigreeMetadata(newProps));
+    assertEquals(2, metadata.getPedigrees().size());
+    long countReportingC = metadata.getPedigrees().stream()
+        .filter(p -> "C".equals(p.getPropertyRaw("ID"))).count();
+    assertEquals(1, countReportingC, "Exactly one PEDIGREE entry should report ID \"C\"");
+  }
+
+  @Test
+  public void testAddPedigreeCacheDetectsRemoveThenAddPairOnLiveListDespiteUnchangedSize() {
+    // regression test for a Critical finding: the cache's original staleness signal (m_pedigree.size()) missed
+    // a remove-then-add pair on the live list returned by getPedigrees() -- both operations are structural, but
+    // together they leave size() unchanged, so a size-only check wrongly treated the cache as still valid. The
+    // fix switched to TrackedPedigreeList's modCount, which increments on every structural change regardless of
+    // net size, so this exact sequence is now correctly detected.
+    //
+    // Priming matters here: the initial adds MUST go through the instance's own addPedigree (not
+    // Builder.addPedigree, which has its own separate, independent cache) -- otherwise the instance's cache is
+    // never populated before the direct-list mutation below, and the bug this test targets can't manifest (a
+    // null/never-built cache always triggers a full, correct rebuild; only an already-valid, since-gone-stale
+    // cache can give a wrong answer).
+    java.util.Map<String, String> propsA = new java.util.LinkedHashMap<>();
+    propsA.put("ID", "A");
+    java.util.Map<String, String> propsB = new java.util.LinkedHashMap<>();
+    propsB.put("ID", "B");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .lenient(org.pharmgkb.parser.vcf.VcfWarnings.DEFAULT)
+        .build();
+    metadata.addPedigree(new PedigreeMetadata(propsA));
+    metadata.addPedigree(new PedigreeMetadata(propsB));
+    java.util.Map<String, String> propsC = new java.util.LinkedHashMap<>();
+    propsC.put("ID", "C");
+    // remove A, then add C directly through the live list -- bypasses addPedigree entirely; size stays 2
+    metadata.getPedigrees().remove(0);
+    metadata.getPedigrees().add(new PedigreeMetadata(propsC));
+    assertEquals(2, metadata.getPedigrees().size());
+    // A is no longer present -- re-adding it must succeed, not be wrongly rejected as a stale "duplicate"
+    java.util.Map<String, String> newPropsA = new java.util.LinkedHashMap<>();
+    newPropsA.put("ID", "A");
+    metadata.addPedigree(new PedigreeMetadata(newPropsA));
+    assertEquals(3, metadata.getPedigrees().size());
+    long countReportingA = metadata.getPedigrees().stream()
+        .filter(p -> "A".equals(p.getPropertyRaw("ID"))).count();
+    assertEquals(1, countReportingA, "Exactly one PEDIGREE entry should report ID \"A\"");
+    // C IS present (added directly above) -- adding another "C" must be rejected as a duplicate, not silently
+    // accepted
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      java.util.Map<String, String> anotherPropsC = new java.util.LinkedHashMap<>();
+      anotherPropsC.put("ID", "C");
+      metadata.addPedigree(new PedigreeMetadata(anotherPropsC));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(3, metadata.getPedigrees().size());
+    long countReportingC = metadata.getPedigrees().stream()
+        .filter(p -> "C".equals(p.getPropertyRaw("ID"))).count();
+    assertEquals(1, countReportingC, "Exactly one PEDIGREE entry should report ID \"C\"");
+  }
+
+  @Test
+  public void testAddPedigreeCacheHandlesRemoveThenReAddSameId() {
+    // primed via the INSTANCE's own addPedigree, not Builder.addPedigree (which has its own separate cache) --
+    // otherwise the instance's cache is still null when removePedigree runs below, the later addPedigree takes
+    // the always-correct never-built-cache rebuild path regardless of whether invalidation works, and this test
+    // would pass even with cache invalidation broken (see the sibling test above for the same pitfall caught
+    // during this fix's own review).
+    java.util.Map<String, String> propsA = new java.util.LinkedHashMap<>();
+    propsA.put("ID", "A");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    metadata.addPedigree(new PedigreeMetadata(propsA));
+    metadata.removePedigree(metadata.getPedigrees().get(0));
+    assertEquals(0, metadata.getPedigrees().size());
+    java.util.Map<String, String> newPropsA = new java.util.LinkedHashMap<>();
+    newPropsA.put("ID", "A");
+    metadata.addPedigree(new PedigreeMetadata(newPropsA));
+    assertEquals(1, metadata.getPedigrees().size());
+    assertEquals("A", metadata.getPedigrees().get(0).getPropertyRaw("ID"));
+  }
+
+  @Test
+  public void testAddPedigreeCacheHandlesIdLessAddsInterleavedWithIdBearingAdds() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .lenient(org.pharmgkb.parser.vcf.VcfWarnings.DEFAULT)
+        .build();
+    java.util.Map<String, String> idLess1 = new java.util.LinkedHashMap<>();
+    idLess1.put("Name_0", "G0-1");
+    metadata.addPedigree(new PedigreeMetadata(idLess1));
+    java.util.Map<String, String> propsA = new java.util.LinkedHashMap<>();
+    propsA.put("ID", "A");
+    metadata.addPedigree(new PedigreeMetadata(propsA));
+    java.util.Map<String, String> idLess2 = new java.util.LinkedHashMap<>();
+    idLess2.put("Name_0", "G0-2");
+    metadata.addPedigree(new PedigreeMetadata(idLess2));
+    assertEquals(3, metadata.getPedigrees().size());
+    // a genuine duplicate of "A" must still be caught after the ID-less adds in between
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      java.util.Map<String, String> dupA = new java.util.LinkedHashMap<>();
+      dupA.put("ID", "A");
+      metadata.addPedigree(new PedigreeMetadata(dupA));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(3, metadata.getPedigrees().size());
+  }
+
+  @Test
+  public void testInstanceAddAltWarnsAndKeepsFirstOnDuplicateId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addAlt(new IdDescriptionMetadata("ALT", "DEL", "First"));
+      metadata.addAlt(new IdDescriptionMetadata("ALT", "DEL", "Second"));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals("First", metadata.getAlts().get("DEL").getDescription());
+  }
+
+  @Test
+  public void testInstanceAddInfoWarnsAndKeepsFirstOnDuplicateId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addInfo(new InfoMetadata("DP", "First depth", InfoType.Integer, "1", null, null));
+      metadata.addInfo(new InfoMetadata("DP", "Second depth", InfoType.Integer, "1", null, null));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals("First depth", metadata.getInfo().get("DP").getDescription());
+  }
+
+  @Test
+  public void testInstanceAddFormatWarnsAndKeepsFirstOnDuplicateId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addFormat(new FormatMetadata("GT", "First genotype", "1", FormatType.String));
+      metadata.addFormat(new FormatMetadata("GT", "Second genotype", "1", FormatType.String));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals("First genotype", metadata.getFormats().get("GT").getDescription());
+  }
+
+  @Test
+  public void testInstanceAddContigWarnsAndKeepsFirstOnDuplicateId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addContig(new ContigMetadata("1", 100L, "GRCh38", null, null, null, null));
+      metadata.addContig(new ContigMetadata("1", 200L, "GRCh37", null, null, null, null));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(100L, metadata.getContigs().get("1").getLength());
+  }
+
+  @Test
+  public void testInstanceAddFilterWarnsAndKeepsFirstOnDuplicateId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addFilter(new IdDescriptionMetadata("FILTER", "q10", "First"));
+      metadata.addFilter(new IdDescriptionMetadata("FILTER", "q10", "Second"));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals("First", metadata.getFilters().get("q10").getDescription());
+  }
+
+  @Test
+  public void testInstanceAddSampleWarnsAndKeepsFirstOnDuplicateId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addSample(new IdDescriptionMetadata("SAMPLE", "S1", "First"));
+      metadata.addSample(new IdDescriptionMetadata("SAMPLE", "S1", "Second"));
+      assertTrue(appender.hasWarnOrHigher());
+      assertTrue(appender.anyMessageContains("Duplicate ID \"S1\" for SAMPLE metadata declaration ignored"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals("First", metadata.getSamples().get("S1").getDescription());
+  }
+
+  @Test
+  public void testInstanceAddSampleWarnsAndDropsMissingId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addSample(new IdDescriptionMetadata("SAMPLE",
+          org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+              new String[]{"Description=\"missing\""}, VcfWarnings.DEFAULT),
+          VcfWarnings.DEFAULT));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getSamples().isEmpty());
+  }
+
+  @Test
+  public void testInstanceAddPedigreeWarnsAndKeepsFirstOnDuplicateId() {
+    java.util.Map<String, String> childProps = new java.util.LinkedHashMap<>();
+    childProps.put("ID", "Child");
+    childProps.put("Father", "Dad");
+    java.util.Map<String, String> duplicateProps = new java.util.LinkedHashMap<>();
+    duplicateProps.put("ID", "Child");
+    duplicateProps.put("Mother", "Mom");
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addPedigree(new PedigreeMetadata(childProps));
+      metadata.addPedigree(new PedigreeMetadata(duplicateProps));
+      assertTrue(appender.hasWarnOrHigher());
+      assertTrue(appender.anyMessageContains("Duplicate ID \"Child\" for PEDIGREE metadata declaration ignored"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(1, metadata.getPedigrees().size());
+    assertEquals("Dad", metadata.getPedigrees().get(0).getPropertiesRaw().get("Father"));
+  }
+
+  @Test
+  public void testInstanceAddPedigreeKeepsBothWhenIdAbsent() {
+    java.util.Map<String, String> props1 = new java.util.LinkedHashMap<>();
+    props1.put("Name_0", "G0-ID");
+    props1.put("Name_1", "G1-ID");
+    java.util.Map<String, String> props2 = new java.util.LinkedHashMap<>();
+    props2.put("Name_0", "G0-ID");
+    props2.put("Name_1", "G1-ID");
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    try {
+      metadata.addPedigree(new PedigreeMetadata(props1));
+      metadata.addPedigree(new PedigreeMetadata(props2));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(2, metadata.getPedigrees().size());
+  }
+
+  @Test
+  public void testRemoveSampleRemovesEntry() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    metadata.addSample(new IdDescriptionMetadata("SAMPLE", "S1", "First"));
+    assertTrue(metadata.getSamples().containsKey("S1"));
+    metadata.removeSample(new IdDescriptionMetadata("SAMPLE", "S1", "First"));
+    assertTrue(metadata.getSamples().isEmpty());
+  }
+
+  @Test
+  public void testRemovePedigreeRemovesEntry() {
+    java.util.Map<String, String> props = new java.util.LinkedHashMap<>();
+    props.put("ID", "Child");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    PedigreeMetadata pedigree = new PedigreeMetadata(props);
+    metadata.addPedigree(pedigree);
+    assertEquals(1, metadata.getPedigrees().size());
+    metadata.removePedigree(pedigree);
+    assertTrue(metadata.getPedigrees().isEmpty());
+  }
+
+  @Test
+  public void testAddPedigreeIdPresentDoesNotConflictWithIdAbsentEntries() {
+    // an ID-bearing entry's dedup check must not be confused by an unrelated ID-less entry already in the list
+    java.util.Map<String, String> idLessProps = new java.util.LinkedHashMap<>();
+    idLessProps.put("Name_0", "G0-ID");
+    idLessProps.put("Name_1", "G1-ID");
+    java.util.Map<String, String> idProps = new java.util.LinkedHashMap<>();
+    idProps.put("ID", "Child");
+    idProps.put("Father", "Dad");
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addPedigree(new PedigreeMetadata(idLessProps))
+        .addPedigree(new PedigreeMetadata(idProps))
+        .build();
+    assertEquals(2, metadata.getPedigrees().size());
+  }
+
+  @Test
+  public void testColumnsAreDefensivelyCopied() {
+    // Builder.setColumns()/the private constructor must not alias the caller's own list -- mutating it after
+    // build() should not be able to change this VcfMetadata's own column data
+    List<String> columns = new ArrayList<>(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER",
+        "INFO", "FORMAT", "sample1"));
+    VcfMetadata metadata = new VcfMetadata.Builder()
+        .setFileFormat("VCFv4.2")
+        .setColumns(columns)
+        .build();
+    columns.add("sample2");
+    columns.set(9, "renamed");
+    assertEquals(1, metadata.getNumSamples());
+    assertEquals("sample1", metadata.getSampleName(0));
+    assertEquals(9, metadata.getColumnIndex("sample1"));
+  }
+
+  @Test
+  public void testGetSampleNameThrowsForNegativeIndex() {
+    // regression test: getSampleName(-1) previously silently returned "FORMAT" (the fixed column at
+    // index 9 + (-1) = 8) instead of signaling an invalid index -- the unguarded inverse of
+    // getSampleIndex(), which correctly guards idx < 9 on the way out
+    VcfMetadata metadata = new VcfMetadata.Builder()
+        .setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
+            "sample1"))
+        .build();
+    assertThrows(IndexOutOfBoundsException.class, () -> metadata.getSampleName(-1));
+  }
+
+  @Test
+  public void testGetSampleNameThrowsForIndexAtOrBeyondNumSamples() {
+    // pins the upper-bound behavior too (already correctly thrown by the underlying List.get(), but
+    // previously unpinned by any test) -- there is 1 sample (index 0), so index 1 is out of range
+    VcfMetadata metadata = new VcfMetadata.Builder()
+        .setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
+            "sample1"))
+        .build();
+    assertThrows(IndexOutOfBoundsException.class, () -> metadata.getSampleName(1));
+  }
+
+  @Test
+  public void testBuilderDoesNotShareStateAcrossTwoBuildCalls() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null));
+    VcfMetadata first = builder.build();
+    VcfMetadata second = builder.build();
+    first.getInfo().put("EXTRA", new InfoMetadata("EXTRA", "d", InfoType.Integer, "1", null, null));
+    assertEquals(2, first.getInfo().size());
+    assertEquals(1, second.getInfo().size());
+  }
+
+  @Test
+  public void testBuilderMutationAfterBuildDoesNotAffectAlreadyBuiltObject() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null));
+    VcfMetadata metadata = builder.build();
+    builder.addInfo(new InfoMetadata("AC", "d", InfoType.Integer, "A", null, null));
+    assertEquals(1, metadata.getInfo().size());
+  }
+
+  @Test
+  public void testAddAltWarnsAndDropsMissingOrBlankId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+          .addAlt(new IdDescriptionMetadata("ALT",
+              org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+                  new String[]{"Description=\"missing\""}, VcfWarnings.DEFAULT),
+              VcfWarnings.DEFAULT))
+          .addAlt(new IdDescriptionMetadata("ALT",
+              org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+                  new String[]{"ID=", "Description=\"empty\""}, VcfWarnings.DEFAULT),
+              VcfWarnings.DEFAULT))
+          .addAlt(new IdDescriptionMetadata("ALT",
+              org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+                  new String[]{"ID=   ", "Description=\"blank\""}, VcfWarnings.DEFAULT),
+              VcfWarnings.DEFAULT))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getAlts().isEmpty());
+  }
+
+  @Test
+  public void testTwoSeparateMissingIdDeclarationsAreEachDroppedIndependently() {
+    // regression test for the original finding: two UNRELATED declarations that both happen to lack an ID must
+    // not be treated as duplicates of each other -- each is warned about and dropped independently, not silently
+    // kept-then-collided because containsKey(null) happened to be true for the second one
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+          .addInfo(new InfoMetadata(
+              org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+                  new String[]{"Number=1", "Type=String", "Description=\"zzzalphamarkerzzz\""}, VcfWarnings.DEFAULT),
+              VcfWarnings.DEFAULT))
+          .addInfo(new InfoMetadata(
+              org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+                  new String[]{"Number=2", "Type=String", "Description=\"zzzbetamarkerzzz\""}, VcfWarnings.DEFAULT),
+              VcfWarnings.DEFAULT))
+          .build();
+      // each declaration's own warning must reference its own content -- proves both were independently warned
+      // about and dropped, not that the second was silently treated as a duplicate of the first with no warning
+      // of its own. These marker strings are deliberately unlike any word already used in warnIfDuplicate's own
+      // message text ("Duplicate ID ... keeping the first declaration") -- a plain "first"/"second" description
+      // would coincidentally match that pre-existing phrase and pass even without this fix, for the wrong reason.
+      assertTrue(appender.anyMessageContains("zzzalphamarkerzzz"));
+      assertTrue(appender.anyMessageContains("zzzbetamarkerzzz"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getInfo().isEmpty());
+  }
+
+  @Test
+  public void testAddFilterWarnsAndDropsMissingId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+          .addFilter(new IdDescriptionMetadata("FILTER",
+              org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+                  new String[]{"Description=\"missing\""}, VcfWarnings.DEFAULT),
+              VcfWarnings.DEFAULT))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getFilters().isEmpty());
+  }
+
+  @Test
+  public void testAddFormatWarnsAndDropsMissingId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+          .addFormat(new FormatMetadata(org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+              new String[]{"Number=1", "Type=String", "Description=\"missing\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getFormats().isEmpty());
+  }
+
+  @Test
+  public void testAddContigWarnsAndDropsMissingId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+          .addContig(new ContigMetadata(org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+              new String[]{"length=100", "assembly=\"GRCh38\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getContigs().isEmpty());
+  }
+
+  @Test
+  public void testAddSampleWarnsAndDropsMissingId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+          .addSample(new IdDescriptionMetadata("SAMPLE",
+              org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+                  new String[]{"Description=\"missing\""}, VcfWarnings.DEFAULT),
+              VcfWarnings.DEFAULT))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getSamples().isEmpty());
+  }
+
+  @Test
+  public void testInstanceAddAltWarnsAndDropsMissingId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addAlt(new IdDescriptionMetadata("ALT",
+          org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+              new String[]{"Description=\"missing\""}, VcfWarnings.DEFAULT),
+          VcfWarnings.DEFAULT));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getAlts().isEmpty());
+  }
+
+  @Test
+  public void testInstanceAddInfoWarnsAndDropsMissingId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addInfo(new InfoMetadata(
+          org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+              new String[]{"Number=1", "Type=String", "Description=\"missing\""}, VcfWarnings.DEFAULT),
+          VcfWarnings.DEFAULT));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getInfo().isEmpty());
+  }
+
+  @Test
+  public void testInstanceAddFormatWarnsAndDropsMissingId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addFormat(new FormatMetadata(org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+          new String[]{"Number=1", "Type=String", "Description=\"missing\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getFormats().isEmpty());
+  }
+
+  @Test
+  public void testInstanceAddContigWarnsAndDropsMissingId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addContig(new ContigMetadata(org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+          new String[]{"length=100", "assembly=\"GRCh38\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getContigs().isEmpty());
+  }
+
+  @Test
+  public void testInstanceAddFilterWarnsAndDropsMissingId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    try {
+      metadata.addFilter(new IdDescriptionMetadata("FILTER",
+          org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+              new String[]{"Description=\"missing\""}, VcfWarnings.DEFAULT),
+          VcfWarnings.DEFAULT));
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getFilters().isEmpty());
+  }
+
+  @Test
+  public void testDirectBuilderUseThrowsOnMissingId() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    IdDescriptionMetadata noId = new IdDescriptionMetadata(
+        "FILTER", InternalUtils.extractProperties(new String[] {"Description=\"d\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+    assertThrows(VcfFormatException.class, () -> builder.addFilter(noId));
+  }
+
+  @Test
+  public void testLenientBuilderWarnsAndDropsMissingId() {
+    StringWriter sink = new StringWriter();
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(new VcfWarnings(sink));
+    IdDescriptionMetadata noId = new IdDescriptionMetadata(
+        "FILTER", InternalUtils.extractProperties(new String[] {"Description=\"d\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+    assertDoesNotThrow(() -> builder.addFilter(noId));
+    assertTrue(sink.toString().contains("has no ID and cannot be stored"));
+    assertTrue(builder.build().getFilters().isEmpty());
+  }
+
+  @Test
+  public void testLenientRejectsNullWarnings() {
+    assertThrows(NullPointerException.class, () -> new VcfMetadata.Builder().lenient(null));
+  }
+
+  @Test
+  public void testBuiltMetadataInheritsStrictModeForPostBuildAddCalls() {
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    IdDescriptionMetadata noId = new IdDescriptionMetadata(
+        "FILTER", InternalUtils.extractProperties(new String[] {"Description=\"d\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+    assertThrows(VcfFormatException.class, () -> metadata.addFilter(noId));
+  }
+
+  @Test
+  public void testBuiltMetadataInheritsLenientModeAndSinkForPostBuildAddCalls() {
+    StringWriter sink = new StringWriter();
+    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(new VcfWarnings(sink)).build();
+    IdDescriptionMetadata noId = new IdDescriptionMetadata(
+        "FILTER", InternalUtils.extractProperties(new String[] {"Description=\"d\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+    assertDoesNotThrow(() -> metadata.addFilter(noId));
+    assertTrue(sink.toString().contains("has no ID and cannot be stored"));
+  }
+
+  @Test
+  public void testDirectBuilderUseThrowsOnDuplicateId() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    builder.addFilter(new IdDescriptionMetadata("FILTER", "q10", "d"));
+    IdDescriptionMetadata dup = new IdDescriptionMetadata("FILTER", "q10", "d2");
+    assertThrows(VcfFormatException.class, () -> builder.addFilter(dup));
+  }
+
+  @Test
+  public void testDirectBuilderUseThrowsOnInvalidAltStructuralCode() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    // "DEL:BOGUS" is deliberately NOT used here (unlike the brief's original literal value) -- AltStructuralVariant
+    // treats an unrecognized sub-identifier under a reserved top-level code as a legitimate custom extension (see
+    // AltStructuralVariant's own class Javadoc/INS:ME:LINE example and this file's testAddAltDoesNotWarnFor...
+    // tests), so it does not throw and this test would fail with "nothing was thrown". "THIS:IS-NOT-VALID" (already
+    // used and proven invalid elsewhere in this file, e.g. testAddAltWarnsOnInvalidStructuralVariantCode) has an
+    // unrecognized top-level code, which AltStructuralVariant does reject.
+    IdDescriptionMetadata badAlt = new IdDescriptionMetadata("ALT", "THIS:IS-NOT-VALID", "d");
+    assertThrows(VcfFormatException.class, () -> builder.addAlt(badAlt));
+  }
+}

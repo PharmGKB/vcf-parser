@@ -285,7 +285,7 @@ when the corresponding metadata was malformed.
 Reserved `Float`-typed `INFO`/`FORMAT` properties (e.g. `INFO`'s `AF`/`MQ`, `FORMAT`'s `GL`/`GP` -- note that a
 key reused on both sides isn't always the same `Type` on each; `FORMAT`'s own `MQ`, for example, is `Long`,
 not `Float`) are converted to
-[`VcfFloat`](src/main/java/org/pharmgkb/parser/vcf/model/VcfFloat.java), not a plain `BigDecimal`: VCFv4.2 doesn't
+[`VcfFloat`](src/main/java/org/pharmgkb/parser/vcf/VcfFloat.java), not a plain `BigDecimal`: VCFv4.2 doesn't
 define `Float`'s literal grammar, and VCFv4.5 clarifies it accepts `NAN`/`INF`/`INFINITY` (case-insensitive,
 optionally signed) in addition to a normal decimal number — values a plain `BigDecimal` cannot represent at all.
 
