@@ -122,19 +122,23 @@ here. The rest of this section states the concrete per-shape rules that follow f
   `VcfMetadata.validateAlt`/`isEmptyMetadataValue`/`collidesWithAttributeListGrammar`,
   and `VcfFloat.parse(String, VcfWarnings)`/`isSpecialValue`/`exceedsMaxDecimalLength`. These are marked
   `@RestrictedApi`/`@hidden` -- a documentation-only exemption, not a technical guarantee.
-  The library's four package-private fast-path factories -- `VcfContext.newPositionTakingOwnership`,
-  `newPositionWithTrustedFormat`, `newTrustedSample`, and `newTrustedRecord` -- are *not* on this list: they are
-  package-private, so visibility enforces what an annotation could only advertise, and an external caller cannot
-  reach them at all. Only three of the four are named `*Trusted*`; `newPositionTakingOwnership` deliberately is
-  not, because it skips only the defensive copies and still runs every validation check, FORMAT included -- it
-  trusts the caller's exclusive ownership of the collections, not the collections' content, which is a
-  materially weaker claim than the other three make. They differ from each other in *what* they skip
-  (`newPositionTakingOwnership` skips only the defensive copies; `newPositionWithTrustedFormat` skips those same
-  copies *and* FORMAT validation entirely; `newTrustedSample` skips a delimiter scan; `newTrustedRecord` skips
-  the defensive copy and the context-identity check, but never the null-position/null-sample-list rejection) --
-  check which checks a given trusted-bypass method actually skips before assuming one is a precedent for
-  another. See `VALIDATION_PHILOSOPHY.md`'s "How the principles interact" section. Two of `InternalUtils`'s
-  null-guards are
+  The library's five package-private fast-path factories -- `VcfContext.newPositionTakingOwnership`,
+  `newPositionWithTrustedFormat`, `newPositionCopyingTrustedFields`, `newTrustedSample`, and `newTrustedRecord` --
+  are *not* on this list: they are package-private, so visibility enforces what an annotation could only
+  advertise, and an external caller cannot reach them at all. Only one of the five is not named `*Trusted*`;
+  `newPositionTakingOwnership` deliberately is not, because it skips only the defensive copies and still runs
+  every validation check, FORMAT included -- it trusts the caller's exclusive ownership of the collections, not
+  the collections' content, which is a materially weaker claim than the other four make. They differ from each
+  other in *what* they skip (`newPositionTakingOwnership` skips only the defensive copies;
+  `newPositionWithTrustedFormat` skips those same copies *and* FORMAT validation entirely;
+  `newPositionCopyingTrustedFields` is the inverse of both -- it *never* skips the copies (used only by
+  `VcfPosition.Builder#build()`, which is reusable and must not alias one built position's collections to
+  another's or to the builder's own retained fields) but skips ID/ALT/FILTER/INFO/FORMAT validation entirely,
+  trusting `Builder#build()` itself to have already re-run whichever of those five checks a setter actually
+  changed; `newTrustedSample` skips a delimiter scan; `newTrustedRecord` skips the defensive copy and the
+  context-identity check, but never the null-position/null-sample-list rejection) -- check which checks a given
+  trusted-bypass method actually skips before assuming one is a precedent for another. See
+  `VALIDATION_PHILOSOPHY.md`'s "How the principles interact" section. Two of `InternalUtils`'s null-guards are
   kept as exceptions to its own exemption, since they're genuinely load-bearing: `unquote` (see its own
   comment) and the per-element checks in `dropEmptyEntries`/`fillEmptyEntriesWithDot` (reachable via
   `VcfPosition`'s documented live-mutation contract on its own genuinely-supported getters, not through

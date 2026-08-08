@@ -2005,4 +2005,82 @@ public class VcfMetadataTest {
     assertSame(ctx, new VcfMetadata.Builder(ctx).build().getContext());
   }
 
+  @Test
+  void testMetadataToBuilderPreservesContextIdentityWhileCopyingDeclarations() {
+    // toBuilder() re-adds existing declarations through the package-private object-taking overloads, so it
+    // must carry the SAME context instance -- otherwise VcfContext.newRecord's identity assertion would reject
+    // its own copy. Reference identity, not equality: two equal-valued contexts are still two operations.
+    VcfContext ctx = VcfContext.strict("VCFv4.2");
+    VcfMetadata original = new VcfMetadata.Builder(ctx)
+        .addInfo("AF", "Allele frequency", InfoType.Float, "A", null, null)
+        .build();
+    VcfMetadata copy = original.toBuilder().build();
+    assertSame(ctx, copy.getContext());
+    assertSame(ctx, copy.getInfo().get("AF").getContext());
+    assertSame(original.getInfo().get("AF").getContext(), copy.getInfo().get("AF").getContext());
+  }
+
+  @Test
+  void testToBuilderCopiesEveryDeclarationTypeFileFormatColumnsAndRawProperties() {
+    java.util.Map<String, String> pedigreeProps = new java.util.LinkedHashMap<>();
+    pedigreeProps.put("Name_1", "child");
+    pedigreeProps.put("Name_2", "father");
+    VcfMetadata original = new VcfMetadata.Builder(STRICT_CONTEXT)
+        .setFileFormat("VCFv4.2")
+        .addInfo("NS", "Number of samples", InfoType.Integer, "1", null, null)
+        .addFilter("q10", "quality below 10")
+        .addFormat("GT", "genotype", "1", FormatType.String)
+        .addContig("1", 1000L, null, null, null, null, null)
+        .addAlt("DEL", "deletion")
+        .addSample("sample1", "desc")
+        .addPedigree(pedigreeProps)
+        .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
+        .addRawProperty("source", "myImputationProgram")
+        .build();
+    VcfMetadata copy = original.toBuilder().build();
+    assertEquals(original.getFileFormat(), copy.getFileFormat());
+    assertEquals(original.getInfo().keySet(), copy.getInfo().keySet());
+    assertEquals(original.getFilters().keySet(), copy.getFilters().keySet());
+    assertEquals(original.getFormats().keySet(), copy.getFormats().keySet());
+    assertEquals(original.getContigs().keySet(), copy.getContigs().keySet());
+    assertEquals(original.getAlts().keySet(), copy.getAlts().keySet());
+    assertEquals(original.getSamples().keySet(), copy.getSamples().keySet());
+    assertEquals(original.getPedigrees().size(), copy.getPedigrees().size());
+    assertEquals(original.getNumColumns(), copy.getNumColumns());
+    assertEquals(original.getRawValuesOfProperty("source"), copy.getRawValuesOfProperty("source"));
+    assertSame(original.getContext(), copy.getContext());
+  }
+
+  @Test
+  void testToBuilderMutatingOriginalAfterCopyDoesNotAffectCopy() {
+    VcfMetadata original = new VcfMetadata.Builder(STRICT_CONTEXT)
+        .setFileFormat("VCFv4.2")
+        .addInfo("NS", "Number of samples", InfoType.Integer, "1", null, null)
+        .build();
+    VcfMetadata copy = original.toBuilder().build();
+    original.addInfo(new InfoMetadata(original.getContext(), "DP", "Depth", InfoType.Integer, "1", null, null));
+    assertFalse(copy.getInfo().containsKey("DP"));
+    assertTrue(original.getInfo().containsKey("DP"));
+  }
+
+  @Test
+  void testToBuilderBuildEmitsNoDiagnosticsForAnAltThatAlreadyWarnedAtConstruction() {
+    // declaring ALT with a syntactically invalid Number warns once (validateAlt); copying that already-warned,
+    // unchanged declaration via toBuilder() must not re-emit the identical diagnostic a second time
+    StringWriter sink = new StringWriter();
+    java.util.Map<String, String> altProps = new java.util.LinkedHashMap<>();
+    altProps.put("ID", "DEL");
+    altProps.put("Description", "Deletion");
+    altProps.put("Number", "bogus");
+    VcfMetadata original = new VcfMetadata.Builder(lenientContext(new VcfWarnings(sink)))
+        .setFileFormat("VCFv4.2")
+        .addAlt(altProps)
+        .build();
+    assertTrue(sink.toString().contains("is not a valid VCF number"), sink::toString);
+    sink.getBuffer().setLength(0);
+    VcfMetadata copy = original.toBuilder().build();
+    assertEquals("", sink.toString(), "copying alone must not re-emit a diagnostic the source already emitted");
+    assertEquals("bogus", copy.getAlt("DEL").getPropertyRaw("Number"));
+  }
+
 }

@@ -102,6 +102,50 @@ public class VcfMetadata {
     return m_context;
   }
 
+  /**
+   * @return a new {@link Builder}, seeded with a copy of every field of this metadata (file format, every
+   * declaration map, the PEDIGREE list, columns, and raw properties), bound to this metadata's own
+   * {@link VcfContext} by reference (not a re-derived or newly constructed one -- see {@link VcfContext}'s
+   * {@code newRecord}, which rejects a component built under a different context instance).
+   * <p>
+   * Re-adds each structured declaration (ALT/INFO/FILTER/FORMAT/contig/SAMPLE/PEDIGREE) through {@link Builder}'s
+   * package-private object-taking overloads, carrying the existing declaration object over by reference rather
+   * than reconstructing it from its raw properties -- see those overloads' own Javadoc. ALT is re-added through
+   * {@code Builder}'s private {@code addAlt(IdDescriptionMetadata, boolean)} with content validation turned off:
+   * every declaration here already passed {@link #validateAlt} once, and copying alone must not re-emit that
+   * same diagnostic a second time.
+   */
+  public Builder toBuilder() {
+    Builder builder = new Builder(m_context);
+    builder.setFileFormat(m_fileFormat);
+    for (IdDescriptionMetadata md : m_alt.values()) {
+      builder.addAlt(md, false);
+    }
+    for (InfoMetadata md : m_info.values()) {
+      builder.addInfo(md);
+    }
+    for (IdDescriptionMetadata md : m_filter.values()) {
+      builder.addFilter(md);
+    }
+    for (FormatMetadata md : m_format.values()) {
+      builder.addFormat(md);
+    }
+    for (ContigMetadata md : m_contig.values()) {
+      builder.addContig(md);
+    }
+    for (IdDescriptionMetadata md : m_sample.values()) {
+      builder.addSample(md);
+    }
+    for (PedigreeMetadata md : m_pedigree) {
+      builder.addPedigree(md);
+    }
+    builder.setColumns(m_columns);
+    for (Map.Entry<String, String> entry : m_properties.entries()) {
+      builder.addRawProperty(entry.getKey(), entry.getValue());
+    }
+    return builder;
+  }
+
   public String getFileFormat() {
     return m_fileFormat;
   }
@@ -935,13 +979,24 @@ public class VcfMetadata {
     }
 
     /**
-     * Adds an already-built declaration. Package-private: this shape is retained only for internal
-     * same-context callers (notably {@code VcfMetadata.toBuilder()}). It is not public because
-     * {@link VcfMetadata#getAlt}-style getters hand out existing declarations, so a public
-     * overload would let a caller move one built under another context into this builder -- see
-     * {@link #checkSameContext}.
+     * Adds an already-built declaration, validating its content via {@link #validateAlt}. Package-private: this
+     * shape is retained only for internal same-context callers -- the public raw-value overloads above, which
+     * always construct genuinely new, not-yet-validated content. It is not public because
+     * {@link VcfMetadata#getAlt}-style getters hand out existing declarations, so a public overload would let a
+     * caller move one built under another context into this builder -- see {@link #checkSameContext}.
      */
     Builder addAlt(IdDescriptionMetadata md) {
+      return addAlt(md, true);
+    }
+
+    /**
+     * @param validateContent {@code false} only for {@code VcfMetadata.toBuilder()}'s re-add of a declaration
+     * that already passed {@link #validateAlt} once, when it was first added to the source metadata this builder
+     * was seeded from -- re-running it here on unchanged content would re-emit the identical diagnostic a second
+     * time purely from copying. {@code true} for every other caller (the overload above, and through it the
+     * public raw-value overloads), which always add genuinely new, not-yet-validated content.
+     */
+    private Builder addAlt(IdDescriptionMetadata md, boolean validateContent) {
       requireNonNull(md, "ALT");
       checkSameContext(md, m_context, "ALT");
       if (md.getId() == null || md.getId().trim().isEmpty()) {
@@ -951,7 +1006,9 @@ public class VcfMetadata {
       if (warnIfDuplicate(m_alt, md.getId(), "ALT", m_context)) {
         return this;
       }
-      validateAlt(md, m_context);
+      if (validateContent) {
+        validateAlt(md, m_context);
+      }
       m_alt.put(md.getId(), md);
       return this;
     }

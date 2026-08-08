@@ -110,7 +110,7 @@ public final class VcfContext {
       @Nullable List<String> altBases, @Nullable BigDecimal qual, @Nullable List<String> filter,
       @Nullable ListMultimap<String, String> info, @Nullable List<String> format, int lineNumber) {
     return new VcfPosition(this, chr, pos, copyOf(ids), ref, copyOf(altBases), qual, copyOf(filter), copyOf(info),
-        copyOf(format), lineNumber, false);
+        copyOf(format), lineNumber, false, false, null, null);
   }
 
   /**
@@ -144,8 +144,24 @@ public final class VcfContext {
   VcfPosition newPositionTakingOwnership(String chr, long pos, @Nullable List<String> ids, String ref,
       @Nullable List<String> altBases, @Nullable BigDecimal qual, @Nullable List<String> filter,
       @Nullable ListMultimap<String, String> info, @Nullable List<String> ownedFormat, int lineNumber) {
+    return newPositionTakingOwnership(chr, pos, ids, ref, altBases, qual, filter, info, ownedFormat, lineNumber,
+        null, null);
+  }
+
+  /**
+   * Same as the overload above, but also accepts raw, not-yet-parsed QUAL/INFO column text to attach in the same
+   * call -- lets {@code VcfParser} construct a lazily-parsed position in one call, without a second
+   * post-construction {@code setRawQuality}/{@code setRawInfo} call or an intermediate {@link VcfPosition.Builder}
+   * allocation. {@code rawQual} is only meaningful (and only stored) when {@code qual} is {@code null} -- mirrors
+   * {@link VcfPosition.Builder}'s own quality-vs-rawQuality mutual exclusivity; likewise {@code rawInfo} vs
+   * {@code info}. Package-private for the same reason as the overload above.
+   */
+  VcfPosition newPositionTakingOwnership(String chr, long pos, @Nullable List<String> ids, String ref,
+      @Nullable List<String> altBases, @Nullable BigDecimal qual, @Nullable List<String> filter,
+      @Nullable ListMultimap<String, String> info, @Nullable List<String> ownedFormat, int lineNumber,
+      @Nullable String rawQual, @Nullable String rawInfo) {
     return new VcfPosition(this, chr, pos, ids, ref, altBases, qual, filter, info, ownedFormat, lineNumber,
-        false);
+        false, false, rawQual, rawInfo);
   }
 
   /**
@@ -163,8 +179,46 @@ public final class VcfContext {
   VcfPosition newPositionWithTrustedFormat(String chr, long pos, @Nullable List<String> ids, String ref,
       @Nullable List<String> altBases, @Nullable BigDecimal qual, @Nullable List<String> filter,
       @Nullable ListMultimap<String, String> info, List<String> trustedFormat, int lineNumber) {
+    return newPositionWithTrustedFormat(chr, pos, ids, ref, altBases, qual, filter, info, trustedFormat, lineNumber,
+        null, null);
+  }
+
+  /**
+   * Same as the overload above, but also accepts raw, not-yet-parsed QUAL/INFO column text -- see
+   * {@link #newPositionTakingOwnership(String, long, List, String, List, BigDecimal, List, ListMultimap, List,
+   * int, String, String)}'s identical rawQual/rawInfo Javadoc; the same reasoning applies here.
+   */
+  VcfPosition newPositionWithTrustedFormat(String chr, long pos, @Nullable List<String> ids, String ref,
+      @Nullable List<String> altBases, @Nullable BigDecimal qual, @Nullable List<String> filter,
+      @Nullable ListMultimap<String, String> info, List<String> trustedFormat, int lineNumber,
+      @Nullable String rawQual, @Nullable String rawInfo) {
     return new VcfPosition(this, chr, pos, ids, ref, altBases, qual, filter, info, trustedFormat, lineNumber,
-        true);
+        true, false, rawQual, rawInfo);
+  }
+
+  /**
+   * Internal fast path used exclusively by {@code VcfPosition.Builder#build()}.
+   * <p>
+   * <b>Always copies</b> every list/multimap argument, like the public {@link #newPosition} above and unlike
+   * {@link #newPositionTakingOwnership} -- {@code Builder} is reusable (a caller may call {@code build()} more
+   * than once on the same instance), so handing off the builder's own retained references without copying would
+   * alias every position built from it to each other and to the builder itself. Skips
+   * {@code checkIds}/{@code checkAltBases}/{@code checkFilters}/{@code checkInfoEntries}/{@code checkFormat}
+   * entirely (every check each performs, including any warning), trusting the caller -- {@code Builder#build()},
+   * which re-runs exactly the same checks itself for whichever field a setter actually changed -- to guarantee
+   * every argument here already passed its own check once, unchanged. {@code checkChromosome}/
+   * {@code checkPosition}/{@code checkRef} are not skippable and always still run; see the constructor's own
+   * {@code trustedFields} Javadoc for why.
+   * <p>
+   * Package-private, not public-with-{@code @RestrictedApi}: that annotation is documentation-only here, so
+   * visibility is what actually enforces the restriction.
+   */
+  VcfPosition newPositionCopyingTrustedFields(String chr, long pos, @Nullable List<String> ids, String ref,
+      @Nullable List<String> altBases, @Nullable BigDecimal qual, @Nullable List<String> filter,
+      @Nullable ListMultimap<String, String> info, @Nullable List<String> format, int lineNumber,
+      @Nullable String rawQual, @Nullable String rawInfo) {
+    return new VcfPosition(this, chr, pos, copyOf(ids), ref, copyOf(altBases), qual, copyOf(filter), copyOf(info),
+        copyOf(format), lineNumber, true, true, rawQual, rawInfo);
   }
 
   /**

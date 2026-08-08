@@ -60,14 +60,16 @@ public class VcfPosition {
   /**
    * The single construction path for a fully-specified position. Package-private: every caller goes through
    * {@link VcfContext#newPosition(String, long, List, String, List, BigDecimal, List, ListMultimap, List, int)}
-   * (or, for {@code VcfParser}'s own per-record construction, {@code VcfContext.newPositionTakingOwnership}, or
-   * for its FORMAT cache specifically, {@code VcfContext.newPositionWithTrustedFormat}), which is what supplies
-   * the {@code context} this instance derives both its warnings sink and its strict-vs-lenient behavior from.
+   * (or, for {@code VcfParser}'s own per-record construction, {@code VcfContext.newPositionTakingOwnership}, for
+   * its FORMAT cache specifically {@code VcfContext.newPositionWithTrustedFormat}, or for
+   * {@link Builder#build()}, {@code VcfContext.newPositionCopyingTrustedFields}), which is what supplies the
+   * {@code context} this instance derives both its warnings sink and its strict-vs-lenient behavior from.
    * <p>
    * <b>This constructor takes ownership of {@code ids}, {@code altBases}, {@code filter}, {@code format}, and
    * {@code info}</b> -- it does not defensively copy them. {@link VcfContext#newPosition} is where the copy for
    * an externally-supplied list happens; {@code newPositionTakingOwnership} and {@code newPositionWithTrustedFormat}
-   * are the two factories that skip it.
+   * are two of the three factories that skip it ({@code newPositionCopyingTrustedFields} is the third, but -- true
+   * to its name -- copies anyway, for a different reason; see its own Javadoc).
    * {@link #getIds()}, {@link #getAltBases()}, {@link #getFilters()}, {@link #getFormat()}, and
    * {@link #getInfo()} return these same objects (or an equivalent list/multimap produced by normalization).
    * <p>
@@ -81,6 +83,24 @@ public class VcfPosition {
    * including the null-element check and any warning it would emit), relying on the caller to guarantee
    * {@code format} is a fresh, independently-owned copy whose elements already passed {@code checkFormat} once,
    * unchanged. Every other check still runs. See {@code VcfContext.newPositionWithTrustedFormat}.
+   * @param trustedFields when {@code true}, skips {@code checkIds}/{@code checkAltBases}/{@code checkFilters}/
+   * {@code checkInfoEntries} entirely (the same "every check including any warning" skip {@code trustedFormat}
+   * makes for {@code checkFormat}, just for the other four validation-relevant fields), relying on the caller to
+   * guarantee each of {@code ids}/{@code altBases}/{@code filter}/{@code info} already passed its own check once,
+   * unchanged. {@code checkChromosome}/{@code checkPosition}/{@code checkRef} are never skipped by this flag --
+   * unlike the other five checks, none of them has a warn-and-recover branch (only throw-or-pass), so re-running
+   * them on already-valid content can never re-emit a diagnostic; skipping them would only remove a correctness
+   * safety net for a value a caller-supplied setter changed without full validation (see
+   * {@code VcfPosition.Builder#chromosome}/{@code #ref}, which only reject {@code null}). See
+   * {@code VcfContext.newPositionCopyingTrustedFields}, used exclusively by {@link Builder#build()}: the builder
+   * itself re-runs whichever of these four checks a field actually changed since it was seeded, so by the time
+   * that factory is reached every field is either freshly re-validated or provably unchanged from an
+   * already-valid source -- {@code trustedFields=true} tells this constructor not to redundantly check it again.
+   * @param rawQual raw, not-yet-parsed QUAL column text to attach via {@link #setRawQuality} when {@code qual} is
+   * {@code null} -- lets a caller construct a lazily-parsed position in one call instead of a separate
+   * post-construction {@code setRawQuality}. Ignored (and never stored) when {@code qual} is non-null, mirroring
+   * {@link #setRawQuality}'s own "parsed and raw are never both non-null" invariant.
+   * @param rawInfo the {@code rawQual} parameter's exact counterpart for INFO/{@link #setRawInfo}.
    */
   VcfPosition(VcfContext context, String chr, long pos,
       @Nullable List<String> ids,
@@ -91,7 +111,10 @@ public class VcfPosition {
       @Nullable ListMultimap<String, String> info,
       @Nullable List<String> format,
       int lineNumber,
-      boolean trustedFormat) {
+      boolean trustedFormat,
+      boolean trustedFields,
+      @Nullable String rawQual,
+      @Nullable String rawInfo) {
 
     m_context = Preconditions.checkNotNull(context, "context must not be null");
     m_warnings = context.getWarnings();
@@ -107,17 +130,17 @@ public class VcfPosition {
 
     checkChromosome(chr);
     checkPosition(pos);
-    if (ids != null) {
+    if (ids != null && !trustedFields) {
       ids = checkIds(ids, checkWarnings);
     }
     checkRef(ref);
-    if (altBases != null) {
+    if (altBases != null && !trustedFields) {
       altBases = checkAltBases(altBases, checkWarnings);
     }
-    if (filter != null) {
+    if (filter != null && !trustedFields) {
       filter = checkFilters(filter, checkWarnings);
     }
-    if (info != null) {
+    if (info != null && !trustedFields) {
       info = checkInfoEntries(info, checkWarnings);
     }
     if (format != null && !trustedFormat) {
@@ -162,6 +185,17 @@ public class VcfPosition {
      */
 
     normalizeFilters();
+
+    /*
+      4. Attach raw, not-yet-parsed QUAL/INFO text, if supplied and not superseded by a parsed value -- see this
+      constructor's own rawQual/rawInfo Javadoc.
+     */
+    if (qual == null && rawQual != null) {
+      m_rawQuality = rawQual;
+    }
+    if (info == null && rawInfo != null) {
+      m_rawInfo = rawInfo;
+    }
   }
 
   /**
@@ -195,6 +229,46 @@ public class VcfPosition {
    */
   VcfContext getContext() {
     return m_context;
+  }
+
+  /**
+   * @return a new {@link Builder}, seeded with a copy of every field of this position, bound to this position's
+   * own {@link VcfContext} by reference (not a re-derived or newly constructed one -- see {@link VcfContext}'s
+   * {@code newRecord}, which rejects a component built under a different context instance).
+   * <p>
+   * QUAL and INFO are seeded from {@link #m_quality}/{@link #m_rawQuality} and {@link #m_info}/{@link #m_rawInfo}
+   * directly, never through {@link #getQuality()}/{@link #getInfo()}: those getters force lazy parsing (emitting
+   * any parse warning) as a side effect, and {@link #getQuality()} additionally nulls {@link #m_rawQuality} when
+   * it does, so reading through them here would both parse-and-warn at copy time and destroy the source's own
+   * lazy state.
+   * <p>
+   * {@code ids}/{@code altBases}/{@code filter}/{@code format}/{@code info} are seeded through {@link Builder}'s
+   * private {@code seedXxx} methods, not its public setters -- this position already validated (or already
+   * warned about and recovered from) every one of them once, so seeding must not mark them dirty for
+   * {@link Builder#build()} to re-check. A caller who then calls the corresponding public setter on the
+   * returned builder marks that one field dirty, and only that field is re-validated on {@link Builder#build()}.
+   */
+  public Builder toBuilder() {
+    Builder builder = new Builder(m_context)
+        .chromosome(m_chromosome)
+        .position(m_position)
+        .ref(m_refBases)
+        .lineNumber(m_lineNumber);
+    builder.seedIds(m_ids);
+    builder.seedAltBases(m_altBases);
+    builder.seedFilters(m_filter);
+    builder.seedFormat(m_format);
+    if (m_quality != null) {
+      builder.quality(m_quality);
+    } else {
+      builder.rawQuality(m_rawQuality);
+    }
+    if (m_info != null) {
+      builder.seedInfo(m_info);
+    } else {
+      builder.rawInfo(m_rawInfo);
+    }
+    return builder;
   }
 
   private static void checkChromosome(String chr) {
@@ -1014,5 +1088,215 @@ public class VcfPosition {
     PASSED,
     /** The position failed one or more filters. */
     FAILED
+  }
+
+
+  /**
+   * A copy-and-modify builder for {@link VcfPosition}, obtained via {@link #toBuilder()}. Every setter that
+   * takes a mutable {@link List}/{@link ListMultimap} defensively copies it on the way in -- a caller mutating a
+   * list handed to a setter, or a list obtained from the source position via {@link #toBuilder()}, must never be
+   * able to reach back into a position {@link #build()} produces.
+   * <p>
+   * This instance is reusable: calling {@link #build()} more than once returns independent positions that share
+   * no mutable state with each other or with this builder -- {@link #build()} always copies (see its own
+   * Javadoc), so a caller mutating one built position, or this builder's own retained fields, can never affect
+   * another position built from the same builder.
+   * <p>
+   * {@code ids}/{@code altBases}/{@code filter}/{@code info}/{@code format} are each re-validated by
+   * {@link #build()} only if the corresponding public setter was called on this instance -- {@link #toBuilder()}
+   * seeds these five fields through private, non-dirtying {@code seedXxx} methods instead, so a field copied
+   * unchanged from an already-valid (or already-warned-about) source is never re-checked, and copying alone
+   * never re-emits a diagnostic the source already emitted once. A dirty field is re-validated by directly
+   * re-running the exact same {@code checkXxx} method the constructor itself would have run, so the resulting
+   * position is validated identically to one built fresh via {@link VcfContext#newPosition}.
+   */
+  public static class Builder {
+    private @Nullable String m_chromosome;
+    private long m_position;
+    private @Nullable List<String> m_ids;
+    private boolean m_idsDirty;
+    private @Nullable String m_ref;
+    private @Nullable List<String> m_altBases;
+    private boolean m_altBasesDirty;
+    private @Nullable BigDecimal m_quality;
+    private @Nullable String m_rawQuality;
+    private @Nullable List<String> m_filter;
+    private boolean m_filterDirty;
+    private @Nullable ListMultimap<String, String> m_info;
+    private boolean m_infoDirty;
+    private @Nullable String m_rawInfo;
+    private @Nullable List<String> m_format;
+    private boolean m_formatDirty;
+    private int m_lineNumber = -1;
+    private final VcfContext m_context;
+
+    Builder(VcfContext context) {
+      m_context = Preconditions.checkNotNull(context, "context must not be null");
+    }
+
+    public Builder chromosome(String chromosome) {
+      // chromosome is typed non-@Nullable, but nothing enforces that at runtime; reject immediately per
+      // AGENTS.md's Public API Null-Safety Policy rather than letting build() surface a less specific failure
+      if (chromosome == null) {
+        throw new VcfFormatException("CHROM is null");
+      }
+      m_chromosome = chromosome;
+      return this;
+    }
+
+    public Builder position(long position) {
+      m_position = position;
+      return this;
+    }
+
+    /** Defensively copies {@code ids}; see this class's own Javadoc for why. Marks {@code ids} dirty for
+     * {@link #build()} to re-validate. */
+    public Builder ids(@Nullable List<String> ids) {
+      seedIds(ids);
+      m_idsDirty = true;
+      return this;
+    }
+
+    /** Seeds {@code ids} from an already-validated source without marking it dirty; see this class's own
+     * Javadoc. Still defensively copies -- called on every {@link #toBuilder()} regardless of whether the field
+     * ends up dirty. */
+    private void seedIds(@Nullable List<String> ids) {
+      m_ids = ids == null ? null : new ArrayList<>(ids);
+    }
+
+    public Builder ref(String ref) {
+      // ref is typed non-@Nullable, but nothing enforces that at runtime; see chromosome(String)'s identical
+      // reasoning above
+      if (ref == null) {
+        throw new VcfFormatException("REF is null");
+      }
+      m_ref = ref;
+      return this;
+    }
+
+    /** Defensively copies {@code altBases}; see this class's own Javadoc for why. Marks {@code altBases} dirty
+     * for {@link #build()} to re-validate. */
+    public Builder altBases(@Nullable List<String> altBases) {
+      seedAltBases(altBases);
+      m_altBasesDirty = true;
+      return this;
+    }
+
+    /** See {@link #seedIds}'s identical reasoning, for {@code altBases}. */
+    private void seedAltBases(@Nullable List<String> altBases) {
+      m_altBases = altBases == null ? null : new ArrayList<>(altBases);
+    }
+
+    /** Sets a parsed QUAL value, clearing any raw QUAL text set via {@link #rawQuality}. QUAL has no
+     * warn-and-recover validation at construction (only lazy parsing on first {@link #getQuality()}), so it has
+     * no dirty flag to set -- there is nothing for {@link #build()} to skip or re-run either way. */
+    public Builder quality(@Nullable BigDecimal quality) {
+      m_quality = quality;
+      m_rawQuality = null;
+      return this;
+    }
+
+    /**
+     * Sets raw, not-yet-parsed QUAL column text, to be parsed lazily on the built position's first
+     * {@link #getQuality()} -- clears any parsed value set via {@link #quality}. This is {@code VcfParser}'s
+     * route to a lazily-parsed QUAL, replacing the {@code setRawQuality} method it used before this builder
+     * existed.
+     */
+    public Builder rawQuality(@Nullable String rawQuality) {
+      m_rawQuality = rawQuality;
+      m_quality = null;
+      return this;
+    }
+
+    /** Defensively copies {@code filters}; see this class's own Javadoc for why. Marks {@code filter} dirty for
+     * {@link #build()} to re-validate. */
+    public Builder filters(@Nullable List<String> filters) {
+      seedFilters(filters);
+      m_filterDirty = true;
+      return this;
+    }
+
+    /** See {@link #seedIds}'s identical reasoning, for {@code filter}. */
+    private void seedFilters(@Nullable List<String> filters) {
+      m_filter = filters == null ? null : new ArrayList<>(filters);
+    }
+
+    /** Sets a parsed INFO multimap, clearing any raw INFO text set via {@link #rawInfo}. Defensively copies
+     * {@code info}; see this class's own Javadoc for why. Marks {@code info} dirty for {@link #build()} to
+     * re-validate. */
+    public Builder info(@Nullable ListMultimap<String, String> info) {
+      seedInfo(info);
+      m_rawInfo = null;
+      m_infoDirty = true;
+      return this;
+    }
+
+    /** See {@link #seedIds}'s identical reasoning, for {@code info}. Unlike {@link #info}, does not touch
+     * {@link #m_rawInfo} -- {@link #toBuilder()} only calls this when the source's own raw INFO was already
+     * null (its "at most one of parsed/raw" invariant), so there is nothing to clear. */
+    private void seedInfo(@Nullable ListMultimap<String, String> info) {
+      m_info = info == null ? null : LinkedListMultimap.create(info);
+    }
+
+    /**
+     * Sets raw, not-yet-parsed INFO column text, to be parsed lazily on the built position's first
+     * {@link #getInfo()} -- clears any parsed value set via {@link #info}. This is {@code VcfParser}'s route to
+     * a lazily-parsed INFO, replacing the {@code setRawInfo} method it used before this builder existed.
+     */
+    public Builder rawInfo(@Nullable String rawInfo) {
+      m_rawInfo = rawInfo;
+      m_info = null;
+      return this;
+    }
+
+    /** Defensively copies {@code format}; see this class's own Javadoc for why. Marks {@code format} dirty for
+     * {@link #build()} to re-validate. */
+    public Builder format(@Nullable List<String> format) {
+      seedFormat(format);
+      m_formatDirty = true;
+      return this;
+    }
+
+    /** See {@link #seedIds}'s identical reasoning, for {@code format}. */
+    private void seedFormat(@Nullable List<String> format) {
+      m_format = format == null ? null : new ArrayList<>(format);
+    }
+
+    public Builder lineNumber(int lineNumber) {
+      m_lineNumber = lineNumber;
+      return this;
+    }
+
+    /**
+     * @return a new {@link VcfPosition}. First, re-runs {@link VcfPosition}'s own {@code checkXxx} validation
+     * directly (this class is nested inside {@link VcfPosition}, so it can call those {@code private static}
+     * methods the same way {@link VcfPosition}'s own constructor does) for exactly the fields a setter marked
+     * dirty since this builder was seeded -- an unchanged field is left exactly as seeded, already known valid.
+     * Then delegates to the package-private {@code VcfContext.newPositionCopyingTrustedFields}, which both
+     * copies every list/multimap field (so this reusable builder's own retained references, and any previously
+     * built position's fields, are never aliased into the new one -- see this class's own Javadoc) and skips
+     * re-running that same validation a second time inside the constructor, since it was just run here (or
+     * correctly skipped here) instead.
+     */
+    public VcfPosition build() {
+      VcfWarnings checkWarnings = m_context.isLenient() ? m_context.getWarnings() : null;
+      if (m_idsDirty && m_ids != null) {
+        m_ids = checkIds(m_ids, checkWarnings);
+      }
+      if (m_altBasesDirty && m_altBases != null) {
+        m_altBases = checkAltBases(m_altBases, checkWarnings);
+      }
+      if (m_filterDirty && m_filter != null) {
+        m_filter = checkFilters(m_filter, checkWarnings);
+      }
+      if (m_infoDirty && m_info != null) {
+        m_info = checkInfoEntries(m_info, checkWarnings);
+      }
+      if (m_formatDirty && m_format != null) {
+        m_format = checkFormat(m_format, checkWarnings);
+      }
+      return m_context.newPositionCopyingTrustedFields(m_chromosome, m_position, m_ids, m_ref, m_altBases,
+          m_quality, m_filter, m_info, m_format, m_lineNumber, m_rawQuality, m_rawInfo);
+    }
   }
 }

@@ -101,23 +101,31 @@ condition check is an always-throwing helper class rather than an inline branch.
   entirely rather than needing an equivalent for a condition it can't reach. It does report an absent
   `Description` with `init()`'s own `warnIfMissing` message, rather than letting `putAndQuoteProperty`'s
   generic null rejection fire -- that would hard-throw even under a lenient context.
-- **`VcfPosition`**: reached through four `VcfContext.newPosition*` factories -- a full public one, a minimal
+- **`VcfPosition`**: reached through five `VcfContext.newPosition*` factories -- a full public one, a minimal
   public 5-argument one (`chromosome, position, refBases, quality, lineNumber` only -- no ID/ALT/FILTER/INFO/FORMAT
-  checks at all, since those fields are absent), and two package-private fast paths, `newPositionTakingOwnership`
-  and `newPositionWithTrustedFormat`. The content checks that vary with strictness (an empty ID/ALT/FILTER entry,
-  an empty INFO key, an empty FORMAT sub-field name, FILTER combining `PASS` with another code, a duplicate value
-  within `ID` or `FILTER`, `=` inside an INFO value) all go through the `isLenient()`-as-signal mechanism above,
-  and both package-private factories are principle-3 cases layered on top of that dispatch, not additional
-  branches of it. `VcfContext.newPositionTakingOwnership()` skips only the defensive copies the full factory
-  makes -- every validation check still runs, `checkFormat` included -- for a caller-owned collection the parser
-  built itself moments earlier and never shares. `VcfContext.newPositionWithTrustedFormat()` skips that same
-  copying *and* skips `checkFormat` (and therefore both its throw-vs-warn dispatch and any warning it would
-  emit) entirely, for `VcfParser`'s own per-record FORMAT-validation cache -- real VCFs often repeat the same
-  FORMAT column text across large blocks of consecutive records, and re-validating an already-validated one is
-  redundant work. Unlike `newTrustedSample()` (which keeps its own null/size checks and skips only one narrower
-  check), `newPositionWithTrustedFormat` is a full skip of `checkFormat`, including its null-element check; both
-  package-private factories are unreachable from outside the package. A deliberate, chosen side effect of the
-  FORMAT cache: a FORMAT that would warn (e.g. an empty sub-field name) now warns once per contiguous block of
+  checks at all, since those fields are absent), and three package-private fast paths, `newPositionTakingOwnership`,
+  `newPositionWithTrustedFormat`, and `newPositionCopyingTrustedFields`. The content checks that vary with
+  strictness (an empty ID/ALT/FILTER entry, an empty INFO key, an empty FORMAT sub-field name, FILTER combining
+  `PASS` with another code, a duplicate value within `ID` or `FILTER`, `=` inside an INFO value) all go through
+  the `isLenient()`-as-signal mechanism above, and all three package-private factories are principle-3 cases
+  layered on top of that dispatch, not additional branches of it. `VcfContext.newPositionTakingOwnership()` skips
+  only the defensive copies the full factory makes -- every validation check still runs, `checkFormat` included --
+  for a caller-owned collection the parser built itself moments earlier and never shares. `VcfContext.
+  newPositionWithTrustedFormat()` skips that same copying *and* skips `checkFormat` (and therefore both its
+  throw-vs-warn dispatch and any warning it would emit) entirely, for `VcfParser`'s own per-record
+  FORMAT-validation cache -- real VCFs often repeat the same FORMAT column text across large blocks of
+  consecutive records, and re-validating an already-validated one is redundant work. Unlike `newTrustedSample()`
+  (which keeps its own null/size checks and skips only one narrower check), `newPositionWithTrustedFormat` is a
+  full skip of `checkFormat`, including its null-element check; all three package-private factories are
+  unreachable from outside the package. `VcfContext.newPositionCopyingTrustedFields()` is the inverse trade-off
+  from the other two: it *always* copies (used exclusively by the reusable `VcfPosition.Builder#build()`, which
+  must not alias one built position's collections to another's or to the builder's own retained fields across
+  repeated `build()` calls) but skips `checkIds`/`checkAltBases`/`checkFilters`/`checkInfoEntries`/`checkFormat`
+  entirely, trusting `Builder#build()` itself to have already re-run whichever of those five checks a setter
+  actually changed since the builder was seeded -- an unchanged field, seeded from an already-valid (or
+  already-warned-about) source, is correctly never re-checked, so copying alone never re-emits a diagnostic the
+  source already emitted once. A deliberate, chosen side effect of the FORMAT cache: a FORMAT that would warn
+  (e.g. an empty sub-field name) now warns once per contiguous block of
   identical FORMAT text, not once per record, since a cache hit skips re-emitting that warning too.
 - **`VcfMetadata`/`Builder`**: covered in "How principles 1 and 2 are dispatched" above.
 - **`VcfSample`**: not part of that dispatch at all -- `VcfContext.newSample` and `newTrustedSample` already
@@ -174,18 +182,23 @@ condition check is an always-throwing helper class rather than an inline branch.
   caller who calls one of these methods directly despite the disclaimer and hits a raw `NullPointerException`
   is getting an acceptable outcome for ignoring an explicit "not supported" contract. See `AGENTS.md`'s
   Null-Safety Policy for the current list of exempt members.
-- The four package-private fast paths (`VcfContext.newPositionTakingOwnership`, `newPositionWithTrustedFormat`,
-  `newTrustedSample`, `newTrustedRecord`) are a different case from the disclaimer above, on two counts. First,
-  they are *package-private*, so visibility genuinely enforces "don't call this from outside its one trusted
-  call site" rather than merely advertising it -- that is what collapsing the model package into
-  `org.pharmgkb.parser.vcf` bought. Second, what each skips is a principle-3 hot-path validation skip, not a
-  null-safety exemption, and the four skip genuinely different things:
+- The five package-private fast paths (`VcfContext.newPositionTakingOwnership`, `newPositionWithTrustedFormat`,
+  `newPositionCopyingTrustedFields`, `newTrustedSample`, `newTrustedRecord`) are a different case from the
+  disclaimer above, on two counts. First, they are *package-private*, so visibility genuinely enforces "don't
+  call this from outside its one trusted call site" rather than merely advertising it -- that is what
+  collapsing the model package into `org.pharmgkb.parser.vcf` bought. Second, what each skips is a principle-3
+  hot-path validation skip, not a null-safety exemption, and the five skip genuinely different things:
   `newPositionTakingOwnership` skips only the defensive copies the full `newPosition` factory makes, and still
   runs every validation check, `checkFormat` included -- this is exactly why it is not named `*Trusted*` like
-  the other three: it trusts the caller's exclusive ownership of the collections, not the collections' content,
-  which is a strictly weaker claim than the other three make;
+  the other four: it trusts the caller's exclusive ownership of the collections, not the collections' content,
+  which is a strictly weaker claim than the other four make;
   `newPositionWithTrustedFormat` skips that same copying *and* skips `checkFormat` entirely, including its
   null-element check;
+  `newPositionCopyingTrustedFields` inverts that trade-off -- it never skips the copy (used only by the reusable
+  `VcfPosition.Builder#build()`, so every `build()` call must produce collections independent of the builder's
+  own retained fields and of any other position built from it) but skips `checkIds`/`checkAltBases`/
+  `checkFilters`/`checkInfoEntries`/`checkFormat` entirely, since `Builder#build()` itself already re-ran
+  exactly the checks a setter actually changed before reaching this factory;
   `newTrustedSample` skips only the structural-delimiter scan and keeps its null/mismatched-length checks;
   `newTrustedRecord` skips the defensive copy of the sample list and the context-identity verification, but
   still rejects a null position and a null sample list -- `MemoryMappedVcfLineParser.parseLine` relies on that

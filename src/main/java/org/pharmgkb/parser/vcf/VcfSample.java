@@ -111,6 +111,26 @@ public class VcfSample {
   }
 
   /**
+   * @return a new {@link Builder}, seeded with a copy of this sample's current representation -- whichever of
+   * the parallel-list ({@link #m_keys}/{@link #m_values}) or property-map ({@link #m_properties}) form is
+   * currently populated, read directly rather than through {@link #properties()}, which would force
+   * materialization (and, for a sample with a duplicate FORMAT key, warn about it) at copy time. Bound to this
+   * sample's own {@link VcfContext} by reference (not a re-derived or newly constructed one).
+   */
+  public Builder toBuilder() {
+    Builder builder = new Builder(m_context);
+    if (m_properties != null) {
+      builder.properties(m_properties);
+    } else {
+      List<String> keys = m_keys;
+      List<String> values = m_values;
+      assert keys != null && values != null;
+      builder.keys(keys).values(values);
+    }
+    return builder;
+  }
+
+  /**
    * Rejects a key or value containing a line terminator, a colon, or a tab: a parsed key/value can never contain
    * these (they were already split on to arrive at this key/value), but one set directly via {@link #putProperty} or
    * {@link #propertyEntrySet()} could; reject them so the writer's output remains re-parseable (a colon would add a
@@ -585,5 +605,91 @@ public class VcfSample {
    */
   public Set<Map.Entry<String, String>> propertyEntrySet() {
     return properties().entrySet();
+  }
+
+
+  /**
+   * A copy-and-modify builder for {@link VcfSample}, obtained via {@link #toBuilder()}. Every setter defensively
+   * copies its argument on the way in -- a caller mutating a list/map handed to a setter, or one obtained from
+   * the source sample via {@link #toBuilder()}, must never be able to reach back into the sample {@link #build()}
+   * produces.
+   */
+  public static class Builder {
+    private @Nullable List<String> m_keys;
+    private @Nullable List<String> m_values;
+    private @Nullable LinkedHashMap<String, String> m_properties;
+    private final VcfContext m_context;
+
+    Builder(VcfContext context) {
+      m_context = Preconditions.checkNotNull(context, "context must not be null");
+    }
+
+    /**
+     * Defensively copies {@code keys}; see this class's own Javadoc for why. Clears any property map set via
+     * {@link #properties}: the parallel-list and property-map representations are mutually exclusive, matching
+     * {@link VcfSample}'s own internal invariant.
+     */
+    public Builder keys(@Nullable List<String> keys) {
+      m_keys = keys == null ? null : new ArrayList<>(keys);
+      m_properties = null;
+      return this;
+    }
+
+    /**
+     * Defensively copies {@code values}; see this class's own Javadoc for why. Clears any property map set via
+     * {@link #properties}, for the same reason as {@link #keys}.
+     */
+    public Builder values(@Nullable List<String> values) {
+      m_values = values == null ? null : new ArrayList<>(values);
+      m_properties = null;
+      return this;
+    }
+
+    /**
+     * Defensively copies {@code properties}; see this class's own Javadoc for why. Clears any keys/values set
+     * via {@link #keys}/{@link #values}, for the same reason as {@link #keys}.
+     *
+     * @throws VcfFormatException if {@code properties} is null
+     */
+    public Builder properties(LinkedHashMap<String, String> properties) {
+      // properties is typed non-@Nullable, but nothing enforces that at runtime; reject immediately per
+      // AGENTS.md's Public API Null-Safety Policy, matching VcfContext.newSample(LinkedHashMap)'s identical check
+      if (properties == null) {
+        throw new VcfFormatException("Sample properties map is null");
+      }
+      m_properties = new LinkedHashMap<>(properties);
+      m_keys = null;
+      m_values = null;
+      return this;
+    }
+
+    /**
+     * @return a new {@link VcfSample}, delegating to the validating, copying {@link VcfContext#newSample}
+     * overloads. Unlike {@link VcfPosition.Builder#build()}, this cannot delegate to an ownership-taking-and-
+     * validating factory: {@code VcfContext} has none for {@link VcfSample} -- only the copying-and-validating
+     * {@code newSample} overloads used here, and the skip-both-copy-and-validation {@code newTrustedSample},
+     * which would silently accept content this builder's own setters never validated. The copy this performs is
+     * therefore redundant with the defensive copy this builder's own setters already made on the way in, trading
+     * one extra allocation for keeping caller-supplied content validated.
+     *
+     * @throws VcfFormatException if exactly one of {@link #keys}/{@link #values} was called (with no
+     * {@link #properties} call to switch representation back) -- named explicitly here, rather than letting it
+     * surface as {@code VcfContext.newSample}'s more generic "keys is null but values is not" (or vice versa),
+     * since the actual mistake is specific to this builder: {@code keys}/{@code values} must be set together
+     */
+    public VcfSample build() {
+      if (m_properties != null) {
+        return m_context.newSample(m_properties);
+      }
+      if (m_keys != null && m_values == null) {
+        throw new VcfFormatException("Builder.keys() was called without a matching Builder.values() call (and no " +
+            "Builder.properties() to switch representation back) -- both must be set together");
+      }
+      if (m_values != null && m_keys == null) {
+        throw new VcfFormatException("Builder.values() was called without a matching Builder.keys() call (and no " +
+            "Builder.properties() to switch representation back) -- both must be set together");
+      }
+      return m_context.newSample(m_keys, m_values);
+    }
   }
 }

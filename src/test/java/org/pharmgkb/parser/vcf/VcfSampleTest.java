@@ -13,10 +13,12 @@ import org.pharmgkb.parser.vcf.spec.WarnCapturingAppender;
 
 import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
 import static org.pharmgkb.parser.vcf.TestUtils.LENIENT_CONTEXT;
+import static org.pharmgkb.parser.vcf.TestUtils.lenientContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -991,5 +993,87 @@ class VcfSampleTest {
     // position-dependent allele-resolution code path, not the earlier absent/missing-GT short-circuit
     VcfSample sample = STRICT_CONTEXT.newSample(List.of("GT"), List.of("0/1"));
     assertNull(sample.getGenotype(null));
+  }
+
+  @Test
+  void testToBuilderFromParallelListsCopiesFieldsAndPreservesContext() {
+    VcfSample original = STRICT_CONTEXT.newSample(List.of("GT", "DP"), List.of("0/1", "10"));
+    VcfSample copy = original.toBuilder().build();
+    assertEquals(original.getPropertyKeys(), copy.getPropertyKeys());
+    assertEquals("0/1", copy.getProperty("GT"));
+    assertEquals("10", copy.getProperty("DP"));
+    assertSame(original.getContext(), copy.getContext());
+  }
+
+  @Test
+  void testToBuilderFromPropertyMapCopiesFieldsAndPreservesContext() {
+    LinkedHashMap<String, String> props = new LinkedHashMap<>();
+    props.put("GT", "0/1");
+    props.put("DP", "10");
+    VcfSample original = STRICT_CONTEXT.newSample(props);
+    VcfSample copy = original.toBuilder().build();
+    assertEquals(original.getPropertyKeys(), copy.getPropertyKeys());
+    assertEquals("0/1", copy.getProperty("GT"));
+    assertSame(original.getContext(), copy.getContext());
+  }
+
+  @Test
+  void testBuilderSettersDefensivelyCopyEveryMutableInput() {
+    List<String> keys = new ArrayList<>(List.of("GT"));
+    List<String> values = new ArrayList<>(List.of("0/1"));
+    VcfSample sample = STRICT_CONTEXT.newSample(List.of("GT"), List.of("0/1")).toBuilder()
+        .keys(keys).values(values).build();
+    keys.add("DP");
+    values.add("10");
+    assertEquals(Set.of("GT"), sample.getPropertyKeys());
+  }
+
+  @Test
+  void testBuilderPropertiesSetterDefensivelyCopiesInput() {
+    LinkedHashMap<String, String> props = new LinkedHashMap<>();
+    props.put("GT", "0/1");
+    VcfSample sample = STRICT_CONTEXT.newSample(List.of("GT"), List.of("0/1")).toBuilder()
+        .properties(props).build();
+    props.put("DP", "10");
+    assertEquals(Set.of("GT"), sample.getPropertyKeys());
+  }
+
+  @Test
+  void testToBuilderDoesNotMaterializeOrWarnOnDuplicateKeyUntilRead() {
+    // materializing the parallel-list representation via properties() warns about a duplicate FORMAT key --
+    // toBuilder() must not force that; see VcfSample.toBuilder()'s own Javadoc
+    java.io.StringWriter sink = new java.io.StringWriter();
+    VcfSample sample = lenientContext(new VcfWarnings(sink)).newSample(new ArrayList<>(List.of("DP", "DP")),
+        new ArrayList<>(List.of("1", "2")));
+    VcfSample copy = sample.toBuilder().build();
+    assertEquals("", sink.toString(), "copying alone must not materialize or warn");
+    assertEquals("1", copy.getProperty("DP"));
+  }
+
+  @Test
+  void testBuilderPropertiesRejectsNullInsteadOfThrowingNpe() {
+    VcfSample.Builder builder = STRICT_CONTEXT.newSample(List.of("GT"), List.of("0/1")).toBuilder();
+    assertThrows(VcfFormatException.class, () -> builder.properties(null));
+  }
+
+  @Test
+  void testBuilderKeysWithoutValuesOnAPropertyMapBackedSampleNamesTheActualMistake() {
+    // switching a property-map-backed sample's builder to the parallel-list representation via keys() alone
+    // (with no matching values() call) used to surface VcfContext.newSample's generic "values is null but keys
+    // is not" -- accurate about the field state, but not about what the caller actually did wrong
+    LinkedHashMap<String, String> props = new LinkedHashMap<>();
+    props.put("GT", "0/1");
+    VcfSample.Builder builder = STRICT_CONTEXT.newSample(props).toBuilder().keys(List.of("DP"));
+    VcfFormatException ex = assertThrows(VcfFormatException.class, builder::build);
+    assertTrue(ex.getMessage().contains("values()"), ex::getMessage);
+  }
+
+  @Test
+  void testBuilderValuesWithoutKeysOnAPropertyMapBackedSampleNamesTheActualMistake() {
+    LinkedHashMap<String, String> props = new LinkedHashMap<>();
+    props.put("GT", "0/1");
+    VcfSample.Builder builder = STRICT_CONTEXT.newSample(props).toBuilder().values(List.of("1/1"));
+    VcfFormatException ex = assertThrows(VcfFormatException.class, builder::build);
+    assertTrue(ex.getMessage().contains("keys()"), ex::getMessage);
   }
 }

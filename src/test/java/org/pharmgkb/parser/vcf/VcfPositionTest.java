@@ -1324,7 +1324,7 @@ public class VcfPositionTest {
     // former "lenient constructor rejects a null VcfWarnings" guarantee lives. VcfContext's own constructor
     // still rejects a null sink -- see VcfContextTest.
     assertThrows(NullPointerException.class, () -> new VcfPosition(null, "1", 100, null, "A", null, null,
-        List.of("PASS", "q10"), null, null, -1, false));
+        List.of("PASS", "q10"), null, null, -1, false, false, null, null));
   }
 
   @Test
@@ -1453,6 +1453,168 @@ public class VcfPositionTest {
     position.setWarningsSink(new VcfWarnings(sink));
     assertNull(position.getQuality());
     assertTrue(sink.toString().contains("is not a number"));
+  }
+
+  @Test
+  public void testToBuilderCopiesEveryFieldAndPreservesContext() {
+    VcfPosition original = STRICT_CONTEXT.newPosition("chr1", 100, List.of("rs1"), "A", List.of("T"),
+        new BigDecimal("50"), List.of("PASS"), null, List.of("GT"), 7);
+    VcfPosition copy = original.toBuilder().build();
+    assertEquals(original.getChromosome(), copy.getChromosome());
+    assertEquals(original.getPosition(), copy.getPosition());
+    assertEquals(original.getIds(), copy.getIds());
+    assertEquals(original.getRef(), copy.getRef());
+    assertEquals(original.getAltBases(), copy.getAltBases());
+    assertEquals(original.getQuality(), copy.getQuality());
+    assertEquals(original.getFilters(), copy.getFilters());
+    assertEquals(original.getFormat(), copy.getFormat());
+    assertSame(original.getContext(), copy.getContext());
+  }
+
+  @Test
+  public void testToBuilderChangeOneFieldLeavesSourceUntouched() {
+    VcfPosition original = STRICT_CONTEXT.newPosition("chr1", 100, null, "A", List.of("T"), new BigDecimal("50"),
+        null, null, null, -1);
+    VcfPosition modified = original.toBuilder().quality(BigDecimal.ZERO).build();
+    assertEquals(new BigDecimal("50"), original.getQuality());
+    assertEquals(BigDecimal.ZERO, modified.getQuality());
+    assertEquals("chr1", modified.getChromosome());
+  }
+
+  @Test
+  public void testBuilderSettersDefensivelyCopyEveryMutableInput() {
+    VcfPosition original = STRICT_CONTEXT.newPosition("chr1", 100, null, "A", List.of("T"), null, null, null, null,
+        -1);
+    List<String> ids = new ArrayList<>(List.of("rs1"));
+    List<String> alts = new ArrayList<>(List.of("T"));
+    List<String> filters = new ArrayList<>(List.of("PASS"));
+    List<String> format = new ArrayList<>(List.of("GT"));
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("NS", "3");
+    VcfPosition copy = original.toBuilder().ids(ids).altBases(alts).filters(filters).format(format).info(info)
+        .build();
+    ids.add("rs2");
+    alts.add("G");
+    filters.add("q10");
+    format.add("DP");
+    info.put("NS", "4");
+    assertEquals(List.of("rs1"), copy.getIds());
+    assertEquals(List.of("T"), copy.getAltBases());
+    assertEquals(List.of("PASS"), copy.getFilters());
+    assertEquals(List.of("GT"), copy.getFormat());
+    assertEquals(List.of("3"), copy.getInfo().get("NS"));
+  }
+
+  @Test
+  public void testBuilderBuildCalledTwiceSharesNoCollectionBetweenTheTwoResults() {
+    // VcfPosition.Builder is documented reusable -- a second build() call must not alias the first result's
+    // mutable state (or the builder's own retained fields) through ids/altBases/filters/format/info
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("NS", "3");
+    VcfPosition.Builder builder = STRICT_CONTEXT.newPosition("chr1", 100, List.of("rs1"), "A", List.of("T"),
+            null, List.of("PASS"), null, List.of("GT"), -1).toBuilder()
+        .info(info);
+    VcfPosition a = builder.build();
+    VcfPosition c = builder.build();
+    assertNotSame(a.getIds(), c.getIds());
+    assertNotSame(a.getAltBases(), c.getAltBases());
+    assertNotSame(a.getFilters(), c.getFilters());
+    assertNotSame(a.getFormat(), c.getFormat());
+    assertNotSame(a.getInfo(), c.getInfo());
+    a.getIds().add("rs2");
+    a.getAltBases().add("G");
+    a.getFilters().add("q10");
+    a.getFormat().add("DP");
+    a.getInfo().put("NS", "4");
+    assertEquals(List.of("rs1"), c.getIds());
+    assertEquals(List.of("T"), c.getAltBases());
+    assertEquals(List.of("PASS"), c.getFilters());
+    assertEquals(List.of("GT"), c.getFormat());
+    assertEquals(List.of("3"), c.getInfo().get("NS"));
+  }
+
+  @Test
+  public void testToBuilderIdsDoesNotAliasSourcesOwnLiveList() {
+    // toBuilder() seeds ids(...) from the source's own getIds() list (a documented live, mutable view) --
+    // mutating the SOURCE's own list afterward (not a caller-held separate reference) must not reach the copy
+    // either, which is only guaranteed if toBuilder()'s ids(...) call defensively copies exactly like an
+    // explicit caller-supplied ids(...) call does.
+    VcfPosition original = STRICT_CONTEXT.newPosition("chr1", 100, new ArrayList<>(List.of("rs1")), "A",
+        List.of("T"), null, null, null, null, -1);
+    VcfPosition copy = original.toBuilder().build();
+    original.getIds().add("rs2");
+    assertEquals(List.of("rs1"), copy.getIds());
+  }
+
+  @Test
+  public void testToBuilderPreservesRawQualityAndInfoWithoutMaterializingOrWarning() {
+    // both QUAL and INFO are left as raw, not-yet-parsed text (the parser's own construction shape) -- QUAL's
+    // raw text is even unparseable, so materializing it via getQuality() WOULD emit a warning if toBuilder()
+    // read through the getter instead of the raw field directly (see toBuilder()'s own Javadoc)
+    StringWriter sink = new StringWriter();
+    VcfPosition parsed = lenientContext(new VcfWarnings(sink)).newPosition("chr1", 100, "A", null, -1);
+    parsed.setRawQuality("not-a-number");
+    parsed.setRawInfo("NS=3");
+    VcfPosition copy = parsed.toBuilder().build();
+    assertEquals("", sink.toString(), "copying alone must not materialize or warn");
+    // both resolve identically once actually read
+    assertEquals(parsed.getQuality(), copy.getQuality());
+    assertEquals(parsed.getInfo(), copy.getInfo());
+  }
+
+  @Test
+  public void testBuilderChromosomeAndRefRejectNullInsteadOfThrowingNpe() {
+    VcfPosition.Builder builder = STRICT_CONTEXT.newPosition("chr1", 100, "A", null, -1).toBuilder();
+    assertThrows(VcfFormatException.class, () -> builder.chromosome(null));
+    assertThrows(VcfFormatException.class, () -> builder.ref(null));
+  }
+
+  @Test
+  public void testToBuilderBuildEmitsNoDiagnosticsForFieldsUnchangedSinceAnAlreadyWarnedConstruction() {
+    // constructing with a duplicate ID, a duplicate FILTER code, and a grammar-invalid FORMAT key each warns
+    // once; copying that already-warned, otherwise-unchanged state via toBuilder() must not re-emit any of the
+    // three a second time -- the source already passed (recovered from) each check once
+    StringWriter sink = new StringWriter();
+    VcfPosition original = lenientContext(new VcfWarnings(sink)).newPosition("chr1", 100,
+        new ArrayList<>(List.of("rs1", "rs1")), "A", null, null, new ArrayList<>(List.of("q10", "q10")), null,
+        new ArrayList<>(List.of("1BAD")), -1);
+    assertTrue(sink.toString().contains("Duplicate ID"), sink::toString);
+    assertTrue(sink.toString().contains("Duplicate FILTER code"), sink::toString);
+    assertTrue(sink.toString().contains("does not match"), sink::toString);
+    sink.getBuffer().setLength(0);
+    VcfPosition copy = original.toBuilder().build();
+    assertEquals("", sink.toString(), "copying alone must not re-emit a diagnostic the source already emitted");
+    assertEquals(List.of("rs1", "rs1"), copy.getIds());
+    assertEquals(List.of("q10", "q10"), copy.getFilters());
+    assertEquals(List.of("1BAD"), copy.getFormat());
+  }
+
+  @Test
+  public void testToBuilderBuildRevalidatesOnlyTheFieldASetterActuallyChanged() {
+    // ids is unchanged (must not re-warn about its pre-existing duplicate); filters is explicitly re-set to a
+    // freshly-invalid value via the builder's own setter (must be validated exactly as a fresh construction
+    // would be, i.e. still warn)
+    StringWriter sink = new StringWriter();
+    VcfPosition original = lenientContext(new VcfWarnings(sink)).newPosition("chr1", 100,
+        new ArrayList<>(List.of("rs1", "rs1")), "A", null, null, null, null, null, -1);
+    sink.getBuffer().setLength(0);
+    VcfPosition copy = original.toBuilder().filters(new ArrayList<>(List.of("q10", "q10"))).build();
+    assertFalse(sink.toString().contains("Duplicate ID"), sink::toString);
+    assertTrue(sink.toString().contains("Duplicate FILTER code"), sink::toString);
+    assertEquals(List.of("q10", "q10"), copy.getFilters());
+  }
+
+  @Test
+  public void testToBuilderDoesNotThrowForALiveMutatedInvalidFilterUnderStrictContext() {
+    // a position live-mutated (via the documented mutable getFilters() view) into an invalid state -- PASS
+    // combined with another filter -- used to make toBuilder().build() throw under a strict context, since
+    // build() used to unconditionally re-validate every field; validate() remains the documented opt-in for
+    // catching this kind of live mutation, not a copy operation (see toBuilder()'s own Javadoc)
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 100, null, "A", null, null,
+        new ArrayList<>(List.of("q10")), null, null, -1);
+    position.getFilters().add(0, "PASS");
+    VcfPosition copy = assertDoesNotThrow(() -> position.toBuilder().build());
+    assertEquals(List.of("PASS", "q10"), copy.getFilters());
   }
 
 }
