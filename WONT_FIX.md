@@ -53,12 +53,8 @@ see the shared decision below.
 `VcfParser.Builder.fromFile`/`fromReader`/`parseWith`/`warningsToFile(Path)` reject a null argument via
 `Preconditions.checkNotNull`. These are pure `Builder` configuration entry points, called exactly once per
 parse, before any file content is read, with a `Path`/`BufferedReader`/`VcfLineParser` the calling code
-itself constructs and passes in. Confirmed by grep: the only two matches for these method names anywhere in
-`src/main` are Javadoc example snippets (in `TransformingVcfLineParser.java` and `VcfWriter.java`), not real
-code -- nothing internal to this library ever calls them, and their arguments can never be derived from a
-parsed VCF file's own data. Contrast with `TransformingVcfLineParser.Builder.transformation(VcfTransformation,
-VcfWriter)`'s `writer` argument, which also uses `Preconditions.checkNotNull` -- the correct, existing
-pattern this decision matches, not a defect.
+itself constructs and passes in. Confirmed by grep: nothing internal to this library ever calls them, and
+their arguments can never be derived from a parsed VCF file's own data.
 
 ### `BaseMetadata`/`IdDescriptionMetadata` constructors' `label` parameter
 
@@ -298,9 +294,8 @@ list slot's occupant via low-level `List` API misuse with no existing analog any
 `warnIfDuplicate(Map<String, XxxMetadata>, id, ...)`, an O(1) `HashMap.containsKey(id)` check keyed by
 `md.getId()` captured at add time. `IdMetadata.getId()` reads live from the object's own mutable raw-properties
 map, and every `BaseMetadata` subclass exposes `putPropertyRaw`/`putAndQuoteProperty` plus a live
-`getPropertiesRaw()` map as a real, tested, load-bearing mutation path (the `VcfTransformation` pipeline
-feature) -- `VcfWriterTest.testHeaderContentRejectionAllowsCorrectedRetry` and
-`TransformingVcfLineParserTest.testHeaderContentRejectionDoesNotPermanentlyBlockRetry` both call
+`getPropertiesRaw()` map as a real, tested, load-bearing mutation path --
+`VcfWriterTest.testHeaderContentRejectionAllowsCorrectedRetry` calls
 `metadata.getInfo().get("AF").putPropertyRaw("ID", ...)` directly on an already-added, already-keyed entry.
 
 So an already-added entry's `ID` can change without the map's key ever updating: it stays reachable at its OLD
@@ -320,8 +315,8 @@ gaps found in the same investigation:
 1. **Immutability isn't available as an option here.** `PedigreeMetadata` was made immutable because nothing
    anywhere in this codebase mutates it post-construction -- that fix was free. The exact mutation pattern
    that triggers this gap (`putPropertyRaw("ID", ...)` on an already-added entry) is itself real, existing,
-   tested functionality for these six types (the `VcfTransformation` pipeline feature). Removing it would
-   break real behavior, not just close a theoretical gap.
+   tested functionality for these six types. Removing it would break real behavior, not just close a
+   theoretical gap.
 2. **The failure mode is one-directional and already caught downstream, unlike `PedigreeMetadata`'s DoS bug.**
    A stale `HashMap` key can only ever cause a false-negative (silently accepting a duplicate) -- it can never
    cause a false-positive rejection of valid content, since mutating an existing entry's `ID` can only break an
@@ -343,7 +338,7 @@ gaps found in the same investigation:
    accurate for both the changed-ID and removed-ID shapes.)
 3. **Not reachable from untrusted file content at all.** A normal `VcfParser` parse only ever adds each
    declaration once; nothing during parsing mutates an already-added entry's `ID`. This gap requires
-   deliberate, first-party post-parse programmatic mutation (e.g. a `VcfTransformation` that renames an `ID`),
+   deliberate, first-party post-parse programmatic mutation (e.g. code that renames an `ID`),
    not something a crafted `.vcf` file could trigger -- a materially different risk profile than the
    `PedigreeMetadata` DoS or the `BigDecimal`/CIGAR findings, all of which were reachable from file content
    alone.

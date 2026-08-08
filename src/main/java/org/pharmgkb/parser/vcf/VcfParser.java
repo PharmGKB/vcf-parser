@@ -158,11 +158,10 @@ public class VcfParser implements Closeable {
 
     // deliver the metadata to the line parser once, before any data lines (this method runs at most once).
     // Mirrors parseLine()'s identical try/catch below: a VcfFormatException the callback throws on purpose (to
-    // reject an already-parsed header, e.g. TransformingVcfLineParser.parseMetadata() -> writeHeader() ->
-    // VcfWriter.Builder().validateBeforeWrite() rejecting invalid header content) gets this line's number
-    // attached, the same as a parseLine() callback rejection does -- previously it propagated completely raw,
-    // with no line number and no "Error parsing metadata: " prefix, even though m_lineNumber here correctly
-    // holds the #CHROM header line's number. A RuntimeException from the callback itself (a bug in the
+    // reject an already-parsed header) gets this line's number attached, the same as a parseLine() callback
+    // rejection does -- previously it propagated completely raw, with no line number and no "Error parsing
+    // metadata: " prefix, even though m_lineNumber here correctly holds the #CHROM header line's number. A
+    // RuntimeException from the callback itself (a bug in the
     // caller's own code, not a VCF-content problem) still propagates with its original type, unwrapped.
     try {
       m_vcfLineParser.parseMetadata(m_vcfMetadata);
@@ -280,7 +279,7 @@ public class VcfParser implements Closeable {
       // had been removed by an external tool before this file was ever handed to VcfParser. Nothing below this
       // point -- CHROM/POS ordering, negative-POS, CHROM's character-set rules, REF/ALT syntax, FILTER/FORMAT
       // rules, even confirming POS parses as a number at all -- runs for a line this discards. See
-      // rsidsOnly()'s own Javadoc for the full rationale, including why a VcfTransformation-based filter can't
+      // rsidsOnly()'s own Javadoc for the full rationale, including why a VcfLineParser-based filter can't
       // achieve the same thing (it only sees a record after VcfPosition has already been fully constructed and
       // validated).
       List<String> ids = null;
@@ -324,8 +323,8 @@ public class VcfParser implements Closeable {
         rawFormat = data.get(8);
         if (rawFormat.equals(m_lastFormatRawText)) {
           // a fresh copy is required, never the cached prototype itself: VcfPosition.getFormat() is documented
-          // and tested as safe to mutate in place (e.g. by a VcfTransformation), and a caller doing so must
-          // never be able to corrupt a later record's cache hit
+          // and tested as safe to mutate in place, and a caller doing so must never be able to corrupt a later
+          // record's cache hit
           format = new ArrayList<>(m_lastValidatedFormat);
           formatCacheHit = true;
         } else {
@@ -352,8 +351,8 @@ public class VcfParser implements Closeable {
         // in content, not just object identity. Caching pos.getFormat() directly keeps the invariant "the cache
         // always holds exactly what a real VcfPosition ended up with" true by construction, not by the current
         // coincidence that checkFormat happens to return its argument unchanged on every path VcfParser reaches.
-        // Also never the list itself: pos.getFormat() may be mutated in place later (by this callback or a
-        // VcfTransformation), and that must never corrupt a later record's cache hit.
+        // Also never the list itself: pos.getFormat() may be mutated in place later (by this callback), and that
+        // must never corrupt a later record's cache hit.
         m_lastFormatRawText = rawFormat;
         m_lastValidatedFormat = new ArrayList<>(pos.getFormat());
       }
@@ -361,9 +360,9 @@ public class VcfParser implements Closeable {
       pos.setRawInfo(data.get(7));
       samples = new ArrayList<>();
       // VcfSample must never share the same List object as VcfPosition's own m_format: VcfPosition.getFormat() is
-      // documented and tested as safe to mutate in place (e.g. by a VcfTransformation), but VcfSample's own
-      // parallel keys/values lists require keys.size() == values.size() to hold, and are corrupted by an
-      // in-place mutation applied through a shared reference. One copy per line (not per sample) is sufficient:
+      // documented and tested as safe to mutate in place, but VcfSample's own parallel keys/values lists require
+      // keys.size() == values.size() to hold, and are corrupted by an in-place mutation applied through a
+      // shared reference. One copy per line (not per sample) is sufficient:
       // no VcfSample method ever mutates its own keys list in place.
       // Only skipped when format itself is null (no FORMAT column at all); deliberately not guarded for the
       // zero-sample-columns case (format non-null but the loop below never runs), since that copy's cost is
@@ -753,11 +752,10 @@ public class VcfParser implements Closeable {
      * invalid REF/ALT syntax, FILTER/FORMAT rules) -- never runs for a line this option discards, and never
      * throws {@link VcfFormatException} on its account. {@code VcfPosition} is never constructed for a
      * discarded line at all.
-     * <p>This is why a {@link VcfTransformation}-based filter (e.g. returning {@code false} from
-     * {@link VcfTransformation#transformDataLine}) cannot achieve the same thing: a transformation only sees a
+     * <p>This is why a {@link VcfLineParser}-based filter cannot achieve the same thing: a line parser only sees a
      * record after {@code VcfPosition} has already been fully constructed and validated, so a structurally
      * invalid record this option would silently discard instead aborts parsing entirely before any
-     * transformation gets a chance to reject it.
+     * line parser gets a chance to reject it.
      */
     public Builder rsidsOnly() {
       m_rsidsOnly = true;

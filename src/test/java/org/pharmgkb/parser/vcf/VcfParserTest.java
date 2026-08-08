@@ -1244,9 +1244,8 @@ public class VcfParserTest {
   @Test
   void testVcfLineParserParseMetadataCallbackDeliberateVcfFormatExceptionGetsLineNumberAttached() throws IOException {
     // regression test: previously, a VcfFormatException thrown deliberately by the callback's own
-    // parseMetadata(VcfMetadata) override (e.g. TransformingVcfLineParser.parseMetadata() -> writeHeader() ->
-    // VcfWriter.Builder().validateBeforeWrite() rejecting invalid header content) propagated completely raw --
-    // no line number, no "Error parsing metadata: " prefix -- even though this is structurally identical to
+    // parseMetadata(VcfMetadata) override propagated completely raw -- no line number, no "Error parsing
+    // metadata: " prefix -- even though this is structurally identical to
     // testVcfLineParserCallbackDeliberateVcfFormatExceptionStillGetsLineNumberAttached's parseLine() case above,
     // which already got this treatment
     String vcf = "##fileformat=VCFv4.2\n" +

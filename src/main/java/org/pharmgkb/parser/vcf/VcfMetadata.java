@@ -67,8 +67,7 @@ public class VcfMetadata {
     m_warnings = warnings;
     // fresh, independently-mutable copies -- NOT List.copyOf/Map.copyOf. getAlts()/getInfo()/getFilters()/
     // getFormats()/getContigs()/getSamples() returning a live, mutable backing map is an existing, tested,
-    // intentional contract (e.g. TransformingVcfLineParserTest.java's metadata.getInfo().put(...) usage inside a
-    // VcfTransformation). Copying here only prevents a built VcfMetadata from sharing state with the Builder (or
+    // intentional contract. Copying here only prevents a built VcfMetadata from sharing state with the Builder (or
     // with another VcfMetadata built from the same Builder) -- it must not stop a VcfMetadata from being mutated
     // on its own via its own getters, which is a separately supported, separately tested code path.
     m_alt        = alt==null?        new LinkedHashMap<>()      : new LinkedHashMap<>(alt);

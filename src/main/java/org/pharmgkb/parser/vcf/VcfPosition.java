@@ -645,10 +645,10 @@ public class VcfPosition {
    * <p>
    * The constructors validate their arguments, but {@link #setChromosome}, {@link #setRef}, {@link #setPosition}, and
    * mutations made through {@link #getIds}, {@link #getAltBases}, {@link #getFilters}, {@link #getFormat}, and
-   * {@link #getInfo()} do <em>not</em> validate their input, to support transformation pipelines (e.g.
-   * {@link org.pharmgkb.parser.vcf.VcfTransformation}) that mutate a position in place. Each of those accessors may
-   * return an immutable list/multimap if one was passed to the primary constructor and did not need normalizing --
-   * see its Javadoc. Call this method after such mutations if you need to confirm the position is still valid.
+   * {@link #getInfo()} do <em>not</em> validate their input, to support transformation pipelines that mutate a
+   * position in place. Each of those accessors may return an immutable list/multimap if one was passed to the
+   * primary constructor and did not need normalizing -- see its Javadoc. Call this method after such mutations
+   * if you need to confirm the position is still valid.
    * <p>
    * {@link #getFilterStatus()} is always derived directly from {@link #getFilters()}'s current contents (see its
    * Javadoc), so emptying the FILTER list by any means -- including {@code clear()} -- always produces

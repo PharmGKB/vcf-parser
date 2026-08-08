@@ -34,7 +34,7 @@ When hts-specs itself is silent (no fixture covers the exact case), running vcf_
 
 Before adding new documentation content, place it in the file that already owns that kind of content, rather than growing `README.md` or duplicating across files. This is the complementary direction to the Decision Hierarchy above (the two doc lists aren't identical -- this one also covers `README.md`/`VALIDATION_REFERENCE.md`, which aren't places you'd check whether an ambiguity is already resolved): that section says which file to check before treating something as new; this one says which file new content belongs in once you've decided to write it.
 
-- **`README.md`** -- user-facing overview only: what the library is, how to get it, a high-level tour of the main classes (`VcfParser`, `VcfWriter`, `VcfLineParser`, `TransformingVcfLineParser`). No spec-line citations, no bcftools/vcf_validator version-pinned behavior, no itemized throw/warn enumeration. If a README edit would cite a spec line or a tool version, it belongs in one of the docs below instead.
+- **`README.md`** -- user-facing overview only: what the library is, how to get it, a high-level tour of the main classes (`VcfParser`, `VcfWriter`, `VcfLineParser`). No spec-line citations, no bcftools/vcf_validator version-pinned behavior, no itemized throw/warn enumeration. If a README edit would cite a spec line or a tool version, it belongs in one of the docs below instead.
 - **`VALIDATION_PHILOSOPHY.md`** -- the architectural "why": which of the four principles applies to a class, and which of the two dispatch shapes it uses. Not an itemized rule list.
 - **`VALIDATION_REFERENCE.md`** -- the itemized "what throws, what warns, exact citation" reference -- one entry per checkable rule.
 - **`VCF_SPEC_AMBIGUITIES.md`** -- a rule whose resolution required consulting bcftools/vcf_validator behavior specifically (not just "this is structurally invalid").
@@ -138,8 +138,8 @@ here. The rest of this section states the concrete per-shape rules that follow f
 
 ### Repository Layout
 
-- `src/main/java/org/pharmgkb/parser/vcf/`: parser, writer, transformation, data-store, and model (VCF
-  metadata, position, sample, and genotype) code.
+- `src/main/java/org/pharmgkb/parser/vcf/`: parser, writer, data-store, and model (VCF metadata, position,
+  sample, and genotype) code.
 - `src/test/java/`: JUnit tests mirroring the production packages.
 - `src/test/resources/`: small VCF fixtures used by parser and writer tests.
 - `build.gradle` and `pgkb-build.gradle`: dependencies, Java version, tests, coverage, packaging, and publishing configuration.

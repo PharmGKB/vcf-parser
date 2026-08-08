@@ -16,7 +16,6 @@ FORMAT, sample values, and metadata declarations) for performance -- see
 
 - [Reading a file](#reading-a-file)
 - [Writing a file](#writing-a-file)
-- [Transforming a file](#transforming-a-file)
 - [Validation](#validation)
 - [`VcfWarnings`: explicit warning routing](#vcfwarnings-explicit-warning-routing)
 - [Conformance and dependency tests](#conformance-and-dependency-tests)
@@ -71,15 +70,6 @@ try (VcfWriter writer = new VcfWriter.Builder().toFile(path).build()) {
 The default path is optimized for data written directly after parsing; build with
 `VcfWriter.Builder.validateBeforeWrite()` for full structural and semantic diagnostics against
 data that may have been mutated first -- see [Validation](#validation) below for the difference.
-
-
-## Transforming a file
-
-[`TransformingVcfLineParser`](src/main/java/org/pharmgkb/parser/vcf/TransformingVcfLineParser.java) applies a
-[`VcfTransformation`](src/main/java/org/pharmgkb/parser/vcf/VcfTransformation.java) to a file and streams the
-transformed result straight to a `VcfWriter`, without materializing the whole file -- see that class's own
-Javadoc for a complete worked example, including its idempotency requirements for a transformation that gets
-retried after a rejected record.
 
 
 ## Validation

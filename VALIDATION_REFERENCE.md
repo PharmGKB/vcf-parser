@@ -107,9 +107,9 @@ constructed for a discarded line, so none of the structural-floor checks above a
 `POS`, `CHROM`'s character-set rules, invalid `REF`/`ALT`, or the `FILTER`/`FORMAT` checks, but not even confirming
 `POS` parses as a number at all, or CHROM/POS ordering. Only the column-count check and the check that no
 fixed field is empty still apply to every line regardless, since both are needed just to read the ID field in
-the first place. A `VcfTransformation`-based filter can't replicate this: it only sees a record after
+the first place. A `VcfLineParser`-based filter can't replicate this: it only sees a record after
 `VcfPosition` has already been fully constructed and validated, so a structurally invalid record `rsidsOnly()`
-would silently discard instead aborts parsing before a transformation ever gets a chance to reject it.
+would silently discard instead aborts parsing before a line parser ever gets a chance to reject it.
 
 ### Writer output
 
@@ -144,8 +144,8 @@ internal buffer on every line. A failure detected mid-stream releases the underl
 part of the same detection, rather than leaving it open until some later `close()` call. Calling `close()` is
 still required to guarantee that all remaining buffered output is flushed and that a failure not yet caught by a
 periodic check is reported. A detected write failure, or simply closing the writer at all (even cleanly, with no
-error), permanently invalidates the `VcfWriter` (and, transitively, a `TransformingVcfLineParser` built on it):
-`isValid()` becomes `false`, and any further `writeHeader()`/`writeLine()` call throws `IllegalStateException`
+error), permanently invalidates the `VcfWriter`: `isValid()` becomes `false`, and any further
+`writeHeader()`/`writeLine()` call throws `IllegalStateException`
 instead of attempting to write again -- retrying after a write failure, or reusing a writer after closing it, is
 never safe, since the underlying writer may already be in a partially-written or otherwise inconsistent state, or
 simply already released. `close()` itself is idempotent: calling it again after the first call has no effect,

@@ -50,7 +50,6 @@ import org.slf4j.LoggerFactory;
  * whether the first call threw.
  *
  * @author Douglas Myers-Turnbull
- * @see TransformingVcfLineParser TransformingVcfLineParser - a read-transform-write streamer that is publicly accessible
  */
 public class VcfWriter implements Closeable {
 
