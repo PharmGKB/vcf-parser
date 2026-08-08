@@ -6,6 +6,7 @@ import org.pharmgkb.parser.vcf.VcfFormatException;
 import org.pharmgkb.parser.vcf.VcfLineParser;
 import org.pharmgkb.parser.vcf.VcfMetadata;
 import org.pharmgkb.parser.vcf.VcfPosition;
+import org.pharmgkb.parser.vcf.VcfRecord;
 import org.pharmgkb.parser.vcf.VcfSample;
 
 
@@ -24,7 +25,9 @@ import org.pharmgkb.parser.vcf.VcfSample;
 public class DeferredValidationLineParser implements VcfLineParser {
 
   @Override
-  public void parseLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
+  public void parseLine(VcfMetadata metadata, VcfRecord record) {
+    VcfPosition position = record.getPosition();
+    List<VcfSample> sampleData = record.getSamples();
     position.getQuality();
     position.getInfo();
     for (ReservedInfoProperty prop : ReservedInfoProperty.values()) {

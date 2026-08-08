@@ -6,6 +6,11 @@ entry is self-contained: it names the exact code location and behavior, explains
 and states what would change that decision. Where several entries share the same underlying shape or
 decision, they're grouped under one heading with sub-cases, rather than repeated as separate entries.
 
+An entry that a later change closes -- deliberately or as a side effect -- is kept and marked `RESOLVED:` in
+its heading, with a paragraph naming what closed it, rather than deleted. The original reasoning is what stops
+the same observation being re-filed, and it stays useful as the record of why the trade-off was once made the
+other way.
+
 ## InfoMetadata and FormatMetadata each independently duplicate their Number/Type validation logic
 
 `InfoMetadata`'s and `FormatMetadata`'s private `init()` methods are structurally near-identical: both
@@ -410,7 +415,7 @@ detection to FT is a legitimate future enhancement, not a defect this fix introd
 Revisit if a real caller reports actually wanting FT duplicate-code detection, or if `checkFilterLikeValue`
 and `checkFilters` are ever intentionally unified into one shared implementation.
 
-## `MemoryMappedVcfDataStore.getSamplesAtLocus`'s inner per-record sample lists are still live-mutable after the outer-list fix
+## RESOLVED: `MemoryMappedVcfDataStore.getSamplesAtLocus`'s inner per-record sample lists were still live-mutable after the outer-list fix
 
 `getPositionsAtLocus`/`getSamplesAtLocus` were fixed to return `Collections.unmodifiableList(...)` views of
 their outer lists, closing a real bug where an ordinary `List.remove()`/`.clear()` on either list (via the
@@ -426,17 +431,26 @@ similarly desync `getSampleAtLocus`/`getGenotypeAtLocus`'s (and the by-ID overlo
 `#CHROM` line's declared sample columns, so removing an element shifts every later sample by one, silently
 returning the wrong sample's data (or `null` if the shifted index now falls off the end).
 
-**Decision: won't fix in this pass; deliberately narrower scope than fully closing this class of bug.**
-Wrapping the inner lists too would require either wrapping on every `getSamplesAtLocus`/`getSamplesForId`
-call (an allocation per element per call, on a class whose whole purpose is being the fast in-memory
-convenience API) or eagerly wrapping at storage time (a deliberate design change to how
+**Original decision: won't fix in this pass; deliberately narrower scope than fully closing this class of
+bug.** Wrapping the inner lists too would require either wrapping on every `getSamplesAtLocus`/
+`getSamplesForId` call (an allocation per element per call, on a class whose whole purpose is being the fast
+in-memory convenience API) or eagerly wrapping at storage time (a deliberate design change to how
 `MemoryMappedVcfLineParser` populates these maps, not a narrow fix). The outer-list fix closes the
 specific, confirmed bug found this cycle (recordIndex-vs-recordIndex misalignment); this inner-list gap
 is the same failure *shape* one level down (sample-index-vs-`#CHROM`-columns misalignment), found
 incidentally while reviewing that fix, not independently confirmed to have caused a real failure.
 
-Revisit if a real caller reports actually hitting this, or if `getSamplesAtLocus`/`getSamplesForId` are ever
-redesigned to return copies or otherwise fully immutable views.
+**Now resolved, as a side effect of making `VcfRecord` the `VcfLineParser.parseLine` payload.** That change
+took exactly the "eagerly wrapping at storage time" route this entry had ruled out as too broad for a narrow
+fix -- but it arrived for an unrelated reason (`VcfRecord` is structurally immutable, so `getSamples()`
+returns `Collections.unmodifiableList(...)` on every construction path, including the `newTrusted` fast
+path), so it cost nothing extra here. `MemoryMappedVcfLineParser.parseLine` now stores that unmodifiable view
+into both `m_idToSamples` and `m_locusToSamplesList`, and those are the only writers to either map, so every
+inner list handed out by `getSamplesForId`/`getSamplesAtLocus`/`getAllSamples` is unmodifiable. A caller can
+no longer shift a record's own sample indices out of alignment with the `#CHROM` line's declared columns; the
+attempt now throws `UnsupportedOperationException` at the caller's own mistake. The contained `VcfSample`
+objects themselves remain mutable -- that is a separate axis, and is the subject of Plan A's later
+immutable-model tasks, not this entry.
 
 ## `VcfParser`'s legacy `GLE` FORMAT-value splitter can silently misattribute content from a corrupted GLE value to the next FORMAT key
 

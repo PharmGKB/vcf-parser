@@ -557,7 +557,7 @@ public class VcfWriterTest {
     List<VcfPosition> reparsed = new java.util.ArrayList<>();
     try (VcfParser parser = new VcfParser.Builder()
         .fromReader(new BufferedReader(new StringReader(sw.toString())))
-        .parseWith((md, pos, samples) -> reparsed.add(pos))
+        .parseWith((md, record) -> reparsed.add(record.getPosition()))
         .build()) {
       parser.parse();
     }
@@ -1655,7 +1655,7 @@ public class VcfWriterTest {
 
     // round-trip: re-parsing the written header must decode back to the original, unescaped description
     try (BufferedReader reader = new BufferedReader(new StringReader(output));
-         VcfParser parser = new VcfParser.Builder().fromReader(reader).parseWith((m, p, s) -> { }).build()) {
+         VcfParser parser = new VcfParser.Builder().fromReader(reader).parseWith((m, r) -> { }).build()) {
       VcfMetadata reparsed = parser.parseMetadata();
       assertEquals("a \"quoted\" description with a \\ backslash", reparsed.getInfo().get("NS").getDescription());
     }

@@ -14,6 +14,7 @@ import org.pharmgkb.parser.vcf.VcfLineParser;
 import org.pharmgkb.parser.vcf.VcfMetadata;
 import org.pharmgkb.parser.vcf.VcfParser;
 import org.pharmgkb.parser.vcf.VcfPosition;
+import org.pharmgkb.parser.vcf.VcfRecord;
 import org.pharmgkb.parser.vcf.VcfSample;
 import org.pharmgkb.parser.vcf.VcfWriter;
 
@@ -40,9 +41,9 @@ final class WriterRoundTrip {
     }
 
     @Override
-    public void parseLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
-      m_positions.add(position);
-      m_samples.add(sampleData);
+    public void parseLine(VcfMetadata metadata, VcfRecord record) {
+      m_positions.add(record.getPosition());
+      m_samples.add(record.getSamples());
     }
 
     ParsedFile toParsedFile() {

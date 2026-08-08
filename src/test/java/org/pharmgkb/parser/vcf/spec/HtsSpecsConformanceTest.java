@@ -241,7 +241,7 @@ class HtsSpecsConformanceTest {
     String reason = "";
     try (VcfParser parser = new VcfParser.Builder()
         .fromFile(file)
-        .parseWith((metadata, position, sampleData) -> { })
+        .parseWith((metadata, record) -> { })
         .build()) {
       parser.parse();
     } catch (RuntimeException e) {
@@ -302,7 +302,7 @@ class HtsSpecsConformanceTest {
     try {
       try (VcfParser parser = new VcfParser.Builder()
           .fromFile(file)
-          .parseWith((metadata, position, sampleData) -> { })
+          .parseWith((metadata, record) -> { })
           .build()) {
         parser.parse();
       } catch (VcfFormatException e) {

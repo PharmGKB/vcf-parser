@@ -25,8 +25,10 @@ FORMAT, sample values, and metadata declarations) for performance -- see
 ## Reading a file
 
 The main parser class ([`VcfParser`](src/main/java/org/pharmgkb/parser/vcf/VcfParser.java)) reads all
-metadata and constructs each record's [`VcfPosition`](src/main/java/org/pharmgkb/parser/vcf/VcfPosition.java);
-actual handling of each line is delegated to an implementation of
+metadata and constructs a [`VcfRecord`](src/main/java/org/pharmgkb/parser/vcf/VcfRecord.java) for each data line
+-- its [`VcfPosition`](src/main/java/org/pharmgkb/parser/vcf/VcfPosition.java) plus the per-sample
+[`VcfSample`](src/main/java/org/pharmgkb/parser/vcf/VcfSample.java)s in column order; actual handling of each line
+is delegated to an implementation of
 [`VcfLineParser`](src/main/java/org/pharmgkb/parser/vcf/VcfLineParser.java) that the caller supplies.
 Reserved INFO/FORMAT keys (e.g. `AC`, `DP`, `GT`, `PL`) are exposed as typed values through
 [`ReservedInfoProperty`](src/main/java/org/pharmgkb/parser/vcf/ReservedInfoProperty.java)/
@@ -36,8 +38,8 @@ Reserved INFO/FORMAT keys (e.g. `AC`, `DP`, `GT`, `PL`) are exposed as typed val
 ```java
 try (VcfParser parser = new VcfParser.Builder()
     .fromFile(path)
-    .parseWith((metadata, position, samples) -> {
-      // handle one data line
+    .parseWith((metadata, record) -> {
+      // handle one data line: record.getPosition(), record.getSamples()
     })
     .build()) {
   parser.parse();

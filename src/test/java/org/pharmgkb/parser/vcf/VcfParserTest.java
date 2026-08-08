@@ -62,7 +62,8 @@ public class VcfParserTest {
     try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/basic.vcf"));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> {
+             .parseWith((metadata, record) -> {
+               VcfPosition position = record.getPosition();
                assertEquals("chr1", position.getChromosome());
                assertEquals(5, position.getPosition());
                assertEquals(Arrays.asList("rsa", "rsb"), position.getIds());
@@ -89,7 +90,7 @@ public class VcfParserTest {
     List<VcfPosition> positions = new ArrayList<>();
     try (VcfParser parser = new VcfParser.Builder()
         .fromReader(new BufferedReader(new StringReader(vcf)))
-        .parseWith((metadata, position, sampleData) -> positions.add(position))
+        .parseWith((metadata, record) -> positions.add(record.getPosition()))
         .build()) {
       parser.parse();
     }
@@ -111,7 +112,7 @@ public class VcfParserTest {
     List<VcfPosition> positions = new ArrayList<>();
     try (VcfParser parser = new VcfParser.Builder()
         .fromReader(new BufferedReader(new StringReader(vcf)))
-        .parseWith((metadata, position, sampleData) -> positions.add(position))
+        .parseWith((metadata, record) -> positions.add(record.getPosition()))
         .build()) {
       parser.parse();
     }
@@ -128,7 +129,7 @@ public class VcfParserTest {
       try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/bad_header.vcf"));
            VcfParser parser = new VcfParser.Builder()
                .fromReader(reader)
-               .parseWith((metadata, position, sampleData) -> {
+               .parseWith((metadata, record) -> {
                  fail("Should not reach here");
                })
                .build()) {
@@ -146,7 +147,7 @@ public class VcfParserTest {
       try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/bad_data.vcf"));
            VcfParser parser = new VcfParser.Builder()
                .fromReader(reader)
-               .parseWith((metadata, position, sampleData) -> {
+               .parseWith((metadata, record) -> {
                  fail("Should not reach here");
                })
                .build()) {
@@ -165,7 +166,8 @@ public class VcfParserTest {
     try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/has_comment.vcf"));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> {
+             .parseWith((metadata, record) -> {
+               VcfPosition position = record.getPosition();
                assertEquals("chr1", position.getChromosome());
                assertEquals(5, position.getPosition());
                assertEquals(Arrays.asList("rsa", "rsb"), position.getIds());
@@ -185,7 +187,9 @@ public class VcfParserTest {
     try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/vcfposition.vcf"));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> {
+             .parseWith((metadata, record) -> {
+               VcfPosition position = record.getPosition();
+               List<VcfSample> sampleData = record.getSamples();
 
                switch ((int) position.getPosition()) {
 
@@ -312,7 +316,7 @@ public class VcfParserTest {
     try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> { })
+             .parseWith((metadata, record) -> { })
              .build()) {
       parser.parseMetadata();
     }
@@ -326,7 +330,7 @@ public class VcfParserTest {
     try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> { })
+             .parseWith((metadata, record) -> { })
              .build()) {
       assertThrows(VcfFormatException.class, parser::parseMetadata);
     }
@@ -342,7 +346,7 @@ public class VcfParserTest {
     try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> { })
+             .parseWith((metadata, record) -> { })
              .build()) {
       assertThrows(VcfFormatException.class, parser::parseMetadata);
       assertNull(parser.getMetadata());
@@ -361,7 +365,7 @@ public class VcfParserTest {
     try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> { })
+             .parseWith((metadata, record) -> { })
              .build()) {
       assertThrows(VcfFormatException.class, parser::parseMetadata);
     }
@@ -375,7 +379,7 @@ public class VcfParserTest {
     try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> { })
+             .parseWith((metadata, record) -> { })
              .build()) {
       assertThrows(VcfFormatException.class, parser::parseMetadata);
     }
@@ -390,7 +394,7 @@ public class VcfParserTest {
     try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> { })
+             .parseWith((metadata, record) -> { })
              .build()) {
       assertThrows(VcfFormatException.class, parser::parse);
     }
@@ -409,7 +413,7 @@ public class VcfParserTest {
       try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
            VcfParser parser = new VcfParser.Builder()
                .fromReader(reader)
-               .parseWith((metadata, position, sampleData) -> fail("Should not reach here"))
+               .parseWith((metadata, record) -> fail("Should not reach here"))
                .build()) {
         parser.parse();
       }
@@ -429,7 +433,7 @@ public class VcfParserTest {
       try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
            VcfParser parser = new VcfParser.Builder()
                .fromReader(reader)
-               .parseWith((metadata, position, sampleData) -> fail("Should not reach here"))
+               .parseWith((metadata, record) -> fail("Should not reach here"))
                .build()) {
         parser.parse();
       }
@@ -446,7 +450,7 @@ public class VcfParserTest {
     try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> { })
+             .parseWith((metadata, record) -> { })
              .build()) {
       assertThrows(VcfFormatException.class, parser::parse);
     }
@@ -463,7 +467,7 @@ public class VcfParserTest {
     try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> captured[0] = metadata)
+             .parseWith((metadata, record) -> captured[0] = metadata)
              .build()) {
       parser.parse();
     }
@@ -490,7 +494,7 @@ public class VcfParserTest {
     try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> captured[0] = metadata)
+             .parseWith((metadata, record) -> captured[0] = metadata)
              .build()) {
       parser.parse();
     } finally {
@@ -515,7 +519,7 @@ public class VcfParserTest {
     try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> positions.add(position))
+             .parseWith((metadata, record) -> positions.add(record.getPosition()))
              .build()) {
       parser.parse();
     }
@@ -534,7 +538,7 @@ public class VcfParserTest {
     try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> captured.addAll(sampleData))
+             .parseWith((metadata, record) -> captured.addAll(record.getSamples()))
              .build()) {
       parser.parse();
     }
@@ -559,7 +563,9 @@ public class VcfParserTest {
     try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> {
+             .parseWith((metadata, record) -> {
+               VcfPosition position = record.getPosition();
+               List<VcfSample> sampleData = record.getSamples();
                positions.add(position);
                captured.addAll(sampleData);
              })
@@ -582,7 +588,7 @@ public class VcfParserTest {
     try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> captured.addAll(sampleData))
+             .parseWith((metadata, record) -> captured.addAll(record.getSamples()))
              .build()) {
       parser.parse();
     }
@@ -602,7 +608,7 @@ public class VcfParserTest {
     try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> captured.addAll(sampleData))
+             .parseWith((metadata, record) -> captured.addAll(record.getSamples()))
              .build()) {
       parser.parse();
     }
@@ -635,7 +641,9 @@ public class VcfParserTest {
           }
 
           @Override
-          public void parseLine(VcfMetadata ignored, VcfPosition position, List<VcfSample> values) {
+          public void parseLine(VcfMetadata ignored, VcfRecord record) {
+            VcfPosition position = record.getPosition();
+            List<VcfSample> values = record.getSamples();
             positions.add(position);
             samples.addAll(values);
           }
@@ -654,7 +662,7 @@ public class VcfParserTest {
     List<VcfSample> reparsed = new ArrayList<>();
     try (VcfParser parser = new VcfParser.Builder()
         .fromReader(new BufferedReader(new StringReader(output.toString())))
-        .parseWith((ignored, position, values) -> reparsed.addAll(values))
+        .parseWith((ignored, record) -> reparsed.addAll(record.getSamples()))
         .build()) {
       parser.parse();
     }
@@ -681,7 +689,7 @@ public class VcfParserTest {
     List<VcfSample> samples = new ArrayList<>();
     try (VcfParser parser = new VcfParser.Builder()
         .fromReader(new BufferedReader(new StringReader(input)))
-        .parseWith((ignoredMetadata, ignoredPosition, values) -> samples.addAll(values))
+        .parseWith((ignoredMetadata, record) -> samples.addAll(record.getSamples()))
         .build()) {
       parser.parse();
     }
@@ -694,7 +702,8 @@ public class VcfParserTest {
     try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/vcfposition.vcf"));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> {
+             .parseWith((metadata, record) -> {
+               VcfPosition position = record.getPosition();
                position.setRef("test");
                position.getAltBases().add("test");
                position.getIds().add("test");
@@ -718,7 +727,9 @@ public class VcfParserTest {
     try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/vcfposition.vcf"));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> {
+             .parseWith((metadata, record) -> {
+               VcfPosition position = record.getPosition();
+               List<VcfSample> sampleData = record.getSamples();
                if (position.getIds().contains("rsb")) {
                  position.getFormat().remove("DP");
                  rsbSamples.addAll(sampleData);
@@ -752,7 +763,9 @@ public class VcfParserTest {
     try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/vcfposition.vcf"));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> {
+             .parseWith((metadata, record) -> {
+               VcfPosition position = record.getPosition();
+               List<VcfSample> sampleData = record.getSamples();
                if (position.getIds().contains("rsb")) {
                  position.getFormat().add("NEWKEY");
                  rsbSamples.addAll(sampleData);
@@ -781,7 +794,9 @@ public class VcfParserTest {
     try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/no_samples.vcf"));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> {
+             .parseWith((metadata, record) -> {
+               VcfPosition position = record.getPosition();
+               List<VcfSample> sampleData = record.getSamples();
                assertNotNull(position.getFormat());
                assertTrue(position.getFormat().isEmpty());
                assertTrue(sampleData.isEmpty());
@@ -804,7 +819,9 @@ public class VcfParserTest {
     try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/cnv.vcf"));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> {
+             .parseWith((metadata, record) -> {
+               VcfPosition position = record.getPosition();
+               List<VcfSample> sampleData = record.getSamples();
                for (String base : position.getAltBases()) {
                  assertTrue(base.startsWith("<CN"));
                  assertTrue(base.endsWith(">"));
@@ -830,7 +847,9 @@ public class VcfParserTest {
   @Test
   void testRsidOnly() throws Exception {
 
-    VcfLineParser lineParser = (metadata, position, sampleData) -> {
+    VcfLineParser lineParser = (metadata, record) -> {
+      VcfPosition position = record.getPosition();
+      List<VcfSample> sampleData = record.getSamples();
       assertEquals(1, position.getIds().size());
       assertTrue(position.getIds().get(0).matches("rs\\d+"));
       assertEquals(metadata.getNumSamples(), sampleData.size());
@@ -869,7 +888,7 @@ public class VcfParserTest {
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
              .rsidsOnly()
-             .parseWith((metadata, position, sampleData) -> positions.add(position))
+             .parseWith((metadata, record) -> positions.add(record.getPosition()))
              .build()) {
       parser.parse();
     }
@@ -882,7 +901,7 @@ public class VcfParserTest {
 
     try (VcfParser ignored = new VcfParser.Builder()
         .fromFile(Paths.get("foo.txt"))
-        .parseWith((metadata, position, sampleData) -> {})
+        .parseWith((metadata, record) -> {})
         .build()) {
       fail("Didn't catch invalid path");
     } catch (IllegalArgumentException ex) {
@@ -893,7 +912,7 @@ public class VcfParserTest {
     try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/notvcf.vcf"));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> {})
+             .parseWith((metadata, record) -> {})
              .build()) {
       parser.parseMetadata();
       fail("Didn't catch invalid version");
@@ -911,7 +930,7 @@ public class VcfParserTest {
     try (BufferedReader reader = new BufferedReader(new StringReader(""));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> {})
+             .parseWith((metadata, record) -> {})
              .build()) {
       VcfFormatException ex = assertThrows(VcfFormatException.class, parser::parseMetadata);
       assertEquals(-1, ex.getLineNumber());
@@ -927,7 +946,7 @@ public class VcfParserTest {
     try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
-             .parseWith((metadata, position, sampleData) -> {})
+             .parseWith((metadata, record) -> {})
              .build()) {
       assertEquals(0, parser.getLineNumber());
       parser.parse();
@@ -1188,7 +1207,7 @@ public class VcfParserTest {
       List<VcfPosition> positions = new ArrayList<>();
       try (VcfParser parser = new VcfParser.Builder()
           .fromReader(new BufferedReader(new StringReader(vcf)))
-          .parseWith((metadata, position, sampleData) -> positions.add(position))
+          .parseWith((metadata, record) -> positions.add(record.getPosition()))
           .build()) {
         parser.parse();
       }
@@ -1212,7 +1231,7 @@ public class VcfParserTest {
         "1\t100\t.\tA\tT\t.\t.\t.\n";
     try (VcfParser parser = new VcfParser.Builder()
         .fromReader(new BufferedReader(new StringReader(vcf)))
-        .parseWith((metadata, position, sampleData) -> {
+        .parseWith((metadata, record) -> {
           throw new NullPointerException("caller bug: some field was null");
         })
         .build()) {
@@ -1231,7 +1250,7 @@ public class VcfParserTest {
         "1\t100\t.\tA\tT\t.\t.\t.\n";
     try (VcfParser parser = new VcfParser.Builder()
         .fromReader(new BufferedReader(new StringReader(vcf)))
-        .parseWith((metadata, position, sampleData) -> {
+        .parseWith((metadata, record) -> {
           throw new VcfFormatException("caller rejects this record");
         })
         .build()) {
@@ -1260,7 +1279,7 @@ public class VcfParserTest {
           }
 
           @Override
-          public void parseLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
+          public void parseLine(VcfMetadata metadata, VcfRecord record) {
           }
         })
         .build()) {
@@ -1287,7 +1306,7 @@ public class VcfParserTest {
           }
 
           @Override
-          public void parseLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
+          public void parseLine(VcfMetadata metadata, VcfRecord record) {
           }
         })
         .build()) {
@@ -1313,7 +1332,7 @@ public class VcfParserTest {
           "1\t101\t.\tA\tT\t.\t.\t.\n";
       try (VcfParser parser = new VcfParser.Builder()
           .fromReader(new BufferedReader(new StringReader(vcf)))
-          .parseWith((metadata, position, sampleData) -> { })
+          .parseWith((metadata, record) -> { })
           .build()) {
         parser.parse();
       }
@@ -1341,7 +1360,7 @@ public class VcfParserTest {
       List<VcfPosition> positions = new ArrayList<>();
       try (VcfParser parser = new VcfParser.Builder()
           .fromReader(new BufferedReader(new StringReader(vcf)))
-          .parseWith((metadata, position, sampleData) -> positions.add(position))
+          .parseWith((metadata, record) -> positions.add(record.getPosition()))
           .build()) {
         parser.parse();
       }
@@ -1371,7 +1390,7 @@ public class VcfParserTest {
           "2\t60\t.\tA\tT\t.\t.\t.\n";
       try (VcfParser parser = new VcfParser.Builder()
           .fromReader(new BufferedReader(new StringReader(vcf)))
-          .parseWith((metadata, position, sampleData) -> { })
+          .parseWith((metadata, record) -> { })
           .build()) {
         parser.parse();
       }
@@ -1405,7 +1424,7 @@ public class VcfParserTest {
       List<VcfPosition> positions = new ArrayList<>();
       try (VcfParser parser = new VcfParser.Builder()
           .fromReader(new BufferedReader(new StringReader(vcf)))
-          .parseWith((metadata, position, sampleData) -> positions.add(position))
+          .parseWith((metadata, record) -> positions.add(record.getPosition()))
           .build()) {
         boolean hasNext = true;
         while (hasNext) {
@@ -1448,7 +1467,7 @@ public class VcfParserTest {
       List<VcfPosition> positions = new ArrayList<>();
       try (VcfParser parser = new VcfParser.Builder()
           .fromReader(new BufferedReader(new StringReader(vcf)))
-          .parseWith((metadata, position, sampleData) -> positions.add(position))
+          .parseWith((metadata, record) -> positions.add(record.getPosition()))
           .build()) {
         boolean hasNext = true;
         while (hasNext) {
@@ -1499,7 +1518,7 @@ public class VcfParserTest {
       List<VcfPosition> positions = new ArrayList<>();
       try (VcfParser parser = new VcfParser.Builder()
           .fromReader(new BufferedReader(new StringReader(vcf)))
-          .parseWith((metadata, position, sampleData) -> positions.add(position))
+          .parseWith((metadata, record) -> positions.add(record.getPosition()))
           .build()) {
         boolean hasNext = true;
         while (hasNext) {
@@ -1546,7 +1565,7 @@ public class VcfParserTest {
       try (VcfParser parser = new VcfParser.Builder()
           .fromReader(new BufferedReader(new StringReader(vcf)))
           .rsidsOnly()
-          .parseWith((metadata, position, sampleData) -> positions.add(position))
+          .parseWith((metadata, record) -> positions.add(record.getPosition()))
           .build()) {
         parser.parse();
       }
@@ -1575,7 +1594,7 @@ public class VcfParserTest {
     try (VcfParser parser = new VcfParser.Builder()
         .fromReader(new BufferedReader(new StringReader(vcf)))
         .rsidsOnly()
-        .parseWith((metadata, position, sampleData) -> positions.add(position))
+        .parseWith((metadata, record) -> positions.add(record.getPosition()))
         .build()) {
       parser.parse();
     }
@@ -1594,7 +1613,7 @@ public class VcfParserTest {
     try (VcfParser parser = new VcfParser.Builder()
         .fromReader(new BufferedReader(new StringReader(vcf)))
         .rsidsOnly()
-        .parseWith((metadata, position, sampleData) -> positions.add(position))
+        .parseWith((metadata, record) -> positions.add(record.getPosition()))
         .build()) {
       parser.parse();
     }
@@ -1613,7 +1632,7 @@ public class VcfParserTest {
     try (VcfParser parser = new VcfParser.Builder()
         .fromReader(new BufferedReader(new StringReader(vcf)))
         .rsidsOnly()
-        .parseWith((metadata, position, sampleData) -> positions.add(position))
+        .parseWith((metadata, record) -> positions.add(record.getPosition()))
         .build()) {
       parser.parse();
     }
@@ -1636,13 +1655,13 @@ public class VcfParserTest {
     // unwrapped/malformed '<' and a ',' are invalid anywhere in CHROM, so both now throw.
     try (VcfParser parser = new VcfParser.Builder()
         .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.2/failed/failed_body_chrom_000.vcf"))
-        .parseWith((metadata, position, sampleData) -> { })
+        .parseWith((metadata, record) -> { })
         .build()) {
       assertThrows(VcfFormatException.class, parser::parse);
     }
     try (VcfParser parser = new VcfParser.Builder()
         .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.2/failed/failed_body_chrom_003.vcf"))
-        .parseWith((metadata, position, sampleData) -> { })
+        .parseWith((metadata, record) -> { })
         .build()) {
       assertThrows(VcfFormatException.class, parser::parse);
     }
@@ -1651,7 +1670,7 @@ public class VcfParserTest {
     // fixture" subsection (added in Task 3) for the full citation.
     try (VcfParser parser = new VcfParser.Builder()
         .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.2/failed/failed_body_chrom_001.vcf"))
-        .parseWith((metadata, position, sampleData) -> { })
+        .parseWith((metadata, record) -> { })
         .build()) {
       parser.parse(); // must not throw
     }
@@ -1667,7 +1686,7 @@ public class VcfParserTest {
     // hts-specs self-contradiction this reproduces.
     try (VcfParser parser = new VcfParser.Builder()
         .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.3/failed/failed_meta_contig_003.vcf"))
-        .parseWith((metadata, position, sampleData) -> { })
+        .parseWith((metadata, record) -> { })
         .build()) {
       parser.parse(); // must not throw
     }
@@ -1677,7 +1696,7 @@ public class VcfParserTest {
     List<VcfMetadata> capturedMetadata = new ArrayList<>();
     try (VcfParser parser = new VcfParser.Builder()
         .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.2/passed/passed_meta_contig.vcf"))
-        .parseWith((metadata, position, sampleData) -> {
+        .parseWith((metadata, record) -> {
           if (capturedMetadata.isEmpty()) {
             capturedMetadata.add(metadata);
           }
@@ -1717,7 +1736,7 @@ public class VcfParserTest {
       root.addAppender(appender);
       try (VcfParser parser = new VcfParser.Builder()
           .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.2/failed", fixtureName))
-          .parseWith((metadata, position, sampleData) -> position.getInfo(key))
+          .parseWith((metadata, record) -> record.getPosition().getInfo(key))
           .build()) {
         parser.parse();
       } finally {
@@ -1748,7 +1767,7 @@ public class VcfParserTest {
       root.addAppender(appender);
       try (VcfParser parser = new VcfParser.Builder()
           .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.2/failed", fixtureName))
-          .parseWith((metadata, position, sampleData) -> position.getInfo(ReservedInfoProperty.Cigar))
+          .parseWith((metadata, record) -> record.getPosition().getInfo(ReservedInfoProperty.Cigar))
           .build()) {
         parser.parse();
       } finally {
@@ -1816,7 +1835,9 @@ public class VcfParserTest {
       root.addAppender(appender);
       try (VcfParser parser = new VcfParser.Builder()
           .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.2/failed", fixtureName))
-          .parseWith((metadata, position, sampleData) -> {
+          .parseWith((metadata, record) -> {
+            VcfPosition position = record.getPosition();
+            List<VcfSample> sampleData = record.getSamples();
             for (VcfSample sample : sampleData) {
               sample.getProperty(position, metadata, key);
             }
@@ -1844,7 +1865,9 @@ public class VcfParserTest {
       List<VcfFormatException> thrown = new ArrayList<>();
       try (VcfParser parser = new VcfParser.Builder()
           .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.2/failed", fixtureName))
-          .parseWith((metadata, position, sampleData) -> {
+          .parseWith((metadata, record) -> {
+            VcfPosition position = record.getPosition();
+            List<VcfSample> sampleData = record.getSamples();
             for (VcfSample sample : sampleData) {
               try {
                 sample.getProperty(position, metadata, "DS");
@@ -1871,7 +1894,7 @@ public class VcfParserTest {
     root.addAppender(appender);
     try (VcfParser parser = new VcfParser.Builder()
         .fromFile(fixture)
-        .parseWith((metadata, position, sampleData) -> { })
+        .parseWith((metadata, record) -> { })
         .build()) {
       parser.parse();
     } finally {
@@ -1900,7 +1923,7 @@ public class VcfParserTest {
     try (VcfParser parser = new VcfParser.Builder()
         .fromFile(vcfFile)
         .warningsToFile(warningsFile)
-        .parseWith((metadata, position, sampleData) -> metadata.getPedigrees().get(0).checkAttributeOrder())
+        .parseWith((metadata, record) -> metadata.getPedigrees().get(0).checkAttributeOrder())
         .build()) {
       parser.parse();
     }
@@ -1929,7 +1952,8 @@ public class VcfParserTest {
     try (VcfParser parser = new VcfParser.Builder()
         .fromFile(vcfFile)
         .warningsToFile(warningsFile)
-        .parseWith((metadata, position, sampleData) -> {
+        .parseWith((metadata, record) -> {
+          VcfPosition position = record.getPosition();
           metadataHolder[0] = metadata;
           positions.add(position);
         })
@@ -1963,7 +1987,8 @@ public class VcfParserTest {
     List<VcfPosition> positions = new ArrayList<>();
     try (VcfParser parser = new VcfParser.Builder()
         .fromFile(vcfFile)
-        .parseWith((metadata, position, sampleData) -> {
+        .parseWith((metadata, record) -> {
+          VcfPosition position = record.getPosition();
           metadataHolder[0] = metadata;
           positions.add(position);
         })
@@ -1980,7 +2005,8 @@ public class VcfParserTest {
     List<VcfPosition> reparsedPositions = new ArrayList<>();
     try (VcfParser parser = new VcfParser.Builder()
         .fromReader(new BufferedReader(new StringReader(output.toString())))
-        .parseWith((metadata, position, sampleData) -> {
+        .parseWith((metadata, record) -> {
+          VcfPosition position = record.getPosition();
           reparsedMetadata[0] = metadata;
           reparsedPositions.add(position);
         })
@@ -2018,7 +2044,9 @@ public class VcfParserTest {
     try (VcfParser parser = new VcfParser.Builder()
         .fromFile(vcfFile)
         .warningsToFile(warningsFile)
-        .parseWith((metadata, position, sampleData) -> {
+        .parseWith((metadata, record) -> {
+          VcfPosition position = record.getPosition();
+          List<VcfSample> sampleData = record.getSamples();
           positions.add(position);
           samples.addAll(sampleData);
         })
@@ -2053,7 +2081,9 @@ public class VcfParserTest {
           }
 
           @Override
-          public void parseLine(VcfMetadata ignored, VcfPosition position, List<VcfSample> values) {
+          public void parseLine(VcfMetadata ignored, VcfRecord record) {
+            VcfPosition position = record.getPosition();
+            List<VcfSample> values = record.getSamples();
             positions.add(position);
             samples.addAll(values);
           }
@@ -2071,7 +2101,7 @@ public class VcfParserTest {
     List<VcfSample> reparsed = new ArrayList<>();
     try (VcfParser parser = new VcfParser.Builder()
         .fromReader(new BufferedReader(new StringReader(output.toString())))
-        .parseWith((ignored, position, values) -> reparsed.addAll(values))
+        .parseWith((ignored, record) -> reparsed.addAll(record.getSamples()))
         .build()) {
       parser.parse();
     }
@@ -2090,7 +2120,7 @@ public class VcfParserTest {
     List<VcfPosition> positions = new ArrayList<>();
     try (VcfParser parser = new VcfParser.Builder()
         .fromReader(new BufferedReader(new StringReader(vcf)))
-        .parseWith((metadata, position, sampleData) -> positions.add(position))
+        .parseWith((metadata, record) -> positions.add(record.getPosition()))
         .build()) {
       parser.parse();
     }
@@ -2114,7 +2144,7 @@ public class VcfParserTest {
     List<VcfPosition> positions = new ArrayList<>();
     try (VcfParser parser = new VcfParser.Builder()
         .fromReader(new BufferedReader(new StringReader(vcf)))
-        .parseWith((metadata, position, sampleData) -> positions.add(position))
+        .parseWith((metadata, record) -> positions.add(record.getPosition()))
         .build()) {
       parser.parse();
     }
@@ -2142,7 +2172,7 @@ public class VcfParserTest {
     try (VcfParser parser = new VcfParser.Builder()
         .fromFile(vcfFile)
         .warningsToFile(warningsFile)
-        .parseWith((metadata, position, sampleData) -> positions.add(position))
+        .parseWith((metadata, record) -> positions.add(record.getPosition()))
         .build()) {
       parser.parse();
     }
@@ -2177,7 +2207,7 @@ public class VcfParserTest {
     try (VcfParser parser = new VcfParser.Builder()
         .fromFile(vcfFile)
         .warningsToFile(warningsFile)
-        .parseWith((metadata, position, sampleData) -> positions.add(position))
+        .parseWith((metadata, record) -> positions.add(record.getPosition()))
         .build()) {
       parser.parse();
     }
@@ -2212,7 +2242,8 @@ public class VcfParserTest {
     List<VcfPosition> positions = new ArrayList<>();
     try (VcfParser parser = new VcfParser.Builder()
         .fromReader(new BufferedReader(new StringReader(vcf)))
-        .parseWith((metadata, position, sampleData) -> {
+        .parseWith((metadata, record) -> {
+          VcfPosition position = record.getPosition();
           positions.add(position);
           if (positions.size() == 1 || positions.size() == 2) {
             position.getFormat().add("EXTRA-" + positions.size());
@@ -2354,7 +2385,8 @@ public class VcfParserTest {
         .warningsToFile(warningsFile)
         .parseWith(new VcfLineParser() {
           @Override public void parseMetadata(VcfMetadata metadata) {}
-          @Override public void parseLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> samples) {
+          @Override public void parseLine(VcfMetadata metadata, VcfRecord record) {
+            VcfPosition position = record.getPosition();
             positionRef.set(position);
             positionReady.countDown();
             try {
@@ -2414,7 +2446,8 @@ public class VcfParserTest {
         .warningsToFile(warningsFile)
         .parseWith(new VcfLineParser() {
           @Override public void parseMetadata(VcfMetadata metadata) {}
-          @Override public void parseLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> samples) {
+          @Override public void parseLine(VcfMetadata metadata, VcfRecord record) {
+            VcfPosition position = record.getPosition();
             captured.add(position);
           }
         })

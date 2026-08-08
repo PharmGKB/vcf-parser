@@ -51,17 +51,23 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
 
 
   @Override
-  public void parseLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData) {
+  public void parseLine(VcfMetadata metadata, VcfRecord record) {
 
     // fallback in case parseMetadata was not invoked (e.g. parseLine called directly, not through VcfParser);
-    // also rejects a null metadata immediately, before position/sampleData are ever touched below
+    // also rejects a null metadata immediately, before the record is ever touched below
     m_dataStore.setMetadata(metadata);
-    if (position == null) {
-      throw new VcfFormatException("parseLine() was called with a null position");
+    // parseLine() is public and callable directly, so per AGENTS.md's Public API Null-Safety Policy a null
+    // record is rejected with VcfFormatException rather than raw-crashing on the unpack below. This subsumes
+    // the former explicit null-position/null-sample-list checks: every VcfRecord funnels through one private
+    // constructor that already rejects both, including on the VcfRecord.newTrusted() fast path, so neither is
+    // reachable here any more.
+    if (record == null) {
+      throw new VcfFormatException("parseLine() was called with a null record");
     }
-    if (sampleData == null) {
-      throw new VcfFormatException("parseLine() was called with a null sample data list");
-    }
+    VcfPosition position = record.getPosition();
+    List<VcfSample> sampleData = record.getSamples();
+    // a null sample element does survive VcfRecord.newTrusted(), which skips the public constructor's own
+    // per-element check, so this loop -- unlike the two checks it replaced -- is still reachable
     for (int sampleIndex = 0; sampleIndex < sampleData.size(); sampleIndex++) {
       if (sampleData.get(sampleIndex) == null) {
         throw new VcfFormatException("parseLine() was called with a null sample at index " + sampleIndex);
@@ -110,7 +116,7 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
       // NullPointerException is this codebase's established convention here (see AGENTS.md's Public API
       // Null-Safety Policy and WONT_FIX.md's VcfParser.Builder entries). Without this, a null handler would
       // silently fall through every == comparison against DuplicateHandler.FAIL/KEEP_LAST in parseLine()
-      // above (lines 61, 77), substituting the remaining behavior with no warning that the caller's intended
+      // above (lines 82, 99), substituting the remaining behavior with no warning that the caller's intended
       // handler was never applied, rather than failing fast at the actual mistake.
       Preconditions.checkNotNull(handler);
       m_duplicateIdHandler = handler;

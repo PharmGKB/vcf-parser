@@ -1,7 +1,5 @@
 package org.pharmgkb.parser.vcf;
 
-import java.util.List;
-
 
 /**
  * This interface controls what is actually done for each data line in a VCF file.
@@ -10,7 +8,8 @@ import java.util.List;
  */
 public interface VcfLineParser {
 
-  void parseLine(VcfMetadata metadata, VcfPosition position, List<VcfSample> sampleData);
+  /** Called for each data line in the VCF file. */
+  void parseLine(VcfMetadata metadata, VcfRecord record);
 
   /**
    * Called once after the metadata has been parsed and before any {@link #parseLine} calls, even when the file contains

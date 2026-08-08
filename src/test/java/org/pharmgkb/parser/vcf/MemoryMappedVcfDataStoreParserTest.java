@@ -44,8 +44,10 @@ public class MemoryMappedVcfDataStoreParserTest {
   public void testParseLineRejectsNullMetadataInsteadOfCorruptingLaterLookups() {
     MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
     VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    assertThrows(VcfFormatException.class,
-        () -> lineParser.parseLine(null, position, Collections.emptyList()));
+    // hoisted out of the lambda so this can only ever fail on parseLine()'s own rejection, never on a future
+    // VcfRecord constructor check
+    VcfRecord record = new VcfRecord(position, Collections.emptyList());
+    assertThrows(VcfFormatException.class, () -> lineParser.parseLine(null, record));
   }
 
   @Test
@@ -55,24 +57,15 @@ public class MemoryMappedVcfDataStoreParserTest {
   }
 
   @Test
-  public void testParseLineRejectsNullPositionInsteadOfNullPointerException() {
-    // regression test: before this fix, a null position raw-crashed with NullPointerException at
-    // position.getIds() in the FAIL-mode duplicate-ID check loop, instead of being rejected here
+  public void testParseLineRejectsNullRecordInsteadOfNullPointerException() {
+    // parseLine() is public and callable directly, so a null record must be rejected rather than
+    // raw-crashing on the record.getPosition() unpack. This replaces the former null-position and
+    // null-sample-list cases: every VcfRecord funnels through one private constructor that rejects both,
+    // including on the VcfRecord.newTrusted() fast path, so the record itself is now the only null that can
+    // reach parseLine(). VcfRecordTest owns the position/sample-list rejection coverage.
     MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
-    assertThrows(VcfFormatException.class,
-        () -> lineParser.parseLine(metadata, null, Collections.emptyList()));
-  }
-
-  @Test
-  public void testParseLineRejectsNullSampleDataInsteadOfStoringNullElement() {
-    // regression test: before this fix, a null sampleData list was accepted and stored as a literal null
-    // element inside getSamplesAtLocus()'s per-locus List<List<VcfSample>>, crashing later at
-    // getSampleAtLocus/getGenotypeAtLocus with NullPointerException instead of here
-    MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    assertThrows(VcfFormatException.class, () -> lineParser.parseLine(metadata, position, null));
+    assertThrows(VcfFormatException.class, () -> lineParser.parseLine(metadata, null));
   }
 
   @Test
@@ -83,13 +76,16 @@ public class MemoryMappedVcfDataStoreParserTest {
     // call, while getSampleAtLocus/getSampleForId silently returned the null, indistinguishable from
     // "not present". The null is placed at index 1 (behind one valid sample), and the exception message is
     // asserted, so this pins that the check scans every element -- not just index 0 -- and reports the
-    // correct index, rather than merely that a null anywhere in the list is rejected.
+    // correct index, rather than merely that a null anywhere in the list is rejected. Built through
+    // VcfRecord.newTrusted(), which by design skips the public constructor's own per-element null check --
+    // the only path by which a null sample element can still reach parseLine().
     MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
     VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
     VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
     VcfSample validSample = new VcfSample(List.of("GT"), List.of("0/1"));
+    VcfRecord record = VcfRecord.newTrusted(position, Arrays.asList(validSample, null));
     VcfFormatException e = assertThrows(VcfFormatException.class,
-        () -> lineParser.parseLine(metadata, position, Arrays.asList(validSample, null)));
+        () -> lineParser.parseLine(metadata, record));
     assertTrue(e.getMessage().contains("index 1"));
   }
 
@@ -165,7 +161,8 @@ public class MemoryMappedVcfDataStoreParserTest {
     VcfSample onlySample = new VcfSample(List.of("GT"), List.of("0/1"));
 
     MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
-    lineParser.parseLine(metadata, position, List.of(onlySample)); // only 1 sample, though metadata declares 2
+    // only 1 sample, though metadata declares 2
+    lineParser.parseLine(metadata, new VcfRecord(position, List.of(onlySample)));
 
     MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
     // "S1" (index 0) is present and resolves normally through all four fixed methods -- confirms the fix
@@ -360,6 +357,17 @@ public class MemoryMappedVcfDataStoreParserTest {
       assertNotNull(samplesList);
       assertThrows(UnsupportedOperationException.class, () -> samplesList.remove(0));
 
+      // each inner per-record sample list is unmodifiable too, now that VcfRecord (structurally immutable) is
+      // parseLine()'s payload -- see WONT_FIX.md's now-RESOLVED inner-list entry. Mutating one used to shift
+      // that record's own sample indices out of alignment with the #CHROM line's declared sample columns,
+      // silently misdirecting getSampleAtLocus/getGenotypeAtLocus (and the by-ID overloads) to the wrong
+      // sample. It's the same object either getter hands out, so both routes are pinned.
+      List<VcfSample> innerAtLocus = samplesList.get(0);
+      assertThrows(UnsupportedOperationException.class, () -> innerAtLocus.remove(0));
+      List<VcfSample> innerById = dataStore.getSamplesForId("rsx");
+      assertNotNull(innerById);
+      assertThrows(UnsupportedOperationException.class, () -> innerById.remove(0));
+
       // the lists remain usable for reading, and index alignment is intact (would have desynced under the old
       // live-mutable behavior if the mutation above had silently succeeded)
       assertEquals(2, positions.size());
@@ -493,7 +501,8 @@ public class MemoryMappedVcfDataStoreParserTest {
     position.getIds().add("rs1");
     position.getIds().add("rs1");
 
-    assertThrows(VcfFormatException.class, () -> lineParser.parseLine(metadata, position, Collections.emptyList()));
+    VcfRecord record = new VcfRecord(position, Collections.emptyList());
+    assertThrows(VcfFormatException.class, () -> lineParser.parseLine(metadata, record));
   }
 
   @Test

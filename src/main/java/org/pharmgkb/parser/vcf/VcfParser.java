@@ -416,7 +416,7 @@ public class VcfParser implements Closeable {
     // already-structurally-valid record) still gets this line's number attached, same as before.
     checkPositionOrdering(chromosome, position);
     try {
-      m_vcfLineParser.parseLine(m_vcfMetadata, pos, samples);
+      m_vcfLineParser.parseLine(m_vcfMetadata, VcfRecord.newTrusted(pos, samples));
     } catch (VcfFormatException ex) {
       ex.addMetadata(m_lineNumber, "data");
       throw ex;
