@@ -5,6 +5,9 @@ import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
+import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
+import static org.pharmgkb.parser.vcf.TestUtils.LENIENT_CONTEXT;
+import static org.pharmgkb.parser.vcf.TestUtils.lenientContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -20,9 +23,9 @@ public class IdDescriptionMetadataTest {
   public void testExtraPropertyRetained() {
     // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included
     // after the default fields" -- an unrecognized property is compliant, not just tolerated, and must be preserved
-    IdDescriptionMetadata md = new IdDescriptionMetadata("TEST",
-        InternalUtils.extractProperties(new String[]{"ID=X", "Description=\"d\"", "Custom=extra"}, VcfWarnings.DEFAULT),
-        VcfWarnings.DEFAULT);
+    IdDescriptionMetadata md = new IdDescriptionMetadata(LENIENT_CONTEXT, "TEST",
+        InternalUtils.extractProperties(new String[]{"ID=X", "Description=\"d\"", "Custom=extra"},
+            VcfWarnings.DEFAULT));
     assertEquals("extra", md.getPropertyRaw("Custom"));
   }
 
@@ -36,9 +39,8 @@ public class IdDescriptionMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new IdDescriptionMetadata("TEST", InternalUtils.extractProperties(
-          new String[]{"ID=DEL", "Type=String", "Number=1", "Description=\"Deletion\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT);
+      new IdDescriptionMetadata(LENIENT_CONTEXT, "TEST", InternalUtils.extractProperties(
+          new String[]{"ID=DEL", "Type=String", "Number=1", "Description=\"Deletion\""}, VcfWarnings.DEFAULT));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -56,9 +58,8 @@ public class IdDescriptionMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new IdDescriptionMetadata("TEST",
-          InternalUtils.extractProperties(new String[]{"ID=DEL", "Description=\"Deletion\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT);
+      new IdDescriptionMetadata(LENIENT_CONTEXT, "TEST",
+          InternalUtils.extractProperties(new String[]{"ID=DEL", "Description=\"Deletion\""}, VcfWarnings.DEFAULT));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -71,9 +72,9 @@ public class IdDescriptionMetadataTest {
     // regression test: IdMetadata.validate() (this class's superclass) and IdDescriptionMetadata.validate() each
     // used to call checkAttributeOrder() -- calling .validate() directly (e.g. after mutating properties via
     // getPropertiesRaw(), as VcfWriter's validateKeyedMetadataEntries does) fired the attribute-order warning twice
-    IdDescriptionMetadata md = new IdDescriptionMetadata("TEST",
-        InternalUtils.extractProperties(new String[]{"ID=DEL", "Type=String", "Number=1", "Description=\"Deletion\""}, VcfWarnings.DEFAULT),
-        VcfWarnings.DEFAULT);
+    IdDescriptionMetadata md = new IdDescriptionMetadata(LENIENT_CONTEXT, "TEST",
+        InternalUtils.extractProperties(new String[]{"ID=DEL", "Type=String", "Number=1", "Description=\"Deletion\""},
+            VcfWarnings.DEFAULT));
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -91,9 +92,9 @@ public class IdDescriptionMetadataTest {
 
   @Test
   public void testTypedConstructorRejectsNullOrBlankId() {
-    assertThrows(VcfFormatException.class, () -> new IdDescriptionMetadata("TEST", null, "d"));
-    assertThrows(VcfFormatException.class, () -> new IdDescriptionMetadata("TEST", "", "d"));
-    assertThrows(VcfFormatException.class, () -> new IdDescriptionMetadata("TEST", "   ", "d"));
+    assertThrows(VcfFormatException.class, () -> new IdDescriptionMetadata(STRICT_CONTEXT, "TEST", null, "d"));
+    assertThrows(VcfFormatException.class, () -> new IdDescriptionMetadata(STRICT_CONTEXT, "TEST", "", "d"));
+    assertThrows(VcfFormatException.class, () -> new IdDescriptionMetadata(STRICT_CONTEXT, "TEST", "   ", "d"));
   }
 
   @Test
@@ -106,7 +107,7 @@ public class IdDescriptionMetadataTest {
     Map<String, String> props = InternalUtils.extractProperties(
         new String[] {"ID=", "Description=\"d\""}, VcfWarnings.DEFAULT);
     StringWriter sink = new StringWriter();
-    new IdDescriptionMetadata("TEST", props, new VcfWarnings(sink));
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(sink)), "TEST", props);
     assertTrue(sink.toString().contains("metadata ID is blank"));
   }
 
@@ -122,7 +123,7 @@ public class IdDescriptionMetadataTest {
     map.put("ID", "   ");
     map.put("Description", "\"d\"");
     StringWriter sink = new StringWriter();
-    new IdDescriptionMetadata("TEST", map, new VcfWarnings(sink));
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(sink)), "TEST", map);
     assertTrue(sink.toString().contains("metadata ID is blank"));
     assertFalse(sink.toString().contains("must not contain whitespace"));
   }
@@ -139,9 +140,8 @@ public class IdDescriptionMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new IdDescriptionMetadata("TEST",
-          InternalUtils.extractProperties(new String[]{"ID=A B", "Description=\"d\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT);
+      new IdDescriptionMetadata(LENIENT_CONTEXT, "TEST",
+          InternalUtils.extractProperties(new String[]{"ID=A B", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertTrue(appender.anyMessageContains("must not contain whitespace"));
     } finally {
       root.detachAppender(appender);
@@ -161,9 +161,8 @@ public class IdDescriptionMetadataTest {
       appender.start();
       root.addAppender(appender);
       try {
-        new IdDescriptionMetadata(label,
-            InternalUtils.extractProperties(new String[]{"ID=A B", "Description=\"d\""}, VcfWarnings.DEFAULT),
-            VcfWarnings.DEFAULT);
+        new IdDescriptionMetadata(LENIENT_CONTEXT, label,
+            InternalUtils.extractProperties(new String[]{"ID=A B", "Description=\"d\""}, VcfWarnings.DEFAULT));
         assertTrue(appender.anyMessageContains(label + " metadata ID"));
         assertFalse(appender.anyMessageContains("IdDescriptionMetadata"));
       } finally {
@@ -176,15 +175,15 @@ public class IdDescriptionMetadataTest {
   @Test
   public void testTypedConstructorRejectsWhitespaceInIdInsteadOfWarning() {
     VcfFormatException ex = assertThrows(VcfFormatException.class,
-        () -> new IdDescriptionMetadata("FILTER", "bad id", "some description"));
+        () -> new IdDescriptionMetadata(STRICT_CONTEXT, "FILTER", "bad id", "some description"));
     assertTrue(ex.getMessage().contains("must not contain whitespace"));
   }
 
   @Test
-  public void testMapConstructorRequiresWarningsInstance() {
+  public void testMapConstructorRequiresContextInstance() {
     Map<String, String> props = InternalUtils.extractProperties(
         new String[] {"ID=bad id", "Description=\"d\""}, VcfWarnings.DEFAULT);
-    assertThrows(NullPointerException.class, () -> new IdDescriptionMetadata("FILTER", props, null));
+    assertThrows(NullPointerException.class, () -> new IdDescriptionMetadata(null, "FILTER", props));
   }
 
   @Test
@@ -192,7 +191,7 @@ public class IdDescriptionMetadataTest {
     Map<String, String> props = InternalUtils.extractProperties(
         new String[] {"ID=bad id", "Description=\"d\""}, VcfWarnings.DEFAULT);
     StringWriter sink = new StringWriter();
-    new IdDescriptionMetadata("FILTER", props, new VcfWarnings(sink));
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(sink)), "FILTER", props);
     assertTrue(sink.toString().contains("must not contain whitespace"));
   }
 
@@ -201,7 +200,7 @@ public class IdDescriptionMetadataTest {
     // regression test: IdMetadata's generic ID-grammar check previously only threw (strict path) for whitespace,
     // never a comma, for every type sharing this class (##FILTER, ##SAMPLE, ##ALT)
     VcfFormatException ex = assertThrows(VcfFormatException.class,
-        () -> new IdDescriptionMetadata("FILTER", "A,B", "some description"));
+        () -> new IdDescriptionMetadata(STRICT_CONTEXT, "FILTER", "A,B", "some description"));
     assertTrue(ex.getMessage().contains("must not contain a comma"));
   }
 
@@ -213,7 +212,7 @@ public class IdDescriptionMetadataTest {
     Map<String, String> props = InternalUtils.extractProperties(
         new String[] {"ID=A,B", "Description=\"d\""}, VcfWarnings.DEFAULT);
     StringWriter sink = new StringWriter();
-    new IdDescriptionMetadata("FILTER", props, new VcfWarnings(sink));
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(sink)), "FILTER", props);
     assertTrue(sink.toString().contains("must not contain a comma"));
   }
 
@@ -227,7 +226,7 @@ public class IdDescriptionMetadataTest {
     Map<String, String> props = InternalUtils.extractProperties(
         new String[] {"ID=A,B", "Description=\"d\""}, VcfWarnings.DEFAULT);
     StringWriter sink = new StringWriter();
-    new IdDescriptionMetadata("ALT", props, new VcfWarnings(sink));
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(sink)), "ALT", props);
     assertTrue(sink.toString().contains("must not contain a comma"));
   }
 
@@ -237,7 +236,7 @@ public class IdDescriptionMetadataTest {
     // if a future change accidentally reintroduces a call to init() here, this would still pass (init() is a
     // no-op for well-formed input), so this test's real value is documented in testTypedConstructorRejectsWhitespaceInIdInsteadOfWarning
     // actually exercising the throw path instead of a silent warn
-    IdDescriptionMetadata md = new IdDescriptionMetadata("FILTER", "q10", "quality below 10");
+    IdDescriptionMetadata md = new IdDescriptionMetadata(STRICT_CONTEXT, "FILTER", "q10", "quality below 10");
     assertEquals("q10", md.getId());
     assertEquals("quality below 10", md.getDescription());
   }

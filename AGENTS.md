@@ -35,7 +35,7 @@ When hts-specs itself is silent (no fixture covers the exact case), running vcf_
 Before adding new documentation content, place it in the file that already owns that kind of content, rather than growing `README.md` or duplicating across files. This is the complementary direction to the Decision Hierarchy above (the two doc lists aren't identical -- this one also covers `README.md`/`VALIDATION_REFERENCE.md`, which aren't places you'd check whether an ambiguity is already resolved): that section says which file to check before treating something as new; this one says which file new content belongs in once you've decided to write it.
 
 - **`README.md`** -- user-facing overview only: what the library is, how to get it, a high-level tour of the main classes (`VcfParser`, `VcfWriter`, `VcfLineParser`, `VcfRecord`). No spec-line citations, no bcftools/vcf_validator version-pinned behavior, no itemized throw/warn enumeration. If a README edit would cite a spec line or a tool version, it belongs in one of the docs below instead.
-- **`VALIDATION_PHILOSOPHY.md`** -- the architectural "why": which of the four principles applies to a class, and which of the two dispatch shapes it uses. Not an itemized rule list.
+- **`VALIDATION_PHILOSOPHY.md`** -- the architectural "why": which of the four principles applies to a class, and how the single `VcfContext`-driven strict/lenient dispatch reaches it. Not an itemized rule list.
 - **`VALIDATION_REFERENCE.md`** -- the itemized "what throws, what warns, exact citation" reference -- one entry per checkable rule.
 - **`VCF_SPEC_AMBIGUITIES.md`** -- a rule whose resolution required consulting bcftools/vcf_validator behavior specifically (not just "this is structurally invalid").
 - **`EMPTY_FIELD_HANDLING.md`** / **`DUPLICATE_METADATA_ID_HANDLING.md`** -- narrow, single-topic reference tables; extend these rather than re-describing the same rule in `VALIDATION_REFERENCE.md`.
@@ -109,20 +109,32 @@ here. The rest of this section states the concrete per-shape rules that follow f
   code constructs and passes in before parsing/writing starts). `Preconditions.checkNotNull`'s raw
   `NullPointerException` remains the correct, established convention there -- see `WONT_FIX.md`'s
   `VcfParser.Builder` entries for the full reasoning and the exact boundary between the two cases.
-  The `VcfWarnings` instance a lenient constructor or `VcfMetadata.Builder.lenient(...)` requires is the same
-  category of caller-configuration object, not VCF content -- it is rejected the same way (raw
-  `NullPointerException` via `Preconditions.checkNotNull`), not with `VcfFormatException`.
+  The `VcfWarnings` instance `VcfContext.lenient(...)` requires, and the `VcfContext` that
+  `VcfMetadata.Builder`'s constructor and every model constructor in turn require, are the same category of
+  caller-configuration object, not VCF content -- each is rejected the same way (raw `NullPointerException`
+  via `Preconditions.checkNotNull`), not with `VcfFormatException`. `VcfWriter.Builder.targetFileFormat` is
+  the counterexample that shows where the line falls: it looks like a `Builder` configuration setter, but its
+  value is written verbatim into the output as `##fileformat`, so it is VCF content and takes
+  `VcfFormatException`.
 - A class or method explicitly documented as not part of this library's supported public API is exempt from
   this policy's null-rejection requirement -- currently `InternalUtils` (renamed from `VcfUtils`; most of its
   members are `public` only because Java has no cross-package-within-a-library visibility modifier),
   `VcfMetadata.validateAlt`/`isEmptyMetadataValue`/`collidesWithAttributeListGrammar`,
-  `VcfFloat.parse(String, VcfWarnings)`/`isSpecialValue`/`exceedsMaxDecimalLength`, and
-  `VcfPosition.newWithTrustedFormat` (the same situation, on otherwise fully-supported classes). All are
-  marked `@RestrictedApi`/`@hidden` -- a documentation-only exemption, not a technical guarantee; see
-  `VALIDATION_PHILOSOPHY.md`'s "How the principles interact" section for why, and for the
-  `newWithTrustedFormat`-vs-`VcfSample.newTrusted()` distinction (the two look like the same "trusted
-  fast path" pattern but sit on opposite sides of this exemption -- check which checks a given trusted-bypass
-  method actually skips before assuming either precedent applies). Two of `InternalUtils`'s null-guards are
+  and `VcfFloat.parse(String, VcfWarnings)`/`isSpecialValue`/`exceedsMaxDecimalLength`. These are marked
+  `@RestrictedApi`/`@hidden` -- a documentation-only exemption, not a technical guarantee.
+  The library's four package-private fast-path factories -- `VcfContext.newPositionTakingOwnership`,
+  `newPositionWithTrustedFormat`, `newTrustedSample`, and `newTrustedRecord` -- are *not* on this list: they are
+  package-private, so visibility enforces what an annotation could only advertise, and an external caller cannot
+  reach them at all. Only three of the four are named `*Trusted*`; `newPositionTakingOwnership` deliberately is
+  not, because it skips only the defensive copies and still runs every validation check, FORMAT included -- it
+  trusts the caller's exclusive ownership of the collections, not the collections' content, which is a
+  materially weaker claim than the other three make. They differ from each other in *what* they skip
+  (`newPositionTakingOwnership` skips only the defensive copies; `newPositionWithTrustedFormat` skips those same
+  copies *and* FORMAT validation entirely; `newTrustedSample` skips a delimiter scan; `newTrustedRecord` skips
+  the defensive copy and the context-identity check, but never the null-position/null-sample-list rejection) --
+  check which checks a given trusted-bypass method actually skips before assuming one is a precedent for
+  another. See `VALIDATION_PHILOSOPHY.md`'s "How the principles interact" section. Two of `InternalUtils`'s
+  null-guards are
   kept as exceptions to its own exemption, since they're genuinely load-bearing: `unquote` (see its own
   comment) and the per-element checks in `dropEmptyEntries`/`fillEmptyEntriesWithDot` (reachable via
   `VcfPosition`'s documented live-mutation contract on its own genuinely-supported getters, not through

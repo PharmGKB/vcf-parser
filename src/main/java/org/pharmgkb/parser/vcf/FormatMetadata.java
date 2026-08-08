@@ -22,50 +22,55 @@ public class FormatMetadata extends IdDescriptionMetadata {
 
   private @Nullable FormatType m_type;
 
-  public FormatMetadata(String id, String description, String number, FormatType type) {
-    super("FORMAT", id);
-    // structurally unreachable for a whitespace- or comma-containing id: IdMetadata's own super(...) call above
-    // already throws first for either -- see ContigMetadata's identical strict-path reasoning for its own
-    // analogous character-set check
-    if (!InternalUtils.FORMAT_PATTERN.matcher(id).matches()) {
-      throw new VcfFormatException(getLabel() + " ID \"" + id + "\" does not match the required tag-name " +
-          "grammar (must start with a letter or underscore, followed only by letters, digits, underscores, " +
-          "or periods)");
+  FormatMetadata(VcfContext context, @Nullable String id, @Nullable String description, @Nullable String number,
+      @Nullable FormatType type) {
+    super(context, "FORMAT", id);
+    // see InfoMetadata's identical constructor for why id can be null here under a lenient context
+    if (id != null && !InternalUtils.FORMAT_PATTERN.matcher(id).matches()) {
+      warnOrThrow("{} ID \"{}\" does not match the required tag-name grammar (must start with a letter or " +
+          "underscore, followed only by letters, digits, underscores, or periods)", getLabel(), id);
     }
     // Validated before putPropertyRaw stores it below: see InfoMetadata's identical constructor for why
     // checking format here first (rather than after) is what makes a null or malformed Number actually
     // produce this class's own, more specific message instead of putPropertyRaw's generic null-check one.
     if (number == null || !InternalUtils.NUMBER_PATTERN.matcher(number).matches()) {
-      throw new VcfFormatException("FORMAT Number is not a valid VCF number: '" + number + "'");
+      warnOrThrow("FORMAT Number is not a valid VCF number: '{}'", number);
     }
-    putPropertyRaw(NUMBER, number);
-    // type is typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting
-    // type.name() below throw a raw NullPointerException
+    if (number != null) {
+      putPropertyRaw(NUMBER, number);
+    }
+    // type is typed @Nullable only so a lenient context can recover from its absence; guard here rather than
+    // letting type.name() below throw a raw NullPointerException
     if (type == null) {
-      throw new VcfFormatException("FORMAT type is null");
+      warnOrThrow("FORMAT type is null");
+    } else {
+      putPropertyRaw(TYPE, type.name());
     }
-    putPropertyRaw(TYPE, type.name());
     // Description inserted last -- see InfoMetadata's identical constructor for why (matches canonical
     // ID, Number, Type, Description order per VCFv4.2.tex line 94).
-    putAndQuoteProperty(DESCRIPTION, description);
-    // strict construction: see InfoMetadata's identical constructor for why Description-quoting and
-    // Type-parse-failure have no throw-equivalent here.
+    if (description == null) {
+      warnOrThrow("{} required metadata property \"{}\" is missing", getLabel(), DESCRIPTION);
+    } else {
+      putAndQuoteProperty(DESCRIPTION, description);
+    }
+    // see InfoMetadata's identical constructor for why Description-quoting and Type-parse-failure have no
+    // check here.
     ReservedFormatProperty reserved = ReservedFormatProperty.fromId(id);
     if (reserved != null) {
       if (!reserved.getExpectedNumber().equals(number)) {
-        throw new VcfFormatException("FORMAT " + id + " has Number '" + number + "' but the reserved definition " +
-            "expects '" + reserved.getExpectedNumber() + "'");
+        warnOrThrow("FORMAT {} has Number '{}' but the reserved definition expects '{}'", id, number,
+            reserved.getExpectedNumber());
       }
-      if (!InternalUtils.toJavaType(type).equals(reserved.getType())) {
-        throw new VcfFormatException("FORMAT " + id + " has Type '" + type + "' but the reserved definition " +
-            "expects '" + reserved.getType().getSimpleName() + "'");
+      if (type != null && !InternalUtils.toJavaType(type).equals(reserved.getType())) {
+        warnOrThrow("FORMAT {} has Type '{}' but the reserved definition expects '{}'", id, type,
+            reserved.getType().getSimpleName());
       }
     }
     m_type = type;
   }
 
-  public FormatMetadata(Map<String, String> properties, VcfWarnings warnings) {
-    super("FORMAT", properties, warnings);
+  FormatMetadata(VcfContext context, Map<String, String> properties) {
+    super(context, "FORMAT", properties);
     init();
   }
 
@@ -79,7 +84,7 @@ public class FormatMetadata extends IdDescriptionMetadata {
       try {
         m_type = FormatType.valueOf(type);
       } catch (IllegalArgumentException e) {
-        m_warnings.warn("{} {} '{}' is not a valid {} type", getLabel(), TYPE, type, getLabel());
+        warnOrThrow("{} {} '{}' is not a valid {} type", getLabel(), TYPE, type, getLabel());
       }
     }
     String id = getId();
@@ -91,18 +96,18 @@ public class FormatMetadata extends IdDescriptionMetadata {
       // whole-string pattern instead of a per-character scan.
       String stripped = id.replaceAll("[,\\s]", "");
       if (!stripped.isEmpty() && !InternalUtils.FORMAT_PATTERN.matcher(stripped).matches()) {
-        m_warnings.warn("{} ID \"{}\" does not match the required tag-name grammar (must start with a letter or " +
+        warnOrThrow("{} ID \"{}\" does not match the required tag-name grammar (must start with a letter or " +
             "underscore, followed only by letters, digits, underscores, or periods)", getLabel(), id);
       }
     }
     ReservedFormatProperty reserved = ReservedFormatProperty.fromId(id);
     if (reserved != null) {
       if (number != null && !reserved.getExpectedNumber().equals(number)) {
-        m_warnings.warn("{} {} has Number '{}' but the reserved definition expects '{}'", getLabel(), getId(),
+        warnOrThrow("{} {} has Number '{}' but the reserved definition expects '{}'", getLabel(), getId(),
             number, reserved.getExpectedNumber());
       }
       if (m_type != null && !InternalUtils.toJavaType(m_type).equals(reserved.getType())) {
-        m_warnings.warn("{} {} has Type '{}' but the reserved definition expects '{}'", getLabel(), getId(),
+        warnOrThrow("{} {} has Type '{}' but the reserved definition expects '{}'", getLabel(), getId(),
             m_type, reserved.getType().getSimpleName());
       }
     }

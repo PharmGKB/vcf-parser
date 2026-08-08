@@ -92,13 +92,40 @@ warns, with spec/hts-specs/bcftools/vcf_validator citations for every non-obviou
 detail.
 
 
+## `VcfContext`: building VCF objects yourself
+
+Most callers never construct a model object by hand -- `VcfParser` hands you finished ones. When you do need
+to (building a file from scratch, or a synthetic record for a test), everything is created through a
+[`VcfContext`](src/main/java/org/pharmgkb/parser/vcf/VcfContext.java): one instance per file, carrying its
+`##fileformat`, its warning destination, and whether a recoverable content violation warns or throws.
+
+```java
+VcfContext ctx = VcfContext.strict("VCFv4.2");     // or VcfContext.lenient(fileFormat, warnings)
+VcfPosition position = ctx.newPosition("chr1", 100, null, "A", List.of("T"), null, null, null,
+    List.of("GT"), -1);
+VcfSample sample = ctx.newSample(List.of("GT"), List.of("0/1"));
+VcfRecord record = ctx.newRecord(position, List.of(sample));
+VcfMetadata metadata = new VcfMetadata.Builder(ctx)
+    .addInfo("DP", "Total depth", InfoType.Integer, "1", null, null)
+    .setColumns(columns)
+    .build();
+```
+
+`strict` rejects a recoverable content violation outright; `lenient` warns and recovers, which is what
+`VcfParser` uses for a real file. The choice belongs to the context, not to which overload you call -- the
+same invalid content behaves the same way whether you pass typed values or a raw property map. Every object
+made this way is bound to that one context, and mixing objects from two different contexts into one record or
+one `VcfMetadata` is rejected.
+
+
 ## `VcfWarnings`: explicit warning routing
 
 Every lenient (warn-and-recover) code path above needs somewhere to send its warning. By default, that's
 this library's shared SLF4J logger (`org.pharmgkb.parser.vcf.VcfWarnings`) -- but a caller can redirect it
 explicitly by constructing a [`VcfWarnings`](src/main/java/org/pharmgkb/parser/vcf/VcfWarnings.java) instance
-(backed by any `Writer`, or via the `openFile(Path)` convenience factory) and passing it into whichever
-lenient constructor/`Builder.lenient(...)` call it's using. `VcfParser.Builder.warningsToFile()` and
+(backed by any `Writer`, or via the `openFile(Path)` convenience factory) and passing it to
+`VcfContext.lenient(fileFormat, warnings)`, the context every model object it creates then inherits it from.
+`VcfParser.Builder.warningsToFile()` and
 `VcfWriter.Builder.warningsToFile()` build and manage one of these internally for their own parse/write call --
 most callers never need to construct a `VcfWarnings` by hand at all.
 

@@ -9,6 +9,7 @@ import java.util.regex.Pattern;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.Test;
 
+import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -163,7 +164,8 @@ public class InternalUtilsTest {
   public void testExtractPropertiesWithEscapes() {
     // an escaped backslash (\\) and an escaped double-quote (\") inside a quoted Description must not crash and must be
     // preserved (the split must not treat the escaped quote as a real quote)
-    Map<String, String> props = InternalUtils.extractPropertiesFromLine("ID=X,Description=\"a \\\\ b \\\" c\"", VcfWarnings.DEFAULT);
+    Map<String, String> props = InternalUtils.extractPropertiesFromLine("ID=X,Description=\"a \\\\ b \\\" c\"",
+        VcfWarnings.DEFAULT);
     assertEquals("X", props.get("ID"));
     assertEquals("\"a \\\\ b \\\" c\"", props.get("Description"));
   }
@@ -349,10 +351,13 @@ public class InternalUtilsTest {
     // FT's grammar (PASS/./semicolon-separated codes, no whitespace, PASS/'.' not combined with other codes) isn't
     // expressible through its declared Type=String, so it's checked separately; this is non-structural sample
     // content, so an invalid value warns rather than throws
-    assertEquals("PASS", InternalUtils.checkReservedFormatConstraints("FT", "PASS", VcfWarnings.DEFAULT)); // valid: does not throw
-    assertEquals("q10;q20", InternalUtils.checkReservedFormatConstraints("FT", "q10;q20", VcfWarnings.DEFAULT)); // valid: does not throw
+    assertEquals("PASS",
+        InternalUtils.checkReservedFormatConstraints("FT", "PASS", VcfWarnings.DEFAULT)); // valid: does not throw
+    assertEquals("q10;q20",
+        InternalUtils.checkReservedFormatConstraints("FT", "q10;q20", VcfWarnings.DEFAULT)); // valid: does not throw
     assertEquals("q10 q20", InternalUtils.checkReservedFormatConstraints("FT", "q10 q20", VcfWarnings.DEFAULT)); // whitespace in a code: warns
-    assertEquals("PASS;q10", InternalUtils.checkReservedFormatConstraints("FT", "PASS;q10", VcfWarnings.DEFAULT)); // PASS + code: warns
+    assertEquals("PASS;q10",
+        InternalUtils.checkReservedFormatConstraints("FT", "PASS;q10", VcfWarnings.DEFAULT)); // PASS + code: warns
     assertNull(InternalUtils.checkReservedFormatConstraints("FT", null, VcfWarnings.DEFAULT)); // no value set: nothing to check
     assertEquals(".", InternalUtils.checkReservedFormatConstraints("FT", ".", VcfWarnings.DEFAULT)); // missing value: nothing to check
   }
@@ -422,9 +427,11 @@ public class InternalUtilsTest {
     // Type=Integer (which maps to a 64-bit Long), so it's checked separately; this is non-structural sample
     // content, so an out-of-range value warns rather than throws
     InternalUtils.checkReservedFormatConstraints("PS", "0", VcfWarnings.DEFAULT); // valid: does not throw
-    InternalUtils.checkReservedFormatConstraints("PS", String.valueOf(Integer.MAX_VALUE), VcfWarnings.DEFAULT); // valid: does not throw
+    InternalUtils.checkReservedFormatConstraints("PS", String.valueOf(Integer.MAX_VALUE),
+        VcfWarnings.DEFAULT); // valid: does not throw
     InternalUtils.checkReservedFormatConstraints("PS", "-5", VcfWarnings.DEFAULT); // negative: warns, does not throw
-    InternalUtils.checkReservedFormatConstraints("PS", String.valueOf(Integer.MAX_VALUE + 1L), VcfWarnings.DEFAULT); // out of 32-bit range: warns
+    InternalUtils.checkReservedFormatConstraints("PS", String.valueOf(Integer.MAX_VALUE + 1L),
+        VcfWarnings.DEFAULT); // out of 32-bit range: warns
   }
 
   @Test
@@ -529,7 +536,8 @@ public class InternalUtilsTest {
     appender.start();
     root.addAppender(appender);
     try {
-      List<VcfFloat> value = InternalUtils.convertProperty(ReservedInfoProperty.AlleleFrequency, "1.", VcfWarnings.DEFAULT);
+      List<VcfFloat> value = InternalUtils.convertProperty(ReservedInfoProperty.AlleleFrequency, "1.",
+          VcfWarnings.DEFAULT);
       assertEquals(1, appender.countMessagesContaining("does not match the VCF Float grammar"));
       assertEquals(0, appender.countMessagesContaining("does not lie in the interval"));
       assertEquals(1, value.size());
@@ -554,9 +562,12 @@ public class InternalUtilsTest {
     // declared Type=String (which accepts any string unchanged), so it's checked separately; this is
     // non-structural INFO content, so an invalid value warns rather than throws
     InternalUtils.checkReservedInfoConstraints("CIGAR", "8M2I4M1D3M", VcfWarnings.DEFAULT); // valid: does not throw
-    InternalUtils.checkReservedInfoConstraints("CIGAR", "*", VcfWarnings.DEFAULT); // valid ("unavailable"): does not throw
-    InternalUtils.checkReservedInfoConstraints("CIGAR", "123MYCIGAR", VcfWarnings.DEFAULT); // illegal trailing chars: warns
-    InternalUtils.checkReservedInfoConstraints("CIGAR", "0.05", VcfWarnings.DEFAULT); // a decimal number, not pairs: warns
+    InternalUtils.checkReservedInfoConstraints("CIGAR", "*",
+        VcfWarnings.DEFAULT); // valid ("unavailable"): does not throw
+    InternalUtils.checkReservedInfoConstraints("CIGAR", "123MYCIGAR",
+        VcfWarnings.DEFAULT); // illegal trailing chars: warns
+    InternalUtils.checkReservedInfoConstraints("CIGAR", "0.05",
+        VcfWarnings.DEFAULT); // a decimal number, not pairs: warns
     InternalUtils.checkReservedInfoConstraints("CIGAR", null, VcfWarnings.DEFAULT); // no value set: nothing to check
     InternalUtils.checkReservedInfoConstraints("CIGAR", ".", VcfWarnings.DEFAULT); // missing value: nothing to check
   }
@@ -880,7 +891,7 @@ public class InternalUtilsTest {
 
   @Test
   public void testGetPloidyDerivesFromGtAlleleCount() {
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
     assertEquals(Integer.valueOf(2), InternalUtils.getPloidy(position, "0|1", "Sample", VcfWarnings.DEFAULT));
     assertEquals(Integer.valueOf(1), InternalUtils.getPloidy(position, "0", "Sample", VcfWarnings.DEFAULT));
@@ -889,7 +900,7 @@ public class InternalUtilsTest {
 
   @Test
   public void testGetPloidyWarnsForOutOfRangeAlleleIndex() {
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
     StringWriter sink = new StringWriter();
     VcfWarnings warnings = new VcfWarnings(sink);

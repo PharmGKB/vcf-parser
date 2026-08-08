@@ -3,6 +3,7 @@ package org.pharmgkb.parser.vcf;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import com.google.common.base.Preconditions;
 import org.jspecify.annotations.Nullable;
 
 
@@ -20,29 +21,25 @@ import org.jspecify.annotations.Nullable;
  */
 public final class VcfRecord {
 
+  private final VcfContext m_context;
   private final VcfPosition m_position;
   private final List<VcfSample> m_samples;
 
 
   /**
-   * @param position the record's fixed fields
-   * @param samples per-sample data in column order; defensively copied, so a later mutation of the argument
-   * does not affect this record
-   * @throws VcfFormatException if {@code position} or {@code samples} is {@code null}, or {@code samples}
-   * contains a {@code null} element. Per AGENTS.md's Public API Null-Safety Policy, a constructor storing
-   * caller-supplied VCF content rejects {@code null} immediately rather than raw-crashing later.
+   * The single construction path for a record. Package-private: every caller goes through
+   * {@link VcfContext#newRecord}, or -- for {@code VcfParser}'s own hot path --
+   * {@code VcfContext.newTrustedRecord}.
+   * <p>
+   * The null checks below are deliberately in this constructor rather than only in {@link VcfContext#newRecord}:
+   * they must hold on <em>both</em> paths, so {@code MemoryMappedVcfLineParser.parseLine} need not re-check
+   * them. {@code VcfRecordTest} pins that for the trusted path specifically.
+   *
+   * @param trusted when {@code true}, {@code samples} is wrapped without copying or per-element null-checking
    */
-  public VcfRecord(@Nullable VcfPosition position, @Nullable List<VcfSample> samples) {
-    this(position, samples, false);
-  }
-
-  /**
-   * @param trusted when {@code true}, {@code samples} is wrapped without copying or per-element null-checking.
-   * The flag is what distinguishes this from the public constructor: without it the two would erase to the
-   * identical signature {@code VcfRecord(VcfPosition, List)} and fail to compile, since {@code @Nullable} does
-   * not participate in overload resolution.
-   */
-  private VcfRecord(@Nullable VcfPosition position, @Nullable List<VcfSample> samples, boolean trusted) {
+  VcfRecord(VcfContext context, @Nullable VcfPosition position, @Nullable List<VcfSample> samples,
+      boolean trusted) {
+    m_context = Preconditions.checkNotNull(context, "context must not be null");
     if (position == null) {
       throw new VcfFormatException("VcfRecord was constructed with a null position");
     }
@@ -67,21 +64,13 @@ public final class VcfRecord {
 
 
   /**
-   * Internal fast path for {@code VcfParser}'s own per-record construction. Wraps {@code ownedSamples} without
-   * copying or per-element null-checking it, which on the parse hot path would cost one allocation and an
-   * O(sample-count) copy per data line. Safe only because {@code VcfParser} builds that list locally and never
-   * shares it -- the same single-call-site ownership contract as {@link VcfSample#newTrusted}. Never call with
-   * a list an external caller might still hold a reference to or mutate, or one that could contain
+   * @return the context this record, its position, and every one of its samples were created under; never
    * {@code null}.
    * <p>
-   * Package-private, not public-with-{@code @RestrictedApi}: {@code @RestrictedApi} is documentation-only in
-   * this project (see {@code AGENTS.md}), so a public trusted path would let an external caller skip
-   * validation and retain a mutable handle into a model that advertises itself as structurally immutable.
-   * Visibility enforces what the annotation only advertised. Not part of this library's supported public API
-   * and may change or be removed without notice.
+   * Package-private for the same reason as {@link VcfPosition#getContext()}.
    */
-  static VcfRecord newTrusted(VcfPosition position, List<VcfSample> ownedSamples) {
-    return new VcfRecord(position, ownedSamples, true);
+  VcfContext getContext() {
+    return m_context;
   }
 
 

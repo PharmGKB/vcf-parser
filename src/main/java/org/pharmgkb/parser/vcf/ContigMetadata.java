@@ -29,9 +29,9 @@ public class ContigMetadata extends IdMetadata {
    * {@code taxonomy}/{@code url}
    * @param assembly {@code null} if absent (see VCFv4.2.tex line 121, "all tags are optional")
    */
-  public ContigMetadata(String id, @Nullable Long length, @Nullable String assembly, @Nullable String md5,
-      @Nullable String species, @Nullable String taxonomy, @Nullable String url) {
-    super("CONTIG", id);
+  ContigMetadata(VcfContext context, @Nullable String id, @Nullable Long length, @Nullable String assembly,
+      @Nullable String md5, @Nullable String species, @Nullable String taxonomy, @Nullable String url) {
+    super(context, "CONTIG", id);
     if (length != null) {
       putPropertyRaw(LENGTH, String.valueOf(length));
     }
@@ -50,14 +50,14 @@ public class ContigMetadata extends IdMetadata {
     if (url != null) {
       putPropertyRaw(URL, url);
     }
-    // strict construction: length's not-a-number check in init() is structurally unreachable here (length, if
-    // present, is already a parsed Long, never a malformed string) -- no throw-equivalent added for it; a null
-    // length is legitimately absent per VCFv4.2.tex line 138, not malformed.
+    // length's not-a-number check in init() is structurally unreachable here (length, if present, is already a
+    // parsed Long, never a malformed string) -- no equivalent check added for it; a null length is legitimately
+    // absent per VCFv4.2.tex line 138, not malformed.
     if (url != null) {
       try {
         URI.create(url).toURL();
       } catch (IllegalArgumentException | MalformedURLException e) {
-        throw new VcfFormatException(getLabel() + " URL " + url + " is malformed: " + e.getMessage(), e);
+        warnOrThrow("{} URL {} is malformed: {}", getLabel(), url, e.getMessage());
       }
     }
     // VCFv4.2.tex doesn't table a character-set grammar for ##contig IDs beyond IdMetadata's own shared
@@ -66,26 +66,29 @@ public class ContigMetadata extends IdMetadata {
     // rule for "VCF contig names" specifically -- confirmed by direct bcftools 1.23.1 testing that this does
     // NOT extend to INFO/FORMAT tag names, which bcftools validates under a different, stricter rule (see
     // VCF_SPEC_AMBIGUITIES.md's "##contig ID character set" entry). InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN itself has 13 characters,
-    // including a comma, so its coverage overlaps IdMetadata's own dedicated comma check above. This overlap
-    // is harmless on this strict/throw path regardless: IdMetadata's own constructor (the super("CONTIG", id)
-    // call above) already throws on any comma-containing ID before this pattern check ever runs, so the
-    // single (non-looping) matcher.find() below never actually needs to special-case a comma match here --
-    // unlike init()'s own version of this check just below (the lenient/warn path, reached by the Map-based
-    // constructor), which DOES reach a comma-containing id and explicitly skips re-warning about it there,
-    // deferring to IdMetadata's own warning -- see that loop's own comment for why.
-    char first = id.charAt(0);
-    if (first == '*' || first == '=') {
-      throw new VcfFormatException(getLabel() + " ID \"" + id + "\" must not start with '" + first + "'");
-    }
-    Matcher matcher = InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN.matcher(id);
-    if (matcher.find()) {
-      throw new VcfFormatException(getLabel() + " ID \"" + id + "\" contains the invalid character '" +
-          matcher.group() + "'");
+    // including a comma, so its coverage overlaps IdMetadata's own dedicated comma check above. Under a strict
+    // context that overlap is unreachable -- IdMetadata's own super("CONTIG", id) call throws on any
+    // comma-containing ID before this check runs -- so the single (non-looping) matcher.find() below has no
+    // comma case to special-case. Under a lenient context it can be reached, and then a comma-containing ID
+    // gets one warning here in addition to IdMetadata's own; init()'s own version of this check just below
+    // instead skips a comma match explicitly, since it also has to keep searching past it for a genuinely
+    // different defect -- see that loop's own comment.
+    // id can also be null or empty here under a lenient context (IdMetadata's own super(...) call warns rather
+    // than throwing for either) -- guard rather than letting id.charAt(0) raw-crash.
+    if (id != null && !id.isEmpty()) {
+      char first = id.charAt(0);
+      if (first == '*' || first == '=') {
+        warnOrThrow("{} ID \"{}\" must not start with '{}'", getLabel(), id, first);
+      }
+      Matcher matcher = InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN.matcher(id);
+      if (matcher.find()) {
+        warnOrThrow("{} ID \"{}\" contains the invalid character '{}'", getLabel(), id, matcher.group());
+      }
     }
   }
 
-  public ContigMetadata(Map<String, String> properties, VcfWarnings warnings) {
-    super("CONTIG", properties, warnings);
+  ContigMetadata(VcfContext context, Map<String, String> properties) {
+    super(context, "CONTIG", properties);
     init();
     // ContigMetadata extends IdMetadata directly, not IdDescriptionMetadata -- IdMetadata's own Map-based
     // constructor doesn't call checkAttributeOrder() (only validate() does), unlike IdDescriptionMetadata's
@@ -152,7 +155,7 @@ public class ContigMetadata extends IdMetadata {
         //noinspection ResultOfMethodCallIgnored
         Long.parseLong(length);
       } catch (NumberFormatException e) {
-        m_warnings.warn("{} length \"{}\" is not a number", getLabel(), length);
+        warnOrThrow("{} length \"{}\" is not a number", getLabel(), length);
       }
     }
     // HTS_SPECS_BASELINE_STATUS.md's "Non-valid URL fixtures" section: "Neither VCFv4.1, VCFv4.2, nor VCFv4.3
@@ -164,14 +167,14 @@ public class ContigMetadata extends IdMetadata {
       try {
         URI.create(url).toURL();
       } catch (IllegalArgumentException | MalformedURLException e) {
-        m_warnings.warn("{} URL {} is malformed: {}", getLabel(), url, e.getMessage());
+        warnOrThrow("{} URL {} is malformed: {}", getLabel(), url, e.getMessage());
       }
     }
     String id = getId();
     if (id != null && !id.isEmpty()) {
       char first = id.charAt(0);
       if (first == '*' || first == '=') {
-        m_warnings.warn("{} ID \"{}\" must not start with '{}'", getLabel(), id, first);
+        warnOrThrow("{} ID \"{}\" must not start with '{}'", getLabel(), id, first);
       }
       Matcher matcher = InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN.matcher(id);
       // a comma match is skipped (searching continues past it, rather than stopping) because IdMetadata's own
@@ -193,7 +196,7 @@ public class ContigMetadata extends IdMetadata {
           warnedChars = new HashSet<>();
         }
         if (warnedChars.add(invalid)) {
-          m_warnings.warn("{} ID \"{}\" contains the invalid character '{}'", getLabel(), id, invalid);
+          warnOrThrow("{} ID \"{}\" contains the invalid character '{}'", getLabel(), id, invalid);
         }
       }
     }

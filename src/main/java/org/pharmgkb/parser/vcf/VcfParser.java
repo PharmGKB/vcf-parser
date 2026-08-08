@@ -52,6 +52,9 @@ public class VcfParser implements Closeable {
   private final boolean m_rsidsOnly;
   private final BufferedReader m_reader;
   private @Nullable VcfMetadata m_vcfMetadata;
+  // the one context for this parse, built from ##fileformat on physical line 1 (see parseMetadata()) and shared
+  // by reference with every model object this parse creates
+  private @Nullable VcfContext m_context;
   private final VcfLineParser m_vcfLineParser;
   private final @Nullable Path m_warningsFile;
 
@@ -98,8 +101,11 @@ public class VcfParser implements Closeable {
     if (m_vcfMetadata != null) {
       throw new IllegalStateException("Metadata has already been parsed.");
     }
-    VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder().lenient(m_warnings);
-
+    // Must run before the VcfContext is built below: the context captures the warnings destination for every
+    // model object this parse produces, permanently. If parseMetadata() were allowed to build it against the
+    // default logger and parse() only swapped the file-backed sink in afterward, one parse would end up with
+    // two destinations -- records to the logger, this class's own direct warn() calls to the file.
+    activateWarningsFile();
     // the first physical line must be the single ##fileformat declaration
     String first = m_reader.readLine();
     if (first == null) {
@@ -109,6 +115,21 @@ public class VcfParser implements Closeable {
     if (!first.startsWith("##fileformat=")) {
       throw new VcfFormatException("Not a VCF file: the first line must be ##fileformat", m_lineNumber);
     }
+    // The context has to exist before VcfMetadata.Builder does, and the builder has to exist before line 1 can
+    // be fed into it -- so the declared version is read (and shape-checked) here rather than being discovered
+    // later by Builder.setFileFormat. The shape check is duplicated from setFileFormat deliberately: reaching
+    // VcfContext.lenient() first would report a malformed declaration with VcfVersion.resolve's own wording
+    // instead of this parser's established "Not a VCF file" message. Line 1 is still fed through the ordinary
+    // parseMetadataLine path below, so setFileFormat runs for it exactly as it does today.
+    String declaredFileFormat = first.substring("##fileformat=".length()).trim();
+    if (!InternalUtils.FILE_FORMAT_PATTERN.matcher(declaredFileFormat).matches()) {
+      throw new VcfFormatException("Not a VCF file: fileformat is " + declaredFileFormat, m_lineNumber);
+    }
+    // lenient: a parsed file's non-structural content violations warn and recover (AGENTS.md's Parser
+    // Validation Policy), rather than aborting the parse
+    VcfContext context = VcfContext.lenient(declaredFileFormat, m_warnings);
+    m_context = context;
+    VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder(context);
     parseMetadataLine(mdBuilder, first);
 
     String line;
@@ -192,10 +213,30 @@ public class VcfParser implements Closeable {
       doParse();
       return;
     }
-    m_warnings = VcfWarnings.openFile(m_warningsFile);
+    // no-op if parseMetadata() was already called directly and opened it -- reopening would truncate what it
+    // has already written and, worse, leave the already-built VcfContext pointing at the abandoned instance
+    activateWarningsFile();
     try {
       doParse();
     } finally {
+      closeWarningsFile();
+    }
+  }
+
+  /**
+   * Opens the configured warnings file, if there is one and it is not already open. Idempotent, and called
+   * from both {@link #parse()} and {@link #parseMetadata()} so that a single parse has exactly one warnings
+   * destination regardless of which of the two the caller reaches first -- see {@code parseMetadata()}'s own
+   * comment for why the ordering matters.
+   */
+  private void activateWarningsFile() throws IOException {
+    if (m_warningsFile != null && m_warnings == VcfWarnings.DEFAULT) {
+      m_warnings = VcfWarnings.openFile(m_warningsFile);
+    }
+  }
+
+  private void closeWarningsFile() {
+    if (m_warnings != VcfWarnings.DEFAULT) {
       m_warnings.close();
       m_warnings = VcfWarnings.DEFAULT;
     }
@@ -339,11 +380,19 @@ public class VcfParser implements Closeable {
       boolean noFormatFields = format != null && format.isEmpty();
 
       // QUAL and INFO are parsed lazily by VcfPosition (see setRawQuality/setRawInfo); many consumers never read them.
+      VcfContext context = m_context;
+      assert context != null; // parseMetadata() above always builds it before any data line is read
+      // Both branches take ownership rather than copying: ids/alt/filters/format are all produced by toList()
+      // above from this line's own text and are never shared, so the public factory's defensive copies would
+      // be pure waste on the per-record path. They differ only in FORMAT validation -- a cache miss must run
+      // checkFormat, a hit already has. The miss branch is not rare: the cache holds only the single most
+      // recent FORMAT text, so a file alternating FORMAT between adjacent records (gVCF reference blocks
+      // interleaved with variant sites; GATK output with conditional PGT:PID) misses on every record.
       pos = formatCacheHit
-          ? VcfPosition.newWithTrustedFormat(chromosome, position, ids, ref, alt, null, filters, null, format,
-              m_lineNumber, m_warnings)
-          : new VcfPosition(chromosome, position, ids, ref, alt, null, filters, null, format, m_lineNumber,
-              m_warnings);
+          ? context.newPositionWithTrustedFormat(chromosome, position, ids, ref, alt, null, filters, null, format,
+              m_lineNumber)
+          : context.newPositionTakingOwnership(chromosome, position, ids, ref, alt, null, filters, null, format,
+              m_lineNumber);
       if (!formatCacheHit && rawFormat != null) {
         // cache a defensive COPY of pos.getFormat() -- what checkFormat actually produced -- not the
         // pre-checkFormat `format` local: checkFormat is a normalizing check (like checkIds's own
@@ -389,11 +438,9 @@ public class VcfParser implements Closeable {
           }
         }
         // sampleFormat/values are always produced above by splitting on ':'/tab and padding with ".", so they can
-        // never contain a structural delimiter -- see VcfSample.newTrusted()'s own Javadoc for the measured cost
-        // this skips and why it's safe only for this exact call site.
-        VcfSample sample = VcfSample.newTrusted(sampleFormat, values);
-        sample.setWarningsSink(m_warnings);
-        samples.add(sample);
+        // never contain a structural delimiter -- see VcfContext.newTrustedSample()'s own Javadoc for the
+        // measured cost this skips and why it's safe only for this exact call site.
+        samples.add(context.newTrustedSample(sampleFormat, values));
       }
 
     } catch (VcfFormatException ex) {
@@ -416,7 +463,10 @@ public class VcfParser implements Closeable {
     // already-structurally-valid record) still gets this line's number attached, same as before.
     checkPositionOrdering(chromosome, position);
     try {
-      m_vcfLineParser.parseLine(m_vcfMetadata, VcfRecord.newTrusted(pos, samples));
+      // newTrustedRecord, not newRecord: this parser built pos and every sample from m_context moments ago and
+      // owns `samples` exclusively, which is exactly why skipping the copy and the context-identity check is
+      // safe here and nowhere else.
+      m_vcfLineParser.parseLine(m_vcfMetadata, pos.getContext().newTrustedRecord(pos, samples));
     } catch (VcfFormatException ex) {
       ex.addMetadata(m_lineNumber, "data");
       throw ex;
@@ -459,6 +509,11 @@ public class VcfParser implements Closeable {
       m_reader.close();
     } catch (Exception ex) {
       sf_logger.info("Error closing reader", ex);
+    } finally {
+      // normally already closed by parse()'s own finally; this covers the caller who drove the parse through
+      // parseMetadata()/parseNextLine() directly, which now redirect too and so would otherwise leave the
+      // warnings file open and unflushed
+      closeWarningsFile();
     }
   }
 
@@ -533,37 +588,32 @@ public class VcfParser implements Closeable {
     // so no case-folding is needed here at all -- a prior version lower-cased propName before this switch,
     // which meant a Turkish/Azeri default locale's dotless-i case-folding (e.g. "INFO".toLowerCase() ->
     // "ınfo") silently matched none of the case labels below and dropped the declaration with no warning.
+    //
+    // The builder constructs each declaration from its own VcfContext, so none of these has to be handed a
+    // warnings sink separately -- BaseMetadata takes it from that context at construction. That also means a
+    // declaration can never arrive already bound to a different context than the builder's.
     switch (propName) {
       case "ALT":
-        mdBuilder.addAlt(new IdDescriptionMetadata("ALT", props, m_warnings));
+        mdBuilder.addAlt(props);
         break;
       case "FILTER":
-        mdBuilder.addFilter(new IdDescriptionMetadata("FILTER", props, m_warnings));
+        mdBuilder.addFilter(props);
         break;
       case "INFO":
-        mdBuilder.addInfo(new InfoMetadata(props, m_warnings));
+        mdBuilder.addInfo(props);
         break;
       case "FORMAT":
-        mdBuilder.addFormat(new FormatMetadata(props, m_warnings));
+        mdBuilder.addFormat(props);
         break;
       case "contig":
-        mdBuilder.addContig(new ContigMetadata(props, m_warnings));
+        mdBuilder.addContig(props);
         break;
       case "SAMPLE":
-        mdBuilder.addSample(new IdDescriptionMetadata("SAMPLE", props, m_warnings));
+        mdBuilder.addSample(props);
         break;
-      case "PEDIGREE": {
-        // PedigreeMetadata has no init() and calls no warn site of its own today (unlike the IdMetadata
-        // subclasses above, which invoke checkAttributeOrder() from their own constructors) -- so a mis-ordered
-        // ##PEDIGREE line currently produces no attribute-order warning at all, not merely one routed
-        // elsewhere. Still claiming m_warnings here keeps this consistent with every sibling declaration type
-        // and ensures any future lazy warn site added to PedigreeMetadata/BaseMetadata is correctly routed to
-        // warningsToFile() instead of silently falling back to the shared logger.
-        PedigreeMetadata pedigree = new PedigreeMetadata(props);
-        pedigree.setWarningsSink(m_warnings);
-        mdBuilder.addPedigree(pedigree);
+      case "PEDIGREE":
+        mdBuilder.addPedigree(props);
         break;
-      }
     }
   }
 
@@ -785,8 +835,10 @@ public class VcfParser implements Closeable {
      * holds the same {@link VcfWarnings} instance {@code parse()} configured, not a thread-local reference. If
      * that getter is instead called after {@code parse()} has already returned (and this file has been closed),
      * it falls back to the default logger instead of failing -- see {@link VcfWarnings#warn}'s own Javadoc.
-     * Calling {@link VcfParser#parseMetadata()} or {@link VcfParser#parseNextLine()} directly, instead of
-     * {@link VcfParser#parse()}, is not redirected at all.
+     * Driving the parse through {@link VcfParser#parseMetadata()}/{@link VcfParser#parseNextLine()} directly is
+     * redirected too, so one parse always has exactly one warnings destination however it is driven; in that
+     * case the file is closed by {@link VcfParser#close()} rather than by {@code parse()}, so
+     * try-with-resources (or an explicit {@code close()}) is required before reading it.
      */
     public Builder warningsToFile() {
       m_warningsToFile = true;
@@ -804,8 +856,10 @@ public class VcfParser implements Closeable {
      * holds the same {@link VcfWarnings} instance {@code parse()} configured, not a thread-local reference. If
      * that getter is instead called after {@code parse()} has already returned (and this file has been closed),
      * it falls back to the default logger instead of failing -- see {@link VcfWarnings#warn}'s own Javadoc.
-     * Calling {@link VcfParser#parseMetadata()} or {@link VcfParser#parseNextLine()} directly, instead of
-     * {@link VcfParser#parse()}, is not redirected at all.
+     * Driving the parse through {@link VcfParser#parseMetadata()}/{@link VcfParser#parseNextLine()} directly is
+     * redirected too, so one parse always has exactly one warnings destination however it is driven; in that
+     * case the file is closed by {@link VcfParser#close()} rather than by {@code parse()}, so
+     * try-with-resources (or an explicit {@code close()}) is required before reading it.
      * <p>
      * If {@code customFile} is the same path another {@code warningsToFile()}-configured {@link VcfParser} or
      * {@link VcfWriter} also writes to -- including via a matching default-derived name, e.g. an in-place

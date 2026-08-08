@@ -394,7 +394,7 @@ it in the same method, or the identical grammar rule applied to a `##FORMAT` dec
 `FormatMetadata.init()`, both of which warn under a lenient path (`AGENTS.md`'s Parser Validation Policy lists
 FORMAT among the fields this parser is lenient about, and `VALIDATION_REFERENCE.md`'s strict-section
 enumeration for FORMAT names only two floor items -- `GT` present but not first, and a non-empty key
-duplicated -- deliberately not this grammar rule). Since `VcfParser`'s lenient constructor has no per-line
+duplicated -- deliberately not this grammar rule). Since `VcfParser`'s lenient path has no per-line
 recovery, this meant a single non-standard FORMAT key anywhere in a file aborted parsing of the entire file,
 discarding every record including ones already successfully parsed.
 

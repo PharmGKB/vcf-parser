@@ -26,14 +26,14 @@ analog — a `Type=Flag`-specific check (`FormatType` has no `Flag` constant at 
 fields). Both classes also independently redeclare identical `DESCRIPTION`/`NUMBER`/`TYPE` property-key constants
 and separately call the same inherited `checkNumberProperty(number)`/`warnIfMissing(TYPE, type)` helpers.
 
-Each class now duplicates this logic a second way too, not just across the two classes: since `VALIDATION_PHILOSOPHY.md`'s
-strict/lenient constructor split gave each typed constructor its own inline `Number`-format/`Type=Flag`/
-reserved-property checks (thrown), the same three conditions are checked twice within a single class -- once
+Each class now duplicates this logic a second way too, not just across the two classes: since each typed
+constructor has its own inline `Number`-format/`Type=Flag`/reserved-property checks (routed through
+`BaseMetadata.warnOrThrow`), the same three conditions are checked twice within a single class -- once
 inline in the typed constructor (using the already-typed `InfoType`/`FormatType` enum and local variables,
 no parsing needed), once in the shared `init()` (parsing a raw `Type` string, used by the Map-based
-constructor). This is a different duplication shape than the cross-class one above (throw vs. warn, not
-`InfoType` vs. `FormatType`), so it doesn't change this entry's own reasoning -- there's still no single
-shared helper that could serve both without being parameterized over both the strict/lenient dispatch and
+constructor). This is a different duplication shape than the cross-class one above (typed enum vs. raw string
+input, not `InfoType` vs. `FormatType`), so it doesn't change this entry's own reasoning -- there's still no
+single shared helper that could serve both without being parameterized over both the input shape and
 the two enum hierarchies at once, for a handful of few-line checks.
 
 **Decision: won't fix.** A shared abstraction would need to be parameterized over two unrelated enum
@@ -360,14 +360,15 @@ check is ever found to have another gap of its own beyond the removed-ID one alr
 
 ## `VcfPosition`'s eager (`ListMultimap`) constructor still keeps a lone `.` INFO key that the lazy raw-text path drops entirely
 
-`VcfPosition.checkInfoEntries` (used by the eager constructor and `validate()`) rejects a `.` (missing-value
+`VcfPosition.checkInfoEntries` (used by the eager `VcfContext.newPosition` path and `validate()`) rejects a `.` (missing-value
 sentinel) key combined with any other property, matching `info()`'s own lazy raw-text-parsing path. But when
 a `.` key is the *only* entry present (e.g. `info.put(".", "")` with nothing else), the eager path keeps it
 as a real property named `.` in the resulting map; the lazy path instead produces a completely empty map for
 the equivalent raw text (a bare `"."` or `".;"`), per `testLazyInfoDotCannotCombineWithOtherProperties`.
 
-**Verified empirically**: `new VcfPosition(..., info)` where `info` contains only `{".": [""]}` succeeds, and
-`position.getInfo(".")` returns `[""]` -- not an empty map the way the equivalent raw-text case produces.
+**Verified empirically**: `VcfContext.newPosition(..., info, ...)` where `info` contains only `{".": [""]}`
+succeeds, and `position.getInfo(".")` returns `[""]` -- not an empty map the way the equivalent raw-text case
+produces.
 
 **Decision: won't fix; low-impact, narrow residual asymmetry.** Discovered incidentally while fixing a real,
 confirmed bug in `VcfPosition.checkInfoEntries` (the eager constructor/`validate()` INFO exclusivity/

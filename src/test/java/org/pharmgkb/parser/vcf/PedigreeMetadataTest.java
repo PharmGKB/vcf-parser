@@ -4,6 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
+import static org.pharmgkb.parser.vcf.TestUtils.LENIENT_CONTEXT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -17,14 +18,14 @@ public class PedigreeMetadataTest {
     Map<String, String> props = new LinkedHashMap<>();
     props.put("Name_0", "G0-ID");
     props.put("Name_1", "G1-ID");
-    PedigreeMetadata md = new PedigreeMetadata(props);
+    PedigreeMetadata md = new PedigreeMetadata(LENIENT_CONTEXT, props);
     assertEquals("G0-ID", md.getPropertyRaw("Name_0"));
     assertEquals("G1-ID", md.getPropertyRaw("Name_1"));
   }
 
   @Test
   public void testLabelIsPedigree() {
-    PedigreeMetadata md = new PedigreeMetadata(new LinkedHashMap<>());
+    PedigreeMetadata md = new PedigreeMetadata(LENIENT_CONTEXT, new LinkedHashMap<>());
     assertEquals("PEDIGREE", md.getLabel());
   }
 
@@ -32,7 +33,7 @@ public class PedigreeMetadataTest {
   public void testGetPropertiesRawRejectsDirectMutationInsteadOfSilentlyAllowingIt() {
     Map<String, String> props = new LinkedHashMap<>();
     props.put("ID", "Child");
-    PedigreeMetadata md = new PedigreeMetadata(props);
+    PedigreeMetadata md = new PedigreeMetadata(LENIENT_CONTEXT, props);
     assertThrows(UnsupportedOperationException.class, () -> md.getPropertiesRaw().put("ID", "Other"));
     assertThrows(UnsupportedOperationException.class, () -> md.getPropertiesRaw().remove("ID"));
     // beyond put/remove: an UnmodifiableMap's entrySet()/keySet() iterators and Map.Entry.setValue() are
@@ -51,13 +52,13 @@ public class PedigreeMetadataTest {
 
   @Test
   public void testPutPropertyRawThrowsInsteadOfMutating() {
-    PedigreeMetadata md = new PedigreeMetadata(new LinkedHashMap<>());
+    PedigreeMetadata md = new PedigreeMetadata(LENIENT_CONTEXT, new LinkedHashMap<>());
     assertThrows(UnsupportedOperationException.class, () -> md.putPropertyRaw("ID", "New"));
   }
 
   @Test
   public void testPutAndQuotePropertyThrowsInsteadOfMutating() {
-    PedigreeMetadata md = new PedigreeMetadata(new LinkedHashMap<>());
+    PedigreeMetadata md = new PedigreeMetadata(LENIENT_CONTEXT, new LinkedHashMap<>());
     assertThrows(UnsupportedOperationException.class, () -> md.putAndQuoteProperty("ID", "New"));
   }
 }

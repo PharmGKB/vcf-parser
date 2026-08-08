@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
+import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -11,30 +12,30 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class VcfRecordTest {
 
   private static VcfPosition newPosition() {
-    return new VcfPosition("chr1", 100, null, "A", List.of("T"), null, null, null, null, -1);
+    return STRICT_CONTEXT.newPosition("chr1", 100, null, "A", List.of("T"), null, null, null, null, -1);
   }
 
   @Test
   void testExposesPositionAndSamples() {
     VcfPosition pos = newPosition();
-    VcfSample sample = new VcfSample(List.of("GT"), List.of("0/1"));
-    VcfRecord record = new VcfRecord(pos, List.of(sample));
+    VcfSample sample = STRICT_CONTEXT.newSample(List.of("GT"), List.of("0/1"));
+    VcfRecord record = STRICT_CONTEXT.newRecord(pos, List.of(sample));
     assertEquals(pos, record.getPosition());
     assertEquals(List.of(sample), record.getSamples());
   }
 
   @Test
   void testSamplesViewIsUnmodifiable() {
-    VcfRecord record = new VcfRecord(newPosition(), List.of());
+    VcfRecord record = STRICT_CONTEXT.newRecord(newPosition(), List.of());
     assertThrows(UnsupportedOperationException.class,
-        () -> record.getSamples().add(new VcfSample(List.of("GT"), List.of("0/1"))));
+        () -> record.getSamples().add(STRICT_CONTEXT.newSample(List.of("GT"), List.of("0/1"))));
   }
 
   @Test
   void testPublicConstructorDefensivelyCopies() {
     List<VcfSample> mutable = new ArrayList<>();
-    mutable.add(new VcfSample(List.of("GT"), List.of("0/1")));
-    VcfRecord record = new VcfRecord(newPosition(), mutable);
+    mutable.add(STRICT_CONTEXT.newSample(List.of("GT"), List.of("0/1")));
+    VcfRecord record = STRICT_CONTEXT.newRecord(newPosition(), mutable);
     mutable.clear();
     assertEquals(1, record.getSamples().size());
   }
@@ -42,11 +43,11 @@ class VcfRecordTest {
   @Test
   void testNewTrustedDoesNotCopyButStillExposesUnmodifiably() {
     List<VcfSample> owned = new ArrayList<>();
-    owned.add(new VcfSample(List.of("GT"), List.of("0/1")));
-    VcfRecord record = VcfRecord.newTrusted(newPosition(), owned);
+    owned.add(STRICT_CONTEXT.newSample(List.of("GT"), List.of("0/1")));
+    VcfRecord record = STRICT_CONTEXT.newTrustedRecord(newPosition(), owned);
     assertEquals(1, record.getSamples().size());
     assertThrows(UnsupportedOperationException.class,
-        () -> record.getSamples().add(new VcfSample(List.of("GT"), List.of("1/1"))));
+        () -> record.getSamples().add(STRICT_CONTEXT.newSample(List.of("GT"), List.of("1/1"))));
   }
 
   // The next two pin the property MemoryMappedVcfLineParser.parseLine() relies on: "trusted" here means only
@@ -58,28 +59,28 @@ class VcfRecordTest {
 
   @Test
   void testNewTrustedStillRejectsNullPositionSoParseLineNeedNotRecheck() {
-    assertThrows(VcfFormatException.class, () -> VcfRecord.newTrusted(null, List.of()));
+    assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newTrustedRecord(null, List.of()));
   }
 
   @Test
   void testNewTrustedStillRejectsNullSampleListSoParseLineNeedNotRecheck() {
-    assertThrows(VcfFormatException.class, () -> VcfRecord.newTrusted(newPosition(), null));
+    assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newTrustedRecord(newPosition(), null));
   }
 
   @Test
   void testRejectsNullPosition() {
-    assertThrows(VcfFormatException.class, () -> new VcfRecord(null, List.of()));
+    assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newRecord(null, List.of()));
   }
 
   @Test
   void testRejectsNullSampleList() {
-    assertThrows(VcfFormatException.class, () -> new VcfRecord(newPosition(), null));
+    assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newRecord(newPosition(), null));
   }
 
   @Test
   void testRejectsNullSampleElement() {
     List<VcfSample> withNull = new ArrayList<>();
     withNull.add(null);
-    assertThrows(VcfFormatException.class, () -> new VcfRecord(newPosition(), withNull));
+    assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newRecord(newPosition(), withNull));
   }
 }

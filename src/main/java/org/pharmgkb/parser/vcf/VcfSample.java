@@ -9,7 +9,6 @@ import java.util.Objects;
 import java.util.Set;
 import com.google.common.base.Preconditions;
 import com.google.errorprone.annotations.Immutable;
-import com.google.errorprone.annotations.RestrictedApi;
 import org.jspecify.annotations.Nullable;
 
 
@@ -34,43 +33,32 @@ public class VcfSample {
   private @Nullable LinkedHashMap<String, String> m_properties;
   /** See {@link org.pharmgkb.parser.vcf.BaseMetadata#m_warnings}'s identical Javadoc -- same pattern, this
    * class just isn't a {@code BaseMetadata} subclass so it needs its own copy of the field and setter. */
-  private VcfWarnings m_warnings = VcfWarnings.DEFAULT;
+  private VcfWarnings m_warnings;
+  private final VcfContext m_context;
 
   public void setWarningsSink(VcfWarnings warnings) {
     m_warnings = Preconditions.checkNotNull(warnings, "warnings must not be null");
   }
 
   /**
-   * Takes ownership of {@code keys} and {@code values}: this constructor does not defensively copy either list,
-   * to avoid an allocation on this library's hottest path (once per sample per data line -- see this class's own
-   * Javadoc for the parse-then-read performance rationale). Callers must not mutate either list after
-   * construction. See also {@link #VcfSample(LinkedHashMap)}, which has the same no-copy contract.
-   */
-  public VcfSample(@Nullable List<String> keys, @Nullable List<String> values) {
-    this(keys, values, false);
-  }
-
-  /**
-   * Creates a {@code VcfSample} for {@code keys}/{@code values} that {@code VcfParser} has already produced by
-   * splitting a data line on the tab/colon delimiters {@link #checkNoStructuralDelimiter} exists to reject --
-   * skipping that check's per-key/value scan, which micro-benchmarking measured as ~92% of the public
-   * constructor's own cost (43.4% of all execution samples on a 163-sample-per-record JFR profile). The
-   * non-null/matching-length checks {@link #VcfSample(List, List)} performs are still applied; only the O(n)
+   * The single construction path for a parallel-list sample. Package-private: every caller goes through
+   * {@link VcfContext#newSample(List, List)} or, for {@code VcfParser}'s own per-record splitting,
+   * {@code VcfContext.newTrustedSample}.
+   * <p>
+   * <b>This constructor takes ownership of {@code keys} and {@code values}</b> -- it does not defensively copy
+   * either list, to avoid an allocation on this library's hottest path (once per sample per data line -- see
+   * this class's own Javadoc for the parse-then-read performance rationale). {@link VcfContext#newSample} is
+   * where the copy for an externally-supplied list happens.
+   *
+   * @param trusted when {@code true}, skips the per-key/value {@link #checkNoStructuralDelimiter} scan, which
+   * micro-benchmarking measured as ~92% of the plain path's cost (43.4% of all execution samples on a
+   * 163-sample-per-record JFR profile). The non-null/matching-length checks still run; only the O(n)
    * structural-delimiter scan is skipped, since a parser-produced key/value can never contain a colon, tab, or
-   * line terminator (already split on / stripped before reaching here). Restricted to {@code VcfParser}'s own
-   * call site: nothing enforces this invariant at compile time, so this must never be called with an
-   * externally supplied or user-mutable list -- see {@link RestrictedApi}'s explanation.
-   * @hidden
+   * line terminator (already split on / stripped before reaching here).
    */
-  @RestrictedApi(explanation = "Internal fast path for VcfParser only. Skips per-element structural-delimiter "
-      + "validation that VcfParser's own split-then-pad output can never fail; never call with externally "
-      + "supplied or user-mutable lists. Not part of this library's supported public API and may change or be "
-      + "removed without notice.")
-  public static VcfSample newTrusted(List<String> keys, List<String> values) {
-    return new VcfSample(keys, values, true);
-  }
-
-  private VcfSample(@Nullable List<String> keys, @Nullable List<String> values, boolean trusted) {
+  VcfSample(VcfContext context, @Nullable List<String> keys, @Nullable List<String> values, boolean trusted) {
+    m_context = Preconditions.checkNotNull(context, "context must not be null");
+    m_warnings = context.getWarnings();
     if (keys == null) {
       if (values == null || values.isEmpty()) {
         m_keys = Collections.emptyList();
@@ -94,14 +82,16 @@ public class VcfSample {
   }
 
   /**
-   * Takes ownership of {@code properties}: like {@link #VcfSample(List, List)}, this does not defensively copy
-   * it. Callers must not mutate the map after construction.
+   * Takes ownership of {@code properties}: like the parallel-list constructor above, this does not defensively
+   * copy it. {@link VcfContext#newSample(LinkedHashMap)} is where the copy for an externally-supplied map
+   * happens.
    */
-  public VcfSample(LinkedHashMap<String, String> properties) {
+  VcfSample(VcfContext context, LinkedHashMap<String, String> properties) {
+    m_context = Preconditions.checkNotNull(context, "context must not be null");
+    m_warnings = context.getWarnings();
     // properties is typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting
-    // m_properties.entrySet() below throw a raw NullPointerException. The sibling VcfSample(List, List)
-    // constructor already rejects null keys/values cleanly; this constructor's own properties parameter was
-    // simply missed.
+    // m_properties.entrySet() below throw a raw NullPointerException. The sibling parallel-list constructor
+    // already rejects null keys/values cleanly; this constructor's own properties parameter was simply missed.
     if (properties == null) {
       throw new VcfFormatException("Sample properties map is null");
     }
@@ -109,6 +99,15 @@ public class VcfSample {
     for (Map.Entry<String, String> entry : m_properties.entrySet()) {
       checkNoStructuralDelimiter(entry.getKey(), entry.getValue());
     }
+  }
+
+  /**
+   * @return the context this sample was created under; never {@code null}.
+   * <p>
+   * Package-private for the same reason as {@link VcfPosition#getContext()}.
+   */
+  VcfContext getContext() {
+    return m_context;
   }
 
   /**

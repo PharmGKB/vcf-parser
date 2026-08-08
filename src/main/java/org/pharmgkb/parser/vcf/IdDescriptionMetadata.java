@@ -20,16 +20,22 @@ public class IdDescriptionMetadata extends IdMetadata {
 
   public static final String DESCRIPTION = "Description";
 
-  public IdDescriptionMetadata(String label, String id, String description) {
-    super(label, id);
-    putAndQuoteProperty(DESCRIPTION, description);
-    // strict construction: no init() call. init()'s only check (Description must be quoted) can never fail here
-    // -- putAndQuoteProperty above always wraps description in quotes itself -- so there is no throw-equivalent
-    // to add; see this class's own init() for the warn-based check the lenient (Map-based) constructor still runs.
+  IdDescriptionMetadata(VcfContext context, String label, @Nullable String id, @Nullable String description) {
+    super(context, label, id);
+    // no init() call: init()'s only check (Description must be quoted) can never fail here -- putAndQuoteProperty
+    // below always wraps description in quotes itself. An absent Description is the one condition this shape
+    // shares with init(), so it reports it with init()'s own warnIfMissing message rather than letting
+    // putAndQuoteProperty's generic null rejection fire -- that would hard-throw even under a lenient context,
+    // which is exactly the overload-shape-decides-strictness coupling warnOrThrow exists to remove.
+    if (description == null) {
+      warnOrThrow("{} required metadata property \"{}\" is missing", getLabel(), DESCRIPTION);
+    } else {
+      putAndQuoteProperty(DESCRIPTION, description);
+    }
   }
 
-  public IdDescriptionMetadata(String label, Map<String, String> properties, VcfWarnings warnings) {
-    super(label, properties, warnings);
+  IdDescriptionMetadata(VcfContext context, String label, Map<String, String> properties) {
+    super(context, label, properties);
     init();
     checkAttributeOrder();
   }
@@ -41,8 +47,8 @@ public class IdDescriptionMetadata extends IdMetadata {
    * not insert Description; the caller must add it itself afterward, via putAndQuoteProperty, in whatever
    * position is canonical for its own subtype.
    */
-  protected IdDescriptionMetadata(String label, String id) {
-    super(label, id);
+  IdDescriptionMetadata(VcfContext context, String label, @Nullable String id) {
+    super(context, label, id);
   }
 
   @Override
@@ -55,7 +61,7 @@ public class IdDescriptionMetadata extends IdMetadata {
     String description = getPropertyRaw(DESCRIPTION);
     warnIfMissing(DESCRIPTION, description);
     if (description != null && (!description.startsWith("\"") || !description.endsWith("\""))) {
-      m_warnings.warn("{} metadata property \"{}\" should be quoted but was: {}", getLabel(),
+      warnOrThrow("{} metadata property \"{}\" should be quoted but was: {}", getLabel(),
           DESCRIPTION, description);
     }
     // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included

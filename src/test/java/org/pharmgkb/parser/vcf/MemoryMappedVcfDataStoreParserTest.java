@@ -12,6 +12,7 @@ import java.util.Collections;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
+import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -43,10 +44,10 @@ public class MemoryMappedVcfDataStoreParserTest {
   @Test
   public void testParseLineRejectsNullMetadataInsteadOfCorruptingLaterLookups() {
     MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
     // hoisted out of the lambda so this can only ever fail on parseLine()'s own rejection, never on a future
     // VcfRecord constructor check
-    VcfRecord record = new VcfRecord(position, Collections.emptyList());
+    VcfRecord record = STRICT_CONTEXT.newRecord(position, Collections.emptyList());
     assertThrows(VcfFormatException.class, () -> lineParser.parseLine(null, record));
   }
 
@@ -61,10 +62,10 @@ public class MemoryMappedVcfDataStoreParserTest {
     // parseLine() is public and callable directly, so a null record must be rejected rather than
     // raw-crashing on the record.getPosition() unpack. This replaces the former null-position and
     // null-sample-list cases: every VcfRecord funnels through one private constructor that rejects both,
-    // including on the VcfRecord.newTrusted() fast path, so the record itself is now the only null that can
+    // including on the STRICT_CONTEXT.newTrustedRecord() fast path, so the record itself is now the only null that can
     // reach parseLine(). VcfRecordTest owns the position/sample-list rejection coverage.
     MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> lineParser.parseLine(metadata, null));
   }
 
@@ -77,13 +78,13 @@ public class MemoryMappedVcfDataStoreParserTest {
     // "not present". The null is placed at index 1 (behind one valid sample), and the exception message is
     // asserted, so this pins that the check scans every element -- not just index 0 -- and reports the
     // correct index, rather than merely that a null anywhere in the list is rejected. Built through
-    // VcfRecord.newTrusted(), which by design skips the public constructor's own per-element null check --
+    // STRICT_CONTEXT.newTrustedRecord(), which by design skips the public constructor's own per-element null check --
     // the only path by which a null sample element can still reach parseLine().
     MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    VcfSample validSample = new VcfSample(List.of("GT"), List.of("0/1"));
-    VcfRecord record = VcfRecord.newTrusted(position, Arrays.asList(validSample, null));
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    VcfSample validSample = STRICT_CONTEXT.newSample(List.of("GT"), List.of("0/1"));
+    VcfRecord record = STRICT_CONTEXT.newTrustedRecord(position, Arrays.asList(validSample, null));
     VcfFormatException e = assertThrows(VcfFormatException.class,
         () -> lineParser.parseLine(metadata, record));
     assertTrue(e.getMessage().contains("index 1"));
@@ -153,16 +154,17 @@ public class MemoryMappedVcfDataStoreParserTest {
     // different sample columns. Before this fix, every by-sample-NAME lookup indexed straight into that
     // record's own (possibly-short) list with no bounds check, unlike its by-index siblings, and crashed with
     // IndexOutOfBoundsException instead of returning null.
-    VcfMetadata metadata = new VcfMetadata.Builder()
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT)
         .setFileFormat("VCFv4.2")
         .setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1", "S2"))
         .build();
-    VcfPosition position = new VcfPosition("1", 100, List.of("rs1"), "A", List.of("T"), null, null, null, null, -1);
-    VcfSample onlySample = new VcfSample(List.of("GT"), List.of("0/1"));
+    VcfPosition position = STRICT_CONTEXT.newPosition("1", 100, List.of("rs1"), "A", List.of("T"), null, null, null,
+        null, -1);
+    VcfSample onlySample = STRICT_CONTEXT.newSample(List.of("GT"), List.of("0/1"));
 
     MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
     // only 1 sample, though metadata declares 2
-    lineParser.parseLine(metadata, new VcfRecord(position, List.of(onlySample)));
+    lineParser.parseLine(metadata, STRICT_CONTEXT.newRecord(position, List.of(onlySample)));
 
     MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
     // "S1" (index 0) is present and resolves normally through all four fixed methods -- confirms the fix
@@ -495,13 +497,13 @@ public class MemoryMappedVcfDataStoreParserTest {
     // VcfParser would have VcfPosition's own constructor-time checkIds() reject the duplicate first, before
     // this class's own gap could ever be exercised -- getIds() is a live list that bypasses that check.
     MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build(); // FAIL is the default
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     lineParser.parseMetadata(metadata);
-    VcfPosition position = new VcfPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
     position.getIds().add("rs1");
     position.getIds().add("rs1");
 
-    VcfRecord record = new VcfRecord(position, Collections.emptyList());
+    VcfRecord record = STRICT_CONTEXT.newRecord(position, Collections.emptyList());
     assertThrows(VcfFormatException.class, () -> lineParser.parseLine(metadata, record));
   }
 

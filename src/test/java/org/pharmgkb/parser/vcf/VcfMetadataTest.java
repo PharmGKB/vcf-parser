@@ -7,6 +7,9 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
+import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
+import static org.pharmgkb.parser.vcf.TestUtils.LENIENT_CONTEXT;
+import static org.pharmgkb.parser.vcf.TestUtils.lenientContext;
 import static org.junit.jupiter.api.Assertions.*;
 
 
@@ -17,7 +20,7 @@ public class VcfMetadataTest {
 
   @Test
   public void testGetSampleIndex() {
-    VcfMetadata metadata = new VcfMetadata.Builder()
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT)
         .setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
             "sample1", "sample2"))
@@ -32,7 +35,7 @@ public class VcfMetadataTest {
 
   @Test
   public void testGetColumnIndex() {
-    VcfMetadata metadata = new VcfMetadata.Builder()
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT)
         .setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
             "sample1", "sample2"))
@@ -46,7 +49,7 @@ public class VcfMetadataTest {
   public void testGetAltIsNullTolerantInsteadOfThrowingNpe() {
     // null-tolerant "not present," matching getColumnIndex()/getSampleIndex()'s own null-tolerant contract
     // above -- id.startsWith(...) below m_alt.get(id) would otherwise raw-NPE for a null id
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertNull(metadata.getAlt(null));
   }
 
@@ -54,13 +57,13 @@ public class VcfMetadataTest {
   public void testSetFileFormatRejectsNullInsteadOfThrowingNpe() {
     // fileFormat is typed non-@Nullable, but nothing enforces that at compile time; must reject a null with
     // VcfFormatException, not let it reach a raw NullPointerException at FILE_FORMAT_PATTERN.matcher(fileFormat)
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.setFileFormat(null));
   }
 
   @Test
   public void testBuilderSetFileFormatRejectsNullInsteadOfThrowingNpe() {
-    assertThrows(VcfFormatException.class, () -> new VcfMetadata.Builder().setFileFormat(null));
+    assertThrows(VcfFormatException.class, () -> new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat(null));
   }
 
   @Test
@@ -68,7 +71,7 @@ public class VcfMetadataTest {
     // setColumns() does not validate its argument at set time (deferred to build(), where columns is actually
     // consumed via List.copyOf(columns)); a null entry must be rejected with VcfFormatException there, not a raw
     // NullPointerException from List.copyOf
-    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", null));
     assertThrows(VcfFormatException.class, builder::build);
   }
@@ -78,19 +81,19 @@ public class VcfMetadataTest {
     // cols is typed non-@Nullable, but nothing enforces that at compile time; a null list itself (as opposed to
     // a null entry, covered above) must be rejected with VcfFormatException at setColumns() itself, not deferred
     // to a raw NullPointerException from Preconditions.checkNotNull(columns) at build() time
-    assertThrows(VcfFormatException.class, () -> new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+    assertThrows(VcfFormatException.class, () -> new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2")
         .setColumns(null));
   }
 
   @Test
   public void testAddAssemblyRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.addAssembly(null));
   }
 
   @Test
   public void testAddPedigreeDatabaseRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.addPedigreeDatabase(null));
   }
 
@@ -98,13 +101,13 @@ public class VcfMetadataTest {
   public void testBuilderAddRawPropertyRejectsNullNameInsteadOfThrowingNpe() {
     // name is typed non-@Nullable, but nothing enforces that at compile time; must reject a null with
     // VcfFormatException, not let it reach a raw NullPointerException at InternalUtils.checkNoLineTerminator
-    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2");
     assertThrows(VcfFormatException.class, () -> builder.addRawProperty(null, "value"));
   }
 
   @Test
   public void testBuilderAddRawPropertyRejectsNullValueInsteadOfThrowingNpe() {
-    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2");
     assertThrows(VcfFormatException.class, () -> builder.addRawProperty("name", null));
   }
 
@@ -115,79 +118,79 @@ public class VcfMetadataTest {
 
   @Test
   public void testAddAltRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.addAlt(null));
   }
 
   @Test
   public void testAddInfoRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.addInfo(null));
   }
 
   @Test
   public void testAddFormatRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.addFormat(null));
   }
 
   @Test
   public void testAddContigRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.addContig(null));
   }
 
   @Test
   public void testAddFilterRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.addFilter(null));
   }
 
   @Test
   public void testAddSampleRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.addSample(null));
   }
 
   @Test
   public void testAddPedigreeRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.addPedigree(null));
   }
 
   @Test
   public void testRemoveAltRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.removeAlt(null));
   }
 
   @Test
   public void testRemoveInfoRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.removeInfo(null));
   }
 
   @Test
   public void testRemoveFormatRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.removeFormat(null));
   }
 
   @Test
   public void testRemoveContigRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.removeContig(null));
   }
 
   @Test
   public void testRemoveFilterRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.removeFilter(null));
   }
 
   @Test
   public void testRemoveSampleRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.removeSample(null));
   }
 
@@ -196,75 +199,75 @@ public class VcfMetadataTest {
     // previously silently no-opped on null instead of throwing, unlike its six removeXxx siblings above and
     // addAssembly (which does reject null) -- LinkedListMultimap.remove(key, null) is null-tolerant, not a raw
     // NullPointerException, so this bug never surfaced as a crash
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.removeAssembly(null));
   }
 
   @Test
   public void testRemovePedigreeDbRejectsNullInsteadOfSilentlyNoOpping() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.removePedigreeDb(null));
   }
 
   @Test
   public void testRemovePedigreeRejectsNullInsteadOfSilentlyNoOpping() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.removePedigree(null));
   }
 
   @Test
   public void testBuilderAddAltRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
-    assertThrows(VcfFormatException.class, () -> builder.addAlt(null));
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addAlt((IdDescriptionMetadata) null));
   }
 
   @Test
   public void testBuilderAddInfoRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
-    assertThrows(VcfFormatException.class, () -> builder.addInfo(null));
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addInfo((InfoMetadata) null));
   }
 
   @Test
   public void testBuilderAddFilterRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
-    assertThrows(VcfFormatException.class, () -> builder.addFilter(null));
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addFilter((IdDescriptionMetadata) null));
   }
 
   @Test
   public void testBuilderAddFormatRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
-    assertThrows(VcfFormatException.class, () -> builder.addFormat(null));
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addFormat((FormatMetadata) null));
   }
 
   @Test
   public void testBuilderAddContigRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
-    assertThrows(VcfFormatException.class, () -> builder.addContig(null));
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addContig((ContigMetadata) null));
   }
 
   @Test
   public void testBuilderAddSampleRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
-    assertThrows(VcfFormatException.class, () -> builder.addSample(null));
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addSample((IdDescriptionMetadata) null));
   }
 
   @Test
   public void testBuilderAddPedigreeRejectsNullInsteadOfThrowingNpe() {
-    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
-    assertThrows(VcfFormatException.class, () -> builder.addPedigree(null));
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addPedigree((PedigreeMetadata) null));
   }
 
   @Test
   public void testGetInfoPreservesDeclarationOrder() {
     // five distinct IDs added in a deliberately non-alphabetical order; HashMap's hash-bucket order for five
     // distinct keys is extremely unlikely to coincidentally match this insertion order
-    VcfMetadata metadata = new VcfMetadata.Builder()
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT)
         .setFileFormat("VCFv4.2")
-        .addInfo(new InfoMetadata("ZED", "d", InfoType.String, "1", null, null))
-        .addInfo(new InfoMetadata("YAK", "d", InfoType.String, "1", null, null))
-        .addInfo(new InfoMetadata("XEN", "d", InfoType.String, "1", null, null))
-        .addInfo(new InfoMetadata("WOW", "d", InfoType.String, "1", null, null))
-        .addInfo(new InfoMetadata("VIM", "d", InfoType.String, "1", null, null))
+        .addInfo(new InfoMetadata(STRICT_CONTEXT, "ZED", "d", InfoType.String, "1", null, null))
+        .addInfo(new InfoMetadata(STRICT_CONTEXT, "YAK", "d", InfoType.String, "1", null, null))
+        .addInfo(new InfoMetadata(STRICT_CONTEXT, "XEN", "d", InfoType.String, "1", null, null))
+        .addInfo(new InfoMetadata(STRICT_CONTEXT, "WOW", "d", InfoType.String, "1", null, null))
+        .addInfo(new InfoMetadata(STRICT_CONTEXT, "VIM", "d", InfoType.String, "1", null, null))
         .build();
     assertEquals(Arrays.asList("ZED", "YAK", "XEN", "WOW", "VIM"), new ArrayList<>(metadata.getInfo().keySet()));
   }
@@ -272,7 +275,7 @@ public class VcfMetadataTest {
   @Test
   public void testGetRawPropertyKeysPreservesInsertionOrder() {
     // "phasing" would sort after "assembly" and "source" alphabetically; this asserts insertion order instead
-    VcfMetadata metadata = new VcfMetadata.Builder()
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT)
         .setFileFormat("VCFv4.2")
         .addRawProperty("phasing", "partial")
         .addRawProperty("source", "myImputationProgramV3.1")
@@ -286,7 +289,7 @@ public class VcfMetadataTest {
     // regression test: getRawPropertyKeys() must fail fast on a direct mutation attempt (matching
     // BaseMetadata.getPropertyKeys()'s identical fix) rather than silently no-opping on a detached copy or
     // corrupting the live backing multimap
-    VcfMetadata metadata = new VcfMetadata.Builder()
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT)
         .setFileFormat("VCFv4.2")
         .addRawProperty("phasing", "partial")
         .build();
@@ -299,7 +302,7 @@ public class VcfMetadataTest {
     // companion test: unlike a snapshot copy, getRawPropertyKeys() remains a view over the live backing
     // multimap -- a mutation made through getRawProperties() (the documented live-multimap accessor) after
     // the fact is visible through a set obtained beforehand
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     Set<String> keys = metadata.getRawPropertyKeys();
     assertFalse(keys.contains("phasing"));
     metadata.getRawProperties().put("phasing", "partial");
@@ -308,14 +311,14 @@ public class VcfMetadataTest {
 
   @Test
   public void testAddAssemblyRejectsLineTerminator() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.addAssembly("bad\nvalue"));
     assertThrows(VcfFormatException.class, () -> metadata.addAssembly("bad\rvalue"));
   }
 
   @Test
   public void testAddPedigreeDatabaseRejectsLineTerminator() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     assertThrows(VcfFormatException.class, () -> metadata.addPedigreeDatabase("<bad\nvalue>"));
   }
 
@@ -327,7 +330,7 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
       metadata.addAssembly("");
       assertTrue(appender.hasWarnOrHigher());
@@ -347,7 +350,7 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
       metadata.addPedigreeDatabase("");
       assertTrue(appender.hasWarnOrHigher());
@@ -367,7 +370,7 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
       metadata.addPedigreeDatabase("<>");
       assertTrue(appender.hasWarnOrHigher());
@@ -389,7 +392,7 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
       metadata.addAssembly("<http://foo.com>");
       assertTrue(appender.hasWarnOrHigher());
@@ -412,7 +415,7 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
       metadata.addPedigreeDatabase("<http://foo.com>");
       assertTrue(appender.hasWarnOrHigher());
@@ -429,7 +432,7 @@ public class VcfMetadataTest {
     // Pedigree field format section templates it bracket-less), but confirmed directly that bcftools 1.23.1
     // accepts and round-trips it unchanged (it parses as a trivial, valid attribute list) -- so this library
     // does not reject it either, per collidesWithAttributeListGrammar's deliberately conservative rule
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     metadata.addPedigreeDatabase("<ID=foo>");
     assertEquals(java.util.Collections.singletonList("<ID=foo>"), metadata.getPedigreeDatabases());
   }
@@ -439,7 +442,7 @@ public class VcfMetadataTest {
     // regression test for the bracket-requirement bug: VCFv4.2.tex/4.3.tex/4.4.tex's Pedigree field format section
     // all template this bracket-less ("##pedigreeDB=URL"); hts-specs' own passed/passed_meta_pedigreedb.vcf
     // fixture (all versions) is bracket-less and expected to parse; confirmed bcftools 1.23.1 accepts it
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     metadata.addPedigreeDatabase("ftp://www.ebi.ac.uk:8080/valid/host/to/file.db");
     assertEquals(java.util.Collections.singletonList("ftp://www.ebi.ac.uk:8080/valid/host/to/file.db"),
         metadata.getPedigreeDatabases());
@@ -447,7 +450,7 @@ public class VcfMetadataTest {
 
   @Test
   public void testRemovePedigreeDbAcceptsBracketLessUrl() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     metadata.addPedigreeDatabase("ftp://www.ebi.ac.uk:8080/valid/host/to/file.db");
     metadata.removePedigreeDb("ftp://www.ebi.ac.uk:8080/valid/host/to/file.db");
     assertTrue(metadata.getPedigreeDatabases().isEmpty());
@@ -455,7 +458,7 @@ public class VcfMetadataTest {
 
   @Test
   public void testRemoveAssemblyRemovesEntry() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     metadata.addAssembly("file://somewhere");
     metadata.removeAssembly("file://somewhere");
     assertTrue(metadata.getAssemblies().isEmpty());
@@ -463,7 +466,7 @@ public class VcfMetadataTest {
 
   @Test
   public void testBuilderAddRawPropertyRejectsLineTerminator() {
-    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2");
     assertThrows(VcfFormatException.class, () -> builder.addRawProperty("name", "bad\nvalue"));
     assertThrows(VcfFormatException.class, () -> builder.addRawProperty("bad\nname", "value"));
   }
@@ -479,7 +482,7 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata;
     try {
-      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
           .addRawProperty("reference", "").build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -502,7 +505,7 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata;
     try {
-      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
           .addRawProperty("myCustomKey", "<http://foo.com>").build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -519,7 +522,7 @@ public class VcfMetadataTest {
     // that happens to be bracket-wrapped and contain a square-bracket sub-list -- an earlier, over-broad
     // version of collidesWithAttributeListGrammar (reject ANY bracket-wrapped value) incorrectly rejected this;
     // confirmed directly that bcftools 1.23.1 accepts and round-trips it unchanged
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2")
         .addRawProperty("META", "<ID=Assay,Number=.,Type=String,Values=[WholeGenome, Exome]>")
         .build();
     assertEquals(java.util.Collections.singletonList("<ID=Assay,Number=.,Type=String,Values=[WholeGenome, Exome]>"),
@@ -539,7 +542,7 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata;
     try {
-      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
           .addRawProperty("INFO", "bad").build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -561,7 +564,7 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata;
     try {
-      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
           .addRawProperty("assembly", "")
           .addRawProperty("myCustomKey", "")
           .build();
@@ -584,7 +587,7 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata;
     try {
-      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
+      metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2")
           .addRawProperty("source", "myImputationProgramV3.1")
           .build();
       assertFalse(appender.hasWarnOrHigher());
@@ -635,9 +638,9 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata("ALT", "THIS:IS-NOT-VALID", "Not a real code"));
+      metadata.addAlt(new IdDescriptionMetadata(metadata.getContext(), "ALT", "THIS:IS-NOT-VALID", "Not a real code"));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -656,8 +659,8 @@ public class VcfMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
-          .addAlt(new IdDescriptionMetadata("ALT", "THIS:IS-NOT-VALID", "Not a real code"));
+      new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addAlt(new IdDescriptionMetadata(LENIENT_CONTEXT, "ALT", "THIS:IS-NOT-VALID", "Not a real code"));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -673,9 +676,9 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata("ALT", "DEL", "Deletion"));
+      metadata.addAlt(new IdDescriptionMetadata(metadata.getContext(), "ALT", "DEL", "Deletion"));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -692,12 +695,11 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata("ALT",
+      metadata.addAlt(new IdDescriptionMetadata(metadata.getContext(), "ALT",
           org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
-              new String[]{"ID=DEL", "Number=B", "Type=String", "Description=\"Deletion\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT));
+              new String[]{"ID=DEL", "Number=B", "Type=String", "Description=\"Deletion\""}, VcfWarnings.DEFAULT)));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -714,12 +716,11 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata("ALT",
+      metadata.addAlt(new IdDescriptionMetadata(metadata.getContext(), "ALT",
           org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
-              new String[]{"ID=DEL", "Number=1", "Type=Text", "Description=\"Deletion\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT));
+              new String[]{"ID=DEL", "Number=1", "Type=Text", "Description=\"Deletion\""}, VcfWarnings.DEFAULT)));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -735,12 +736,11 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata("ALT",
+      metadata.addAlt(new IdDescriptionMetadata(metadata.getContext(), "ALT",
           org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
-              new String[]{"ID=DEL", "Number=1", "Type=String", "Description=\"Deletion\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT));
+              new String[]{"ID=DEL", "Number=1", "Type=String", "Description=\"Deletion\""}, VcfWarnings.DEFAULT)));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -759,9 +759,9 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.1").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(VcfContext.strict("VCFv4.1")).build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata("ALT", "CN0", "Copy number allele: 0 copies"));
+      metadata.addAlt(new IdDescriptionMetadata(metadata.getContext(), "ALT", "CN0", "Copy number allele: 0 copies"));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -780,17 +780,14 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
-      // IdDescriptionMetadata's typed (label, id, description) constructor now throws immediately on whitespace
-      // (IdMetadata's strict construction-time check, see IdMetadata.java) -- use the Map-based (lenient)
-      // constructor with VcfWarnings.DEFAULT instead so the whitespace check still warns here, matching this
-      // test's own intent of proving the warning still fires. This addAlt() call itself doesn't warn/throw for
-      // "AB CD" (a non-blank ID with no colon and no angle bracket), so VcfMetadata's own strict mode is
-      // unaffected by this test.
-      metadata.addAlt(new IdDescriptionMetadata("ALT",
-          InternalUtils.extractProperties(new String[]{"ID=AB CD", "Description=\"d\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT));
+      // The whitespace check is IdMetadata's, made at construction. Whether it warns or throws is the context's
+      // decision, not the overload's, so this uses a lenient context -- under a strict one the identical check
+      // would throw instead. This addAlt() call itself doesn't warn/throw for "AB CD" (a non-blank ID with no
+      // colon and no angle bracket).
+      metadata.addAlt(new IdDescriptionMetadata(metadata.getContext(), "ALT",
+          InternalUtils.extractProperties(new String[]{"ID=AB CD", "Description=\"d\""}, VcfWarnings.DEFAULT)));
       assertTrue(appender.anyMessageContains("must not contain whitespace"));
     } finally {
       root.detachAppender(appender);
@@ -809,9 +806,9 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata("ALT", "AB<CD", "d"));
+      metadata.addAlt(new IdDescriptionMetadata(metadata.getContext(), "ALT", "AB<CD", "d"));
       assertTrue(appender.anyMessageContains("must not contain angle brackets"));
     } finally {
       root.detachAppender(appender);
@@ -832,15 +829,14 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
       // IdDescriptionMetadata's typed (label, id, description) constructor now throws immediately on whitespace
       // (IdMetadata's strict construction-time check, see IdMetadata.java) -- use the Map-based (lenient)
       // constructor with VcfWarnings.DEFAULT instead so the whitespace check still warns here rather than
       // throwing before this test can exercise VcfMetadata.validateAlt()'s own SV-code warning.
-      metadata.addAlt(new IdDescriptionMetadata("ALT",
-          InternalUtils.extractProperties(new String[]{"ID=DEL:A B", "Description=\"d\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT));
+      metadata.addAlt(new IdDescriptionMetadata(metadata.getContext(), "ALT",
+          InternalUtils.extractProperties(new String[]{"ID=DEL:A B", "Description=\"d\""}, VcfWarnings.DEFAULT)));
       assertTrue(appender.anyMessageContains("must not contain whitespace"));
       assertTrue(appender.anyMessageContains("not a valid structural variant code"));
     } finally {
@@ -859,9 +855,9 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata;
     try {
-      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
-          .addAlt(new IdDescriptionMetadata("ALT", "DEL", "First"))
-          .addAlt(new IdDescriptionMetadata("ALT", "DEL", "Second"))
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addAlt(new IdDescriptionMetadata(LENIENT_CONTEXT, "ALT", "DEL", "First"))
+          .addAlt(new IdDescriptionMetadata(LENIENT_CONTEXT, "ALT", "DEL", "Second"))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -881,9 +877,9 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata;
     try {
-      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
-          .addInfo(new InfoMetadata("DP", "First depth", InfoType.Integer, "1", null, null))
-          .addInfo(new InfoMetadata("DP", "Second depth", InfoType.Integer, "1", null, null))
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addInfo(new InfoMetadata(LENIENT_CONTEXT, "DP", "First depth", InfoType.Integer, "1", null, null))
+          .addInfo(new InfoMetadata(LENIENT_CONTEXT, "DP", "Second depth", InfoType.Integer, "1", null, null))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -903,9 +899,9 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata;
     try {
-      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
-          .addFormat(new FormatMetadata("GT", "First genotype", "1", FormatType.String))
-          .addFormat(new FormatMetadata("GT", "Second genotype", "1", FormatType.String))
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addFormat(new FormatMetadata(LENIENT_CONTEXT, "GT", "First genotype", "1", FormatType.String))
+          .addFormat(new FormatMetadata(LENIENT_CONTEXT, "GT", "Second genotype", "1", FormatType.String))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -925,9 +921,9 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata;
     try {
-      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
-          .addFilter(new IdDescriptionMetadata("FILTER", "q10", "First"))
-          .addFilter(new IdDescriptionMetadata("FILTER", "q10", "Second"))
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addFilter(new IdDescriptionMetadata(LENIENT_CONTEXT, "FILTER", "q10", "First"))
+          .addFilter(new IdDescriptionMetadata(LENIENT_CONTEXT, "FILTER", "q10", "Second"))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -948,9 +944,9 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata;
     try {
-      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
-          .addContig(new ContigMetadata("1", 100L, "GRCh38", null, null, null, null))
-          .addContig(new ContigMetadata("1", 200L, "GRCh37", null, null, null, null))
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addContig(new ContigMetadata(LENIENT_CONTEXT, "1", 100L, "GRCh38", null, null, null, null))
+          .addContig(new ContigMetadata(LENIENT_CONTEXT, "1", 200L, "GRCh37", null, null, null, null))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -970,9 +966,9 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata;
     try {
-      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
-          .addSample(new IdDescriptionMetadata("SAMPLE", "S1", "First"))
-          .addSample(new IdDescriptionMetadata("SAMPLE", "S1", "Second"))
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addSample(new IdDescriptionMetadata(LENIENT_CONTEXT, "SAMPLE", "S1", "First"))
+          .addSample(new IdDescriptionMetadata(LENIENT_CONTEXT, "SAMPLE", "S1", "Second"))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -998,9 +994,9 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata;
     try {
-      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
-          .addPedigree(new PedigreeMetadata(childProps))
-          .addPedigree(new PedigreeMetadata(duplicateProps))
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addPedigree(new PedigreeMetadata(LENIENT_CONTEXT, childProps))
+          .addPedigree(new PedigreeMetadata(LENIENT_CONTEXT, duplicateProps))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -1030,9 +1026,9 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata;
     try {
-      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-          .addPedigree(new PedigreeMetadata(props1))
-          .addPedigree(new PedigreeMetadata(props2))
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addPedigree(new PedigreeMetadata(LENIENT_CONTEXT, props1))
+          .addPedigree(new PedigreeMetadata(LENIENT_CONTEXT, props2))
           .build();
       assertFalse(appender.hasWarnOrHigher());
     } finally {
@@ -1044,15 +1040,15 @@ public class VcfMetadataTest {
 
   @Test
   public void testDirectBuilderUseThrowsOnDuplicateIdForPedigree() {
-    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2");
     java.util.Map<String, String> childProps = new java.util.LinkedHashMap<>();
     childProps.put("ID", "Child");
     childProps.put("Father", "Dad");
-    builder.addPedigree(new PedigreeMetadata(childProps));
+    builder.addPedigree(childProps);
     java.util.Map<String, String> duplicateProps = new java.util.LinkedHashMap<>();
     duplicateProps.put("ID", "Child");
     duplicateProps.put("Mother", "Mom");
-    PedigreeMetadata dup = new PedigreeMetadata(duplicateProps);
+    PedigreeMetadata dup = new PedigreeMetadata(STRICT_CONTEXT, duplicateProps);
     assertThrows(VcfFormatException.class, () -> builder.addPedigree(dup));
   }
 
@@ -1061,13 +1057,13 @@ public class VcfMetadataTest {
     java.util.Map<String, String> childProps = new java.util.LinkedHashMap<>();
     childProps.put("ID", "Child");
     childProps.put("Father", "Dad");
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-        .addPedigree(new PedigreeMetadata(childProps))
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT)
+        .addPedigree(childProps)
         .build();
     java.util.Map<String, String> duplicateProps = new java.util.LinkedHashMap<>();
     duplicateProps.put("ID", "Child");
     duplicateProps.put("Mother", "Mom");
-    PedigreeMetadata dup = new PedigreeMetadata(duplicateProps);
+    PedigreeMetadata dup = new PedigreeMetadata(metadata.getContext(), duplicateProps);
     assertThrows(VcfFormatException.class, () -> metadata.addPedigree(dup));
   }
 
@@ -1087,19 +1083,20 @@ public class VcfMetadataTest {
     // so a later duplicate "Child" would go undetected instead of being rejected.
     java.util.Map<String, String> childProps = new java.util.LinkedHashMap<>();
     childProps.put("ID", "Child");
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-        .addPedigree(new PedigreeMetadata(childProps))
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT)
+        .addPedigree(childProps)
         .build();
     metadata.getPedigrees().add(0, null);
 
     java.util.Map<String, String> otherProps = new java.util.LinkedHashMap<>();
     otherProps.put("ID", "Other");
-    metadata.addPedigree(new PedigreeMetadata(otherProps));
+    metadata.addPedigree(new PedigreeMetadata(metadata.getContext(), otherProps));
     assertEquals(3, metadata.getPedigrees().size());
 
     java.util.Map<String, String> duplicateProps = new java.util.LinkedHashMap<>();
     duplicateProps.put("ID", "Child");
-    assertThrows(VcfFormatException.class, () -> metadata.addPedigree(new PedigreeMetadata(duplicateProps)));
+    assertThrows(VcfFormatException.class,
+        () -> metadata.addPedigree(new PedigreeMetadata(metadata.getContext(), duplicateProps)));
     assertEquals(3, metadata.getPedigrees().size());
   }
 
@@ -1109,12 +1106,12 @@ public class VcfMetadataTest {
     // O(n) m_pedigree-rescan-per-add code was empirically ~1.2s at n=16,000 and scaled quadratically (~4x cost
     // for 2x n), so n=30,000 unfixed would take several seconds -- per the finding that motivated this fix
     assertTimeoutPreemptively(java.time.Duration.ofSeconds(3), () -> {
-      VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+      VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2");
       for (int i = 0; i < 30_000; i++) {
         java.util.Map<String, String> props = new java.util.LinkedHashMap<>();
         props.put("ID", "P" + i);
         props.put("Name_0", "G0-" + i);
-        builder.addPedigree(new PedigreeMetadata(props));
+        builder.addPedigree(props);
       }
       assertEquals(30_000, builder.build().getPedigrees().size());
     });
@@ -1123,12 +1120,12 @@ public class VcfMetadataTest {
   @Test
   public void testInstanceAddPedigreeDoesNotDegradeQuadraticallyWithManyUniqueIds() {
     assertTimeoutPreemptively(java.time.Duration.ofSeconds(3), () -> {
-      VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+      VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
       for (int i = 0; i < 30_000; i++) {
         java.util.Map<String, String> props = new java.util.LinkedHashMap<>();
         props.put("ID", "P" + i);
         props.put("Name_0", "G0-" + i);
-        metadata.addPedigree(new PedigreeMetadata(props));
+        metadata.addPedigree(new PedigreeMetadata(metadata.getContext(), props));
       }
       assertEquals(30_000, metadata.getPedigrees().size());
     });
@@ -1143,8 +1140,8 @@ public class VcfMetadataTest {
     // mutation the original finding used to demonstrate the problem is no longer even possible.
     java.util.Map<String, String> childProps = new java.util.LinkedHashMap<>();
     childProps.put("ID", "B");
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-        .addPedigree(new PedigreeMetadata(childProps))
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addPedigree(new PedigreeMetadata(LENIENT_CONTEXT, childProps))
         .build();
     PedigreeMetadata existing = metadata.getPedigrees().get(0);
     assertThrows(UnsupportedOperationException.class, () -> existing.getPropertiesRaw().put("ID", "C"));
@@ -1153,7 +1150,7 @@ public class VcfMetadataTest {
     assertEquals("B", existing.getPropertyRaw("ID"));
     java.util.Map<String, String> newProps = new java.util.LinkedHashMap<>();
     newProps.put("ID", "C");
-    metadata.addPedigree(new PedigreeMetadata(newProps));
+    metadata.addPedigree(new PedigreeMetadata(metadata.getContext(), newProps));
     assertEquals(2, metadata.getPedigrees().size());
     long countReportingC = metadata.getPedigrees().stream()
         .filter(p -> "C".equals(p.getPropertyRaw("ID"))).count();
@@ -1177,21 +1174,21 @@ public class VcfMetadataTest {
     propsA.put("ID", "A");
     java.util.Map<String, String> propsB = new java.util.LinkedHashMap<>();
     propsB.put("ID", "B");
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-        .lenient(org.pharmgkb.parser.vcf.VcfWarnings.DEFAULT)
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        
         .build();
-    metadata.addPedigree(new PedigreeMetadata(propsA));
-    metadata.addPedigree(new PedigreeMetadata(propsB));
+    metadata.addPedigree(new PedigreeMetadata(metadata.getContext(), propsA));
+    metadata.addPedigree(new PedigreeMetadata(metadata.getContext(), propsB));
     java.util.Map<String, String> propsC = new java.util.LinkedHashMap<>();
     propsC.put("ID", "C");
     // remove A, then add C directly through the live list -- bypasses addPedigree entirely; size stays 2
     metadata.getPedigrees().remove(0);
-    metadata.getPedigrees().add(new PedigreeMetadata(propsC));
+    metadata.getPedigrees().add(new PedigreeMetadata(LENIENT_CONTEXT, propsC));
     assertEquals(2, metadata.getPedigrees().size());
     // A is no longer present -- re-adding it must succeed, not be wrongly rejected as a stale "duplicate"
     java.util.Map<String, String> newPropsA = new java.util.LinkedHashMap<>();
     newPropsA.put("ID", "A");
-    metadata.addPedigree(new PedigreeMetadata(newPropsA));
+    metadata.addPedigree(new PedigreeMetadata(metadata.getContext(), newPropsA));
     assertEquals(3, metadata.getPedigrees().size());
     long countReportingA = metadata.getPedigrees().stream()
         .filter(p -> "A".equals(p.getPropertyRaw("ID"))).count();
@@ -1207,7 +1204,7 @@ public class VcfMetadataTest {
     try {
       java.util.Map<String, String> anotherPropsC = new java.util.LinkedHashMap<>();
       anotherPropsC.put("ID", "C");
-      metadata.addPedigree(new PedigreeMetadata(anotherPropsC));
+      metadata.addPedigree(new PedigreeMetadata(metadata.getContext(), anotherPropsC));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -1228,31 +1225,31 @@ public class VcfMetadataTest {
     // during this fix's own review).
     java.util.Map<String, String> propsA = new java.util.LinkedHashMap<>();
     propsA.put("ID", "A");
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
-    metadata.addPedigree(new PedigreeMetadata(propsA));
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
+    metadata.addPedigree(new PedigreeMetadata(metadata.getContext(), propsA));
     metadata.removePedigree(metadata.getPedigrees().get(0));
     assertEquals(0, metadata.getPedigrees().size());
     java.util.Map<String, String> newPropsA = new java.util.LinkedHashMap<>();
     newPropsA.put("ID", "A");
-    metadata.addPedigree(new PedigreeMetadata(newPropsA));
+    metadata.addPedigree(new PedigreeMetadata(metadata.getContext(), newPropsA));
     assertEquals(1, metadata.getPedigrees().size());
     assertEquals("A", metadata.getPedigrees().get(0).getPropertyRaw("ID"));
   }
 
   @Test
   public void testAddPedigreeCacheHandlesIdLessAddsInterleavedWithIdBearingAdds() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-        .lenient(org.pharmgkb.parser.vcf.VcfWarnings.DEFAULT)
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        
         .build();
     java.util.Map<String, String> idLess1 = new java.util.LinkedHashMap<>();
     idLess1.put("Name_0", "G0-1");
-    metadata.addPedigree(new PedigreeMetadata(idLess1));
+    metadata.addPedigree(new PedigreeMetadata(metadata.getContext(), idLess1));
     java.util.Map<String, String> propsA = new java.util.LinkedHashMap<>();
     propsA.put("ID", "A");
-    metadata.addPedigree(new PedigreeMetadata(propsA));
+    metadata.addPedigree(new PedigreeMetadata(metadata.getContext(), propsA));
     java.util.Map<String, String> idLess2 = new java.util.LinkedHashMap<>();
     idLess2.put("Name_0", "G0-2");
-    metadata.addPedigree(new PedigreeMetadata(idLess2));
+    metadata.addPedigree(new PedigreeMetadata(metadata.getContext(), idLess2));
     assertEquals(3, metadata.getPedigrees().size());
     // a genuine duplicate of "A" must still be caught after the ID-less adds in between
     ch.qos.logback.classic.Logger root =
@@ -1264,7 +1261,7 @@ public class VcfMetadataTest {
     try {
       java.util.Map<String, String> dupA = new java.util.LinkedHashMap<>();
       dupA.put("ID", "A");
-      metadata.addPedigree(new PedigreeMetadata(dupA));
+      metadata.addPedigree(new PedigreeMetadata(metadata.getContext(), dupA));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -1281,10 +1278,10 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata("ALT", "DEL", "First"));
-      metadata.addAlt(new IdDescriptionMetadata("ALT", "DEL", "Second"));
+      metadata.addAlt(new IdDescriptionMetadata(metadata.getContext(), "ALT", "DEL", "First"));
+      metadata.addAlt(new IdDescriptionMetadata(metadata.getContext(), "ALT", "DEL", "Second"));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -1301,10 +1298,10 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
-      metadata.addInfo(new InfoMetadata("DP", "First depth", InfoType.Integer, "1", null, null));
-      metadata.addInfo(new InfoMetadata("DP", "Second depth", InfoType.Integer, "1", null, null));
+      metadata.addInfo(new InfoMetadata(metadata.getContext(), "DP", "First depth", InfoType.Integer, "1", null, null));
+      metadata.addInfo(new InfoMetadata(metadata.getContext(), "DP", "Second depth", InfoType.Integer, "1", null, null));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -1321,10 +1318,10 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
-      metadata.addFormat(new FormatMetadata("GT", "First genotype", "1", FormatType.String));
-      metadata.addFormat(new FormatMetadata("GT", "Second genotype", "1", FormatType.String));
+      metadata.addFormat(new FormatMetadata(metadata.getContext(), "GT", "First genotype", "1", FormatType.String));
+      metadata.addFormat(new FormatMetadata(metadata.getContext(), "GT", "Second genotype", "1", FormatType.String));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -1341,10 +1338,10 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
-      metadata.addContig(new ContigMetadata("1", 100L, "GRCh38", null, null, null, null));
-      metadata.addContig(new ContigMetadata("1", 200L, "GRCh37", null, null, null, null));
+      metadata.addContig(new ContigMetadata(metadata.getContext(), "1", 100L, "GRCh38", null, null, null, null));
+      metadata.addContig(new ContigMetadata(metadata.getContext(), "1", 200L, "GRCh37", null, null, null, null));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -1361,10 +1358,10 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
-      metadata.addFilter(new IdDescriptionMetadata("FILTER", "q10", "First"));
-      metadata.addFilter(new IdDescriptionMetadata("FILTER", "q10", "Second"));
+      metadata.addFilter(new IdDescriptionMetadata(metadata.getContext(), "FILTER", "q10", "First"));
+      metadata.addFilter(new IdDescriptionMetadata(metadata.getContext(), "FILTER", "q10", "Second"));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -1381,10 +1378,10 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
-      metadata.addSample(new IdDescriptionMetadata("SAMPLE", "S1", "First"));
-      metadata.addSample(new IdDescriptionMetadata("SAMPLE", "S1", "Second"));
+      metadata.addSample(new IdDescriptionMetadata(metadata.getContext(), "SAMPLE", "S1", "First"));
+      metadata.addSample(new IdDescriptionMetadata(metadata.getContext(), "SAMPLE", "S1", "Second"));
       assertTrue(appender.hasWarnOrHigher());
       assertTrue(appender.anyMessageContains("Duplicate ID \"S1\" for SAMPLE metadata declaration ignored"));
     } finally {
@@ -1402,12 +1399,11 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
-      metadata.addSample(new IdDescriptionMetadata("SAMPLE",
+      metadata.addSample(new IdDescriptionMetadata(metadata.getContext(), "SAMPLE",
           org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
-              new String[]{"Description=\"missing\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT));
+              new String[]{"Description=\"missing\""}, VcfWarnings.DEFAULT)));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -1430,10 +1426,10 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
-      metadata.addPedigree(new PedigreeMetadata(childProps));
-      metadata.addPedigree(new PedigreeMetadata(duplicateProps));
+      metadata.addPedigree(new PedigreeMetadata(metadata.getContext(), childProps));
+      metadata.addPedigree(new PedigreeMetadata(metadata.getContext(), duplicateProps));
       assertTrue(appender.hasWarnOrHigher());
       assertTrue(appender.anyMessageContains("Duplicate ID \"Child\" for PEDIGREE metadata declaration ignored"));
     } finally {
@@ -1458,10 +1454,10 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
-      metadata.addPedigree(new PedigreeMetadata(props1));
-      metadata.addPedigree(new PedigreeMetadata(props2));
+      metadata.addPedigree(new PedigreeMetadata(metadata.getContext(), props1));
+      metadata.addPedigree(new PedigreeMetadata(metadata.getContext(), props2));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -1472,10 +1468,10 @@ public class VcfMetadataTest {
 
   @Test
   public void testRemoveSampleRemovesEntry() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
-    metadata.addSample(new IdDescriptionMetadata("SAMPLE", "S1", "First"));
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
+    metadata.addSample(new IdDescriptionMetadata(metadata.getContext(), "SAMPLE", "S1", "First"));
     assertTrue(metadata.getSamples().containsKey("S1"));
-    metadata.removeSample(new IdDescriptionMetadata("SAMPLE", "S1", "First"));
+    metadata.removeSample(new IdDescriptionMetadata(STRICT_CONTEXT, "SAMPLE", "S1", "First"));
     assertTrue(metadata.getSamples().isEmpty());
   }
 
@@ -1483,8 +1479,8 @@ public class VcfMetadataTest {
   public void testRemovePedigreeRemovesEntry() {
     java.util.Map<String, String> props = new java.util.LinkedHashMap<>();
     props.put("ID", "Child");
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
-    PedigreeMetadata pedigree = new PedigreeMetadata(props);
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
+    PedigreeMetadata pedigree = new PedigreeMetadata(LENIENT_CONTEXT, props);
     metadata.addPedigree(pedigree);
     assertEquals(1, metadata.getPedigrees().size());
     metadata.removePedigree(pedigree);
@@ -1500,9 +1496,9 @@ public class VcfMetadataTest {
     java.util.Map<String, String> idProps = new java.util.LinkedHashMap<>();
     idProps.put("ID", "Child");
     idProps.put("Father", "Dad");
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-        .addPedigree(new PedigreeMetadata(idLessProps))
-        .addPedigree(new PedigreeMetadata(idProps))
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addPedigree(new PedigreeMetadata(LENIENT_CONTEXT, idLessProps))
+        .addPedigree(new PedigreeMetadata(LENIENT_CONTEXT, idProps))
         .build();
     assertEquals(2, metadata.getPedigrees().size());
   }
@@ -1513,7 +1509,7 @@ public class VcfMetadataTest {
     // build() should not be able to change this VcfMetadata's own column data
     List<String> columns = new ArrayList<>(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER",
         "INFO", "FORMAT", "sample1"));
-    VcfMetadata metadata = new VcfMetadata.Builder()
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT)
         .setFileFormat("VCFv4.2")
         .setColumns(columns)
         .build();
@@ -1529,7 +1525,7 @@ public class VcfMetadataTest {
     // regression test: getSampleName(-1) previously silently returned "FORMAT" (the fixed column at
     // index 9 + (-1) = 8) instead of signaling an invalid index -- the unguarded inverse of
     // getSampleIndex(), which correctly guards idx < 9 on the way out
-    VcfMetadata metadata = new VcfMetadata.Builder()
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT)
         .setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
             "sample1"))
@@ -1541,7 +1537,7 @@ public class VcfMetadataTest {
   public void testGetSampleNameThrowsForIndexAtOrBeyondNumSamples() {
     // pins the upper-bound behavior too (already correctly thrown by the underlying List.get(), but
     // previously unpinned by any test) -- there is 1 sample (index 0), so index 1 is out of range
-    VcfMetadata metadata = new VcfMetadata.Builder()
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT)
         .setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
             "sample1"))
@@ -1551,21 +1547,21 @@ public class VcfMetadataTest {
 
   @Test
   public void testBuilderDoesNotShareStateAcrossTwoBuildCalls() {
-    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-        .addInfo(new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null));
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata(STRICT_CONTEXT, "NS", "d", InfoType.Integer, "1", null, null));
     VcfMetadata first = builder.build();
     VcfMetadata second = builder.build();
-    first.getInfo().put("EXTRA", new InfoMetadata("EXTRA", "d", InfoType.Integer, "1", null, null));
+    first.getInfo().put("EXTRA", new InfoMetadata(STRICT_CONTEXT, "EXTRA", "d", InfoType.Integer, "1", null, null));
     assertEquals(2, first.getInfo().size());
     assertEquals(1, second.getInfo().size());
   }
 
   @Test
   public void testBuilderMutationAfterBuildDoesNotAffectAlreadyBuiltObject() {
-    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2")
-        .addInfo(new InfoMetadata("NS", "d", InfoType.Integer, "1", null, null));
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata(STRICT_CONTEXT, "NS", "d", InfoType.Integer, "1", null, null));
     VcfMetadata metadata = builder.build();
-    builder.addInfo(new InfoMetadata("AC", "d", InfoType.Integer, "A", null, null));
+    builder.addInfo("AC", "d", InfoType.Integer, "A", null, null);
     assertEquals(1, metadata.getInfo().size());
   }
 
@@ -1579,19 +1575,16 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata;
     try {
-      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
-          .addAlt(new IdDescriptionMetadata("ALT",
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addAlt(new IdDescriptionMetadata(LENIENT_CONTEXT, "ALT",
               org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
-                  new String[]{"Description=\"missing\""}, VcfWarnings.DEFAULT),
-              VcfWarnings.DEFAULT))
-          .addAlt(new IdDescriptionMetadata("ALT",
+                  new String[]{"Description=\"missing\""}, VcfWarnings.DEFAULT)))
+          .addAlt(new IdDescriptionMetadata(LENIENT_CONTEXT, "ALT",
               org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
-                  new String[]{"ID=", "Description=\"empty\""}, VcfWarnings.DEFAULT),
-              VcfWarnings.DEFAULT))
-          .addAlt(new IdDescriptionMetadata("ALT",
+                  new String[]{"ID=", "Description=\"empty\""}, VcfWarnings.DEFAULT)))
+          .addAlt(new IdDescriptionMetadata(LENIENT_CONTEXT, "ALT",
               org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
-                  new String[]{"ID=   ", "Description=\"blank\""}, VcfWarnings.DEFAULT),
-              VcfWarnings.DEFAULT))
+                  new String[]{"ID=   ", "Description=\"blank\""}, VcfWarnings.DEFAULT)))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -1614,15 +1607,11 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata;
     try {
-      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
-          .addInfo(new InfoMetadata(
-              org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
-                  new String[]{"Number=1", "Type=String", "Description=\"zzzalphamarkerzzz\""}, VcfWarnings.DEFAULT),
-              VcfWarnings.DEFAULT))
-          .addInfo(new InfoMetadata(
-              org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
-                  new String[]{"Number=2", "Type=String", "Description=\"zzzbetamarkerzzz\""}, VcfWarnings.DEFAULT),
-              VcfWarnings.DEFAULT))
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addInfo(new InfoMetadata(LENIENT_CONTEXT, org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+                  new String[]{"Number=1", "Type=String", "Description=\"zzzalphamarkerzzz\""}, VcfWarnings.DEFAULT)))
+          .addInfo(new InfoMetadata(LENIENT_CONTEXT, org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+                  new String[]{"Number=2", "Type=String", "Description=\"zzzbetamarkerzzz\""}, VcfWarnings.DEFAULT)))
           .build();
       // each declaration's own warning must reference its own content -- proves both were independently warned
       // about and dropped, not that the second was silently treated as a duplicate of the first with no warning
@@ -1648,11 +1637,10 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata;
     try {
-      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
-          .addFilter(new IdDescriptionMetadata("FILTER",
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addFilter(new IdDescriptionMetadata(LENIENT_CONTEXT, "FILTER",
               org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
-                  new String[]{"Description=\"missing\""}, VcfWarnings.DEFAULT),
-              VcfWarnings.DEFAULT))
+                  new String[]{"Description=\"missing\""}, VcfWarnings.DEFAULT)))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -1672,9 +1660,9 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata;
     try {
-      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
-          .addFormat(new FormatMetadata(org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
-              new String[]{"Number=1", "Type=String", "Description=\"missing\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT))
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addFormat(new FormatMetadata(LENIENT_CONTEXT, org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+              new String[]{"Number=1", "Type=String", "Description=\"missing\""}, VcfWarnings.DEFAULT)))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -1694,9 +1682,9 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata;
     try {
-      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
-          .addContig(new ContigMetadata(org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
-              new String[]{"length=100", "assembly=\"GRCh38\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT))
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addContig(new ContigMetadata(LENIENT_CONTEXT, org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+              new String[]{"length=100", "assembly=\"GRCh38\""}, VcfWarnings.DEFAULT)))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -1716,11 +1704,10 @@ public class VcfMetadataTest {
     root.addAppender(appender);
     VcfMetadata metadata;
     try {
-      metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT)
-          .addSample(new IdDescriptionMetadata("SAMPLE",
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addSample(new IdDescriptionMetadata(LENIENT_CONTEXT, "SAMPLE",
               org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
-                  new String[]{"Description=\"missing\""}, VcfWarnings.DEFAULT),
-              VcfWarnings.DEFAULT))
+                  new String[]{"Description=\"missing\""}, VcfWarnings.DEFAULT)))
           .build();
       assertTrue(appender.hasWarnOrHigher());
     } finally {
@@ -1738,12 +1725,11 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
-      metadata.addAlt(new IdDescriptionMetadata("ALT",
+      metadata.addAlt(new IdDescriptionMetadata(metadata.getContext(), "ALT",
           org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
-              new String[]{"Description=\"missing\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT));
+              new String[]{"Description=\"missing\""}, VcfWarnings.DEFAULT)));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -1760,12 +1746,10 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
-      metadata.addInfo(new InfoMetadata(
-          org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
-              new String[]{"Number=1", "Type=String", "Description=\"missing\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT));
+      metadata.addInfo(new InfoMetadata(metadata.getContext(), org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+              new String[]{"Number=1", "Type=String", "Description=\"missing\""}, VcfWarnings.DEFAULT)));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -1782,10 +1766,10 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
-      metadata.addFormat(new FormatMetadata(org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
-          new String[]{"Number=1", "Type=String", "Description=\"missing\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT));
+      metadata.addFormat(new FormatMetadata(metadata.getContext(), org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+          new String[]{"Number=1", "Type=String", "Description=\"missing\""}, VcfWarnings.DEFAULT)));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -1802,10 +1786,10 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
-      metadata.addContig(new ContigMetadata(org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
-          new String[]{"length=100", "assembly=\"GRCh38\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT));
+      metadata.addContig(new ContigMetadata(metadata.getContext(), org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+          new String[]{"length=100", "assembly=\"GRCh38\""}, VcfWarnings.DEFAULT)));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -1822,12 +1806,11 @@ public class VcfMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(VcfWarnings.DEFAULT).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     try {
-      metadata.addFilter(new IdDescriptionMetadata("FILTER",
+      metadata.addFilter(new IdDescriptionMetadata(metadata.getContext(), "FILTER",
           org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
-              new String[]{"Description=\"missing\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT));
+              new String[]{"Description=\"missing\""}, VcfWarnings.DEFAULT)));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -1838,64 +1821,188 @@ public class VcfMetadataTest {
 
   @Test
   public void testDirectBuilderUseThrowsOnMissingId() {
-    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
-    IdDescriptionMetadata noId = new IdDescriptionMetadata(
-        "FILTER", InternalUtils.extractProperties(new String[] {"Description=\"d\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+    // A strict context rejects a missing ID at construction, so the only way a declaration with no ID can now
+    // reach the builder's own check is via the live properties map -- exactly what this exercises.
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2");
+    IdDescriptionMetadata noId = new IdDescriptionMetadata(STRICT_CONTEXT, "FILTER", "q10", "d");
+    noId.getPropertiesRaw().remove(IdMetadata.ID);
     assertThrows(VcfFormatException.class, () -> builder.addFilter(noId));
   }
 
   @Test
   public void testLenientBuilderWarnsAndDropsMissingId() {
     StringWriter sink = new StringWriter();
-    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(new VcfWarnings(sink));
-    IdDescriptionMetadata noId = new IdDescriptionMetadata(
-        "FILTER", InternalUtils.extractProperties(new String[] {"Description=\"d\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+    VcfContext ctx = lenientContext(new VcfWarnings(sink));
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(ctx).setFileFormat("VCFv4.2");
+    IdDescriptionMetadata noId = new IdDescriptionMetadata(ctx, "FILTER",
+        InternalUtils.extractProperties(new String[] {"Description=\"d\""}, VcfWarnings.DEFAULT));
     assertDoesNotThrow(() -> builder.addFilter(noId));
     assertTrue(sink.toString().contains("has no ID and cannot be stored"));
     assertTrue(builder.build().getFilters().isEmpty());
   }
 
   @Test
-  public void testLenientRejectsNullWarnings() {
-    assertThrows(NullPointerException.class, () -> new VcfMetadata.Builder().lenient(null));
+  public void testBuilderRejectsNullContext() {
+    // VcfContext is a caller-configuration object, not VCF content, so a raw NullPointerException is the
+    // established convention here -- the same one lenient(VcfWarnings) used to make for its own sink.
+    assertThrows(NullPointerException.class, () -> new VcfMetadata.Builder(null));
   }
 
   @Test
   public void testBuiltMetadataInheritsStrictModeForPostBuildAddCalls() {
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
-    IdDescriptionMetadata noId = new IdDescriptionMetadata(
-        "FILTER", InternalUtils.extractProperties(new String[] {"Description=\"d\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+    // see testDirectBuilderUseThrowsOnMissingId for why the ID is removed after construction rather than
+    // omitted at construction
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
+    IdDescriptionMetadata noId = new IdDescriptionMetadata(metadata.getContext(), "FILTER", "q10", "d");
+    noId.getPropertiesRaw().remove(IdMetadata.ID);
     assertThrows(VcfFormatException.class, () -> metadata.addFilter(noId));
   }
 
   @Test
   public void testBuiltMetadataInheritsLenientModeAndSinkForPostBuildAddCalls() {
     StringWriter sink = new StringWriter();
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").lenient(new VcfWarnings(sink)).build();
-    IdDescriptionMetadata noId = new IdDescriptionMetadata(
-        "FILTER", InternalUtils.extractProperties(new String[] {"Description=\"d\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+    VcfContext ctx = lenientContext(new VcfWarnings(sink));
+    VcfMetadata metadata = new VcfMetadata.Builder(ctx).setFileFormat("VCFv4.2").build();
+    IdDescriptionMetadata noId = new IdDescriptionMetadata(ctx, "FILTER",
+        InternalUtils.extractProperties(new String[] {"Description=\"d\""}, VcfWarnings.DEFAULT));
     assertDoesNotThrow(() -> metadata.addFilter(noId));
     assertTrue(sink.toString().contains("has no ID and cannot be stored"));
   }
 
   @Test
   public void testDirectBuilderUseThrowsOnDuplicateId() {
-    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
-    builder.addFilter(new IdDescriptionMetadata("FILTER", "q10", "d"));
-    IdDescriptionMetadata dup = new IdDescriptionMetadata("FILTER", "q10", "d2");
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2");
+    builder.addFilter("q10", "d");
+    IdDescriptionMetadata dup = new IdDescriptionMetadata(STRICT_CONTEXT, "FILTER", "q10", "d2");
     assertThrows(VcfFormatException.class, () -> builder.addFilter(dup));
   }
 
   @Test
   public void testDirectBuilderUseThrowsOnInvalidAltStructuralCode() {
-    VcfMetadata.Builder builder = new VcfMetadata.Builder().setFileFormat("VCFv4.2");
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2");
     // "DEL:BOGUS" is deliberately NOT used here (unlike the brief's original literal value) -- AltStructuralVariant
     // treats an unrecognized sub-identifier under a reserved top-level code as a legitimate custom extension (see
     // AltStructuralVariant's own class Javadoc/INS:ME:LINE example and this file's testAddAltDoesNotWarnFor...
     // tests), so it does not throw and this test would fail with "nothing was thrown". "THIS:IS-NOT-VALID" (already
     // used and proven invalid elsewhere in this file, e.g. testAddAltWarnsOnInvalidStructuralVariantCode) has an
     // unrecognized top-level code, which AltStructuralVariant does reject.
-    IdDescriptionMetadata badAlt = new IdDescriptionMetadata("ALT", "THIS:IS-NOT-VALID", "d");
+    IdDescriptionMetadata badAlt = new IdDescriptionMetadata(STRICT_CONTEXT, "ALT", "THIS:IS-NOT-VALID", "d");
     assertThrows(VcfFormatException.class, () -> builder.addAlt(badAlt));
   }
+  @Test
+  public void testDeclarationCannotBeTransferredBetweenDifferentlyConfiguredBuilders() {
+    // The two contexts are equal in value -- same declared version, same leniency -- and differ only by
+    // identity and sink. That is deliberate: this fails if the implementation compares context values instead
+    // of references. getInfo() and its siblings hand out live declarations, so without this check a caller
+    // could move one built under A into a builder configured for B and silently route its later validation
+    // warnings to A's sink.
+    StringWriter sinkA = new StringWriter();
+    StringWriter sinkB = new StringWriter();
+    VcfContext ctxA = lenientContext(new VcfWarnings(sinkA));
+    VcfContext ctxB = lenientContext(new VcfWarnings(sinkB));
+
+    VcfMetadata metadataA = new VcfMetadata.Builder(ctxA)
+        .addInfo("AF", "Allele frequency", InfoType.Float, "A", null, null)
+        .build();
+    InfoMetadata borrowed = metadataA.getInfo().get("AF");
+
+    VcfMetadata.Builder builderB = new VcfMetadata.Builder(ctxB);
+    assertThrows(VcfFormatException.class, () -> builderB.addInfo(borrowed));
+    // the same declaration is still accepted by a builder sharing its own context
+    assertDoesNotThrow(() -> new VcfMetadata.Builder(ctxA).addInfo(borrowed));
+  }
+
+  @Test
+  public void testDeclarationCannotBeTransferredBetweenDifferentlyConfiguredMetadataObjects() {
+    // the instance mutators are a second, independently reachable transfer path -- Builder-owned construction
+    // alone does not close it, since getInfo() and friends hand out the built declarations
+    VcfContext ctxA = lenientContext(new VcfWarnings(new StringWriter()));
+    VcfContext ctxB = lenientContext(new VcfWarnings(new StringWriter()));
+    VcfMetadata metadataA = new VcfMetadata.Builder(ctxA)
+        .addInfo("AF", "Allele frequency", InfoType.Float, "A", null, null)
+        .build();
+    VcfMetadata metadataB = new VcfMetadata.Builder(ctxB).build();
+    InfoMetadata borrowed = metadataA.getInfo().get("AF");
+    assertThrows(VcfFormatException.class, () -> metadataB.addInfo(borrowed));
+  }
+
+  @Test
+  public void testLeniencyComesFromContextNotOverloadShape() {
+    // All four combinations: the same invalid content, through both the typed and the Map overload, under both
+    // context modes. Before VcfContext, strictness was bound to WHICH constructor you called -- the typed one
+    // always threw and the Map one always warned -- so a typed overload stayed strict under a lenient builder
+    // and a Map overload stayed lenient under a strict one.
+    String badNumber = "banana";   // fails NUMBER_PATTERN identically either way
+
+    VcfContext strict = VcfContext.strict("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> new VcfMetadata.Builder(strict)
+        .addInfo("AF", "d", InfoType.Float, badNumber, null, null));
+    assertThrows(VcfFormatException.class, () -> new VcfMetadata.Builder(strict)
+        .addInfo(InternalUtils.extractProperties(
+            new String[] {"ID=AF", "Number=" + badNumber, "Type=Float", "Description=\"d\""},
+            VcfWarnings.DEFAULT)));
+
+    StringWriter typedSink = new StringWriter();
+    new VcfMetadata.Builder(lenientContext(new VcfWarnings(typedSink)))
+        .addInfo("AF", "d", InfoType.Float, badNumber, null, null);
+    assertTrue(typedSink.toString().contains(badNumber), typedSink::toString);
+
+    StringWriter mapSink = new StringWriter();
+    new VcfMetadata.Builder(lenientContext(new VcfWarnings(mapSink)))
+        .addInfo(InternalUtils.extractProperties(
+            new String[] {"ID=AF", "Number=" + badNumber, "Type=Float", "Description=\"d\""},
+            VcfWarnings.DEFAULT));
+    assertTrue(mapSink.toString().contains(badNumber), mapSink::toString);
+  }
+
+  @Test
+  public void testLeniencyComesFromContextNotOverloadShapeForFormatAndContig() {
+    // the same four-combination check for the other two declaration types with a typed/Map pair
+    VcfContext strict = VcfContext.strict("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> new VcfMetadata.Builder(strict)
+        .addFormat("GT2", "d", "banana", FormatType.String));
+    assertThrows(VcfFormatException.class, () -> new VcfMetadata.Builder(strict)
+        .addFormat(InternalUtils.extractProperties(
+            new String[] {"ID=GT2", "Number=banana", "Type=String", "Description=\"d\""},
+            VcfWarnings.DEFAULT)));
+    assertThrows(VcfFormatException.class, () -> new VcfMetadata.Builder(strict)
+        .addContig("1", null, null, null, null, null, "not a url"));
+    assertThrows(VcfFormatException.class, () -> new VcfMetadata.Builder(strict)
+        .addContig(InternalUtils.extractProperties(new String[] {"ID=1", "URL=not a url"},
+            VcfWarnings.DEFAULT)));
+
+    StringWriter sink = new StringWriter();
+    VcfContext lenient = lenientContext(new VcfWarnings(sink));
+    assertDoesNotThrow(() -> new VcfMetadata.Builder(lenient)
+        .addFormat("GT2", "d", "banana", FormatType.String));
+    assertDoesNotThrow(() -> new VcfMetadata.Builder(lenient)
+        .addFormat(InternalUtils.extractProperties(
+            new String[] {"ID=GT2", "Number=banana", "Type=String", "Description=\"d\""},
+            VcfWarnings.DEFAULT)));
+    assertDoesNotThrow(() -> new VcfMetadata.Builder(lenient)
+        .addContig("1", null, null, null, null, null, "not a url"));
+    assertDoesNotThrow(() -> new VcfMetadata.Builder(lenient)
+        .addContig(InternalUtils.extractProperties(new String[] {"ID=1", "URL=not a url"},
+            VcfWarnings.DEFAULT)));
+    assertTrue(sink.toString().contains("banana"), sink::toString);
+    assertTrue(sink.toString().contains("is malformed"), sink::toString);
+  }
+
+  @Test
+  public void testBuilderFileFormatMustAgreeWithItsContext() {
+    // a metadata object whose ##fileformat contradicts its own context is internally inconsistent
+    assertThrows(VcfFormatException.class,
+        () -> new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.3"));
+    // ...but VCFv4.02 and VCFv4.2 are the same version (compared canonicalized), and the caller's own
+    // spelling is what gets stored
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.02").build();
+    assertEquals("VCFv4.02", metadata.getFileFormat());
+  }
+
+  @Test
+  public void testBuiltMetadataCarriesItsBuildersContext() {
+    VcfContext ctx = VcfContext.strict("VCFv4.2");
+    assertSame(ctx, new VcfMetadata.Builder(ctx).build().getContext());
+  }
+
 }

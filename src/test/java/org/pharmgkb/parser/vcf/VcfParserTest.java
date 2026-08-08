@@ -1180,10 +1180,18 @@ public class VcfParserTest {
         parser.parse();
       }
       List<String> actual = appender.getRelevantWarnOrHigherMessages(Set.of());
-      assertEquals(75, actual.size(), actual::toString);
-      assertEquals(1, actual.stream().filter(m -> m.equals("There are 2 samples in the header but 0 in the metadata")).count(),
+      assertEquals(76, actual.size(), actual::toString);
+      // this fixture declares VCFv4.4, which this library does not implement, so it now also reports the
+      // version fallback exactly once -- the one new diagnostic the file-scoped VcfContext introduces
+      assertEquals(1, actual.stream()
+              .filter(m -> m.startsWith("##fileformat=VCFv4.4 declares a version") && m.contains("VCF 4.3"))
+              .count(),
           actual::toString);
-      assertEquals(37, actual.stream().filter(m -> m.startsWith("FORMAT GT has invalid GT ")).count(), actual::toString);
+      assertEquals(1,
+          actual.stream().filter(m -> m.equals("There are 2 samples in the header but 0 in the metadata")).count(),
+          actual::toString);
+      assertEquals(37, actual.stream().filter(m -> m.startsWith("FORMAT GT has invalid GT ")).count(),
+          actual::toString);
       assertEquals(37, actual.stream().filter(m -> m.contains("contains an empty allele")).count(), actual::toString);
     } finally {
       root.detachAppender(appender);
@@ -2456,4 +2464,136 @@ public class VcfParserTest {
     assertDoesNotThrow(() -> captured.get(0).getQuality());
     assertFalse(Files.readString(warningsFile).contains("is not a number"));
   }
+  // ---- VcfContext wiring ----
+
+  private static final String MINIMAL_BODY =
+      "##contig=<ID=1>\n" +
+      // declared so the file is warning-free on its own terms -- testImplementedDeclaredVersionEmitsNoVersionWarning
+      // asserts a completely empty warnings file, which an undeclared sample column would otherwise spoil
+      "##SAMPLE=<ID=S1,Description=\"s\">\n" +
+      "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+      "1\t100\t.\tA\tT\t.\tPASS\t.\tGT\t0/1\n";
+
+  private static Path writeMinimalVcf(Path dir, String fileFormat) throws IOException {
+    Path file = dir.resolve("minimal-" + fileFormat + ".vcf");
+    Files.writeString(file, "##fileformat=" + fileFormat + "\n" + MINIMAL_BODY);
+    return file;
+  }
+
+  @Test
+  void testParserProducedRecordCarriesTheParseContext() throws Exception {
+    // fails outright if the parser ever routes through a context-less construction path again
+    List<VcfRecord> seen = new ArrayList<>();
+    VcfMetadata[] md = new VcfMetadata[1];
+    try (BufferedReader reader = new BufferedReader(new StringReader(
+        "##fileformat=VCFv4.2\n" + MINIMAL_BODY));
+         VcfParser parser = new VcfParser.Builder().fromReader(reader).parseWith((metadata, record) -> {
+           md[0] = metadata;
+           seen.add(record);
+         }).build()) {
+      parser.parse();
+    }
+    VcfRecord record = seen.get(0);
+    assertSame(md[0].getContext(), record.getContext());
+    assertSame(record.getContext(), record.getPosition().getContext());
+    assertSame(record.getContext(), record.getSamples().get(0).getContext());
+  }
+
+  @Test
+  void testUnimplementedDeclaredVersionWarnsOnceAndStillParses(@TempDir Path tempDir) throws Exception {
+    // a VCFv4.5 file parses normally, but reports that it is being interpreted as 4.3. This is the one new
+    // diagnostic wiring VcfContext into VcfParser introduces, and the hts-specs conformance gate cannot see
+    // it (passed fixtures are checked for exceptions only), so it is pinned here.
+    Path warningsFile = tempDir.resolve("warnings.txt");
+    List<VcfRecord> seen = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(writeMinimalVcf(tempDir, "VCFv4.5"))
+        .warningsToFile(warningsFile)
+        .parseWith((metadata, record) -> seen.add(record))
+        .build()) {
+      parser.parse();
+    }
+    assertEquals(1, seen.size());
+    String warnings = Files.readString(warningsFile);
+    assertThat(warnings, containsString("VCFv4.5"));
+    assertThat(warnings, containsString("4.3"));
+    assertEquals(1, warnings.lines().filter(l -> l.contains("does not implement")).count(), warnings);
+  }
+
+  @Test
+  void testImplementedDeclaredVersionEmitsNoVersionWarning(@TempDir Path tempDir) throws Exception {
+    // The regression guard that matters most: the overwhelming majority of this library's real traffic is
+    // VCFv4.2, and a spurious per-file version warning on it would be a genuine regression.
+    for (String version : new String[] {"VCFv4.1", "VCFv4.2", "VCFv4.3"}) {
+      Path warningsFile = tempDir.resolve(version + "-warnings.txt");
+      try (VcfParser parser = new VcfParser.Builder()
+          .fromFile(writeMinimalVcf(tempDir, version))
+          .warningsToFile(warningsFile)
+          .parseWith((metadata, record) -> {})
+          .build()) {
+        parser.parse();
+      }
+      String warnings = Files.readString(warningsFile);
+      assertEquals("", warnings, version + " must parse with no warnings at all, least of all about its version");
+    }
+  }
+
+  @Test
+  void testParseMetadataThenParseSharesOneWarningsDestination(@TempDir Path tempDir) throws Exception {
+    // regression test: the VcfContext captures the warnings destination permanently, at the moment
+    // parseMetadata() builds it. parse() used to be the only thing that opened the warnings file, so calling
+    // parseMetadata() directly first bound the context to the default logger and parse() then swapped the
+    // file-backed sink in underneath it -- one parse, two destinations: every model object's warning to the
+    // logger, this parser's own direct warn() calls to the file.
+    Path file = tempDir.resolve("split.vcf");
+    Files.writeString(file,
+        "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "1\t100\trs1;rs1\tA\tT\t.\tPASS\t.\tGT\t0/1\n");
+    Path warningsFile = tempDir.resolve("warnings.txt");
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(file)
+        .warningsToFile(warningsFile)
+        .parseWith((metadata, record) -> {})
+        .build()) {
+      parser.parseMetadata();   // deliberately called directly, before parse()
+      parser.parse();
+    }
+    String warnings = Files.readString(warningsFile);
+    // the parser's own direct warn() site, from parseMetadata()
+    assertThat(warnings, containsString("samples in the header but 0 in the metadata"));
+    // a warning routed through the VcfContext instead -- VcfPosition.checkIds, reached while parsing the data
+    // line. Both must land in the same file.
+    assertThat(warnings, containsString("Duplicate ID"));
+  }
+
+  @Test
+  void testParseMetadataThenParseNextLineFlushesWarningsFileOnClose(@TempDir Path tempDir) throws Exception {
+    // regression test: every other warningsToFile test in this class drives the parse through parse(), whose
+    // own finally already calls closeWarningsFile() directly. This test never calls parse() at all -- it drives
+    // parseMetadata()/parseNextLine() directly, the flow that made close() itself responsible for
+    // closeWarningsFile() -- so it's the only test that actually exercises that path. The warnings sink is
+    // buffered and not flushed per warn(), so without close()'s closeWarningsFile() this warning would never
+    // reach the file.
+    Path file = tempDir.resolve("direct.vcf");
+    Files.writeString(file,
+        "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "1\t100\trs1;rs1\tA\tT\t.\tPASS\t.\tGT\t0/1\n");
+    Path warningsFile = tempDir.resolve("warnings.txt");
+    VcfParser parser = new VcfParser.Builder()
+        .fromFile(file)
+        .warningsToFile(warningsFile)
+        .parseWith((metadata, record) -> {})
+        .build();
+    parser.parseMetadata();
+    boolean hasNext = true;
+    while (hasNext) {
+      hasNext = parser.parseNextLine();
+    }
+    parser.close();
+    String warnings = Files.readString(warningsFile);
+    assertThat(warnings, containsString("Duplicate ID"));
+  }
+
 }

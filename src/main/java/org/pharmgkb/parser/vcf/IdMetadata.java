@@ -12,31 +12,44 @@ public abstract class IdMetadata extends BaseMetadata {
 
   public static final String ID = "ID";
 
-  protected IdMetadata(String label, String id) {
-    super(label, new LinkedHashMap<>());
+  /**
+   * Typed shape. Package-private, like every declaration constructor: {@code VcfMetadata.Builder} is the only
+   * supported construction path, so a declaration can never be built outside the context it will live in.
+   * <p>
+   * Every check here routes through {@link #warnOrThrow}, so a strict context throws exactly what this
+   * constructor used to throw unconditionally, and a lenient one warns and recovers -- the same content
+   * producing the same outcome through this shape and through the {@code Map}-based one below.
+   */
+  IdMetadata(VcfContext context, String label, @Nullable String id) {
+    super(context, label, new LinkedHashMap<>());
     // VCFv4.3.tex line 121: "All structured lines require an ID..." -- VCFv4.2 doesn't use the word "required" but
     // its own templates for all six keyed types show ID unconditionally first; see DUPLICATE_METADATA_ID_HANDLING.md
     if (id == null || id.trim().isEmpty()) {
-      throw new VcfFormatException("ID is required and must not be blank");
+      warnOrThrow("ID is required and must not be blank");
+      // nothing usable to store: putPropertyRaw would itself reject a null, and a blank ID leaves this
+      // declaration keyed on nothing. init() reports the same condition for the Map-based shape.
+      return;
     }
-    // strict construction: throws immediately instead of deferring to init()'s warn-based whitespace check (see
-    // that method's own comment, cited from VCFv4.2.tex/VCFv4.3.tex line 105/200 and the hts-specs fixtures named
-    // there) -- init() remains warn-based for the Map-based (lenient) constructor below
+    // see init()'s own comment (cited from VCFv4.2.tex/VCFv4.3.tex line 105/200 and the hts-specs fixtures named
+    // there) for why an ID may not contain whitespace
     if (InternalUtils.containsWhitespace(id)) {
-      throw new VcfFormatException(label + " metadata ID \"" + id + "\" must not contain whitespace");
+      warnOrThrow("{} metadata ID \"{}\" must not contain whitespace", label, id);
     }
-    // strict construction, same reasoning as the whitespace check above -- see init()'s own comment (cited from
-    // every ##INFO/##FILTER/##FORMAT/##ALT/##contig/##SAMPLE worked example's shared comma-delimited
-    // attribute-list grammar) for why this applies uniformly, including to ALT, with no exception.
+    // same reasoning as the whitespace check above -- see init()'s own comment (cited from every
+    // ##INFO/##FILTER/##FORMAT/##ALT/##contig/##SAMPLE worked example's shared comma-delimited attribute-list
+    // grammar) for why this applies uniformly, including to ALT, with no exception.
     if (id.contains(",")) {
-      throw new VcfFormatException(label + " metadata ID \"" + id + "\" must not contain a comma");
+      warnOrThrow("{} metadata ID \"{}\" must not contain a comma", label, id);
     }
     putPropertyRaw(ID, id);
   }
 
-  protected IdMetadata(String label, Map<String, String> properties, VcfWarnings warnings) {
-    super(label, properties);
-    setWarningsSink(warnings);
+  /**
+   * {@code Map}-based (parser) shape. Takes no {@code VcfWarnings}: the context supplies the sink, and
+   * {@link #warnOrThrow} decides warn-vs-throw from that same context.
+   */
+  IdMetadata(VcfContext context, String label, Map<String, String> properties) {
+    super(context, label, properties);
     init();
   }
 
@@ -62,7 +75,7 @@ public abstract class IdMetadata extends BaseMetadata {
     // fine" when there is no usable content at all once trimmed. The two checks are mutually exclusive (else
     // if): a blank-when-trimmed ID gets exactly one warning, not both.
     if (id != null && id.trim().isEmpty()) {
-      m_warnings.warn("{} metadata ID is blank", getLabel());
+      warnOrThrow("{} metadata ID is blank", getLabel());
     } else if (id != null && InternalUtils.containsWhitespace(id)) {
       // VCFv4.2.tex/VCFv4.3.tex line 105/200 only states this rule for ##ALT's own ID explicitly, but hts-specs'
       // own conformance fixtures (test/vcf/{4.1,4.2,4.3}/failed/failed_meta_contig_001.vcf,
@@ -74,7 +87,7 @@ public abstract class IdMetadata extends BaseMetadata {
       // fixture; this is treated as a bcftools coverage gap rather than a considered position, so the
       // hts-specs fixture and vcf_validator's uniform treatment govern instead, per this project's decision
       // hierarchy.
-      m_warnings.warn("{} metadata ID \"{}\" must not contain whitespace", getLabel(), id);
+      warnOrThrow("{} metadata ID \"{}\" must not contain whitespace", getLabel(), id);
     }
     // Every ##INFO/##FILTER/##FORMAT/##ALT/##contig/##SAMPLE worked example in VCFv4.2.tex (e.g. line 35:
     // "##INFO=<ID=NS,Number=1,...>") delimits attributes with an unescaped comma; a literal comma inside an ID
@@ -86,7 +99,7 @@ public abstract class IdMetadata extends BaseMetadata {
     // ambiguity code or a CN0-style copy-number allele) or its colon-delimited structural-variant-code grammar,
     // so this check applies to every type this class covers, with no exception.
     if (id != null && id.contains(",")) {
-      m_warnings.warn("{} metadata ID \"{}\" must not contain a comma", getLabel(), id);
+      warnOrThrow("{} metadata ID \"{}\" must not contain a comma", getLabel(), id);
     }
   }
 

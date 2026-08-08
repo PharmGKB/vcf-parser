@@ -5,6 +5,9 @@ import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
+import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
+import static org.pharmgkb.parser.vcf.TestUtils.LENIENT_CONTEXT;
+import static org.pharmgkb.parser.vcf.TestUtils.lenientContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -31,7 +34,7 @@ public class ContigMetadataTest {
     try {
       Map<String, String> map = new HashMap<>();
       map.put(ContigMetadata.URL, "one");
-      new ContigMetadata(map, VcfWarnings.DEFAULT);
+      new ContigMetadata(LENIENT_CONTEXT, map);
       assertTrue(appender.hasWarnOrHigher());
       assertTrue(appender.anyMessageContains("CONTIG"));
       assertTrue(appender.anyMessageContains("required metadata property \"ID\" is missing"));
@@ -61,7 +64,7 @@ public class ContigMetadataTest {
       map.put(ContigMetadata.ASSEMBLY, "assembly");
       map.put(ContigMetadata.LENGTH, "23");
       map.put("test", "one");
-      ContigMetadata contig = new ContigMetadata(map, VcfWarnings.DEFAULT);
+      ContigMetadata contig = new ContigMetadata(LENIENT_CONTEXT, map);
       assertFalse(appender.hasWarnOrHigher());
       assertEquals("one", contig.getPropertyRaw("test"));
     } finally {
@@ -87,7 +90,7 @@ public class ContigMetadataTest {
       map.put(ContigMetadata.ID, "contig_accession");
       map.put(ContigMetadata.SPECIES, "\"Homo sapiens\"");
       map.put("accession", "GCA_000001405.1");
-      ContigMetadata contig = new ContigMetadata(map, VcfWarnings.DEFAULT);
+      ContigMetadata contig = new ContigMetadata(LENIENT_CONTEXT, map);
       assertFalse(appender.hasWarnOrHigher());
       assertEquals("GCA_000001405.1", contig.getPropertyRaw("accession"));
     } finally {
@@ -109,7 +112,7 @@ public class ContigMetadataTest {
     try {
       Map<String, String> map = new HashMap<>();
       map.put(ContigMetadata.ID, "1 A");
-      new ContigMetadata(map, VcfWarnings.DEFAULT);
+      new ContigMetadata(LENIENT_CONTEXT, map);
       assertTrue(appender.anyMessageContains("must not contain whitespace"));
     } finally {
       root.detachAppender(appender);
@@ -122,16 +125,16 @@ public class ContigMetadataTest {
     // VCFv4.3.tex's "Changes to VCFv4.3" errata: "*"/"=" "were already invalid and remain so" as the first
     // character of a VCF contig name
     assertThrows(VcfFormatException.class,
-        () -> new ContigMetadata("*chr1", 100L, null, null, null, null, null));
+        () -> new ContigMetadata(STRICT_CONTEXT, "*chr1", 100L, null, null, null, null, null));
     assertThrows(VcfFormatException.class,
-        () -> new ContigMetadata("=chr1", 100L, null, null, null, null, null));
+        () -> new ContigMetadata(STRICT_CONTEXT, "=chr1", 100L, null, null, null, null, null));
   }
 
   @Test
   public void testTypedConstructorAcceptsAsteriskWhenNotFirstCharacter() {
     // regression guard: VCFv4.3.tex's errata says "* is now valid when not the first character" -- must not
     // regress to rejecting it everywhere
-    ContigMetadata contig = new ContigMetadata("chr*1", 100L, null, null, null, null, null);
+    ContigMetadata contig = new ContigMetadata(STRICT_CONTEXT, "chr*1", 100L, null, null, null, null, null);
     assertEquals("chr*1", contig.getId());
   }
 
@@ -139,7 +142,7 @@ public class ContigMetadataTest {
   public void testTypedConstructorAcceptsColonAnywhere() {
     // regression guard: matches VcfPosition's own testColonInChromosomeAllowed -- VCFv4.3.tex's errata
     // explicitly confirms colon was wrongly disallowed in the past and remains valid
-    ContigMetadata contig = new ContigMetadata("chr:1", 100L, null, null, null, null, null);
+    ContigMetadata contig = new ContigMetadata(STRICT_CONTEXT, "chr:1", 100L, null, null, null, null, null);
     assertEquals("chr:1", contig.getId());
   }
 
@@ -154,7 +157,7 @@ public class ContigMetadataTest {
     for (char c : invalidChars) {
       String id = "chr" + c + "1";
       assertThrows(VcfFormatException.class,
-          () -> new ContigMetadata(id, 100L, null, null, null, null, null),
+          () -> new ContigMetadata(STRICT_CONTEXT, id, 100L, null, null, null, null, null),
           () -> "Contig ID \"" + id + "\" containing '" + c + "' should have been rejected");
     }
   }
@@ -170,7 +173,7 @@ public class ContigMetadataTest {
     try {
       Map<String, String> map = new HashMap<>();
       map.put(ContigMetadata.ID, "*chr1");
-      new ContigMetadata(map, VcfWarnings.DEFAULT);
+      new ContigMetadata(LENIENT_CONTEXT, map);
       assertTrue(appender.anyMessageContains("must not start with"));
     } finally {
       root.detachAppender(appender);
@@ -189,7 +192,7 @@ public class ContigMetadataTest {
     try {
       Map<String, String> map = new HashMap<>();
       map.put(ContigMetadata.ID, "chr(1)");
-      new ContigMetadata(map, VcfWarnings.DEFAULT);
+      new ContigMetadata(LENIENT_CONTEXT, map);
       assertTrue(appender.anyMessageContains("contains the invalid character"));
     } finally {
       root.detachAppender(appender);
@@ -211,7 +214,7 @@ public class ContigMetadataTest {
     try {
       Map<String, String> map = new HashMap<>();
       map.put(ContigMetadata.ID, "chr,1");
-      new ContigMetadata(map, VcfWarnings.DEFAULT);
+      new ContigMetadata(LENIENT_CONTEXT, map);
       assertTrue(appender.anyMessageContains("must not contain a comma"));
       assertEquals(0, appender.countMessagesContaining("contains the invalid character"));
     } finally {
@@ -234,7 +237,7 @@ public class ContigMetadataTest {
     try {
       Map<String, String> map = new HashMap<>();
       map.put(ContigMetadata.ID, "chr,(1)");
-      new ContigMetadata(map, VcfWarnings.DEFAULT);
+      new ContigMetadata(LENIENT_CONTEXT, map);
       assertTrue(appender.anyMessageContains("must not contain a comma"));
       assertTrue(appender.anyMessageContains("contains the invalid character '('"));
     } finally {
@@ -257,7 +260,7 @@ public class ContigMetadataTest {
     try {
       Map<String, String> map = new HashMap<>();
       map.put(ContigMetadata.ID, "1(2)[3]");
-      new ContigMetadata(map, VcfWarnings.DEFAULT);
+      new ContigMetadata(LENIENT_CONTEXT, map);
       assertTrue(appender.anyMessageContains("contains the invalid character '('"));
       assertTrue(appender.anyMessageContains("contains the invalid character '['"));
     } finally {
@@ -279,7 +282,7 @@ public class ContigMetadataTest {
     try {
       Map<String, String> map = new HashMap<>();
       map.put(ContigMetadata.ID, "1(2(3");
-      new ContigMetadata(map, VcfWarnings.DEFAULT);
+      new ContigMetadata(LENIENT_CONTEXT, map);
       assertEquals(1, appender.countMessagesContaining("contains the invalid character '('"));
     } finally {
       root.detachAppender(appender);
@@ -302,7 +305,7 @@ public class ContigMetadataTest {
       map.put(ContigMetadata.ASSEMBLY, "assembly");
       map.put(ContigMetadata.LENGTH, "234asdgasdgasdg");
       map.put(ContigMetadata.URL, "url");
-      new ContigMetadata(map, VcfWarnings.DEFAULT);
+      new ContigMetadata(LENIENT_CONTEXT, map);
       assertTrue(appender.hasWarnOrHigher());
       assertTrue(appender.anyMessageContains("is not a number"));
     } finally {
@@ -318,7 +321,7 @@ public class ContigMetadataTest {
     map.put(ContigMetadata.ASSEMBLY, "assembly");
     map.put(ContigMetadata.LENGTH, "23");
     map.put(ContigMetadata.URL, "url");
-    ContigMetadata contig = new ContigMetadata(map, VcfWarnings.DEFAULT);
+    ContigMetadata contig = new ContigMetadata(LENIENT_CONTEXT, map);
     assertEquals(23, contig.getLength());
   }
 
@@ -332,14 +335,14 @@ public class ContigMetadataTest {
     map.put(ContigMetadata.ID, "id");
     map.put(ContigMetadata.ASSEMBLY, "assembly");
     map.put(ContigMetadata.LENGTH, "\"23\"");
-    ContigMetadata contig = new ContigMetadata(map, VcfWarnings.DEFAULT);
+    ContigMetadata contig = new ContigMetadata(LENIENT_CONTEXT, map);
     assertEquals(23, contig.getLength());
   }
 
   @Test
   public void testNullUrlNotSerialized() {
     // a null URL argument must not be stored (it would otherwise serialize as the literal "URL=null")
-    ContigMetadata contig = new ContigMetadata("chr1", 10L, "asm", null, null, null, null);
+    ContigMetadata contig = new ContigMetadata(STRICT_CONTEXT, "chr1", 10L, "asm", null, null, null, null);
     assertNull(contig.getUrl());
     assertFalse(contig.getPropertyKeys().contains(ContigMetadata.URL));
   }
@@ -351,7 +354,7 @@ public class ContigMetadataTest {
     map.put(ContigMetadata.ASSEMBLY, "assembly");
     map.put(ContigMetadata.LENGTH, "23");
     map.put(ContigMetadata.URL, "url");
-    ContigMetadata contig = new ContigMetadata(map, VcfWarnings.DEFAULT);
+    ContigMetadata contig = new ContigMetadata(LENIENT_CONTEXT, map);
     assertEquals("url", contig.getUrl());
   }
 
@@ -360,7 +363,7 @@ public class ContigMetadataTest {
     Map<String, String> map = new HashMap<>();
     map.put(ContigMetadata.ID, "id");
     map.put(ContigMetadata.ASSEMBLY, "GRCh38");
-    ContigMetadata contig = new ContigMetadata(map, VcfWarnings.DEFAULT);
+    ContigMetadata contig = new ContigMetadata(LENIENT_CONTEXT, map);
     assertEquals("GRCh38", contig.getAssembly());
   }
 
@@ -369,7 +372,7 @@ public class ContigMetadataTest {
     Map<String, String> map = new HashMap<>();
     map.put(ContigMetadata.ID, "id");
     map.put(ContigMetadata.MD5, "d7d0c95cd23db914d68f9ce9e2d0c7c8");
-    ContigMetadata contig = new ContigMetadata(map, VcfWarnings.DEFAULT);
+    ContigMetadata contig = new ContigMetadata(LENIENT_CONTEXT, map);
     assertEquals("d7d0c95cd23db914d68f9ce9e2d0c7c8", contig.getMd5());
   }
 
@@ -378,7 +381,7 @@ public class ContigMetadataTest {
     Map<String, String> map = new HashMap<>();
     map.put(ContigMetadata.ID, "id");
     map.put(ContigMetadata.TAXONOMY, "9606");
-    ContigMetadata contig = new ContigMetadata(map, VcfWarnings.DEFAULT);
+    ContigMetadata contig = new ContigMetadata(LENIENT_CONTEXT, map);
     assertEquals("9606", contig.getTaxonomy());
   }
 
@@ -389,7 +392,7 @@ public class ContigMetadataTest {
     Map<String, String> map = new HashMap<>();
     map.put(ContigMetadata.ID, "id");
     map.put(ContigMetadata.SPECIES, "\"Homo sapiens\"");
-    ContigMetadata contig = new ContigMetadata(map, VcfWarnings.DEFAULT);
+    ContigMetadata contig = new ContigMetadata(LENIENT_CONTEXT, map);
     assertEquals("Homo sapiens", contig.getSpecies());
   }
 
@@ -397,7 +400,7 @@ public class ContigMetadataTest {
   public void testTypedConstructorAssemblyMd5TaxonomySpeciesRoundTrip() {
     // the typed constructor auto-quotes species via putAndQuoteProperty(); getSpecies() must unquote it back
     // to the original value, not just avoid throwing
-    ContigMetadata contig = new ContigMetadata("chr1", 100L, "GRCh38",
+    ContigMetadata contig = new ContigMetadata(STRICT_CONTEXT, "chr1", 100L, "GRCh38",
         "d7d0c95cd23db914d68f9ce9e2d0c7c8", "Homo sapiens", "9606", "http://example.com");
     assertEquals("GRCh38", contig.getAssembly());
     assertEquals("d7d0c95cd23db914d68f9ce9e2d0c7c8", contig.getMd5());
@@ -410,7 +413,7 @@ public class ContigMetadataTest {
     // assembly is spec-optional (VCFv4.2.tex line 121: "all tags are optional"); a caller building a minimal
     // declaration must be able to omit it via the typed constructor, not only the Map-based one. A null
     // argument must not be stored (it would otherwise serialize as the literal "assembly=null").
-    ContigMetadata contig = new ContigMetadata("chr1", 100L, null, null, null, null, null);
+    ContigMetadata contig = new ContigMetadata(STRICT_CONTEXT, "chr1", 100L, null, null, null, null, null);
     assertNull(contig.getAssembly());
     assertFalse(contig.getPropertyKeys().contains(ContigMetadata.ASSEMBLY));
     assertEquals(100L, contig.getLength());
@@ -422,7 +425,7 @@ public class ContigMetadataTest {
     // argument must not be stored (it would otherwise serialize as the literal "length=null"), and
     // getLength() must still throw VcfFormatException afterward, matching its own documented contract for an
     // absent length regardless of how the object was constructed.
-    ContigMetadata contig = new ContigMetadata("chr1", null, "GRCh38", null, null, null, null);
+    ContigMetadata contig = new ContigMetadata(STRICT_CONTEXT, "chr1", null, "GRCh38", null, null, null, null);
     assertFalse(contig.getPropertyKeys().contains(ContigMetadata.LENGTH));
     assertThrows(VcfFormatException.class, contig::getLength);
     assertEquals("GRCh38", contig.getAssembly());
@@ -435,7 +438,7 @@ public class ContigMetadataTest {
     // own worked examples (line 33, line 140) all include additional tags, but the prose does not require
     // them. Before this fix, only the Map-based constructor could represent an ID-only declaration; the
     // typed constructor required both assembly and length.
-    ContigMetadata contig = new ContigMetadata("ctg1", null, null, null, null, null, null);
+    ContigMetadata contig = new ContigMetadata(STRICT_CONTEXT, "ctg1", null, null, null, null, null, null);
     assertEquals("ctg1", contig.getId());
     assertNull(contig.getAssembly());
     assertThrows(VcfFormatException.class, contig::getLength);
@@ -450,7 +453,7 @@ public class ContigMetadataTest {
     Map<String, String> map = new HashMap<>();
     map.put(ContigMetadata.ID, "id");
     map.put(ContigMetadata.ASSEMBLY, "assembly");
-    ContigMetadata contig = new ContigMetadata(map, VcfWarnings.DEFAULT);
+    ContigMetadata contig = new ContigMetadata(LENIENT_CONTEXT, map);
     assertThrows(VcfFormatException.class, contig::getLength);
   }
 
@@ -460,7 +463,7 @@ public class ContigMetadataTest {
     map.put(ContigMetadata.ID, "id");
     map.put(ContigMetadata.ASSEMBLY, "assembly");
     map.put(ContigMetadata.LENGTH, "not-a-number");
-    ContigMetadata contig = new ContigMetadata(map, VcfWarnings.DEFAULT);
+    ContigMetadata contig = new ContigMetadata(LENIENT_CONTEXT, map);
     assertThrows(VcfFormatException.class, contig::getLength);
   }
 
@@ -479,7 +482,7 @@ public class ContigMetadataTest {
     try {
       Map<String, String> map = new HashMap<>();
       map.put(ContigMetadata.ID, "id");
-      new ContigMetadata(map, VcfWarnings.DEFAULT);
+      new ContigMetadata(LENIENT_CONTEXT, map);
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -494,7 +497,7 @@ public class ContigMetadataTest {
     // VcfFormatException instead of warning (previously silently accepted with no warning, then briefly a warn
     // once URI.create was introduced) -- exercises one half of ContigMetadata's multi-catch
     assertThrows(VcfFormatException.class,
-        () -> new ContigMetadata("chr1", 100L, "GRCh38", null, null, null, "http://example.com/a|b"));
+        () -> new ContigMetadata(STRICT_CONTEXT, "chr1", 100L, "GRCh38", null, null, null, "http://example.com/a|b"));
   }
 
   @Test
@@ -503,7 +506,7 @@ public class ContigMetadataTest {
     // not null. The failure is that "foo" is an unregistered/unknown protocol, which URI.create(url).toURL()
     // rejects with MalformedURLException -- exercising the other half of ContigMetadata's multi-catch
     assertThrows(VcfFormatException.class,
-        () -> new ContigMetadata("chr1", 100L, "GRCh38", null, null, null, "foo://bar"));
+        () -> new ContigMetadata(STRICT_CONTEXT, "chr1", 100L, "GRCh38", null, null, null, "foo://bar"));
   }
 
   @Test
@@ -521,7 +524,7 @@ public class ContigMetadataTest {
       Map<String, String> map = new HashMap<>();
       map.put(ContigMetadata.ID, "chr1");
       map.put(ContigMetadata.URL, "http://example.com/a|b");
-      new ContigMetadata(map, VcfWarnings.DEFAULT);
+      new ContigMetadata(LENIENT_CONTEXT, map);
       assertTrue(appender.anyMessageContains("is malformed"));
     } finally {
       root.detachAppender(appender);
@@ -544,7 +547,7 @@ public class ContigMetadataTest {
       Map<String, String> map = new HashMap<>();
       map.put(ContigMetadata.ID, "chr1");
       map.put(ContigMetadata.URL, "foo://bar");
-      new ContigMetadata(map, VcfWarnings.DEFAULT);
+      new ContigMetadata(LENIENT_CONTEXT, map);
       assertTrue(appender.anyMessageContains("is malformed"));
     } finally {
       root.detachAppender(appender);
@@ -566,7 +569,7 @@ public class ContigMetadataTest {
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     Map<String, String> props = org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
         new String[]{"Number=1", "ID=chr1"}, VcfWarnings.DEFAULT);
-    ContigMetadata contig = new ContigMetadata(props, VcfWarnings.DEFAULT);
+    ContigMetadata contig = new ContigMetadata(LENIENT_CONTEXT, props);
     appender.start();
     root.addAppender(appender);
     try {
@@ -580,29 +583,32 @@ public class ContigMetadataTest {
 
   @Test
   public void testTypedConstructorRejectsNullOrBlankId() {
-    assertThrows(VcfFormatException.class, () -> new ContigMetadata(null, 100L, "GRCh38", null, null, null, null));
-    assertThrows(VcfFormatException.class, () -> new ContigMetadata("", 100L, "GRCh38", null, null, null, null));
-    assertThrows(VcfFormatException.class, () -> new ContigMetadata("   ", 100L, "GRCh38", null, null, null, null));
+    assertThrows(VcfFormatException.class,
+        () -> new ContigMetadata(STRICT_CONTEXT, null, 100L, "GRCh38", null, null, null, null));
+    assertThrows(VcfFormatException.class,
+        () -> new ContigMetadata(STRICT_CONTEXT, "", 100L, "GRCh38", null, null, null, null));
+    assertThrows(VcfFormatException.class,
+        () -> new ContigMetadata(STRICT_CONTEXT, "   ", 100L, "GRCh38", null, null, null, null));
   }
 
   @Test
   public void testTypedConstructorRejectsMalformedUrl() {
     VcfFormatException ex = assertThrows(VcfFormatException.class,
-        () -> new ContigMetadata("1", 1000L, "GRCh38", null, null, null, "not a url"));
+        () -> new ContigMetadata(STRICT_CONTEXT, "1", 1000L, "GRCh38", null, null, null, "not a url"));
     assertTrue(ex.getMessage().contains("is malformed"));
   }
 
   @Test
   public void testTypedConstructorAcceptsValidContig() {
-    ContigMetadata md = new ContigMetadata("1", 1000L, "GRCh38", null, null, null, null);
+    ContigMetadata md = new ContigMetadata(STRICT_CONTEXT, "1", 1000L, "GRCh38", null, null, null, null);
     assertEquals(1000L, md.getLength());
   }
 
   @Test
-  public void testMapConstructorRequiresWarningsInstance() {
+  public void testMapConstructorRequiresContextInstance() {
     Map<String, String> props = InternalUtils.extractProperties(
         new String[] {"ID=1", "URL=not a url"}, VcfWarnings.DEFAULT);
-    assertThrows(NullPointerException.class, () -> new ContigMetadata(props, null));
+    assertThrows(NullPointerException.class, () -> new ContigMetadata(null, props));
   }
 
   @Test
@@ -610,7 +616,7 @@ public class ContigMetadataTest {
     Map<String, String> props = InternalUtils.extractProperties(
         new String[] {"ID=1", "URL=not a url"}, VcfWarnings.DEFAULT);
     StringWriter sink = new StringWriter();
-    ContigMetadata md = new ContigMetadata(props, new VcfWarnings(sink));
+    ContigMetadata md = new ContigMetadata(lenientContext(new VcfWarnings(sink)), props);
     assertEquals("not a url", md.getUrl());
     assertTrue(sink.toString().contains("is malformed"));
   }
@@ -629,8 +635,8 @@ public class ContigMetadataTest {
     // canonical order.
     StringWriter sink = new StringWriter();
     VcfWarnings warnings = new VcfWarnings(sink);
-    new ContigMetadata(InternalUtils.extractProperties(
-        new String[] {"Description=\"d\"", "ID=1"}, warnings), warnings);
+    new ContigMetadata(lenientContext(warnings), InternalUtils.extractProperties(
+        new String[] {"Description=\"d\"", "ID=1"}, warnings));
     assertTrue(sink.toString().contains("declared out of canonical order"));
   }
 

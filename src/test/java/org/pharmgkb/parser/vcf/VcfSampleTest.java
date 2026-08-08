@@ -11,6 +11,8 @@ import ch.qos.logback.classic.Logger;
 import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.spec.WarnCapturingAppender;
 
+import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
+import static org.pharmgkb.parser.vcf.TestUtils.LENIENT_CONTEXT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -30,7 +32,7 @@ class VcfSampleTest {
   void testGetProperty() {
     List<String> keys = Arrays.asList("key1", "key2");
     List<String> values = Arrays.asList("value1", "value2");
-    VcfSample sample = new VcfSample(keys, values);
+    VcfSample sample = STRICT_CONTEXT.newSample(keys, values);
     assertEquals(2, sample.getPropertyKeys().size());
     assertEquals("value1", sample.getProperty("key1"));
   }
@@ -41,7 +43,7 @@ class VcfSampleTest {
     // Map.keySet() view where remove() deletes the entry from the backing map with no validation and no
     // signal to the caller. It now returns an unmodifiable view: a mutation attempt fails fast with
     // UnsupportedOperationException instead of silently corrupting the sample.
-    VcfSample sample = new VcfSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
+    VcfSample sample = STRICT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
     assertThrows(UnsupportedOperationException.class, () -> sample.getPropertyKeys().remove("GT"));
     assertEquals("0/1", sample.getProperty("GT"));
   }
@@ -50,7 +52,7 @@ class VcfSampleTest {
   void testGetPropertyKeysReflectsALaterMutationMadeThroughOtherMethods() {
     // companion test: unlike a snapshot copy, getPropertyKeys() remains a view over the live backing map --
     // a mutation made through putProperty() after the fact is visible through a set obtained beforehand
-    VcfSample sample = new VcfSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
+    VcfSample sample = STRICT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
     Set<String> keys = sample.getPropertyKeys();
     assertFalse(keys.contains("DP"));
     sample.putProperty("DP", "10");
@@ -62,13 +64,13 @@ class VcfSampleTest {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("1", "A");
     map.put("2", "B");
-    VcfSample sample = new VcfSample(map);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
     assertEquals(Arrays.asList("1", "2"), new ArrayList<>(sample.getPropertyKeys()));
 
     LinkedHashMap<String, String> reversedMap = new LinkedHashMap<>();
     reversedMap.put("2", "B");
     reversedMap.put("1", "A");
-    VcfSample sampleReverse = new VcfSample(reversedMap);
+    VcfSample sampleReverse = STRICT_CONTEXT.newSample(reversedMap);
     assertEquals(Arrays.asList("2", "1"), new ArrayList<>(sampleReverse.getPropertyKeys()));
   }
 
@@ -77,7 +79,7 @@ class VcfSampleTest {
     assertThrows(VcfFormatException.class, () -> {
       List<String> keys = Arrays.asList("key1", "key2");
       List<String> values = Collections.singletonList("value1");
-      new VcfSample(keys, values);
+      STRICT_CONTEXT.newSample(keys, values);
     });
   }
 
@@ -86,7 +88,7 @@ class VcfSampleTest {
     assertThrows(VcfFormatException.class, () -> {
       List<String> keys = Collections.singletonList("key1");
       List<String> values = Collections.singletonList("value\n1");
-      new VcfSample(keys, values);
+      STRICT_CONTEXT.newSample(keys, values);
     });
   }
 
@@ -98,8 +100,8 @@ class VcfSampleTest {
     // not just that newTrusted() doesn't crash.
     List<String> keys = Collections.singletonList("key1");
     List<String> values = Collections.singletonList("value:with:colons");
-    assertThrows(VcfFormatException.class, () -> new VcfSample(keys, values));
-    VcfSample sample = VcfSample.newTrusted(keys, values);
+    assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newSample(keys, values));
+    VcfSample sample = STRICT_CONTEXT.newTrustedSample(keys, values);
     assertEquals("value:with:colons", sample.getProperty("key1"));
   }
 
@@ -109,7 +111,7 @@ class VcfSampleTest {
     // structural-delimiter scan is
     List<String> keys = Arrays.asList("key1", "key2");
     List<String> values = Collections.singletonList("value1");
-    assertThrows(VcfFormatException.class, () -> VcfSample.newTrusted(keys, values));
+    assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newTrustedSample(keys, values));
   }
 
   @Test
@@ -118,8 +120,8 @@ class VcfSampleTest {
     // newTrusted() must produce an observably identical VcfSample
     List<String> keys = Arrays.asList("GT", "DP");
     List<String> values = Arrays.asList("0/1", "10");
-    VcfSample trusted = VcfSample.newTrusted(keys, values);
-    VcfSample untrusted = new VcfSample(keys, values);
+    VcfSample trusted = STRICT_CONTEXT.newTrustedSample(keys, values);
+    VcfSample untrusted = STRICT_CONTEXT.newSample(keys, values);
     assertEquals(untrusted.getPropertyKeys(), trusted.getPropertyKeys());
     assertEquals(untrusted.getProperty("GT"), trusted.getProperty("GT"));
     assertEquals(untrusted.getProperty("DP"), trusted.getProperty("DP"));
@@ -128,7 +130,7 @@ class VcfSampleTest {
   @Test
   void testPutPropertyRejectsLineTerminator() {
     // putProperty previously had no line-terminator check at all, unlike the constructors
-    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    VcfSample sample = STRICT_CONTEXT.newSample(new LinkedHashMap<>());
     assertThrows(VcfFormatException.class, () -> sample.putProperty("GT", "0/1\nextra"));
     assertThrows(VcfFormatException.class, () -> sample.putProperty("GT", "0/1\rextra"));
     assertThrows(VcfFormatException.class, () -> sample.putProperty("bad\nkey", "value"));
@@ -140,7 +142,7 @@ class VcfSampleTest {
   void testMapConstructorRejectsNullPropertiesInsteadOfThrowingNpe() {
     // properties is typed non-@Nullable, but nothing enforces that at compile time; must reject a null with
     // VcfFormatException, not let it reach a raw NullPointerException at m_properties.entrySet()
-    assertThrows(VcfFormatException.class, () -> new VcfSample((LinkedHashMap<String, String>) null));
+    assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newSample((LinkedHashMap<String, String>) null));
   }
 
   @Test
@@ -149,7 +151,7 @@ class VcfSampleTest {
     // null key -- each matches its own String-keyed sibling's already-null-tolerant "not present"/no-op contract.
     // putProperty is the exception: putProperty(String, ...) already throws for a null key, so the
     // ReservedFormatProperty overload must throw too, not silently tolerate it.
-    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    VcfSample sample = STRICT_CONTEXT.newSample(new LinkedHashMap<>());
     assertNull(sample.getProperty((ReservedFormatProperty) null));
     assertFalse(sample.containsProperty((ReservedFormatProperty) null));
     assertThrows(VcfFormatException.class, () -> sample.putProperty((ReservedFormatProperty) null, "value"));
@@ -159,7 +161,7 @@ class VcfSampleTest {
   @Test
   void testPutPropertyRejectsStructuralDelimiters() {
     // a colon would add a spurious FORMAT subfield, and a tab would add a spurious sample column, when written back out
-    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    VcfSample sample = STRICT_CONTEXT.newSample(new LinkedHashMap<>());
     assertThrows(VcfFormatException.class, () -> sample.putProperty("DP", "1:2"));
     assertThrows(VcfFormatException.class, () -> sample.putProperty("DP", "1\t2"));
     assertThrows(VcfFormatException.class, () -> sample.putProperty("bad:key", "value"));
@@ -171,18 +173,18 @@ class VcfSampleTest {
     assertThrows(VcfFormatException.class, () -> {
       List<String> keys = Collections.singletonList("DP");
       List<String> values = Collections.singletonList("1:2");
-      new VcfSample(keys, values);
+      STRICT_CONTEXT.newSample(keys, values);
     });
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("DP", "1:2");
-    assertThrows(VcfFormatException.class, () -> new VcfSample(map));
+    assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newSample(map));
   }
 
   @Test
   void testValidateRejectsMutationThroughEntryView() {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("DP", "1");
-    VcfSample sample = new VcfSample(map);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
     sample.propertyEntrySet().iterator().next().setValue("1:2");
     assertThrows(VcfFormatException.class, sample::validate);
   }
@@ -194,13 +196,13 @@ class VcfSampleTest {
     // threw an unhelpful generic exception for an interior one, unlike the rest of the empty-field handling
     LinkedHashMap<String, String> trailing = new LinkedHashMap<>();
     trailing.put("HQ", "1,2,");
-    VcfSample trailingSample = new VcfSample(trailing);
+    VcfSample trailingSample = STRICT_CONTEXT.newSample(trailing);
     assertEquals(Arrays.asList(1L, 2L, null),
         trailingSample.getProperty(ReservedFormatProperty.HaplotypeQualities));
 
     LinkedHashMap<String, String> interior = new LinkedHashMap<>();
     interior.put("HQ", "1,,2");
-    VcfSample interiorSample = new VcfSample(interior);
+    VcfSample interiorSample = STRICT_CONTEXT.newSample(interior);
     assertEquals(Arrays.asList(1L, null, 2L),
         interiorSample.getProperty(ReservedFormatProperty.HaplotypeQualities));
   }
@@ -219,7 +221,7 @@ class VcfSampleTest {
     // "." return must never reach at all.
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("FT", ";;");
-    VcfSample sample = new VcfSample(map);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
     java.io.StringWriter sink = new java.io.StringWriter();
     sample.setWarningsSink(new VcfWarnings(sink));
     assertNull(sample.getProperty(ReservedFormatProperty.Filter));
@@ -234,7 +236,7 @@ class VcfSampleTest {
     map.put("NQ", "30");
     map.put("HAP", "1");
     map.put("AHAP", "2");
-    VcfSample sample = new VcfSample(map);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
     assertEquals(Long.valueOf(30L), sample.getProperty(ReservedFormatProperty.PhredScoreForNovelty));
     assertEquals(Long.valueOf(1L), sample.getProperty(ReservedFormatProperty.HaplotypeId));
     assertEquals(Long.valueOf(2L), sample.getProperty(ReservedFormatProperty.AncestralHaplotypeId));
@@ -249,7 +251,7 @@ class VcfSampleTest {
     map.put("ADF", "6,3");
     map.put("ADR", "4,2");
     map.put("PP", "0,3,10");
-    VcfSample sample = new VcfSample(map);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
     assertEquals(Arrays.asList(10L, 5L), sample.getProperty(ReservedFormatProperty.AlleleDepth));
     assertEquals(Arrays.asList(6L, 3L), sample.getProperty(ReservedFormatProperty.AlleleDepthForward));
     assertEquals(Arrays.asList(4L, 2L), sample.getProperty(ReservedFormatProperty.AlleleDepthReverse));
@@ -263,7 +265,7 @@ class VcfSampleTest {
     // which are explicitly comma-separated
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("MQ", "45");
-    VcfSample sample = new VcfSample(map);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
     assertEquals(Long.valueOf(45L), sample.getProperty(ReservedFormatProperty.MappingQuality));
   }
 
@@ -274,7 +276,7 @@ class VcfSampleTest {
     String gle = "0:-75.22,1:-223.42,0/0:-323.03,1/0:-99.29,1/1:-802.53";
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GLE", gle);
-    VcfSample sample = new VcfSample(map);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
     assertEquals(gle, sample.getProperty(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy));
   }
 
@@ -284,14 +286,15 @@ class VcfSampleTest {
     // is the one key exempted from the colon check on its value. The key itself is still checked, and every other
     // key's value is unaffected.
     String gle = "0:-75.22,1:-223.42,0/0:-323.03";
-    VcfSample viaMap = new VcfSample(new LinkedHashMap<>());
+    VcfSample viaMap = STRICT_CONTEXT.newSample(new LinkedHashMap<>());
     viaMap.putProperty("GLE", gle);
     assertEquals(gle, viaMap.getProperty("GLE"));
-    VcfSample viaConstructor = new VcfSample(Collections.singletonList("GLE"), Collections.singletonList(gle));
+    VcfSample viaConstructor = STRICT_CONTEXT.newSample(Collections.singletonList("GLE"),
+        Collections.singletonList(gle));
     assertEquals(gle, viaConstructor.getProperty("GLE"));
 
     // the exemption is specific to the key "GLE"; a colon in any other key's value is still rejected
-    VcfSample sample = new VcfSample(new LinkedHashMap<>());
+    VcfSample sample = STRICT_CONTEXT.newSample(new LinkedHashMap<>());
     assertThrows(VcfFormatException.class, () -> sample.putProperty("DP", gle));
     // a colon in the key "GLE" itself (not its value) is still rejected
     assertThrows(VcfFormatException.class, () -> sample.putProperty("GLE:bad", "value"));
@@ -314,7 +317,7 @@ class VcfSampleTest {
     // WriterRoundTripTest.testDuplicateEmptyFormatKeyRoundTripsWithoutColumnCorruption for that end-to-end case.
     List<String> keys = Arrays.asList("GT", "GT");
     List<String> values = Arrays.asList("0/1", "1/1");
-    VcfSample sample = new VcfSample(keys, values);
+    VcfSample sample = STRICT_CONTEXT.newSample(keys, values);
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
@@ -339,7 +342,7 @@ class VcfSampleTest {
     // first occurrence -- this existing correct behavior must not change
     List<String> keys = Arrays.asList("GT", "GT");
     List<String> values = Arrays.asList("0/1", "1/1");
-    VcfSample sample = new VcfSample(keys, values);
+    VcfSample sample = STRICT_CONTEXT.newSample(keys, values);
     assertEquals("0/1", sample.getProperty("GT"));
   }
 
@@ -351,7 +354,7 @@ class VcfSampleTest {
     // (not Arrays.asList) so m_keys.contains(null) would throw NullPointerException without the guard.
     List<String> keys = List.of("key1", "key2");
     List<String> values = List.of("value1", "value2");
-    VcfSample sample = new VcfSample(keys, values);
+    VcfSample sample = STRICT_CONTEXT.newSample(keys, values);
     assertFalse(sample.containsProperty((String) null));
   }
 
@@ -361,14 +364,14 @@ class VcfSampleTest {
     // false answer for a null key
     List<String> keys = Arrays.asList("key1", "key2");
     List<String> values = Arrays.asList("value1", "value2");
-    VcfSample sample = new VcfSample(keys, values);
+    VcfSample sample = STRICT_CONTEXT.newSample(keys, values);
     sample.putProperty("key3", "value3"); // forces materialization of m_properties
     assertFalse(sample.containsProperty((String) null));
   }
 
   @Test
   void testValidateWarnsToConfiguredSinkForEmptyValue() {
-    VcfSample sample = new VcfSample(List.of("DP"), new ArrayList<>(List.of("")));
+    VcfSample sample = STRICT_CONTEXT.newSample(List.of("DP"), new ArrayList<>(List.of("")));
     java.io.StringWriter sink = new java.io.StringWriter();
     sample.setWarningsSink(new org.pharmgkb.parser.vcf.VcfWarnings(sink));
     sample.validate();
@@ -378,7 +381,7 @@ class VcfSampleTest {
 
   @Test
   void testDuplicateFormatKeyWarnsToConfiguredSinkOnLazyMaterialization() {
-    VcfSample sample = new VcfSample(List.of("DP", "DP"), List.of("1", "2"));
+    VcfSample sample = STRICT_CONTEXT.newSample(List.of("DP", "DP"), List.of("1", "2"));
     java.io.StringWriter sink = new java.io.StringWriter();
     sample.setWarningsSink(new org.pharmgkb.parser.vcf.VcfWarnings(sink));
     assertEquals("1", sample.getPropertyKeys().contains("DP") ? sample.getProperty("DP") : null);
@@ -387,7 +390,7 @@ class VcfSampleTest {
 
   @Test
   void testDefaultWarningsSinkIsSharedLoggerWhenNeverConfigured() {
-    VcfSample sample = new VcfSample(List.of("DP"), new ArrayList<>(List.of("")));
+    VcfSample sample = STRICT_CONTEXT.newSample(List.of("DP"), new ArrayList<>(List.of("")));
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
     appender.start();
@@ -408,10 +411,10 @@ class VcfSampleTest {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0|1");
     map.put("PL", "1,2");
-    VcfSample sample = new VcfSample(map);
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
@@ -432,10 +435,10 @@ class VcfSampleTest {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0|1");
     map.put("PL", "1,2,3");
-    VcfSample sample = new VcfSample(map);
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
@@ -457,10 +460,10 @@ class VcfSampleTest {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0|1");
     map.put("GLE", gle);
-    VcfSample sample = new VcfSample(map);
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
@@ -483,10 +486,10 @@ class VcfSampleTest {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0|1");
     map.put("CNP", "0.1,0.2,0.3,0.2,0.2");
-    VcfSample sample = new VcfSample(map);
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
@@ -508,13 +511,14 @@ class VcfSampleTest {
   void testGetPropertyWithPositionAndMetadataSkipsCardinalityCheckWhenPloidyUnknown() {
     // a non-reserved Number=G field has no spec-stated ploidy default the way GL/PL/GP/PP do (see the dedicated
     // PL test below) -- GT absent -> ploidy can't be determined -> skip rather than guess
-    FormatMetadata xxFormat = new FormatMetadata("XX", "Custom Number=G field", "G", FormatType.Integer);
+    FormatMetadata xxFormat = new FormatMetadata(STRICT_CONTEXT, "XX", "Custom Number=G field", "G",
+        FormatType.Integer);
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("XX", "1,2");
-    VcfSample sample = new VcfSample(map);
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(xxFormat).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").addFormat(xxFormat).build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
@@ -538,10 +542,10 @@ class VcfSampleTest {
     // check entirely whenever GT was absent, for GL/PL/GP/PP same as any other Number=G field)
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("PL", "1,2");
-    VcfSample sample = new VcfSample(map);
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
@@ -562,10 +566,10 @@ class VcfSampleTest {
     // sample -- must not warn
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("PL", "1,2,3");
-    VcfSample sample = new VcfSample(map);
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
@@ -588,10 +592,10 @@ class VcfSampleTest {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0/1");
     map.put("FT", "STD_FILTER,extra");
-    VcfSample sample = new VcfSample(map);
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
@@ -610,10 +614,10 @@ class VcfSampleTest {
   void testGetPropertyWithPositionAndMetadataReturnsNullForAbsentValueOrNullArgs() {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0/1");
-    VcfSample sample = new VcfSample(map);
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
 
     assertNull(sample.getProperty(position, metadata, "PL")); // not present on this sample
     assertNull(sample.getProperty(null, metadata, "GT"));
@@ -627,11 +631,11 @@ class VcfSampleTest {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0/1");
     map.put("DS", "1.5");
-    VcfSample sample = new VcfSample(map);
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
-    FormatMetadata dsFormat = new FormatMetadata("DS", "Genotype dosage", "1", FormatType.Float);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(dsFormat).build();
+    FormatMetadata dsFormat = new FormatMetadata(STRICT_CONTEXT, "DS", "Genotype dosage", "1", FormatType.Float);
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").addFormat(dsFormat).build();
 
     assertEquals(VcfFloat.of(new java.math.BigDecimal("1.5")), sample.getProperty(position, metadata, "DS"));
   }
@@ -641,11 +645,11 @@ class VcfSampleTest {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0/1");
     map.put("DS", "1.5,2.5");
-    VcfSample sample = new VcfSample(map);
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
-    FormatMetadata dsFormat = new FormatMetadata("DS", "Genotype dosage", "1", FormatType.Float);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(dsFormat).build();
+    FormatMetadata dsFormat = new FormatMetadata(STRICT_CONTEXT, "DS", "Genotype dosage", "1", FormatType.Float);
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").addFormat(dsFormat).build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
@@ -666,12 +670,12 @@ class VcfSampleTest {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0/1");
     map.put("AL", "0.1,0.2");
-    VcfSample sample = new VcfSample(map);
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
     position.getAltBases().add("C");
-    FormatMetadata alFormat = new FormatMetadata("AL", "Alt allele field", "A", FormatType.Float);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(alFormat).build();
+    FormatMetadata alFormat = new FormatMetadata(STRICT_CONTEXT, "AL", "Alt allele field", "A", FormatType.Float);
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").addFormat(alFormat).build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
@@ -692,11 +696,11 @@ class VcfSampleTest {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0/1");
     map.put("DS", "my_string");
-    VcfSample sample = new VcfSample(map);
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
-    FormatMetadata dsFormat = new FormatMetadata("DS", "Genotype dosage", "1", FormatType.Float);
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(dsFormat).build();
+    FormatMetadata dsFormat = new FormatMetadata(STRICT_CONTEXT, "DS", "Genotype dosage", "1", FormatType.Float);
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").addFormat(dsFormat).build();
 
     assertThrows(VcfFormatException.class, () -> sample.getProperty(position, metadata, "DS"));
   }
@@ -708,10 +712,10 @@ class VcfSampleTest {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0|1");
     map.put("GL", ".");
-    VcfSample sample = new VcfSample(map);
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
@@ -737,14 +741,13 @@ class VcfSampleTest {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0/1");
     map.put("XX", "a,b,c");
-    VcfSample sample = new VcfSample(map);
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = LENIENT_CONTEXT.newSample(map);
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
-    FormatMetadata xxFormat = new FormatMetadata(InternalUtils.extractProperties(
-        new String[] {"ID=XX", "Type=String", "Description=\"no Number\""}, VcfWarnings.DEFAULT),
-        VcfWarnings.DEFAULT);
+    FormatMetadata xxFormat = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+        new String[] {"ID=XX", "Type=String", "Description=\"no Number\""}, VcfWarnings.DEFAULT));
     assertNull(xxFormat.getNumber());
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(xxFormat).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addFormat(xxFormat).build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
@@ -769,14 +772,13 @@ class VcfSampleTest {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0/1");
     map.put("XX", "1,2,3");
-    VcfSample sample = new VcfSample(map);
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = LENIENT_CONTEXT.newSample(map);
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
-    FormatMetadata xxFormat = new FormatMetadata(InternalUtils.extractProperties(
-        new String[] {"ID=XX", "Type=Integer", "Description=\"no Number\""}, VcfWarnings.DEFAULT),
-        VcfWarnings.DEFAULT);
+    FormatMetadata xxFormat = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+        new String[] {"ID=XX", "Type=Integer", "Description=\"no Number\""}, VcfWarnings.DEFAULT));
     assertNull(xxFormat.getNumber());
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(xxFormat).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addFormat(xxFormat).build();
 
     assertEquals(List.of(1L, 2L, 3L), sample.getProperty(position, metadata, "XX"));
   }
@@ -788,14 +790,13 @@ class VcfSampleTest {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0/1");
     map.put("XX", "5");
-    VcfSample sample = new VcfSample(map);
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = LENIENT_CONTEXT.newSample(map);
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
-    FormatMetadata xxFormat = new FormatMetadata(InternalUtils.extractProperties(
-        new String[] {"ID=XX", "Type=Integer", "Description=\"no Number\""}, VcfWarnings.DEFAULT),
-        VcfWarnings.DEFAULT);
+    FormatMetadata xxFormat = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+        new String[] {"ID=XX", "Type=Integer", "Description=\"no Number\""}, VcfWarnings.DEFAULT));
     assertNull(xxFormat.getNumber());
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(xxFormat).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addFormat(xxFormat).build();
 
     assertEquals(List.of(5L), sample.getProperty(position, metadata, "XX"));
   }
@@ -809,14 +810,13 @@ class VcfSampleTest {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0/1");
     map.put("XX", "1.0,abc");
-    VcfSample sample = new VcfSample(map);
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = LENIENT_CONTEXT.newSample(map);
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
-    FormatMetadata xxFormat = new FormatMetadata(InternalUtils.extractProperties(
-        new String[] {"ID=XX", "Type=Float", "Description=\"no Number\""}, VcfWarnings.DEFAULT),
-        VcfWarnings.DEFAULT);
+    FormatMetadata xxFormat = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+        new String[] {"ID=XX", "Type=Float", "Description=\"no Number\""}, VcfWarnings.DEFAULT));
     assertNull(xxFormat.getNumber());
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").addFormat(xxFormat).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addFormat(xxFormat).build();
 
     assertThrows(VcfFormatException.class, () -> sample.getProperty(position, metadata, "XX"));
   }
@@ -826,10 +826,10 @@ class VcfSampleTest {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0/1");
     map.put("DS", "1.5");
-    VcfSample sample = new VcfSample(map);
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
-    VcfMetadata metadata = new VcfMetadata.Builder().setFileFormat("VCFv4.2").build(); // no ##FORMAT=<ID=DS,...>
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build(); // no ##FORMAT=<ID=DS,...>
 
     assertNull(sample.getProperty(position, metadata, "DS"));
   }
@@ -920,19 +920,19 @@ class VcfSampleTest {
 
   @Test
   void testGetGenotypeReturnsNullForAbsentOrEmptyGt() {
-    VcfSample noGt = new VcfSample(List.of("DP"), List.of("10"));
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample noGt = STRICT_CONTEXT.newSample(List.of("DP"), List.of("10"));
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
     assertNull(noGt.getGenotype(position));
 
-    VcfSample emptyGt = new VcfSample(List.of("GT"), new ArrayList<>(List.of("")));
+    VcfSample emptyGt = STRICT_CONTEXT.newSample(List.of("GT"), new ArrayList<>(List.of("")));
     assertNull(emptyGt.getGenotype(position));
   }
 
   @Test
   void testGetGenotypeReturnsNullForFullyMissingCall() {
-    VcfSample sample = new VcfSample(List.of("GT"), List.of("./."));
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = STRICT_CONTEXT.newSample(List.of("GT"), List.of("./."));
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
     assertNull(sample.getGenotype(position));
   }
@@ -940,8 +940,8 @@ class VcfSampleTest {
   @Test
   void testGetGenotypeResolvesAllelesAndPreservesMixedPhasing() {
     // "0|1/2" -- boundary 0-1 is phased, boundary 1-2 is unphased
-    VcfSample sample = new VcfSample(List.of("GT"), List.of("0|1/2"));
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = STRICT_CONTEXT.newSample(List.of("GT"), List.of("0|1/2"));
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
     position.getAltBases().add("C");
     VcfSample.Genotype genotype = sample.getGenotype(position);
@@ -954,16 +954,16 @@ class VcfSampleTest {
   @Test
   void testGetGenotypeThrowsForOutOfRangeAlleleIndex() {
     // ALT has one allele (T), so valid indices are 0 (REF) and 1; index 5 is out of range
-    VcfSample sample = new VcfSample(List.of("GT"), List.of("5/0"));
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = STRICT_CONTEXT.newSample(List.of("GT"), List.of("5/0"));
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
     assertThrows(VcfFormatException.class, () -> sample.getGenotype(position));
   }
 
   @Test
   void testGetGenotypeThrowsForNonNumericAlleleIndex() {
-    VcfSample sample = new VcfSample(List.of("GT"), List.of("X/0"));
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfSample sample = STRICT_CONTEXT.newSample(List.of("GT"), List.of("X/0"));
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
     assertThrows(VcfFormatException.class, () -> sample.getGenotype(position));
   }
@@ -971,10 +971,10 @@ class VcfSampleTest {
   @Test
   void testGetGenotypeEmptyAlleleWarnsToConfiguredSink() {
     // a trailing '/' (e.g. "0/") is a zero-length allele where '.' should have been used
-    VcfSample sample = new VcfSample(List.of("GT"), new ArrayList<>(List.of("0/")));
+    VcfSample sample = STRICT_CONTEXT.newSample(List.of("GT"), new ArrayList<>(List.of("0/")));
     java.io.StringWriter sink = new java.io.StringWriter();
     sample.setWarningsSink(new VcfWarnings(sink));
-    VcfPosition position = new VcfPosition("chr1", 1, "A", null, -1);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
     VcfSample.Genotype genotype = sample.getGenotype(position);
     assertNotNull(genotype);
@@ -989,7 +989,7 @@ class VcfSampleTest {
     // matches getProperty(VcfPosition, VcfMetadata, String)'s and VcfPosition.getInfo(ReservedInfoProperty)'s
     // null-tolerant contract -- must use a real (non-empty, non-missing) GT so this actually exercises the
     // position-dependent allele-resolution code path, not the earlier absent/missing-GT short-circuit
-    VcfSample sample = new VcfSample(List.of("GT"), List.of("0/1"));
+    VcfSample sample = STRICT_CONTEXT.newSample(List.of("GT"), List.of("0/1"));
     assertNull(sample.getGenotype(null));
   }
 }

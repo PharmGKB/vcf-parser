@@ -11,7 +11,6 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.LinkedListMultimap;
 import com.google.common.collect.ListMultimap;
-import com.google.errorprone.annotations.RestrictedApi;
 import org.jspecify.annotations.Nullable;
 
 
@@ -54,42 +53,36 @@ public class VcfPosition {
   // VcfFormatException this instance's own validation throws, guarded so a lineNumber of -1 (not produced by
   // parsing) leaves exception behavior unchanged.
   private int m_lineNumber = -1;
-  private VcfWarnings m_warnings = VcfWarnings.DEFAULT;
+  private final VcfContext m_context;
+  private VcfWarnings m_warnings;
 
 
   /**
-   * Takes ownership of {@code ids}, {@code altBases}, {@code filter}, {@code format}, and {@code info}: this
-   * constructor does not defensively copy any of them when no normalization is needed, to avoid an unnecessary
-   * allocation on this library's hot parse path (mirroring {@link VcfSample}'s own no-copy ownership contract).
+   * The single construction path for a fully-specified position. Package-private: every caller goes through
+   * {@link VcfContext#newPosition(String, long, List, String, List, BigDecimal, List, ListMultimap, List, int)}
+   * (or, for {@code VcfParser}'s own per-record construction, {@code VcfContext.newPositionTakingOwnership}, or
+   * for its FORMAT cache specifically, {@code VcfContext.newPositionWithTrustedFormat}), which is what supplies
+   * the {@code context} this instance derives both its warnings sink and its strict-vs-lenient behavior from.
+   * <p>
+   * <b>This constructor takes ownership of {@code ids}, {@code altBases}, {@code filter}, {@code format}, and
+   * {@code info}</b> -- it does not defensively copy them. {@link VcfContext#newPosition} is where the copy for
+   * an externally-supplied list happens; {@code newPositionTakingOwnership} and {@code newPositionWithTrustedFormat}
+   * are the two factories that skip it.
    * {@link #getIds()}, {@link #getAltBases()}, {@link #getFilters()}, {@link #getFormat()}, and
-   * {@link #getInfo()} return these same objects (or an equivalent list/multimap produced by normalization); the
-   * returned list/multimap may be immutable if one was passed to this constructor and did not need normalizing --
-   * pass a mutable {@code List}/{@code ListMultimap} (not e.g. {@code List.of(...)}) if you intend to mutate a
-   * position's IDs, ALT bases, filters, format, or INFO after construction.
-   * <p>This is the strict constructor: it throws {@link VcfFormatException} for every recoverable condition the
-   * lenient {@code VcfWarnings}-taking overload below instead warns about and recovers from (an empty ID/FILTER/
-   * ALT/FORMAT entry, an INFO value containing {@code '='}, PASS combined with other filters).
+   * {@link #getInfo()} return these same objects (or an equivalent list/multimap produced by normalization).
+   * <p>
+   * Strictness comes from {@code context}, never from which overload was called: under
+   * {@link VcfContext#strict}, every recoverable condition ({@code checkWarnings == null} below) throws
+   * {@link VcfFormatException}; under {@link VcfContext#lenient} the identical condition warns and recovers.
    *
    * @param lineNumber the originating line number in the source VCF file, or {@code -1} if this position was not
    * produced by parsing a real file (e.g. constructed directly by a caller or test)
+   * @param trustedFormat when {@code true}, skips {@link #checkFormat} entirely (every check it performs,
+   * including the null-element check and any warning it would emit), relying on the caller to guarantee
+   * {@code format} is a fresh, independently-owned copy whose elements already passed {@code checkFormat} once,
+   * unchanged. Every other check still runs. See {@code VcfContext.newPositionWithTrustedFormat}.
    */
-  public VcfPosition(String chr, long pos,
-      @Nullable List<String> ids,
-      String ref,
-      @Nullable List<String> altBases,
-      @Nullable BigDecimal qual,
-      @Nullable List<String> filter,
-      @Nullable ListMultimap<String, String> info,
-      @Nullable List<String> format,
-      int lineNumber) {
-    this(chr, pos, ids, ref, altBases, qual, filter, info, format, lineNumber, VcfWarnings.DEFAULT, true, false);
-  }
-
-  /**
-   * Lenient counterpart to the strict constructor above: every check that constructor throws for instead warns
-   * to {@code warnings}. This is the constructor {@code VcfParser} uses.
-   */
-  public VcfPosition(String chr, long pos,
+  VcfPosition(VcfContext context, String chr, long pos,
       @Nullable List<String> ids,
       String ref,
       @Nullable List<String> altBases,
@@ -98,67 +91,19 @@ public class VcfPosition {
       @Nullable ListMultimap<String, String> info,
       @Nullable List<String> format,
       int lineNumber,
-      VcfWarnings warnings) {
-    this(chr, pos, ids, ref, altBases, qual, filter, info, format, lineNumber,
-        Preconditions.checkNotNull(warnings, "warnings must not be null"), false, false);
-  }
-
-  /**
-   * Creates a {@code VcfPosition} for a {@code trustedFormat} list that {@code VcfParser}'s own per-record
-   * FORMAT-validation cache has already validated for this exact FORMAT column text on an earlier record in
-   * the same parse -- skips {@link #checkFormat} entirely (every check it performs, including the null-element
-   * check and any warning it would emit), relying on the caller to guarantee {@code trustedFormat} is a fresh,
-   * independently-owned copy whose elements already passed {@code checkFormat} once, unchanged. Every other
-   * check this class performs still runs, in the same lenient (warn-to-{@code warnings}) mode the 11-argument
-   * constructor uses -- this factory always passes {@code strict = false} internally, matching its one call
-   * site. Real VCFs often repeat the same FORMAT string across large blocks of consecutive records;
-   * re-validating (and, for a FORMAT that warns, re-warning) on every single one of those records is redundant
-   * work once the first has already been checked.
-   * <p>
-   * Restricted to {@code VcfParser}'s own FORMAT cache: nothing enforces the "already validated, unchanged"
-   * invariant at compile time, so this must never be called with a format list that hasn't already passed
-   * {@code checkFormat}, or with a list an external caller might still hold a mutable reference to (a caller
-   * mutating a returned {@link #getFormat()} list -- itself a documented, supported operation -- must never be
-   * able to corrupt a later record's cache hit; the caller here is responsible for copying, not this method).
-   * @hidden
-   */
-  @RestrictedApi(explanation = "Internal fast path for VcfParser's own "
-      + "per-record FORMAT-validation cache only. Skips FORMAT validation entirely (including its null-element "
-      + "check and any warning it would otherwise emit) for a caller-guaranteed already-validated, "
-      + "independently-owned list; never call with an unvalidated list or one an external caller might still "
-      + "mutate. Not part of this library's supported public API and may change or be removed without notice.")
-  public static VcfPosition newWithTrustedFormat(String chr, long pos,
-      @Nullable List<String> ids,
-      String ref,
-      @Nullable List<String> altBases,
-      @Nullable BigDecimal qual,
-      @Nullable List<String> filter,
-      @Nullable ListMultimap<String, String> info,
-      List<String> trustedFormat,
-      int lineNumber,
-      VcfWarnings warnings) {
-    return new VcfPosition(chr, pos, ids, ref, altBases, qual, filter, info, trustedFormat, lineNumber,
-        Preconditions.checkNotNull(warnings, "warnings must not be null"), false, true);
-  }
-
-  private VcfPosition(String chr, long pos,
-      @Nullable List<String> ids,
-      String ref,
-      @Nullable List<String> altBases,
-      @Nullable BigDecimal qual,
-      @Nullable List<String> filter,
-      @Nullable ListMultimap<String, String> info,
-      @Nullable List<String> format,
-      int lineNumber,
-      VcfWarnings warnings,
-      boolean strict,
       boolean trustedFormat) {
 
+    m_context = Preconditions.checkNotNull(context, "context must not be null");
+    m_warnings = context.getWarnings();
+
     /*
-      1. Check the arguments, in order. `checkWarnings` is null for the strict constructor -- every check method
-      below throws instead of warning when it receives null; see each one's own updated signature.
+      1. Check the arguments, in order. `checkWarnings` is null under a strict context -- every check method
+      below throws instead of warning when it receives null; see each one's own signature. That null-means-strict
+      encoding is now purely an internal convention between this class and its own (and InternalUtils's) private
+      check helpers: the strict-vs-lenient DECISION comes from the context, never from which constructor or
+      factory the caller reached.
      */
-    VcfWarnings checkWarnings = strict ? null : warnings;
+    VcfWarnings checkWarnings = context.isLenient() ? context.getWarnings() : null;
 
     checkChromosome(chr);
     checkPosition(pos);
@@ -187,7 +132,6 @@ public class VcfPosition {
     m_chromosome = chr; // required
     m_position = pos; // required
     m_lineNumber = lineNumber; // required (-1 if not produced by parsing a real line)
-    m_warnings = warnings;
 
     if (ids != null) {
       m_ids = ids;
@@ -221,10 +165,18 @@ public class VcfPosition {
   }
 
   /**
+   * Convenience shape for a position with no ID/ALT/FILTER/INFO/FORMAT content. Package-private for the same
+   * reason as the primary constructor above; reached via
+   * {@link VcfContext#newPosition(String, long, String, BigDecimal, int)}. There is nothing mutable to take
+   * ownership of here, so that factory has no defensive copy to make.
+   *
    * @param lineNumber the originating line number in the source VCF file, or {@code -1} if this position was not
    * produced by parsing a real file (e.g. constructed directly by a caller or test)
    */
-  public VcfPosition(String chromosome, long position, String refBases, BigDecimal quality, int lineNumber) {
+  VcfPosition(VcfContext context, String chromosome, long position, String refBases, @Nullable BigDecimal quality,
+      int lineNumber) {
+    m_context = Preconditions.checkNotNull(context, "context must not be null");
+    m_warnings = context.getWarnings();
     checkChromosome(chromosome);
     checkPosition(position);
     checkRef(refBases);
@@ -233,6 +185,16 @@ public class VcfPosition {
     m_refBases = refBases;
     m_quality = quality;
     m_lineNumber = lineNumber; // required (-1 if not produced by parsing a real line)
+  }
+
+  /**
+   * @return the context this position was created under; never {@code null}.
+   * <p>
+   * Package-private in Plan A on purpose: it would transitively expose {@link VcfContext#getVersion()}, whose
+   * value is not meaningful until version-gated behavior exists. Promoted alongside that accessor.
+   */
+  VcfContext getContext() {
+    return m_context;
   }
 
   private static void checkChromosome(String chr) {
@@ -646,9 +608,9 @@ public class VcfPosition {
    * The constructors validate their arguments, but {@link #setChromosome}, {@link #setRef}, {@link #setPosition}, and
    * mutations made through {@link #getIds}, {@link #getAltBases}, {@link #getFilters}, {@link #getFormat}, and
    * {@link #getInfo()} do <em>not</em> validate their input, to support transformation pipelines that mutate a
-   * position in place. Each of those accessors may return an immutable list/multimap if one was passed to the
-   * primary constructor and did not need normalizing -- see its Javadoc. Call this method after such mutations
-   * if you need to confirm the position is still valid.
+   * position in place. Each of those accessors returns a mutable list/multimap regardless of what was handed to
+   * {@link VcfContext#newPosition}, which defensively copies every one of them. Call this method after such
+   * mutations if you need to confirm the position is still valid.
    * <p>
    * {@link #getFilterStatus()} is always derived directly from {@link #getFilters()}'s current contents (see its
    * Javadoc), so emptying the FILTER list by any means -- including {@code clear()} -- always produces

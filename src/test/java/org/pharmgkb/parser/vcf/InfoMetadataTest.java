@@ -3,6 +3,9 @@ package org.pharmgkb.parser.vcf;
 import java.io.StringWriter;
 import org.junit.jupiter.api.Test;
 
+import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
+import static org.pharmgkb.parser.vcf.TestUtils.LENIENT_CONTEXT;
+import static org.pharmgkb.parser.vcf.TestUtils.lenientContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -22,7 +25,7 @@ public class InfoMetadataTest {
     props[2] = "Type=String";
     String desc = "Ancestral Allele, test";
     props[3] = "Description=\"" + desc + "\"";
-    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(props, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+    InfoMetadata md = new InfoMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(props, VcfWarnings.DEFAULT));
     assertEquals(InfoType.String, md.getType());
     assertEquals(desc, md.getDescription());
 
@@ -31,7 +34,7 @@ public class InfoMetadataTest {
     };
     for (String n : nums) {
       props[1] = "Number=" + n;
-      md = new InfoMetadata(InternalUtils.extractProperties(props, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+      md = new InfoMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(props, VcfWarnings.DEFAULT));
       assertEquals(n, md.getNumber());
     }
 
@@ -40,7 +43,7 @@ public class InfoMetadataTest {
     };
     for (String n : nums) {
       props[1] = "Number=" + n;
-      new InfoMetadata(InternalUtils.extractProperties(props, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+      new InfoMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(props, VcfWarnings.DEFAULT));
     }
   }
 
@@ -48,14 +51,14 @@ public class InfoMetadataTest {
   public void testTypedConstructorRejectsNullTypeInsteadOfThrowingNpe() {
     // type is typed non-@Nullable, but nothing enforces that at compile time; must reject a null with
     // VcfFormatException, not let it reach a raw NullPointerException at type.name()
-    assertThrows(VcfFormatException.class, () -> new InfoMetadata("AA", "d", null, "1", null, null));
+    assertThrows(VcfFormatException.class, () -> new InfoMetadata(STRICT_CONTEXT, "AA", "d", null, "1", null, null));
   }
 
   @Test
   public void testFlagWithNonZeroNumberWarns() {
     // Type=Flag with Number != 0 is malformed; it should warn, not throw
-    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
-        new String[]{"ID=X", "Number=1", "Type=Flag", "Description=\"d\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+    InfoMetadata md = new InfoMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+        new String[]{"ID=X", "Number=1", "Type=Flag", "Description=\"d\""}, VcfWarnings.DEFAULT));
     assertEquals("1", md.getNumber());
     assertEquals(InfoType.Flag, md.getType());
   }
@@ -68,8 +71,8 @@ public class InfoMetadataTest {
     // should fire
     StringWriter sink = new StringWriter();
     VcfWarnings warnings = new VcfWarnings(sink);
-    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
-        new String[]{"ID=X", "Type=Flag", "Description=\"d\""}, warnings), warnings);
+    InfoMetadata md = new InfoMetadata(lenientContext(warnings), InternalUtils.extractProperties(
+        new String[]{"ID=X", "Type=Flag", "Description=\"d\""}, warnings));
     assertEquals(InfoType.Flag, md.getType());
     assertTrue(sink.toString().contains("required metadata property \"Number\" is missing"));
     assertFalse(sink.toString().contains("'null'"));
@@ -78,24 +81,24 @@ public class InfoMetadataTest {
   @Test
   public void testUnquotedDescriptionWarns() {
     // an unquoted Description is malformed; it should warn, not throw
-    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
-        new String[]{"ID=X", "Number=1", "Type=String", "Description=unquoted"}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+    InfoMetadata md = new InfoMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+        new String[]{"ID=X", "Number=1", "Type=String", "Description=unquoted"}, VcfWarnings.DEFAULT));
     assertEquals("X", md.getId());
   }
 
   @Test
   public void testInvalidTypeWarns() {
     // an invalid Type should warn (not throw); the type is left null
-    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
-        new String[]{"ID=X", "Number=1", "Type=NotAType", "Description=\"d\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+    InfoMetadata md = new InfoMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+        new String[]{"ID=X", "Number=1", "Type=NotAType", "Description=\"d\""}, VcfWarnings.DEFAULT));
     assertNull(md.getType());
   }
 
   @Test
   public void testMissingTypeWarns() {
     // a missing Type should warn (not throw); the type is left null
-    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
-        new String[]{"ID=X", "Number=1", "Description=\"d\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+    InfoMetadata md = new InfoMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+        new String[]{"ID=X", "Number=1", "Description=\"d\""}, VcfWarnings.DEFAULT));
     assertNull(md.getType());
   }
 
@@ -104,14 +107,14 @@ public class InfoMetadataTest {
     // a Description containing a newline must be rejected here, not deferred to a generic RuntimeException at write
     // time (see VcfWriter.printLine's single-line check)
     assertThrows(VcfFormatException.class, () ->
-        new InfoMetadata("ID", "bad\ndescription", InfoType.String, "1", null, null));
+        new InfoMetadata(STRICT_CONTEXT, "ID", "bad\ndescription", InfoType.String, "1", null, null));
     assertThrows(VcfFormatException.class, () ->
-        new InfoMetadata("ID", "bad\rdescription", InfoType.String, "1", null, null));
+        new InfoMetadata(STRICT_CONTEXT, "ID", "bad\rdescription", InfoType.String, "1", null, null));
   }
 
   @Test
   public void testValidateRefreshesTypeAfterRawMutation() {
-    InfoMetadata md = new InfoMetadata("X", "d", InfoType.Integer, "1", null, null);
+    InfoMetadata md = new InfoMetadata(STRICT_CONTEXT, "X", "d", InfoType.Integer, "1", null, null);
     md.getPropertiesRaw().put("Type", "String");
     md.validate();
     assertEquals(InfoType.String, md.getType());
@@ -121,8 +124,8 @@ public class InfoMetadataTest {
   public void testExtraPropertyRetained() {
     // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included
     // after the default fields" -- an unrecognized property is compliant, not just tolerated, and must be preserved
-    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
-        new String[]{"ID=X", "Number=1", "Type=String", "Description=\"d\"", "Custom=extra"}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+    InfoMetadata md = new InfoMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+        new String[]{"ID=X", "Number=1", "Type=String", "Description=\"d\"", "Custom=extra"}, VcfWarnings.DEFAULT));
     assertEquals("extra", md.getPropertyRaw("Custom"));
   }
 
@@ -131,8 +134,8 @@ public class InfoMetadataTest {
     // AC's reserved Number is "A" (VCFv4.3's Reserved INFO Keys table); declaring it "1" is a mismatch
     StringWriter sink = new StringWriter();
     VcfWarnings warnings = new VcfWarnings(sink);
-    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
-        new String[]{"ID=AC", "Number=1", "Type=Integer", "Description=\"d\""}, warnings), warnings);
+    InfoMetadata md = new InfoMetadata(lenientContext(warnings), InternalUtils.extractProperties(
+        new String[]{"ID=AC", "Number=1", "Type=Integer", "Description=\"d\""}, warnings));
     // warn-and-preserve, not reject-and-rewrite: the declared (non-compliant) value is unchanged
     assertEquals("1", md.getNumber());
     assertTrue(sink.toString().contains("reserved definition expects"));
@@ -143,8 +146,8 @@ public class InfoMetadataTest {
     // AC's reserved Type is Integer; declaring it String is a mismatch
     StringWriter sink = new StringWriter();
     VcfWarnings warnings = new VcfWarnings(sink);
-    new InfoMetadata(InternalUtils.extractProperties(
-        new String[]{"ID=AC", "Number=A", "Type=String", "Description=\"d\""}, warnings), warnings);
+    new InfoMetadata(lenientContext(warnings), InternalUtils.extractProperties(
+        new String[]{"ID=AC", "Number=A", "Type=String", "Description=\"d\""}, warnings));
     assertTrue(sink.toString().contains("reserved definition expects"));
   }
 
@@ -153,8 +156,8 @@ public class InfoMetadataTest {
     // AC declared exactly as the reserved definition expects (Number=A, Type=Integer) must not warn
     StringWriter sink = new StringWriter();
     VcfWarnings warnings = new VcfWarnings(sink);
-    new InfoMetadata(InternalUtils.extractProperties(
-        new String[]{"ID=AC", "Number=A", "Type=Integer", "Description=\"d\""}, warnings), warnings);
+    new InfoMetadata(lenientContext(warnings), InternalUtils.extractProperties(
+        new String[]{"ID=AC", "Number=A", "Type=Integer", "Description=\"d\""}, warnings));
     // VcfWarnings.warn writes only the formatted message text (plus a newline) to its sink -- no level name --
     // so an empty sink is the only sound "nothing warned" assertion
     assertEquals("", sink.toString());
@@ -166,8 +169,8 @@ public class InfoMetadataTest {
     // clarification needed" sourcing path, not just the "standard" 4.3-table path
     StringWriter sink = new StringWriter();
     VcfWarnings warnings = new VcfWarnings(sink);
-    new InfoMetadata(InternalUtils.extractProperties(
-        new String[]{"ID=END", "Number=1", "Type=Integer", "Description=\"d\""}, warnings), warnings);
+    new InfoMetadata(lenientContext(warnings), InternalUtils.extractProperties(
+        new String[]{"ID=END", "Number=1", "Type=Integer", "Description=\"d\""}, warnings));
     assertEquals("", sink.toString());
   }
 
@@ -177,8 +180,8 @@ public class InfoMetadataTest {
     // fields, so this must not warn regardless of what Number/Type it declares
     StringWriter sink = new StringWriter();
     VcfWarnings warnings = new VcfWarnings(sink);
-    new InfoMetadata(InternalUtils.extractProperties(
-        new String[]{"ID=MYCUSTOM", "Number=3", "Type=String", "Description=\"d\""}, warnings), warnings);
+    new InfoMetadata(lenientContext(warnings), InternalUtils.extractProperties(
+        new String[]{"ID=MYCUSTOM", "Number=3", "Type=String", "Description=\"d\""}, warnings));
     assertEquals("", sink.toString());
   }
 
@@ -187,7 +190,7 @@ public class InfoMetadataTest {
     // combined with an extra raw property, validate() must still correctly re-derive Type/Number and not treat
     // the typed constructor's own Number/Type/Source/Version properties as unexpected extras (see
     // testValidateRefreshesTypeAfterRawMutation for the general validate() re-derivation this exercises)
-    InfoMetadata md = new InfoMetadata("X", "d", InfoType.Integer, "1", "src", "1.0");
+    InfoMetadata md = new InfoMetadata(STRICT_CONTEXT, "X", "d", InfoType.Integer, "1", "src", "1.0");
     md.getPropertiesRaw().put("Custom", "extra");
     md.validate();
     assertEquals(InfoType.Integer, md.getType());
@@ -200,8 +203,8 @@ public class InfoMetadataTest {
     // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_info_003.vcf's ##CauseOfFailure=Incorrect order of INFO fields
     StringWriter sink = new StringWriter();
     VcfWarnings warnings = new VcfWarnings(sink);
-    new InfoMetadata(InternalUtils.extractProperties(
-        new String[]{"Number=1", "Type=Integer", "Description=\"Raw read depth\"", "ID=DP"}, warnings), warnings);
+    new InfoMetadata(lenientContext(warnings), InternalUtils.extractProperties(
+        new String[]{"Number=1", "Type=Integer", "Description=\"Raw read depth\"", "ID=DP"}, warnings));
     assertTrue(sink.toString().contains("order") || sink.toString().contains("ORDER"));
   }
 
@@ -221,7 +224,7 @@ public class InfoMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      InfoMetadata info = new InfoMetadata("DP", "Raw read depth", InfoType.Integer, "1", "src", "1.0");
+      InfoMetadata info = new InfoMetadata(STRICT_CONTEXT, "DP", "Raw read depth", InfoType.Integer, "1", "src", "1.0");
       info.checkAttributeOrder();
       assertFalse(appender.hasWarnOrHigher());
     } finally {
@@ -233,7 +236,7 @@ public class InfoMetadataTest {
   @Test
   public void testTypedConstructorRejectsInvalidNumber() {
     VcfFormatException ex = assertThrows(VcfFormatException.class,
-        () -> new InfoMetadata("AN", "desc", InfoType.Integer, "not-a-number", null, null));
+        () -> new InfoMetadata(STRICT_CONTEXT, "AN", "desc", InfoType.Integer, "not-a-number", null, null));
     assertTrue(ex.getMessage().contains("Number is not a valid VCF number"));
   }
 
@@ -244,7 +247,7 @@ public class InfoMetadataTest {
     // null value" message instead of this class's own, more specific one -- the specific check was dead
     // code for the null case.
     VcfFormatException ex = assertThrows(VcfFormatException.class,
-        () -> new InfoMetadata("AN", "desc", InfoType.Integer, null, null, null));
+        () -> new InfoMetadata(STRICT_CONTEXT, "AN", "desc", InfoType.Integer, null, null, null));
     assertTrue(ex.getMessage().contains("INFO Number is not a valid VCF number: 'null'"));
   }
 
@@ -255,14 +258,14 @@ public class InfoMetadataTest {
     // Previously the Type-null check fired first (it ran before the malformed-Number check, which used to
     // sit after Type/Description handling), so this exact input used to throw "INFO type is null" instead.
     VcfFormatException ex = assertThrows(VcfFormatException.class,
-        () -> new InfoMetadata("AN", "desc", null, "not-a-number", null, null));
+        () -> new InfoMetadata(STRICT_CONTEXT, "AN", "desc", null, "not-a-number", null, null));
     assertTrue(ex.getMessage().contains("Number is not a valid VCF number"));
   }
 
   @Test
   public void testTypedConstructorRejectsFlagWithNonZeroNumber() {
     VcfFormatException ex = assertThrows(VcfFormatException.class,
-        () -> new InfoMetadata("DB", "desc", InfoType.Flag, "1", null, null));
+        () -> new InfoMetadata(STRICT_CONTEXT, "DB", "desc", InfoType.Flag, "1", null, null));
     assertTrue(ex.getMessage().contains("has Type=Flag but Number is '1'"));
   }
 
@@ -270,7 +273,7 @@ public class InfoMetadataTest {
   public void testTypedConstructorRejectsReservedNumberMismatch() {
     // AC is reserved with expected Number "A" (VCFv4.2.tex reserved INFO table)
     VcfFormatException ex = assertThrows(VcfFormatException.class,
-        () -> new InfoMetadata("AC", "desc", InfoType.Integer, "1", null, null));
+        () -> new InfoMetadata(STRICT_CONTEXT, "AC", "desc", InfoType.Integer, "1", null, null));
     assertTrue(ex.getMessage().contains("reserved definition expects"));
   }
 
@@ -279,7 +282,7 @@ public class InfoMetadataTest {
     // AD is now reserved with expected Number "R" (VCFv4.3.tex's Reserved INFO Keys table); "Number=." is the
     // form many real-world pipelines emit for AD, and previously constructed fine since AD wasn't reserved at all
     VcfFormatException ex = assertThrows(VcfFormatException.class,
-        () -> new InfoMetadata("AD", "desc", InfoType.Integer, ".", null, null));
+        () -> new InfoMetadata(STRICT_CONTEXT, "AD", "desc", InfoType.Integer, ".", null, null));
     assertTrue(ex.getMessage().contains("reserved definition expects"));
   }
 
@@ -289,24 +292,24 @@ public class InfoMetadataTest {
     // not reject
     StringWriter sink = new StringWriter();
     VcfWarnings warnings = new VcfWarnings(sink);
-    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
-        new String[]{"ID=AD", "Number=.", "Type=Integer", "Description=\"d\""}, warnings), warnings);
+    InfoMetadata md = new InfoMetadata(lenientContext(warnings), InternalUtils.extractProperties(
+        new String[]{"ID=AD", "Number=.", "Type=Integer", "Description=\"d\""}, warnings));
     assertEquals(".", md.getNumber());
     assertTrue(sink.toString().contains("reserved definition expects"));
   }
 
   @Test
   public void testTypedConstructorAcceptsValidInfo() {
-    InfoMetadata md = new InfoMetadata("AF", "allele freq", InfoType.Float, "A", null, null);
+    InfoMetadata md = new InfoMetadata(STRICT_CONTEXT, "AF", "allele freq", InfoType.Float, "A", null, null);
     assertEquals(InfoType.Float, md.getType());
     assertEquals("A", md.getNumber());
   }
 
   @Test
-  public void testMapConstructorRequiresWarningsInstance() {
+  public void testMapConstructorRequiresContextInstance() {
     java.util.Map<String, String> props = InternalUtils.extractProperties(
         new String[] {"ID=X", "Number=bad", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT);
-    assertThrows(NullPointerException.class, () -> new InfoMetadata(props, null));
+    assertThrows(NullPointerException.class, () -> new InfoMetadata(null, props));
   }
 
   @Test
@@ -314,16 +317,19 @@ public class InfoMetadataTest {
     java.util.Map<String, String> props = InternalUtils.extractProperties(
         new String[] {"ID=X", "Number=bad", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT);
     StringWriter sink = new StringWriter();
-    InfoMetadata md = new InfoMetadata(props, new VcfWarnings(sink));
+    InfoMetadata md = new InfoMetadata(lenientContext(new VcfWarnings(sink)), props);
     assertEquals("bad", md.getNumber());
     assertTrue(sink.toString().contains("Number is not a valid VCF number"));
   }
 
   @Test
   public void testTypedConstructorRejectsNullOrBlankId() {
-    assertThrows(VcfFormatException.class, () -> new InfoMetadata(null, "d", InfoType.String, "1", null, null));
-    assertThrows(VcfFormatException.class, () -> new InfoMetadata("", "d", InfoType.String, "1", null, null));
-    assertThrows(VcfFormatException.class, () -> new InfoMetadata("   ", "d", InfoType.String, "1", null, null));
+    assertThrows(VcfFormatException.class,
+        () -> new InfoMetadata(STRICT_CONTEXT, null, "d", InfoType.String, "1", null, null));
+    assertThrows(VcfFormatException.class,
+        () -> new InfoMetadata(STRICT_CONTEXT, "", "d", InfoType.String, "1", null, null));
+    assertThrows(VcfFormatException.class,
+        () -> new InfoMetadata(STRICT_CONTEXT, "   ", "d", InfoType.String, "1", null, null));
   }
 
   @Test
@@ -334,8 +340,8 @@ public class InfoMetadataTest {
     // the same shared VcfWarnings logger
     StringWriter sink = new StringWriter();
     VcfWarnings warnings = new VcfWarnings(sink);
-    new InfoMetadata(InternalUtils.extractProperties(
-        new String[]{"ID=AA", "Number=1", "Type=String", "Description=unquoted"}, warnings), warnings);
+    new InfoMetadata(lenientContext(warnings), InternalUtils.extractProperties(
+        new String[]{"ID=AA", "Number=1", "Type=String", "Description=unquoted"}, warnings));
     assertTrue(sink.toString().contains("INFO"));
   }
 
@@ -345,15 +351,15 @@ public class InfoMetadataTest {
     // warns "Invalid tag name" for this exact case
     StringWriter sink = new StringWriter();
     VcfWarnings warnings = new VcfWarnings(sink);
-    new InfoMetadata(InternalUtils.extractProperties(
-        new String[]{"ID=A B", "Number=1", "Type=String", "Description=\"d\""}, warnings), warnings);
+    new InfoMetadata(lenientContext(warnings), InternalUtils.extractProperties(
+        new String[]{"ID=A B", "Number=1", "Type=String", "Description=\"d\""}, warnings));
     assertTrue(sink.toString().contains("must not contain whitespace"));
   }
 
   @Test
   public void testGetReservedNumberReturnsReservedCode() {
-    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
-        new String[]{"ID=X", "Number=A", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+    InfoMetadata md = new InfoMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+        new String[]{"ID=X", "Number=A", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
     assertEquals(SpecialVcfNumber.ONE_PER_ALT, md.getReservedNumber());
   }
 
@@ -361,8 +367,8 @@ public class InfoMetadataTest {
   public void testGetReservedNumberReturnsNullWhenNumberIsMissing() {
     // regression test: getReservedNumber() used to throw NullPointerException here instead of returning null,
     // because SpecialVcfNumber.fromId previously had no null guard; it now returns null for a null id.
-    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
-        new String[]{"ID=X", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+    InfoMetadata md = new InfoMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+        new String[]{"ID=X", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
     assertNull(md.getNumber());
     assertNull(md.getReservedNumber());
   }
@@ -373,8 +379,9 @@ public class InfoMetadataTest {
     // getPropertyUnquoted (the same operation whose sibling, ContigMetadata.getLength(), previously had a
     // real quoted-value bug) -- verify the quote-stripping actually round-trips, not just that construction
     // doesn't throw
-    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
-        new String[]{"ID=X", "Number=1", "Type=String", "Description=\"d\"", "Source=\"dbSNP\"", "Version=\"138\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+    InfoMetadata md = new InfoMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+        new String[]{"ID=X", "Number=1", "Type=String", "Description=\"d\"", "Source=\"dbSNP\"",
+            "Version=\"138\""}, VcfWarnings.DEFAULT));
     assertEquals("dbSNP", md.getSource());
     assertEquals("138", md.getVersion());
   }
@@ -383,15 +390,15 @@ public class InfoMetadataTest {
   public void testTypedConstructorSourceAndVersionRoundTrip() {
     // the typed constructor auto-quotes Source/Version via putAndQuoteProperty(); getSource()/getVersion()
     // must unquote them back to the original values, not just avoid throwing
-    InfoMetadata md = new InfoMetadata("X", "d", InfoType.String, "1", "dbSNP", "138");
+    InfoMetadata md = new InfoMetadata(STRICT_CONTEXT, "X", "d", InfoType.String, "1", "dbSNP", "138");
     assertEquals("dbSNP", md.getSource());
     assertEquals("138", md.getVersion());
   }
 
   @Test
   public void testGetSourceAndVersionReturnNullWhenAbsent() {
-    InfoMetadata md = new InfoMetadata(InternalUtils.extractProperties(
-        new String[]{"ID=X", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+    InfoMetadata md = new InfoMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+        new String[]{"ID=X", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
     assertNull(md.getSource());
     assertNull(md.getVersion());
   }
@@ -399,24 +406,24 @@ public class InfoMetadataTest {
   @Test
   public void testTypedConstructorRejectsInvalidTagNameCharacter() {
     assertThrows(VcfFormatException.class,
-        () -> new InfoMetadata("AB*C", "d", InfoType.String, "1", null, null));
+        () -> new InfoMetadata(STRICT_CONTEXT, "AB*C", "d", InfoType.String, "1", null, null));
   }
 
   @Test
   public void testTypedConstructorRejectsLeadingDigit() {
     assertThrows(VcfFormatException.class,
-        () -> new InfoMetadata("1ABC", "d", InfoType.String, "1", null, null));
+        () -> new InfoMetadata(STRICT_CONTEXT, "1ABC", "d", InfoType.String, "1", null, null));
   }
 
   @Test
   public void testTypedConstructorAcceptsValidTagName() {
-    InfoMetadata md = new InfoMetadata("DP", "d", InfoType.Integer, "1", null, null);
+    InfoMetadata md = new InfoMetadata(STRICT_CONTEXT, "DP", "d", InfoType.Integer, "1", null, null);
     assertEquals("DP", md.getId());
   }
 
   @Test
   public void testTypedConstructorAccepts1000GLegacyException() {
-    InfoMetadata md = new InfoMetadata("1000G", "d", InfoType.Flag, "0", null, null);
+    InfoMetadata md = new InfoMetadata(STRICT_CONTEXT, "1000G", "d", InfoType.Flag, "0", null, null);
     assertEquals("1000G", md.getId());
   }
 
@@ -430,9 +437,8 @@ public class InfoMetadataTest {
     root.addAppender(appender);
     InfoMetadata md;
     try {
-      md = new InfoMetadata(InternalUtils.extractProperties(
-          new String[]{"ID=AB*C", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT);
+      md = new InfoMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=AB*C", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertTrue(appender.anyMessageContains("does not match the required tag-name grammar"));
     } finally {
       root.detachAppender(appender);
@@ -450,9 +456,8 @@ public class InfoMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new InfoMetadata(InternalUtils.extractProperties(
-          new String[]{"ID=1000G", "Number=0", "Type=Flag", "Description=\"d\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT);
+      new InfoMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=1000G", "Number=0", "Type=Flag", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertFalse(appender.anyMessageContains("does not match the required tag-name grammar"));
     } finally {
       root.detachAppender(appender);
@@ -469,9 +474,8 @@ public class InfoMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new InfoMetadata(InternalUtils.extractProperties(
-          new String[]{"ID=AB,C", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT);
+      new InfoMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=AB,C", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertEquals(0, appender.countMessagesContaining("does not match the required tag-name grammar"));
       assertEquals(1, appender.countMessagesContaining("must not contain a comma"));
     } finally {
@@ -493,9 +497,8 @@ public class InfoMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new InfoMetadata(InternalUtils.extractProperties(
-          new String[]{"ID=AB,C*D", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT);
+      new InfoMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=AB,C*D", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertEquals(1, appender.countMessagesContaining("must not contain a comma"));
       assertEquals(1, appender.countMessagesContaining("does not match the required tag-name grammar"));
     } finally {

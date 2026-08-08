@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
+import static org.pharmgkb.parser.vcf.TestUtils.LENIENT_CONTEXT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -22,14 +23,14 @@ public class BaseMetadataTest {
   public void testConstructorRejectsNullPropertiesMapInsteadOfThrowingNpe() {
     // properties is typed non-@Nullable, but nothing enforces that at compile time; must reject a null with
     // VcfFormatException, not let it reach a raw NullPointerException at new LinkedHashMap<>(properties)
-    assertThrows(VcfFormatException.class, () -> new BaseMetadata("TEST", null));
+    assertThrows(VcfFormatException.class, () -> new BaseMetadata(LENIENT_CONTEXT, "TEST", null));
   }
 
   @Test
   public void testGetProperty() throws Exception {
     Map<String, String> map = new HashMap<>();
     map.put("test", "one");
-    BaseMetadata metadata = new BaseMetadata("TEST", map);
+    BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", map);
     assertEquals("one", metadata.getPropertyRaw("test"));
   }
 
@@ -39,7 +40,7 @@ public class BaseMetadataTest {
     // silently corrupted this instance's state; it now defensively copies into its own LinkedHashMap
     Map<String, String> map = new LinkedHashMap<>();
     map.put("test", "one");
-    BaseMetadata metadata = new BaseMetadata("TEST", map);
+    BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", map);
     map.put("test", "mutated-after-construction");
     map.put("extra", "should not appear");
     assertEquals("one", metadata.getPropertyRaw("test"));
@@ -57,7 +58,7 @@ public class BaseMetadataTest {
     // in favor of fail-fast).
     Map<String, String> map = new LinkedHashMap<>();
     map.put("Number", "1");
-    BaseMetadata metadata = new BaseMetadata("TEST", map);
+    BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", map);
     assertThrows(UnsupportedOperationException.class, () -> metadata.getPropertyKeys().remove("Number"));
     assertEquals("1", metadata.getPropertyRaw("Number"));
   }
@@ -68,7 +69,7 @@ public class BaseMetadataTest {
     // a mutation made through putPropertyRaw() after the fact is visible through a set obtained beforehand
     Map<String, String> map = new LinkedHashMap<>();
     map.put("ID", "DP");
-    BaseMetadata metadata = new BaseMetadata("TEST", map);
+    BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", map);
     Set<String> keys = metadata.getPropertyKeys();
     assertFalse(keys.contains("Number"));
     metadata.putPropertyRaw("Number", "1");
@@ -80,7 +81,7 @@ public class BaseMetadataTest {
     Map<String, String> map = new LinkedHashMap<>();
     map.put("a", "\"quoted\"");
     map.put("b", "unquoted");
-    BaseMetadata metadata = new BaseMetadata("TEST", map);
+    BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", map);
     Map<String, String> unquoted = metadata.getPropertiesUnquoted();
     assertEquals(2, unquoted.size());
     assertEquals("quoted", unquoted.get("a"));
@@ -92,7 +93,7 @@ public class BaseMetadataTest {
     assertThrows(VcfFormatException.class, () -> {
       Map<String, String> map = new HashMap<>();
       map.put("test", "two\nlines");
-      new BaseMetadata("TEST", map);
+      new BaseMetadata(LENIENT_CONTEXT, "TEST", map);
     });
   }
 
@@ -101,13 +102,13 @@ public class BaseMetadataTest {
     assertThrows(VcfFormatException.class, () -> {
       Map<String, String> map = new HashMap<>();
       map.put("second\ntest", "one");
-      new BaseMetadata("TEST", map);
+      new BaseMetadata(LENIENT_CONTEXT, "TEST", map);
     });
   }
 
   @Test
   public void testPutPropertyRawRejectsLineTerminator() {
-    BaseMetadata metadata = new BaseMetadata("TEST", new HashMap<>());
+    BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", new HashMap<>());
     assertThrows(VcfFormatException.class, () -> metadata.putPropertyRaw("key", "bad\nvalue"));
     assertThrows(VcfFormatException.class, () -> metadata.putPropertyRaw("key", "bad\rvalue"));
     assertThrows(VcfFormatException.class, () -> metadata.putPropertyRaw("bad\nkey", "value"));
@@ -115,7 +116,7 @@ public class BaseMetadataTest {
 
   @Test
   public void testPutPropertyRawRejectsNull() {
-    BaseMetadata metadata = new BaseMetadata("TEST", new HashMap<>());
+    BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", new HashMap<>());
     assertThrows(VcfFormatException.class, () -> metadata.putPropertyRaw("key", null));
   }
 
@@ -123,26 +124,26 @@ public class BaseMetadataTest {
   public void testPutPropertyRawRejectsNullKeyInsteadOfThrowingNpe() {
     // key is typed non-@Nullable, but nothing enforces that at compile time; must reject a null with
     // VcfFormatException, not let it reach a raw NullPointerException at InternalUtils.checkNoLineTerminator(key, value)
-    BaseMetadata metadata = new BaseMetadata("TEST", new HashMap<>());
+    BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", new HashMap<>());
     assertThrows(VcfFormatException.class, () -> metadata.putPropertyRaw(null, "value"));
   }
 
   @Test
   public void testPutAndQuotePropertyRejectsLineTerminator() {
-    BaseMetadata metadata = new BaseMetadata("TEST", new HashMap<>());
+    BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", new HashMap<>());
     assertThrows(VcfFormatException.class, () -> metadata.putAndQuoteProperty("key", "bad\nvalue"));
     assertThrows(VcfFormatException.class, () -> metadata.putAndQuoteProperty("key", "bad\rvalue"));
   }
 
   @Test
   public void testPutAndQuotePropertyRejectsNull() {
-    BaseMetadata metadata = new BaseMetadata("TEST", new HashMap<>());
+    BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", new HashMap<>());
     assertThrows(VcfFormatException.class, () -> metadata.putAndQuoteProperty("key", null));
   }
 
   @Test
   public void testPutAndQuotePropertyRejectsNullKeyInsteadOfThrowingNpe() {
-    BaseMetadata metadata = new BaseMetadata("TEST", new HashMap<>());
+    BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", new HashMap<>());
     assertThrows(VcfFormatException.class, () -> metadata.putAndQuoteProperty(null, "value"));
   }
 
@@ -155,7 +156,7 @@ public class BaseMetadataTest {
     map.put("Type", "Integer");
     map.put("Description", "d");
     map.put("ID", "DP");
-    BaseMetadata metadata = new BaseMetadata("TEST", map);
+    BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", map);
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -178,7 +179,7 @@ public class BaseMetadataTest {
     map.put("Number", "1");
     map.put("Type", "Integer");
     map.put("Description", "d");
-    BaseMetadata metadata = new BaseMetadata("TEST", map);
+    BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", map);
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -202,7 +203,7 @@ public class BaseMetadataTest {
     map.put("Custom", "z");
     map.put("ID", "DP");
     map.put("Description", "d");
-    BaseMetadata metadata = new BaseMetadata("TEST", map);
+    BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", map);
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -225,7 +226,7 @@ public class BaseMetadataTest {
     // key, tolerating a null value inserted directly through getPropertiesRaw()'s live view
     Map<String, String> map = new LinkedHashMap<>();
     map.put("ID", "DP");
-    BaseMetadata metadata = new BaseMetadata("TEST", map);
+    BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", map);
     metadata.getPropertiesRaw().put("Extra", null);
     VcfFormatException e = assertThrows(VcfFormatException.class, metadata::validate);
     assertTrue(e.getMessage().contains("null value"));
@@ -238,7 +239,7 @@ public class BaseMetadataTest {
     // the clean VcfFormatException validateProperties() already throws for the identical invalid state.
     Map<String, String> map = new LinkedHashMap<>();
     map.put("ID", "DP");
-    BaseMetadata metadata = new BaseMetadata("TEST", map);
+    BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", map);
     metadata.getPropertiesRaw().put(null, "x");
     VcfFormatException e = assertThrows(VcfFormatException.class, metadata::checkAttributeOrder);
     assertTrue(e.getMessage().contains("null property name"));
@@ -246,7 +247,7 @@ public class BaseMetadataTest {
 
   @Test
   public void testSetWarningsSinkRejectsNull() {
-    BaseMetadata md = new BaseMetadata("TESTLABEL", Map.of());
+    BaseMetadata md = new BaseMetadata(LENIENT_CONTEXT, "TESTLABEL", Map.of());
     assertThrows(NullPointerException.class, () -> md.setWarningsSink(null));
   }
 
@@ -256,7 +257,7 @@ public class BaseMetadataTest {
     // warnIfMissing is protected, not part of any concrete declaration kind's own public behavior, but
     // accessible here (same package) purely as a vehicle to trigger a warning through m_warnings -- any
     // warn() call site would do equally well for this test's actual point.
-    BaseMetadata md = new BaseMetadata("TESTLABEL", Map.of());
+    BaseMetadata md = new BaseMetadata(LENIENT_CONTEXT, "TESTLABEL", Map.of());
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender = new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();

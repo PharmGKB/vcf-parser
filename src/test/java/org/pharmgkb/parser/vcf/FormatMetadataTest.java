@@ -3,6 +3,9 @@ package org.pharmgkb.parser.vcf;
 import java.io.StringWriter;
 import org.junit.jupiter.api.Test;
 
+import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
+import static org.pharmgkb.parser.vcf.TestUtils.LENIENT_CONTEXT;
+import static org.pharmgkb.parser.vcf.TestUtils.lenientContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -22,8 +25,8 @@ public class FormatMetadataTest {
     props[2] = "Type=String";
     String desc = "Ancestral Allele, test";
     props[3] = "Description=\"" + desc + "\"";
-    FormatMetadata md = new FormatMetadata(InternalUtils.extractProperties(props, VcfWarnings.DEFAULT),
-        VcfWarnings.DEFAULT);
+    FormatMetadata md = new FormatMetadata(LENIENT_CONTEXT,
+        InternalUtils.extractProperties(props, VcfWarnings.DEFAULT));
     assertEquals(FormatType.String, md.getType());
     assertEquals(desc, md.getDescription());
 
@@ -32,7 +35,7 @@ public class FormatMetadataTest {
     };
     for (String n : nums) {
       props[1] = "Number=" + n;
-      md = new FormatMetadata(InternalUtils.extractProperties(props, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+      md = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(props, VcfWarnings.DEFAULT));
       assertEquals(n, md.getNumber());
     }
 
@@ -44,7 +47,7 @@ public class FormatMetadataTest {
     };
     for (String n : nums) {
       props[1] = "Number=" + n;
-      new FormatMetadata(InternalUtils.extractProperties(props, VcfWarnings.DEFAULT), VcfWarnings.DEFAULT);
+      new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(props, VcfWarnings.DEFAULT));
     }
   }
 
@@ -52,16 +55,15 @@ public class FormatMetadataTest {
   public void testTypedConstructorRejectsNullTypeInsteadOfThrowingNpe() {
     // type is typed non-@Nullable, but nothing enforces that at compile time; must reject a null with
     // VcfFormatException, not let it reach a raw NullPointerException at type.name()
-    assertThrows(VcfFormatException.class, () -> new FormatMetadata("GT", "d", "1", null));
+    assertThrows(VcfFormatException.class, () -> new FormatMetadata(STRICT_CONTEXT, "GT", "d", "1", null));
   }
 
   @Test
   public void testExtraPropertyRetained() {
     // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included
     // after the default fields" -- an unrecognized property is compliant, not just tolerated, and must be preserved
-    FormatMetadata md = new FormatMetadata(InternalUtils.extractProperties(
-        new String[]{"ID=X", "Number=1", "Type=String", "Description=\"d\"", "Custom=extra"}, VcfWarnings.DEFAULT),
-        VcfWarnings.DEFAULT);
+    FormatMetadata md = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+        new String[]{"ID=X", "Number=1", "Type=String", "Description=\"d\"", "Custom=extra"}, VcfWarnings.DEFAULT));
     assertEquals("extra", md.getPropertyRaw("Custom"));
   }
 
@@ -76,9 +78,8 @@ public class FormatMetadataTest {
     root.addAppender(appender);
     FormatMetadata md;
     try {
-      md = new FormatMetadata(InternalUtils.extractProperties(
-          new String[]{"ID=GT", "Number=G", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT);
+      md = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=GT", "Number=G", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -97,9 +98,8 @@ public class FormatMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new FormatMetadata(InternalUtils.extractProperties(
-          new String[]{"ID=GT", "Number=1", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT);
+      new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=GT", "Number=1", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -116,9 +116,8 @@ public class FormatMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new FormatMetadata(InternalUtils.extractProperties(
-          new String[]{"ID=GT", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT);
+      new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=GT", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -138,9 +137,8 @@ public class FormatMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new FormatMetadata(InternalUtils.extractProperties(
-          new String[]{"ID=GLE", "Number=G", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT);
+      new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=GLE", "Number=G", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -160,9 +158,8 @@ public class FormatMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new FormatMetadata(InternalUtils.extractProperties(
-          new String[]{"ID=CNP", "Number=G", "Type=Float", "Description=\"d\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT);
+      new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=CNP", "Number=G", "Type=Float", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -181,9 +178,8 @@ public class FormatMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new FormatMetadata(InternalUtils.extractProperties(
-          new String[]{"ID=CNP", "Number=1", "Type=Float", "Description=\"d\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT);
+      new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=CNP", "Number=1", "Type=Float", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertTrue(appender.anyMessageContains("reserved definition expects"));
     } finally {
       root.detachAppender(appender);
@@ -200,9 +196,8 @@ public class FormatMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new FormatMetadata(InternalUtils.extractProperties(
-          new String[]{"ID=MYCUSTOM", "Number=3", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT);
+      new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=MYCUSTOM", "Number=3", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -221,9 +216,8 @@ public class FormatMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new FormatMetadata(InternalUtils.extractProperties(
-          new String[]{"Number=1", "Type=Integer", "Description=\"Raw read depth\"", "ID=DP"}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT);
+      new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"Number=1", "Type=Integer", "Description=\"Raw read depth\"", "ID=DP"}, VcfWarnings.DEFAULT));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -240,7 +234,7 @@ public class FormatMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new FormatMetadata("DP", "Raw read depth", "1", FormatType.Integer);
+      new FormatMetadata(STRICT_CONTEXT, "DP", "Raw read depth", "1", FormatType.Integer);
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -250,9 +244,10 @@ public class FormatMetadataTest {
 
   @Test
   public void testTypedConstructorRejectsNullOrBlankId() {
-    assertThrows(VcfFormatException.class, () -> new FormatMetadata(null, "d", "1", FormatType.String));
-    assertThrows(VcfFormatException.class, () -> new FormatMetadata("", "d", "1", FormatType.String));
-    assertThrows(VcfFormatException.class, () -> new FormatMetadata("   ", "d", "1", FormatType.String));
+    assertThrows(VcfFormatException.class, () -> new FormatMetadata(STRICT_CONTEXT, null, "d", "1", FormatType.String));
+    assertThrows(VcfFormatException.class, () -> new FormatMetadata(STRICT_CONTEXT, "", "d", "1", FormatType.String));
+    assertThrows(VcfFormatException.class,
+        () -> new FormatMetadata(STRICT_CONTEXT, "   ", "d", "1", FormatType.String));
   }
 
   @Test
@@ -266,9 +261,8 @@ public class FormatMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new FormatMetadata(InternalUtils.extractProperties(
-          new String[]{"ID=A B", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT);
+      new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=A B", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertTrue(appender.anyMessageContains("must not contain whitespace"));
     } finally {
       root.detachAppender(appender);
@@ -278,9 +272,8 @@ public class FormatMetadataTest {
 
   @Test
   public void testGetReservedNumberReturnsReservedCode() {
-    FormatMetadata md = new FormatMetadata(InternalUtils.extractProperties(
-        new String[]{"ID=X", "Number=G", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT),
-        VcfWarnings.DEFAULT);
+    FormatMetadata md = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+        new String[]{"ID=X", "Number=G", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
     assertEquals(SpecialVcfNumber.ONE_PER_GENOTYPE, md.getReservedNumber());
   }
 
@@ -288,9 +281,8 @@ public class FormatMetadataTest {
   public void testGetReservedNumberReturnsNullWhenNumberIsMissing() {
     // regression test: getReservedNumber() used to throw NullPointerException here instead of returning null,
     // because SpecialVcfNumber.fromId previously had no null guard; it now returns null for a null id.
-    FormatMetadata md = new FormatMetadata(InternalUtils.extractProperties(
-        new String[]{"ID=X", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT),
-        VcfWarnings.DEFAULT);
+    FormatMetadata md = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+        new String[]{"ID=X", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
     assertNull(md.getNumber());
     assertNull(md.getReservedNumber());
   }
@@ -298,7 +290,7 @@ public class FormatMetadataTest {
   @Test
   public void testTypedConstructorRejectsInvalidNumber() {
     VcfFormatException ex = assertThrows(VcfFormatException.class,
-        () -> new FormatMetadata("XX", "desc", "not-a-number", FormatType.Integer));
+        () -> new FormatMetadata(STRICT_CONTEXT, "XX", "desc", "not-a-number", FormatType.Integer));
     assertTrue(ex.getMessage().contains("Number is not a valid VCF number"));
   }
 
@@ -308,7 +300,7 @@ public class FormatMetadataTest {
     // before this class's own Number-format check below it, so a null Number threw BaseMetadata's generic
     // "Metadata property \"Number\" has a null value" message instead of this class's own, more specific one.
     VcfFormatException ex = assertThrows(VcfFormatException.class,
-        () -> new FormatMetadata("XX", "desc", null, FormatType.Integer));
+        () -> new FormatMetadata(STRICT_CONTEXT, "XX", "desc", null, FormatType.Integer));
     assertTrue(ex.getMessage().contains("FORMAT Number is not a valid VCF number: 'null'"));
   }
 
@@ -319,7 +311,7 @@ public class FormatMetadataTest {
     // Previously the Type-null check fired first (it ran before the malformed-Number check, which used to
     // sit after Type/Description handling), so this exact input used to throw "FORMAT type is null" instead.
     VcfFormatException ex = assertThrows(VcfFormatException.class,
-        () -> new FormatMetadata("XX", "desc", "not-a-number", null));
+        () -> new FormatMetadata(STRICT_CONTEXT, "XX", "desc", "not-a-number", null));
     assertTrue(ex.getMessage().contains("Number is not a valid VCF number"));
   }
 
@@ -327,7 +319,7 @@ public class FormatMetadataTest {
   public void testTypedConstructorRejectsReservedNumberMismatch() {
     // DP is reserved FORMAT with expected Number "1"
     VcfFormatException ex = assertThrows(VcfFormatException.class,
-        () -> new FormatMetadata("DP", "desc", "2", FormatType.Integer));
+        () -> new FormatMetadata(STRICT_CONTEXT, "DP", "desc", "2", FormatType.Integer));
     assertTrue(ex.getMessage().contains("reserved definition expects"));
   }
 
@@ -337,7 +329,7 @@ public class FormatMetadataTest {
     // the form many real-world pipelines emit for AD, and previously constructed fine since AD wasn't reserved
     // at all
     VcfFormatException ex = assertThrows(VcfFormatException.class,
-        () -> new FormatMetadata("AD", "desc", ".", FormatType.Integer));
+        () -> new FormatMetadata(STRICT_CONTEXT, "AD", "desc", ".", FormatType.Integer));
     assertTrue(ex.getMessage().contains("reserved definition expects"));
   }
 
@@ -353,9 +345,8 @@ public class FormatMetadataTest {
     root.addAppender(appender);
     FormatMetadata md;
     try {
-      md = new FormatMetadata(InternalUtils.extractProperties(
-          new String[]{"ID=AD", "Number=.", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT);
+      md = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=AD", "Number=.", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -366,15 +357,15 @@ public class FormatMetadataTest {
 
   @Test
   public void testTypedConstructorAcceptsValidFormat() {
-    FormatMetadata md = new FormatMetadata("DP", "read depth", "1", FormatType.Integer);
+    FormatMetadata md = new FormatMetadata(STRICT_CONTEXT, "DP", "read depth", "1", FormatType.Integer);
     assertEquals(FormatType.Integer, md.getType());
   }
 
   @Test
-  public void testMapConstructorRequiresWarningsInstance() {
+  public void testMapConstructorRequiresContextInstance() {
     java.util.Map<String, String> props = InternalUtils.extractProperties(
         new String[] {"ID=XX", "Number=bad", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT);
-    assertThrows(NullPointerException.class, () -> new FormatMetadata(props, null));
+    assertThrows(NullPointerException.class, () -> new FormatMetadata(null, props));
   }
 
   @Test
@@ -382,24 +373,26 @@ public class FormatMetadataTest {
     java.util.Map<String, String> props = InternalUtils.extractProperties(
         new String[] {"ID=XX", "Number=bad", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT);
     StringWriter sink = new StringWriter();
-    FormatMetadata md = new FormatMetadata(props, new VcfWarnings(sink));
+    FormatMetadata md = new FormatMetadata(lenientContext(new VcfWarnings(sink)), props);
     assertEquals("bad", md.getNumber());
     assertTrue(sink.toString().contains("Number is not a valid VCF number"));
   }
 
   @Test
   public void testTypedConstructorRejectsInvalidTagNameCharacter() {
-    assertThrows(VcfFormatException.class, () -> new FormatMetadata("AB*C", "d", "1", FormatType.String));
+    assertThrows(VcfFormatException.class,
+        () -> new FormatMetadata(STRICT_CONTEXT, "AB*C", "d", "1", FormatType.String));
   }
 
   @Test
   public void testTypedConstructorRejectsLeadingDigit() {
-    assertThrows(VcfFormatException.class, () -> new FormatMetadata("1ABC", "d", "1", FormatType.String));
+    assertThrows(VcfFormatException.class,
+        () -> new FormatMetadata(STRICT_CONTEXT, "1ABC", "d", "1", FormatType.String));
   }
 
   @Test
   public void testTypedConstructorAcceptsValidTagName() {
-    FormatMetadata md = new FormatMetadata("DP", "d", "1", FormatType.Integer);
+    FormatMetadata md = new FormatMetadata(STRICT_CONTEXT, "DP", "d", "1", FormatType.Integer);
     assertEquals("DP", md.getId());
   }
 
@@ -413,9 +406,8 @@ public class FormatMetadataTest {
     root.addAppender(appender);
     FormatMetadata md;
     try {
-      md = new FormatMetadata(InternalUtils.extractProperties(
-          new String[]{"ID=AB*C", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT);
+      md = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=AB*C", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertTrue(appender.anyMessageContains("does not match the required tag-name grammar"));
     } finally {
       root.detachAppender(appender);
@@ -435,9 +427,8 @@ public class FormatMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new FormatMetadata(InternalUtils.extractProperties(
-          new String[]{"ID=AB,C", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT);
+      new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=AB,C", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertEquals(0, appender.countMessagesContaining("does not match the required tag-name grammar"));
       assertEquals(1, appender.countMessagesContaining("must not contain a comma"));
     } finally {
@@ -459,9 +450,8 @@ public class FormatMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new FormatMetadata(InternalUtils.extractProperties(
-          new String[]{"ID=AB,C*D", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT);
+      new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=AB,C*D", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertEquals(1, appender.countMessagesContaining("must not contain a comma"));
       assertEquals(1, appender.countMessagesContaining("does not match the required tag-name grammar"));
     } finally {
@@ -479,9 +469,8 @@ public class FormatMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new FormatMetadata(InternalUtils.extractProperties(
-          new String[]{"ID=DP", "Number=1", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT),
-          VcfWarnings.DEFAULT);
+      new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=DP", "Number=1", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertFalse(appender.anyMessageContains("does not match the required tag-name grammar"));
     } finally {
       root.detachAppender(appender);
@@ -494,6 +483,7 @@ public class FormatMetadataTest {
     // unlike INFO_PATTERN, FORMAT_PATTERN has no 1000G legacy exception -- confirmed directly against
     // bcftools 1.23.1, which accepts ##INFO=<ID=1000G,...> silently but flags ##FORMAT=<ID=1000G,...> as
     // "Invalid tag name"
-    assertThrows(VcfFormatException.class, () -> new FormatMetadata("1000G", "d", "1", FormatType.String));
+    assertThrows(VcfFormatException.class,
+        () -> new FormatMetadata(STRICT_CONTEXT, "1000G", "d", "1", FormatType.String));
   }
 }

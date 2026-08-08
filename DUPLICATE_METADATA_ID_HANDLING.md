@@ -1,10 +1,9 @@
 # Duplicate metadata declaration ID handling
 
-This document describes `VcfMetadata.Builder`'s/`VcfMetadata`'s lenient-mode behavior (`Builder.lenient(VcfWarnings)`,
-or `VcfMetadata`'s own instance `addXxx` methods when constructed with a `VcfWarnings` sink) -- the mode
-`VcfParser` always uses internally, so a parsed file's behavior is exactly as described below. `Builder`'s
-*default* (non-lenient) mode instead throws `VcfFormatException` immediately for a duplicate or missing/empty
-declaration ID; see `VALIDATION_PHILOSOPHY.md`.
+This document describes `VcfMetadata.Builder`'s/`VcfMetadata`'s behavior under a lenient `VcfContext`
+(`VcfContext.lenient(fileFormat, warnings)`) -- the mode `VcfParser` always uses internally, so a parsed
+file's behavior is exactly as described below. Under a strict context (`VcfContext.strict(fileFormat)`) each
+of these conditions throws `VcfFormatException` immediately instead; see `VALIDATION_PHILOSOPHY.md`.
 
 VCF metadata declarations (`##contig`, `##INFO`, `##FORMAT`, `##FILTER`, `##ALT`, `##SAMPLE`) are each keyed by an
 `ID` attribute. Neither [VCFv4.2.tex](https://github.com/samtools/hts-specs) nor VCFv4.3.tex states what happens
@@ -140,9 +139,9 @@ surfaces any complaint about a dropped duplicate's content either.
 
 ## Where this is implemented
 
-- `VcfMetadata.warnIfDuplicate(Map, String, String, VcfWarnings)` — the shared helper, used by both
-  `VcfMetadata`'s own instance `addXxx` methods and `VcfMetadata.Builder`'s `addXxx` methods; its `VcfWarnings`
-  parameter is `@Nullable` (`null` throws instead of warning -- see `VALIDATION_PHILOSOPHY.md`).
+- `VcfMetadata.warnIfDuplicate(Map, String, String, VcfContext)` — the shared helper, used by both
+  `VcfMetadata`'s own instance `addXxx` methods and `VcfMetadata.Builder`'s `addXxx` methods; a strict context
+  throws instead of warning (see `VALIDATION_PHILOSOPHY.md`).
 - `VcfMetadata.Builder.addAlt()` / `addInfo()` / `addFormat()` / `addFilter()` / `addContig()` / `addSample()`, and
   `VcfMetadata.addAlt()` / `addInfo()` / `addFormat()` / `addFilter()` / `addContig()` / `addSample()` (the same
   six) — each calls `warnIfDuplicate()` before storing a new declaration, and returns immediately (without
@@ -154,11 +153,13 @@ surfaces any complaint about a dropped duplicate's content either.
   duplicate literal `ID` property is found; both always add when no `ID` property is present.
 - `VcfWriter.validateMetadata()`'s PEDIGREE loop — the same check, but warn-only (never drops), since it runs
   post-construction on content the caller already holds a reference to.
-- `IdMetadata`'s shared `protected IdMetadata(String label, String id)` constructor -- used by every
+- `IdMetadata`'s shared `IdMetadata(VcfContext, String label, String id)` constructor -- used by every
   typed, named-parameter constructor across `IdDescriptionMetadata`/`InfoMetadata`/`FormatMetadata`/
-  `ContigMetadata` (`IdMetadata` itself is abstract and has no public constructor) -- throws
-  `VcfFormatException` immediately for a missing or blank `ID`. The separate `Map<String,String>`-based
-  constructors `VcfParser` uses are unaffected and remain warn-only.
+  `ContigMetadata` (every declaration constructor is package-private; `VcfMetadata.Builder`'s raw-value
+  `addXxx` overloads are the supported way in) -- reports a missing or blank `ID` through
+  `BaseMetadata.warnOrThrow`, so it throws `VcfFormatException` under a strict context and warns under a
+  lenient one. The separate `Map<String,String>`-based constructors `VcfParser` uses behave identically for
+  the same content: the input shape does not decide strictness, the context does.
 - `IdMetadata.init()` -- the Map-based (lenient) constructors' shared post-construction check, and also run
   again by `validate()` -- separately warns ("`{} metadata ID is blank`") for a missing or blank `ID`, one
   step before a declaration ever reaches the `addXxx`-level check below. This is a genuinely independent
@@ -168,8 +169,10 @@ surfaces any complaint about a dropped duplicate's content either.
 - `VcfMetadata`'s 6 instance `addXxx` methods and `VcfMetadata.Builder`'s 6 `addXxx` methods each check for a
   missing or blank `ID` before calling `warnIfDuplicate()`, warning and dropping the declaration entirely (never
   storing it) if so -- this is what actually removes a malformed declaration from storage, built via the parser's
-  lenient `Map`-based construction path. In strict mode (a `Builder` used without `.lenient(...)`, or a `VcfMetadata`
-  built that way), both checks throw `VcfFormatException` instead -- see `VALIDATION_PHILOSOPHY.md`.
+  lenient `Map`-based construction path. Under a strict `VcfContext`, both checks throw `VcfFormatException`
+  instead -- see `VALIDATION_PHILOSOPHY.md`. Note that a strict context already rejects a missing/blank `ID`
+  at declaration-construction time, so the `addXxx`-level check is reachable there only for a declaration
+  whose `ID` was removed afterward through the live `getPropertiesRaw()` map.
 
 ## `##PEDIGREE`: a conditional case
 

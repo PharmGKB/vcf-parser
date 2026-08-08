@@ -110,6 +110,30 @@ public enum VcfVersion {
         isBelowFloor(normalizedMinor) ? LOWEST_SUPPORTED : HIGHEST_IMPLEMENTED, warnings);
   }
 
+  /**
+   * Normalizes a declared {@code ##fileformat} value to its canonical {@code VCFv4.N} spelling, applying the same
+   * leading-zero stripping {@link #resolve} uses -- {@code VCFv4.02} becomes {@code VCFv4.2}.
+   * <p>
+   * This identifies the <em>declaration</em>, not the semantics that will be applied to it: an unimplemented but
+   * well-formed version keeps its own number ({@code VCFv4.7} stays {@code VCFv4.7}) rather than collapsing onto
+   * {@link #HIGHEST_IMPLEMENTED} the way {@link #resolve} would. That distinction is what makes this the right
+   * comparison for {@code VcfWriter}'s target-vs-metadata cross-version check: raw-string comparison would
+   * wrongly reject {@code VCFv4.02} against {@code VCFv4.2} metadata, and resolved-version comparison would
+   * wrongly accept {@code VCFv4.7} against {@code VCFv4.9} metadata (both resolve to 4.3).
+   *
+   * @throws VcfFormatException if {@code declaredFileFormat} is {@code null} or does not match
+   * {@link InternalUtils#FILE_FORMAT_PATTERN} -- the same structural rejection {@link #resolve} makes
+   */
+  public static String canonicalize(@Nullable String declaredFileFormat) {
+    if (declaredFileFormat == null) {
+      throw new VcfFormatException("##fileformat is null");
+    }
+    if (!InternalUtils.FILE_FORMAT_PATTERN.matcher(declaredFileFormat).matches()) {
+      throw new VcfFormatException("##fileformat \"" + declaredFileFormat + "\" is not a valid VCF 4.x version");
+    }
+    return "VCFv4." + minorOf(declaredFileFormat.substring("VCFv".length()));
+  }
+
   /** @return {@code id}'s minor-version digits with leading zeros stripped, keeping at least one digit. */
   private static String minorOf(String id) {
     return id.substring(id.indexOf('.') + 1).replaceFirst("^0+(?=.)", "");

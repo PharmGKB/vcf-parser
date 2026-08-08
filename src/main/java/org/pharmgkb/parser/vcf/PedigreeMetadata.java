@@ -32,8 +32,8 @@ import java.util.Map;
  */
 public final class PedigreeMetadata extends BaseMetadata {
 
-  public PedigreeMetadata(Map<String, String> properties) {
-    super("PEDIGREE", properties);
+  PedigreeMetadata(VcfContext context, Map<String, String> properties) {
+    super(context, "PEDIGREE", properties);
   }
 
   /**

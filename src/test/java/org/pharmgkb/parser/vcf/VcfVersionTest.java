@@ -8,6 +8,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.emptyString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -123,4 +124,24 @@ class VcfVersionTest {
   void testIsAtLeastRejectsNull() {
     assertThrows(VcfFormatException.class, () -> VcfVersion.V4_3.isAtLeast(null));
   }
+  @Test
+  void testCanonicalizeStripsLeadingZerosButKeepsAnUnimplementedVersionsOwnNumber() {
+    // identifies the DECLARATION, unlike resolve, which collapses an unimplemented version onto the nearest
+    // implemented one -- that difference is the whole reason VcfWriter's cross-version check uses this
+    assertEquals("VCFv4.2", VcfVersion.canonicalize("VCFv4.2"));
+    assertEquals("VCFv4.2", VcfVersion.canonicalize("VCFv4.02"));
+    assertEquals("VCFv4.2", VcfVersion.canonicalize("VCFv4.002"));
+    assertEquals("VCFv4.7", VcfVersion.canonicalize("VCFv4.7"));
+    assertEquals("VCFv4.9", VcfVersion.canonicalize("VCFv4.9"));
+    assertNotEquals(VcfVersion.canonicalize("VCFv4.7"), VcfVersion.canonicalize("VCFv4.9"));
+    assertEquals("VCFv4.0", VcfVersion.canonicalize("VCFv4.0"));
+  }
+
+  @Test
+  void testCanonicalizeRejectsNullAndMalformedValues() {
+    assertThrows(VcfFormatException.class, () -> VcfVersion.canonicalize(null));
+    assertThrows(VcfFormatException.class, () -> VcfVersion.canonicalize("banana"));
+    assertThrows(VcfFormatException.class, () -> VcfVersion.canonicalize("VCFv5.1"));
+  }
+
 }

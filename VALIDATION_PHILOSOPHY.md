@@ -8,20 +8,19 @@ principles below to a specific surface -- read this file first for the "why," th
 
 ## The four principles
 
-1. **Fail fast on direct, programmatic input.** A caller constructing library objects directly -- a typed
-   metadata constructor (`new InfoMetadata(id, description, type, number, ...)`), a `VcfPosition`/`VcfSample`
-   constructor, or `VcfMetadata.Builder` used without `.lenient(...)` -- gets `VcfFormatException` immediately
-   for content that violates a declared, checkable rule. The caller wrote this value themselves; there's no
-   reason to defer the diagnosis. This is fully implemented today: every metadata declaration class with both
-   a typed and a Map-based constructor (`IdMetadata`, `IdDescriptionMetadata`, `InfoMetadata`, `FormatMetadata`,
-   `ContigMetadata`), `VcfPosition`, and `VcfMetadata.Builder` throw on direct construction for every condition
-   their own declaration-level checks cover. A few conditions a naive reading of "every declaration-level
-   check" might expect to see thrown are structurally impossible via the typed path rather than unimplemented
-   -- see "Where this applies" below.
-2. **Be lenient -- warn and auto-recover -- for parsed and auto-generated content.** `VcfParser` never uses a
-   typed constructor or an unadorned `VcfMetadata.Builder`: every metadata declaration it builds goes through
-   the Map-based constructor, and its own internal `Builder` always calls `.lenient(...)` -- both routed to an
-   explicit `VcfWarnings` instance it owns -- warning and preserving or normalizing rather than rejecting. The
+1. **Fail fast on direct, programmatic input.** A caller constructing library objects directly -- through
+   `VcfContext.strict(fileFormat)` and the factories/Builder it hands out -- gets `VcfFormatException`
+   immediately for content that violates a declared, checkable rule. The caller wrote this value themselves;
+   there's no reason to defer the diagnosis. This is fully implemented today: every metadata declaration class
+   (`IdMetadata`, `IdDescriptionMetadata`, `InfoMetadata`, `FormatMetadata`, `ContigMetadata`), `VcfPosition`,
+   and `VcfMetadata`/`Builder` throw under a strict context for every condition their own declaration-level
+   checks cover. A few conditions a naive reading of "every declaration-level check" might expect to see
+   thrown are structurally impossible via the typed path rather than unimplemented -- see "Where this applies"
+   below.
+2. **Be lenient -- warn and auto-recover -- for parsed and auto-generated content.** `VcfParser` builds its
+   `VcfContext` with `VcfContext.lenient(...)`, routed to an explicit `VcfWarnings` instance it owns, so every
+   metadata declaration, position, sample and record it creates warns and preserves or normalizes rather than
+   rejecting. The
    same leniency applies symmetrically on write: the default `VcfWriter` path recovers from recoverable input
    (canonicalizes an empty value, drops content it can't represent) rather than throwing, and a file the parser
    accepted must remain writable without loss.
@@ -37,29 +36,33 @@ principles below to a specific surface -- read this file first for the "why," th
 
 ## How principles 1 and 2 are dispatched
 
-Two distinct shapes implement principles 1 and 2 -- not one shared mechanism, and not per-class duplication of
-the same condition logic:
+One shape implements principles 1 and 2, uniformly:
 
-- **Constructor short-circuit** (`IdMetadata`, `IdDescriptionMetadata`, `InfoMetadata`, `FormatMetadata`,
-  `ContigMetadata`): the typed constructor performs its own inline checks and throws *before ever calling* the
-  shared, warn-only `init()`; the Map-based constructor calls only `init()`. There is no boolean or shared
-  parameter threading strict-vs-lenient through one method -- the two constructors run genuinely different
-  code paths.
-- **`@Nullable VcfWarnings` as an explicit strict/lenient signal** (`VcfPosition`'s content checks,
-  `InternalUtils.dropEmptyEntries`/`fillEmptyEntriesWithDot`, `VcfMetadata`'s private `warnOrThrow`/
-  `warnIfDuplicate` helpers, `VcfMetadata.validateAlt`): a single shared check takes a `@Nullable VcfWarnings
-  warnings` parameter and branches internally -- `warnings == null` throws, a non-null instance warns to it.
-  `VcfPosition`'s lenient 11-argument constructor and `VcfMetadata.Builder.lenient(VcfWarnings)` are the two
-  public entry points that supply a non-null instance; their strict counterparts (the 10-argument and minimal
-  5-argument `VcfPosition` constructors, and `Builder`'s own default) pass `null` internally.
+- **`VcfContext.isLenient()` as the single strict/lenient signal** (`VcfPosition`'s content checks,
+  `BaseMetadata.warnOrThrow` and therefore every declaration's `init()`, `VcfMetadata`'s private
+  `warnOrThrow`/`warnIfDuplicate` helpers, `VcfMetadata.validateAlt`): a single shared check consults the
+  context that created the object -- strict throws, lenient warns to that context's own `VcfWarnings`.
+  Inside `VcfPosition` and `InternalUtils.dropEmptyEntries`/`fillEmptyEntriesWithDot` this is still *carried*
+  as a `@Nullable VcfWarnings` parameter whose `null` means strict, but that is now an internal calling
+  convention between those private helpers, not a caller-visible signal: `VcfPosition` derives it from
+  `context.isLenient()` at the top of its constructor.
+
+**The input shape never decides strictness.** A declaration class still has two constructors -- a typed
+`(id, description, ...)` one and a `Map`-based one -- but they differ only in input format: the typed one
+still performs its own inline checks rather than deferring to the shared `init()` (it works from already-typed
+enum parameters, and its checks would be unreachable or differently-worded through `init()`), yet both route
+every recoverable condition through `BaseMetadata.warnOrThrow` and therefore through the same context. This
+was not always true: before `VcfContext`, the typed constructor threw unconditionally and the `Map`-based one
+warned unconditionally, so equivalent invalid content behaved differently purely by which overload the caller
+reached for -- a typed overload staying strict under a lenient builder, a map overload staying lenient under a
+strict one.
 
 A built `VcfMetadata` object's own post-build instance methods (`addInfo`, `addAlt`, `removeSample`, etc.) are
-not a separate, third case: `VcfMetadata` stores whichever `VcfWarnings` instance (or `null`) the `Builder`
-that built it was using, and its own `addXxx` methods reuse that same field -- so a `VcfMetadata` built via a
-bare `new VcfMetadata.Builder()...build()` (no `.lenient(...)`) stays strict for its own later `addXxx` calls
-too, and one built via `.lenient(warnings)` stays lenient, routed to that same instance. This is worth stating
-explicitly since it is not obvious from reading `Builder` alone, and is easy to mistake for "`addXxx` is
-always lenient, regardless of how the object was built."
+not a separate, third case: `VcfMetadata` stores the `VcfContext` its `Builder` was constructed with, and its
+own `addXxx` methods reuse that same field -- so a `VcfMetadata` built from a strict context stays strict for
+its own later `addXxx` calls too, and one built from a lenient context stays lenient, routed to that same
+context's sink. This is worth stating explicitly since it is not obvious from reading `Builder` alone, and is
+easy to mistake for "`addXxx` is always lenient, regardless of how the object was built."
 
 `VcfPosition`'s own structural checks (`checkChromosome`, `checkPosition`, `checkRef`) are not part of either
 shape above and take no `warnings` parameter at all -- they always throw, in every constructor. This is
@@ -67,60 +70,65 @@ Parser Validation Policy's own structural floor (record/column-boundary safety),
 vs-parsing distinction; see that policy for why these specific fields stay unconditional.
 
 `AltStructuralVariant`'s constructor is the same kind of always-throwing check (it never takes a `warnings`
-parameter at all), but reached through a third wiring, not a third dispatch shape: `VcfMetadata.validateAlt`
+parameter at all), but reached through a separate wiring rather than the dispatch above: `VcfMetadata.validateAlt`
 (itself an ordinary shape-2 `@Nullable VcfWarnings` check) wraps `new AltStructuralVariant(id)` in a
 try/catch and re-dispatches its `VcfFormatException` through `warnOrThrow` -- so the warn-vs-throw decision
-is still made by `validateAlt`'s own `warnings` parameter, exactly shape 2's mechanism; only the underlying
+is still made by `validateAlt`'s own `VcfContext` parameter, exactly the mechanism above; only the underlying
 condition check is an always-throwing helper class rather than an inline branch.
 
 ## Where this applies
 
-- **`InfoMetadata`/`FormatMetadata`**: the typed constructor throws for an ID that doesn't match the required
+- **`InfoMetadata`/`FormatMetadata`**: the typed constructor reports (throws under a strict context, warns
+  under a lenient one) an ID that doesn't match the required
   tag-name grammar (must start with a letter or underscore, followed only by letters, digits, underscores, or
   periods -- or, for `InfoMetadata` only, the legacy value `1000G`), a malformed `Number`, a `Type=Flag`/
   non-zero-`Number` mismatch (`InfoMetadata` only -- `FormatType` has no `Flag`), and a reserved property's
-  `Number`/`Type` mismatch. It cannot throw for an "invalid `Type` string" or "unquoted `Description`/
+  `Number`/`Type` mismatch. It cannot report an "invalid `Type` string" or "unquoted `Description`/
   `Source`/`Version`" -- not because these are unimplemented, but because they are structurally impossible via
   this path: the `type` parameter is already a real `InfoType`/`FormatType` enum, never a raw string, and
   `putAndQuoteProperty` always quotes whatever it's given. The Map-based constructor's shared `init()` still
   warns for all of these, including the two that are unreachable from the typed side.
-- **`ContigMetadata`**: the typed constructor throws for a malformed `URL`, an ID starting with `*`/`=`, and an
+- **`ContigMetadata`**: the typed constructor reports a malformed `URL`, an ID starting with `*`/`=`, and an
   ID containing a character `InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN` flags (VCFv4.2-silent, VCFv4.3.tex's
   own "Changes to VCFv4.3" errata used as clarifying guidance -- see that pattern's own comment and
   `VCF_SPEC_AMBIGUITIES.md`'s "##contig ID character set" entry). A malformed `length` is similarly
   unreachable via this path -- the parameter is `@Nullable Long`, already parsed by the time it arrives, so
   only `null` (legitimately absent per VCFv4.2.tex line 138) or an already-valid value can be passed. `assembly`
   has no format constraint to check in either constructor.
-- **`IdMetadata`/`IdDescriptionMetadata`**: the typed constructor throws for a null/blank ID, whitespace in an
+- **`IdMetadata`/`IdDescriptionMetadata`**: the typed constructor reports a null/blank ID, whitespace in an
   ID, and a comma in an ID; `IdDescriptionMetadata`'s own typed constructor additionally cannot produce an
   unquoted `Description` (same `putAndQuoteProperty` reasoning as above), so it skips calling `init()`
-  entirely rather than needing a throw-equivalent for a condition it can't reach.
-- **`VcfPosition`**: has three public constructors -- a fully strict 10-argument one, a fully strict minimal
-  5-argument one (`chromosome, position, refBases, quality, lineNumber` only -- no ID/ALT/FILTER/INFO/FORMAT
-  checks at all, since those fields are absent), and an 11-argument lenient overload taking an explicit
-  `VcfWarnings`. The content checks that differ between the two full constructors (an empty ID/ALT/FILTER
-  entry, an empty INFO key, an empty FORMAT sub-field name, FILTER combining `PASS` with another code, a
-  duplicate value within `ID` or `FILTER`, `=` inside an INFO value) all go through the `@Nullable
-  VcfWarnings`-as-signal mechanism
-  above. `newWithTrustedFormat()` is a principle-3 case layered on top of that dispatch, not a fourth branch of
-  it: it skips `checkFormat` (and therefore both its throw-vs-warn dispatch and any warning it would emit)
-  entirely, for `VcfParser`'s own per-record FORMAT-validation cache -- real VCFs often repeat the same FORMAT
-  column text across large blocks of consecutive records, and re-validating an already-validated one is
-  redundant work. Unlike `VcfSample.newTrusted()` (which keeps its own null/size checks and skips only one
-  narrower check), this one is a full skip, including `checkFormat`'s null-element check -- see `AGENTS.md`'s
-  Null-Safety Policy for why that's still sound here. A deliberate, chosen side effect: a FORMAT that would
-  warn (e.g. an empty sub-field name) now warns once per contiguous block of identical FORMAT text, not once
-  per record, since a cache hit skips re-emitting that warning too.
+  entirely rather than needing an equivalent for a condition it can't reach. It does report an absent
+  `Description` with `init()`'s own `warnIfMissing` message, rather than letting `putAndQuoteProperty`'s
+  generic null rejection fire -- that would hard-throw even under a lenient context.
+- **`VcfPosition`**: reached through four `VcfContext.newPosition*` factories -- a full public one, a minimal
+  public 5-argument one (`chromosome, position, refBases, quality, lineNumber` only -- no ID/ALT/FILTER/INFO/FORMAT
+  checks at all, since those fields are absent), and two package-private fast paths, `newPositionTakingOwnership`
+  and `newPositionWithTrustedFormat`. The content checks that vary with strictness (an empty ID/ALT/FILTER entry,
+  an empty INFO key, an empty FORMAT sub-field name, FILTER combining `PASS` with another code, a duplicate value
+  within `ID` or `FILTER`, `=` inside an INFO value) all go through the `isLenient()`-as-signal mechanism above,
+  and both package-private factories are principle-3 cases layered on top of that dispatch, not additional
+  branches of it. `VcfContext.newPositionTakingOwnership()` skips only the defensive copies the full factory
+  makes -- every validation check still runs, `checkFormat` included -- for a caller-owned collection the parser
+  built itself moments earlier and never shares. `VcfContext.newPositionWithTrustedFormat()` skips that same
+  copying *and* skips `checkFormat` (and therefore both its throw-vs-warn dispatch and any warning it would
+  emit) entirely, for `VcfParser`'s own per-record FORMAT-validation cache -- real VCFs often repeat the same
+  FORMAT column text across large blocks of consecutive records, and re-validating an already-validated one is
+  redundant work. Unlike `newTrustedSample()` (which keeps its own null/size checks and skips only one narrower
+  check), `newPositionWithTrustedFormat` is a full skip of `checkFormat`, including its null-element check; both
+  package-private factories are unreachable from outside the package. A deliberate, chosen side effect of the
+  FORMAT cache: a FORMAT that would warn (e.g. an empty sub-field name) now warns once per contiguous block of
+  identical FORMAT text, not once per record, since a cache hit skips re-emitting that warning too.
 - **`VcfMetadata`/`Builder`**: covered in "How principles 1 and 2 are dispatched" above.
-- **`VcfSample`**: not part of either dispatch shape -- its public constructors and `newTrusted()` factory
-  already only throw (a null or mismatched-size key/value list, or -- outside `newTrusted()` -- a structural
+- **`VcfSample`**: not part of that dispatch at all -- `VcfContext.newSample` and `newTrustedSample` already
+  only throw (a null or mismatched-size key/value list, or -- outside `newTrustedSample` -- a structural
   delimiter in a key/value), never warn, so there is no throw-vs-warn choice to make at construction for this
   class. Its two warn sites (`validate()`'s empty-value normalization, `properties()`'s duplicate-FORMAT-key
-  handling) are both post-construction. `newTrusted()` is a principle-3 case, not principle 1/2: it skips the
-  structural-delimiter check entirely (rather than warning in place of throwing) for `VcfParser`'s own
-  already-guaranteed-clean input, restricted via `@RestrictedApi`/`@hidden` to prevent unsafe external use --
-  see its own Javadoc for the measured cost this avoids.
-- **`PedigreeMetadata`**: also not part of either shape -- it has no `init()` and no construction-time warn
+  handling) are both post-construction. `newTrustedSample` is a principle-3 case, not principle 1/2: it skips
+  the structural-delimiter check entirely (rather than warning in place of throwing) for `VcfParser`'s own
+  already-guaranteed-clean input, and is package-private so no external caller can reach it -- see its own
+  Javadoc for the measured cost this avoids.
+- **`PedigreeMetadata`**: also not part of it -- it has no `init()` and no construction-time warn
   site of its own to route. Its only interesting behavior, duplicate-ID handling, lives in
   `VcfMetadata.addPedigree`/`Builder.addPedigree`, which are covered by the `VcfMetadata`/`Builder` entry above.
   Unlike every other `BaseMetadata` subclass, its properties are immutable after construction -- `getPropertiesRaw()`
@@ -166,19 +174,23 @@ condition check is an always-throwing helper class rather than an inline branch.
   caller who calls one of these methods directly despite the disclaimer and hits a raw `NullPointerException`
   is getting an acceptable outcome for ignoring an explicit "not supported" contract. See `AGENTS.md`'s
   Null-Safety Policy for the current list of exempt members.
-- `VcfSample.newTrusted()`'s `@RestrictedApi`/`@hidden` disclaimer is a different case from the one above: it
-  fully enforces the same null/mismatched-length checks the public constructor does (it is not on
-  `AGENTS.md`'s null-safety exemption list, and does not need to be), and is restricted instead because it
-  skips a VCF-semantic content check (principle 3's hot-path validation skip, not the null-safety axis). The
-  `@RestrictedApi`/`@hidden` mechanism is reused here for the same reason it's used above -- a documentation-
-  only "don't call this from outside its one trusted call site" signal -- but the risk it's guarding against is
-  different (structurally-invalid VCF content reaching the writer unvalidated) and not part of the null-safety
-  policy's own scope. Contrast `VcfPosition.newWithTrustedFormat()`, added later for the same "trusted
-  parser-only fast path" reason but which genuinely IS on `AGENTS.md`'s null-safety exemption list: it skips
-  its target check (`checkFormat`) entirely rather than just one narrower piece of it, so its null-element
-  check is skipped too. The two methods look like the same pattern but sit on opposite sides of this
-  distinction -- check which checks a given trusted-bypass method actually skips before assuming either
-  precedent applies.
+- The four package-private fast paths (`VcfContext.newPositionTakingOwnership`, `newPositionWithTrustedFormat`,
+  `newTrustedSample`, `newTrustedRecord`) are a different case from the disclaimer above, on two counts. First,
+  they are *package-private*, so visibility genuinely enforces "don't call this from outside its one trusted
+  call site" rather than merely advertising it -- that is what collapsing the model package into
+  `org.pharmgkb.parser.vcf` bought. Second, what each skips is a principle-3 hot-path validation skip, not a
+  null-safety exemption, and the four skip genuinely different things:
+  `newPositionTakingOwnership` skips only the defensive copies the full `newPosition` factory makes, and still
+  runs every validation check, `checkFormat` included -- this is exactly why it is not named `*Trusted*` like
+  the other three: it trusts the caller's exclusive ownership of the collections, not the collections' content,
+  which is a strictly weaker claim than the other three make;
+  `newPositionWithTrustedFormat` skips that same copying *and* skips `checkFormat` entirely, including its
+  null-element check;
+  `newTrustedSample` skips only the structural-delimiter scan and keeps its null/mismatched-length checks;
+  `newTrustedRecord` skips the defensive copy of the sample list and the context-identity verification, but
+  still rejects a null position and a null sample list -- `MemoryMappedVcfLineParser.parseLine` relies on that
+  last guarantee and deliberately does not re-check either. They look like one pattern; check which checks a
+  given trusted-bypass method actually skips before assuming one is a precedent for another.
 
 ## Known, permanent deviations
 

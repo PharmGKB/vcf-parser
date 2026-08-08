@@ -1,13 +1,14 @@
 # Empty ("zero-length") field handling
 
 This document describes the parser's (lenient) behavior -- reached via `VcfParser`, `VcfPosition.validate()`,
-or `VcfPosition`'s own 11-argument lenient constructor. `VcfPosition`'s 10-argument (default) constructor
-throws `VcfFormatException` immediately for an empty ID/ALT/FILTER entry, an empty INFO key, or an empty
-FORMAT sub-field name instead of warning-and-normalizing per the table below; see `VALIDATION_PHILOSOPHY.md`.
+or `VcfContext.newPosition(...)` on a context built with `VcfContext.lenient(...)`. On a
+`VcfContext.strict(...)` context, the same factory throws `VcfFormatException` immediately for an empty
+ID/ALT/FILTER entry, an empty INFO key, or an empty FORMAT sub-field name instead of warning-and-normalizing
+per the table below; see `VALIDATION_PHILOSOPHY.md`.
 `VcfWriter`'s default write path applies this same warn-and-normalize behavior for a live-mutated empty
 ID/ALT/FILTER entry or sample FORMAT value that reaches `writeLine()` without validation having re-run (see
 "Where this is implemented" below) -- it is not part of `VALIDATION_PHILOSOPHY.md`'s strict/lenient
-constructor split, since the writer has no "direct construction" analogue to be strict about.
+split, since the writer has no "direct construction" analogue to be strict about.
 
 The VCF spec (explicitly stated starting with VCFv4.3; VCFv4.1/4.2 are silent on it) says:
 
@@ -235,8 +236,8 @@ for rejection purposes, but they are still a data-loss case in practice.
 - `VcfMetadata.Builder.addRawProperty()`, and `VcfMetadata.addAssembly()` / `addPedigreeDatabase()` -- warn and
   drop a generic metadata property with an empty value (`isEmptyMetadataValue`), or one wrapped in angle
   brackets whose inner content is empty or has no `=` (`collidesWithAttributeListGrammar`, e.g. `<>` or
-  `<http://foo.com>`), in lenient mode; `Builder`'s strict default (no `.lenient(...)`) throws
-  `VcfFormatException` for either condition instead -- see `VALIDATION_PHILOSOPHY.md`. The two conditions
+  `<http://foo.com>`) under a lenient `VcfContext`; under a strict one, both conditions throw
+  `VcfFormatException` instead -- see `VALIDATION_PHILOSOPHY.md`. The two conditions
   differ in `VcfWriter.Builder.validateBeforeWrite()`, though: the plain-empty-value case only warns, without
   dropping, since bcftools tolerates a plain empty value and there is no round-trip hazard; the
   bracket-collision case instead **throws** `VcfFormatException`, since bcftools cannot parse a value shaped

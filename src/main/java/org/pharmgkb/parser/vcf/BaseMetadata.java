@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Set;
 import com.google.common.base.Preconditions;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.helpers.MessageFormatter;
 
 
 /**
@@ -20,16 +21,26 @@ public class BaseMetadata {
 
   private final Map<String, String> m_properties;
   private final String m_label;
+  private final VcfContext m_context;
   /**
-   * Where this instance's own lazy/re-validation warnings go. Defaults to {@link VcfWarnings#DEFAULT} (the
-   * shared SLF4J logger); {@link #setWarningsSink} lets {@code VcfWriter}/{@code VcfParser} explicitly claim
-   * this instance for the duration of a specific parse or write, and a lenient (Map-based) subclass constructor
-   * sets it once at construction time via the same method. This is a live, mutable field -- the same category
-   * of caller-mutable state already exposed by e.g. {@link #getPropertiesRaw()} -- not thread-local or ambient.
+   * Where this instance's own lazy/re-validation warnings go. Initialized from this declaration's
+   * {@link VcfContext}'s own sink; {@link #setWarningsSink} lets {@code VcfWriter}/{@code VcfParser} explicitly
+   * claim this instance for the duration of a specific parse or write. This is a live, mutable field -- the same
+   * category of caller-mutable state already exposed by e.g. {@link #getPropertiesRaw()} -- not thread-local or
+   * ambient.
+   * <p>
+   * This is the warnings <em>destination</em> only. Whether a recoverable condition warns here at all or instead
+   * throws is decided by {@link VcfContext#isLenient()}, never by this field -- see {@link #warnOrThrow}.
    */
-  protected VcfWarnings m_warnings = VcfWarnings.DEFAULT;
+  protected VcfWarnings m_warnings;
 
   /**
+   * Package-private, not public: nothing should instantiate the base declaration type directly. Every subclass
+   * is in this package, so this is real encapsulation rather than a documentation-only restriction.
+   *
+   * @param context the context this declaration belongs to -- supplies both its warnings sink and its
+   * strict-vs-lenient behavior. {@code VcfMetadata.Builder} owns the one instance per parse/write and threads
+   * it in here.
    * @param properties this declaration's raw key-value properties. Copied defensively into a new
    * {@link LinkedHashMap} -- the caller's own map is never retained by reference, so mutating it after
    * construction has no effect on this instance. The copy also fixes this instance's iteration order at
@@ -40,7 +51,9 @@ public class BaseMetadata {
    * meaningless (nondeterministic or simply wrong) attribute-order warning, since this copy cannot recover an
    * order that was never preserved in the first place.
    */
-  public BaseMetadata(String label, Map<String, String> properties) {
+  BaseMetadata(VcfContext context, String label, Map<String, String> properties) {
+    m_context = Preconditions.checkNotNull(context, "context must not be null");
+    m_warnings = context.getWarnings();
     // properties is typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting
     // new LinkedHashMap<>(properties) below throw a raw NullPointerException. Reachable through every
     // Map-taking constructor of every subclass (PedigreeMetadata, ContigMetadata, IdDescriptionMetadata,
@@ -51,6 +64,34 @@ public class BaseMetadata {
     m_label = label;
     m_properties = new LinkedHashMap<>(properties);
     validateProperties();
+  }
+
+  /**
+   * @return the context this declaration was created under; never {@code null}.
+   * <p>
+   * {@code final} so a permitted subclass cannot override it to report a different context and defeat
+   * {@code VcfMetadata.Builder}'s identity check. Package-private for the same reason
+   * {@code VcfPosition.getContext()} is -- it would transitively expose {@code getVersion()}, whose value is
+   * not meaningful until version-gated behavior exists.
+   */
+  final VcfContext getContext() {
+    return m_context;
+  }
+
+  /**
+   * Reports a recoverable, non-structural content problem: warns to {@link #m_warnings} under a lenient
+   * {@link VcfContext}, throws {@link VcfFormatException} under a strict one.
+   * <p>
+   * This is what makes leniency come from the context rather than from which constructor shape the caller
+   * reached. Before this existed, a declaration's typed {@code (id, ...)} constructor threw unconditionally
+   * while its {@code Map}-based sibling warned unconditionally, so the same invalid content behaved differently
+   * purely by input format. Both now route here.
+   */
+  protected final void warnOrThrow(String message, Object... args) {
+    if (!m_context.isLenient()) {
+      throw new VcfFormatException(MessageFormatter.arrayFormat(message, args).getMessage());
+    }
+    m_warnings.warn(message, args);
   }
 
   /**
@@ -179,7 +220,7 @@ public class BaseMetadata {
    */
   protected void warnIfMissing(String propertyName, @Nullable String value) {
     if (value == null) {
-      m_warnings.warn("{} required metadata property \"{}\" is missing", getLabel(), propertyName);
+      warnOrThrow("{} required metadata property \"{}\" is missing", getLabel(), propertyName);
     }
   }
 
@@ -192,7 +233,7 @@ public class BaseMetadata {
   protected void checkNumberProperty(@Nullable String number) {
     warnIfMissing("Number", number);
     if (number != null && !InternalUtils.NUMBER_PATTERN.matcher(number).matches()) {
-      m_warnings.warn("{} Number is not a valid VCF number: '{}'", getLabel(), number);
+      warnOrThrow("{} Number is not a valid VCF number: '{}'", getLabel(), number);
     }
   }
 
@@ -227,7 +268,7 @@ public class BaseMetadata {
     List<String> expected = new ArrayList<>(CANONICAL_ATTRIBUTE_ORDER);
     expected.retainAll(actual);
     if (!actual.equals(expected)) {
-      m_warnings.warn("{} metadata attributes declared out of canonical order: {} (expected order: {})",
+      warnOrThrow("{} metadata attributes declared out of canonical order: {} (expected order: {})",
           getLabel(), actual, expected);
     }
   }

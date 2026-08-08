@@ -18,16 +18,16 @@ import org.jspecify.annotations.Nullable;
  * This class captures all the VCF metadata from a VCF file.
  * <p>
  * Unlike every other class in this package that holds a {@link VcfWarnings} reference, this one has no
- * {@code setWarningsSink} method: its own sink is fixed at {@link Builder#build()} time and is permanently
- * {@code null} (strict -- warn sites throw {@link VcfFormatException} instead) unless the {@code Builder} was
- * put in lenient mode. The consequence for a caller handing a {@code VcfMetadata} to a
+ * {@code setWarningsSink} method: both its warnings destination and its strict-vs-lenient behavior come from
+ * the {@link VcfContext} its {@link Builder} was constructed with, and that context is fixed for this object's
+ * whole lifetime. The consequence for a caller handing a {@code VcfMetadata} to a
  * {@link org.pharmgkb.parser.vcf.VcfWriter}: the writer claims each individual <em>declaration</em>
  * ({@link InfoMetadata}, {@link ContigMetadata}, etc.) for its own warnings destination, but it cannot re-route
  * this container object's own warn sites ({@link #addInfo}, {@link #addAssembly}, and friends). Those always go
- * wherever this {@code VcfMetadata} was originally built to send them -- for a parsed file, the parser's sink,
- * which by write time may already be closed, in which case {@link VcfWarnings} falls back to its shared SLF4J
- * logger. So a warning triggered by mutating a {@code VcfMetadata} after handing it to a writer will not appear
- * in that writer's {@code warningsToFile()} destination.
+ * wherever this {@code VcfMetadata}'s own context points -- for a parsed file, the parser's sink, which by write
+ * time may already be closed, in which case {@link VcfWarnings} falls back to its shared SLF4J logger. So a
+ * warning triggered by mutating a {@code VcfMetadata} after handing it to a writer will not appear in that
+ * writer's {@code warningsToFile()} destination.
  *
  * @author Mark Woon
  */
@@ -53,18 +53,18 @@ public class VcfMetadata {
   // can't be a simple, always-trusted Set<String> the way the six keyed types' Map keys are.
   private @Nullable Set<String> m_pedigreeIdCache;
   private int m_pedigreeIdCacheModCount = -1;
-  private final @Nullable VcfWarnings m_warnings;
+  private final VcfContext m_context;
 
 
   private VcfMetadata(String fileFormat, @Nullable Map<String, IdDescriptionMetadata> alt,
       @Nullable Map<String, InfoMetadata> info, @Nullable Map<String, IdDescriptionMetadata> filter,
       @Nullable Map<String, FormatMetadata> format, @Nullable Map<String, ContigMetadata> contig,
       @Nullable Map<String, IdDescriptionMetadata> sample, @Nullable List<PedigreeMetadata> pedigree,
-      List<String> columns, @Nullable ListMultimap<String, String> properties, @Nullable VcfWarnings warnings) {
+      List<String> columns, @Nullable ListMultimap<String, String> properties, VcfContext context) {
     Preconditions.checkNotNull(fileFormat);
     Preconditions.checkNotNull(columns);
+    m_context = Preconditions.checkNotNull(context, "context must not be null");
     m_fileFormat = fileFormat;
-    m_warnings = warnings;
     // fresh, independently-mutable copies -- NOT List.copyOf/Map.copyOf. getAlts()/getInfo()/getFilters()/
     // getFormats()/getContigs()/getSamples() returning a live, mutable backing map is an existing, tested,
     // intentional contract. Copying here only prevents a built VcfMetadata from sharing state with the Builder (or
@@ -93,6 +93,15 @@ public class VcfMetadata {
     m_columns    = List.copyOf(columns);
   }
 
+  /**
+   * @return the context this metadata was built under; never {@code null}.
+   * <p>
+   * Package-private for the same reason as {@link VcfPosition#getContext()}.
+   */
+  VcfContext getContext() {
+    return m_context;
+  }
+
   public String getFileFormat() {
     return m_fileFormat;
   }
@@ -106,7 +115,24 @@ public class VcfMetadata {
     if (!InternalUtils.FILE_FORMAT_PATTERN.matcher(fileFormat).matches()) {
       throw new VcfFormatException("VCF format must look like ex: VCFv4.2; was " + fileFormat);
     }
+    checkAgreesWithContext(fileFormat, m_context);
     m_fileFormat = fileFormat;
+  }
+
+  /**
+   * Rejects a {@code ##fileformat} value that names a different VCF version than {@code context} was built for:
+   * a metadata object whose declaration contradicts its own context is internally inconsistent, and every
+   * version-dependent decision made from that context would then be made for the wrong version.
+   * <p>
+   * Compared canonicalized ({@link VcfVersion#canonicalize}), not raw, so re-declaring {@code VCFv4.02} over a
+   * {@code VCFv4.2} context is accepted -- those are the same version -- while the caller's own spelling is
+   * still what gets stored and emitted.
+   */
+  private static void checkAgreesWithContext(String fileFormat, VcfContext context) {
+    if (!VcfVersion.canonicalize(fileFormat).equals(VcfVersion.canonicalize(context.getDeclaredFileFormat()))) {
+      throw new VcfFormatException("##fileformat " + fileFormat + " disagrees with this metadata's VcfContext, " +
+          "which declares " + context.getDeclaredFileFormat());
+    }
   }
 
   public Map<String, IdDescriptionMetadata> getAlts() {
@@ -181,32 +207,33 @@ public class VcfMetadata {
    */
   public void addAlt(IdDescriptionMetadata value) {
     requireNonNull(value, "ALT");
+    checkSameContext(value, m_context, "ALT");
     if (value.getId() == null || value.getId().trim().isEmpty()) {
-      warnOrThrow(m_warnings, "ALT metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
+      warnOrThrow(m_context, "ALT metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
       return;
     }
-    if (warnIfDuplicate(m_alt, value.getId(), "ALT", m_warnings)) {
+    if (warnIfDuplicate(m_alt, value.getId(), "ALT", m_context)) {
       return;
     }
-    validateAlt(value, m_warnings);
+    validateAlt(value, m_context);
     m_alt.put(value.getId(), value);
   }
 
   /**
    * Reports it if {@code value}'s ID is not a valid ALT structural variant code, or if it declares a Number/Type
-   * extra property with a syntactically invalid value. With a non-{@code null} {@code warnings} this warns and
-   * does not throw, matching this project's warn-and-preserve policy for metadata declarations; with
-   * {@code warnings == null} the same conditions throw {@link org.pharmgkb.parser.vcf.VcfFormatException}
-   * instead.
+   * extra property with a syntactically invalid value. Under a lenient {@code context} this warns and does not
+   * throw, matching this project's warn-and-preserve policy for metadata declarations; under a strict one the
+   * same conditions throw {@link org.pharmgkb.parser.vcf.VcfFormatException} instead.
    * <p>Public only because {@link org.pharmgkb.parser.vcf.VcfWriter} needs cross-package access; not part of
    * this library's supported public API.
    *
-   * @param warnings where to route a detected problem, or {@code null} for strict mode -- rather than warning,
-   * every condition this method checks is thrown as {@link org.pharmgkb.parser.vcf.VcfFormatException}
+   * @param context supplies both the warnings destination and the warn-vs-throw decision: under
+   * {@link VcfContext#strict}, every condition this method checks is thrown as
+   * {@link org.pharmgkb.parser.vcf.VcfFormatException} instead of warned about
    * @hidden
    */
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
-  public static void validateAlt(IdDescriptionMetadata value, @Nullable VcfWarnings warnings) {
+  public static void validateAlt(IdDescriptionMetadata value, VcfContext context) {
     String id = value.getId();
     if (id != null) {
       // whitespace and commas are already checked generically by IdMetadata.init() for every ID-based metadata
@@ -214,7 +241,7 @@ public class VcfMetadata {
       // checked here instead since VCFv4.2.tex line 105's "or angle brackets" clause has only ever been
       // evidenced for ALT specifically, not extended to ##contig/##INFO/##FORMAT/##FILTER/##SAMPLE.
       if (id.chars().anyMatch(c -> c == '<' || c == '>')) {
-        warnOrThrow(warnings, "ALT {} must not contain angle brackets", id);
+        warnOrThrow(context, "ALT {} must not contain angle brackets", id);
       } else if (id.contains(":")) {
         // Only an ID containing ':' unambiguously invokes the structural-variant-code grammar (VCFv4.2.tex lines
         // 100-117: DEL/INS/DUP/INV/CNV and their colon-delimited subtypes, e.g. DEL:ME). A bare single-token ID
@@ -228,7 +255,7 @@ public class VcfMetadata {
         try {
           new AltStructuralVariant(id);
         } catch (VcfFormatException e) {
-          warnOrThrow(warnings, "ALT {} is not a valid structural variant code: {}", id, e.getMessage());
+          warnOrThrow(context, "ALT {} is not a valid structural variant code: {}", id, e.getMessage());
         }
       }
     }
@@ -238,14 +265,14 @@ public class VcfMetadata {
     // declared, they're still expected to be syntactically valid VCF Number/Type tokens.
     String number = value.getPropertyRaw(InfoMetadata.NUMBER);
     if (number != null && !InternalUtils.NUMBER_PATTERN.matcher(number).matches()) {
-      warnOrThrow(warnings, "ALT {} has Number '{}' but it is not a valid VCF number", id, number);
+      warnOrThrow(context, "ALT {} has Number '{}' but it is not a valid VCF number", id, number);
     }
     String type = value.getPropertyRaw(InfoMetadata.TYPE);
     if (type != null) {
       try {
         InfoType.valueOf(type);
       } catch (IllegalArgumentException e) {
-        warnOrThrow(warnings, "ALT {} has Type '{}' but it is not a recognized VCF type", id, type);
+        warnOrThrow(context, "ALT {} has Type '{}' but it is not a recognized VCF type", id, type);
       }
     }
   }
@@ -316,13 +343,29 @@ public class VcfMetadata {
   /**
    * Throws {@link VcfFormatException} with the formatted message if {@code warnings} is {@code null} (strict
    * mode); otherwise warns to it. Shared by {@code VcfMetadata}'s own instance methods and {@code Builder}'s
-   * mirrors, each passing their own {@code m_warnings} field.
+   * mirrors, each passing their own {@code m_context} field.
    */
-  private static void warnOrThrow(@Nullable VcfWarnings warnings, String message, Object... args) {
-    if (warnings == null) {
+  private static void warnOrThrow(VcfContext context, String message, Object... args) {
+    if (!context.isLenient()) {
       throw new VcfFormatException(org.slf4j.helpers.MessageFormatter.arrayFormat(message, args).getMessage());
     }
-    warnings.warn(message, args);
+    context.getWarnings().warn(message, args);
+  }
+
+  /**
+   * Rejects a declaration built under a different {@link VcfContext} than the one it is being added to.
+   * <p>
+   * Reference identity is the right check, not equality: one {@code VcfContext} instance per parse and per
+   * write is the whole model, so two equal-valued contexts still represent two different operations with
+   * different warnings sinks. Without this, {@link #getInfo()} and its siblings hand out an existing
+   * declaration that a caller could push into a differently-configured builder or metadata object, silently
+   * routing that declaration's later validation warnings to the wrong sink.
+   */
+  private static void checkSameContext(BaseMetadata md, VcfContext context, String kind) {
+    if (md.getContext() != context) {
+      throw new VcfFormatException("Declaration " + kind + " " + md.getPropertyRaw("ID") + " was built under a " +
+          "different VcfContext; warnings and version semantics would route to the wrong context");
+    }
   }
 
   /**
@@ -345,9 +388,9 @@ public class VcfMetadata {
    * declaration and silently drops each duplicate, with no warning, for all six -- see
    * DUPLICATE_METADATA_ID_HANDLING.md.
    */
-  private static boolean warnIfDuplicate(Map<String, ?> map, String id, String typeName, @Nullable VcfWarnings warnings) {
+  private static boolean warnIfDuplicate(Map<String, ?> map, String id, String typeName, VcfContext context) {
     if (map.containsKey(id)) {
-      warnOrThrow(warnings, "Duplicate ID \"{}\" for {} metadata declaration ignored; keeping the first declaration",
+      warnOrThrow(context, "Duplicate ID \"{}\" for {} metadata declaration ignored; keeping the first declaration",
           id, typeName);
       return true;
     }
@@ -361,11 +404,12 @@ public class VcfMetadata {
    */
   public void addInfo(InfoMetadata value) {
     requireNonNull(value, "INFO");
+    checkSameContext(value, m_context, "INFO");
     if (value.getId() == null || value.getId().trim().isEmpty()) {
-      warnOrThrow(m_warnings, "INFO metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
+      warnOrThrow(m_context, "INFO metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
       return;
     }
-    if (warnIfDuplicate(m_info, value.getId(), "INFO", m_warnings)) {
+    if (warnIfDuplicate(m_info, value.getId(), "INFO", m_context)) {
       return;
     }
     m_info.put(value.getId(), value);
@@ -378,11 +422,12 @@ public class VcfMetadata {
    */
   public void addFormat(FormatMetadata value) {
     requireNonNull(value, "FORMAT");
+    checkSameContext(value, m_context, "FORMAT");
     if (value.getId() == null || value.getId().trim().isEmpty()) {
-      warnOrThrow(m_warnings, "FORMAT metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
+      warnOrThrow(m_context, "FORMAT metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
       return;
     }
-    if (warnIfDuplicate(m_format, value.getId(), "FORMAT", m_warnings)) {
+    if (warnIfDuplicate(m_format, value.getId(), "FORMAT", m_context)) {
       return;
     }
     m_format.put(value.getId(), value);
@@ -395,11 +440,12 @@ public class VcfMetadata {
    */
   public void addContig(ContigMetadata value) {
     requireNonNull(value, "CONTIG");
+    checkSameContext(value, m_context, "CONTIG");
     if (value.getId() == null || value.getId().trim().isEmpty()) {
-      warnOrThrow(m_warnings, "CONTIG metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
+      warnOrThrow(m_context, "CONTIG metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
       return;
     }
-    if (warnIfDuplicate(m_contig, value.getId(), "CONTIG", m_warnings)) {
+    if (warnIfDuplicate(m_contig, value.getId(), "CONTIG", m_context)) {
       return;
     }
     m_contig.put(value.getId(), value);
@@ -412,11 +458,12 @@ public class VcfMetadata {
    */
   public void addFilter(IdDescriptionMetadata value) {
     requireNonNull(value, "FILTER");
+    checkSameContext(value, m_context, "FILTER");
     if (value.getId() == null || value.getId().trim().isEmpty()) {
-      warnOrThrow(m_warnings, "FILTER metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
+      warnOrThrow(m_context, "FILTER metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
       return;
     }
-    if (warnIfDuplicate(m_filter, value.getId(), "FILTER", m_warnings)) {
+    if (warnIfDuplicate(m_filter, value.getId(), "FILTER", m_context)) {
       return;
     }
     m_filter.put(value.getId(), value);
@@ -429,11 +476,12 @@ public class VcfMetadata {
    */
   public void addSample(IdDescriptionMetadata value) {
     requireNonNull(value, "SAMPLE");
+    checkSameContext(value, m_context, "SAMPLE");
     if (value.getId() == null || value.getId().trim().isEmpty()) {
-      warnOrThrow(m_warnings, "SAMPLE metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
+      warnOrThrow(m_context, "SAMPLE metadata declaration has no ID and cannot be stored; dropped: {}", value.getPropertiesRaw());
       return;
     }
-    if (warnIfDuplicate(m_sample, value.getId(), "SAMPLE", m_warnings)) {
+    if (warnIfDuplicate(m_sample, value.getId(), "SAMPLE", m_context)) {
       return;
     }
     m_sample.put(value.getId(), value);
@@ -451,11 +499,11 @@ public class VcfMetadata {
     }
     InternalUtils.checkNoLineTerminator("assembly", value);
     if (isEmptyMetadataValue(value)) {
-      warnOrThrow(m_warnings, "Metadata property \"assembly\" has an empty value and was dropped: {}", value);
+      warnOrThrow(m_context, "Metadata property \"assembly\" has an empty value and was dropped: {}", value);
       return;
     }
     if (collidesWithAttributeListGrammar(value)) {
-      warnOrThrow(m_warnings, "Metadata property \"assembly\" is wrapped in angle brackets with no key=value " +
+      warnOrThrow(m_context, "Metadata property \"assembly\" is wrapped in angle brackets with no key=value " +
           "content, which bcftools cannot parse as a generic property value, and was dropped: {}", value);
       return;
     }
@@ -480,11 +528,11 @@ public class VcfMetadata {
     }
     InternalUtils.checkNoLineTerminator("pedigreeDB", value);
     if (isEmptyMetadataValue(value)) {
-      warnOrThrow(m_warnings, "Metadata property \"pedigreeDB\" has an empty value and was dropped: {}", value);
+      warnOrThrow(m_context, "Metadata property \"pedigreeDB\" has an empty value and was dropped: {}", value);
       return;
     }
     if (collidesWithAttributeListGrammar(value)) {
-      warnOrThrow(m_warnings, "Metadata property \"pedigreeDB\" is wrapped in angle brackets with no key=value " +
+      warnOrThrow(m_context, "Metadata property \"pedigreeDB\" is wrapped in angle brackets with no key=value " +
           "content, which bcftools cannot parse as a generic property value, and was dropped: {}", value);
       return;
     }
@@ -500,9 +548,10 @@ public class VcfMetadata {
    */
   public void addPedigree(PedigreeMetadata value) {
     requireNonNull(value, "PEDIGREE");
+    checkSameContext(value, m_context, "PEDIGREE");
     String id = value.getPropertyRaw("ID");
     if (id != null && hasPedigreeIdCollision(id)) {
-      warnOrThrow(m_warnings, "Duplicate ID \"{}\" for PEDIGREE metadata declaration ignored; keeping the first " +
+      warnOrThrow(m_context, "Duplicate ID \"{}\" for PEDIGREE metadata declaration ignored; keeping the first " +
           "declaration", id);
       return;
     }
@@ -769,7 +818,7 @@ public class VcfMetadata {
 
 
   public static class Builder {
-    private @Nullable String m_fileFormat;
+    private String m_fileFormat;
     private final Map<String, IdDescriptionMetadata> m_alt = new LinkedHashMap<>();
     private final Map<String, InfoMetadata> m_info = new LinkedHashMap<>();
     private final Map<String, IdDescriptionMetadata> m_filter = new LinkedHashMap<>();
@@ -783,22 +832,28 @@ public class VcfMetadata {
     private int m_pedigreeIdCacheModCount = -1;
     private List<String> m_columns = new ArrayList<>();
     private final ListMultimap<String, String> m_properties = LinkedListMultimap.create();
-    private @Nullable VcfWarnings m_warnings;
+    private final VcfContext m_context;
 
     /**
-     * Opts this builder into warn-and-keep-first behavior for every one of its own {@code addXxx} methods'
-     * existing checks (missing/duplicate ID, invalid ALT structural code, empty {@code assembly}/{@code
-     * pedigreeDB} value), matching this builder's pre-strict-split behavior exactly. Without calling this, the
-     * builder throws {@link VcfFormatException} at each of those checks instead. The built {@link VcfMetadata}
-     * inherits {@code warnings} for the rest of its own lifetime.
+     * @param context the one context for this parse or write. It supplies the warnings destination for every
+     * check this builder and the {@link VcfMetadata} it builds perform, and decides whether each of those
+     * checks warns and recovers ({@link VcfContext#lenient}) or throws ({@link VcfContext#strict}) -- replacing
+     * the former {@code lenient(VcfWarnings)} opt-in, whose null-sink-means-strict encoding tied strictness to
+     * a sink rather than to a policy object. It is also what every declaration built through this builder is
+     * bound to.
      */
-    public Builder lenient(VcfWarnings warnings) {
-      m_warnings = Preconditions.checkNotNull(warnings, "warnings must not be null");
-      return this;
+    public Builder(VcfContext context) {
+      m_context = Preconditions.checkNotNull(context, "context must not be null");
+      // the context already carries the declared ##fileformat, so a builder is never in a no-fileformat state;
+      // setFileFormat below exists to let a caller keep its own spelling of the same version.
+      m_fileFormat = context.getDeclaredFileFormat();
     }
 
     /**
-     * Sets the VCF version string.
+     * Sets the VCF version string. Must name the same version this builder's {@link VcfContext} was built for
+     * (compared canonicalized, so {@code VCFv4.02} over a {@code VCFv4.2} context is accepted and keeps its own
+     * spelling).
+     *
      * @param fileFormat Ex: "VCFv4.2"
      */
     public Builder setFileFormat(String fileFormat) {
@@ -807,86 +862,199 @@ public class VcfMetadata {
       if (fileFormat == null) {
         throw new VcfFormatException("VCF file format is null");
       }
-      m_fileFormat = fileFormat;
       if (!InternalUtils.FILE_FORMAT_PATTERN.matcher(fileFormat).matches()) {
-        throw new VcfFormatException("Not a VCF file: fileformat is " + m_fileFormat);
+        throw new VcfFormatException("Not a VCF file: fileformat is " + fileFormat);
       }
+      checkAgreesWithContext(fileFormat, m_context);
+      m_fileFormat = fileFormat;
       return this;
     }
 
-    public Builder addAlt(IdDescriptionMetadata md) {
+    /*
+     * Raw-value declaration overloads. These, not the object-taking siblings below, are the supported public
+     * way to declare metadata: the builder constructs each declaration from its own VcfContext, so a
+     * declaration can never arrive already bound to a different one. The Map-based overloads (the parser's own
+     * shape) deliberately take no VcfWarnings -- the context supplies the sink, and BaseMetadata.warnOrThrow
+     * decides warn-vs-throw from that same context, so equivalent invalid content behaves identically through
+     * both the typed and the Map shape.
+     */
+
+    public Builder addAlt(@Nullable String id, @Nullable String description) {
+      return addAlt(new IdDescriptionMetadata(m_context, "ALT", id, description));
+    }
+
+    public Builder addAlt(Map<String, String> properties) {
+      return addAlt(new IdDescriptionMetadata(m_context, "ALT", properties));
+    }
+
+    public Builder addInfo(@Nullable String id, @Nullable String description, @Nullable InfoType type,
+        @Nullable String number, @Nullable String source, @Nullable String version) {
+      return addInfo(new InfoMetadata(m_context, id, description, type, number, source, version));
+    }
+
+    public Builder addInfo(Map<String, String> properties) {
+      return addInfo(new InfoMetadata(m_context, properties));
+    }
+
+    public Builder addFilter(@Nullable String id, @Nullable String description) {
+      return addFilter(new IdDescriptionMetadata(m_context, "FILTER", id, description));
+    }
+
+    public Builder addFilter(Map<String, String> properties) {
+      return addFilter(new IdDescriptionMetadata(m_context, "FILTER", properties));
+    }
+
+    public Builder addFormat(@Nullable String id, @Nullable String description, @Nullable String number,
+        @Nullable FormatType type) {
+      return addFormat(new FormatMetadata(m_context, id, description, number, type));
+    }
+
+    public Builder addFormat(Map<String, String> properties) {
+      return addFormat(new FormatMetadata(m_context, properties));
+    }
+
+    public Builder addContig(@Nullable String id, @Nullable Long length, @Nullable String assembly,
+        @Nullable String md5, @Nullable String species, @Nullable String taxonomy, @Nullable String url) {
+      return addContig(new ContigMetadata(m_context, id, length, assembly, md5, species, taxonomy, url));
+    }
+
+    public Builder addContig(Map<String, String> properties) {
+      return addContig(new ContigMetadata(m_context, properties));
+    }
+
+    public Builder addSample(@Nullable String id, @Nullable String description) {
+      return addSample(new IdDescriptionMetadata(m_context, "SAMPLE", id, description));
+    }
+
+    public Builder addSample(Map<String, String> properties) {
+      return addSample(new IdDescriptionMetadata(m_context, "SAMPLE", properties));
+    }
+
+    public Builder addPedigree(Map<String, String> properties) {
+      return addPedigree(new PedigreeMetadata(m_context, properties));
+    }
+
+    /**
+     * Adds an already-built declaration. Package-private: this shape is retained only for internal
+     * same-context callers (notably {@code VcfMetadata.toBuilder()}). It is not public because
+     * {@link VcfMetadata#getAlt}-style getters hand out existing declarations, so a public
+     * overload would let a caller move one built under another context into this builder -- see
+     * {@link #checkSameContext}.
+     */
+    Builder addAlt(IdDescriptionMetadata md) {
       requireNonNull(md, "ALT");
+      checkSameContext(md, m_context, "ALT");
       if (md.getId() == null || md.getId().trim().isEmpty()) {
-        warnOrThrow(m_warnings, "ALT metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
+        warnOrThrow(m_context, "ALT metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
       }
-      if (warnIfDuplicate(m_alt, md.getId(), "ALT", m_warnings)) {
+      if (warnIfDuplicate(m_alt, md.getId(), "ALT", m_context)) {
         return this;
       }
-      validateAlt(md, m_warnings);
+      validateAlt(md, m_context);
       m_alt.put(md.getId(), md);
       return this;
     }
 
-    public Builder addInfo(InfoMetadata md) {
+    /**
+     * Adds an already-built declaration. Package-private: this shape is retained only for internal
+     * same-context callers (notably {@code VcfMetadata.toBuilder()}). It is not public because
+     * {@link VcfMetadata#getInfo}-style getters hand out existing declarations, so a public
+     * overload would let a caller move one built under another context into this builder -- see
+     * {@link #checkSameContext}.
+     */
+    Builder addInfo(InfoMetadata md) {
       requireNonNull(md, "INFO");
+      checkSameContext(md, m_context, "INFO");
       if (md.getId() == null || md.getId().trim().isEmpty()) {
-        warnOrThrow(m_warnings, "INFO metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
+        warnOrThrow(m_context, "INFO metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
       }
-      if (warnIfDuplicate(m_info, md.getId(), "INFO", m_warnings)) {
+      if (warnIfDuplicate(m_info, md.getId(), "INFO", m_context)) {
         return this;
       }
       m_info.put(md.getId(), md);
       return this;
     }
 
-    public Builder addFilter(IdDescriptionMetadata md) {
+    /**
+     * Adds an already-built declaration. Package-private: this shape is retained only for internal
+     * same-context callers (notably {@code VcfMetadata.toBuilder()}). It is not public because
+     * {@link VcfMetadata#getFilter}-style getters hand out existing declarations, so a public
+     * overload would let a caller move one built under another context into this builder -- see
+     * {@link #checkSameContext}.
+     */
+    Builder addFilter(IdDescriptionMetadata md) {
       requireNonNull(md, "FILTER");
+      checkSameContext(md, m_context, "FILTER");
       if (md.getId() == null || md.getId().trim().isEmpty()) {
-        warnOrThrow(m_warnings, "FILTER metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
+        warnOrThrow(m_context, "FILTER metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
       }
-      if (warnIfDuplicate(m_filter, md.getId(), "FILTER", m_warnings)) {
+      if (warnIfDuplicate(m_filter, md.getId(), "FILTER", m_context)) {
         return this;
       }
       m_filter.put(md.getId(), md);
       return this;
     }
 
-    public Builder addFormat(FormatMetadata md) {
+    /**
+     * Adds an already-built declaration. Package-private: this shape is retained only for internal
+     * same-context callers (notably {@code VcfMetadata.toBuilder()}). It is not public because
+     * {@link VcfMetadata#getFormat}-style getters hand out existing declarations, so a public
+     * overload would let a caller move one built under another context into this builder -- see
+     * {@link #checkSameContext}.
+     */
+    Builder addFormat(FormatMetadata md) {
       requireNonNull(md, "FORMAT");
+      checkSameContext(md, m_context, "FORMAT");
       if (md.getId() == null || md.getId().trim().isEmpty()) {
-        warnOrThrow(m_warnings, "FORMAT metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
+        warnOrThrow(m_context, "FORMAT metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
       }
-      if (warnIfDuplicate(m_format, md.getId(), "FORMAT", m_warnings)) {
+      if (warnIfDuplicate(m_format, md.getId(), "FORMAT", m_context)) {
         return this;
       }
       m_format.put(md.getId(), md);
       return this;
     }
 
-    public Builder addContig(ContigMetadata md) {
+    /**
+     * Adds an already-built declaration. Package-private: this shape is retained only for internal
+     * same-context callers (notably {@code VcfMetadata.toBuilder()}). It is not public because
+     * {@link VcfMetadata#getContig}-style getters hand out existing declarations, so a public
+     * overload would let a caller move one built under another context into this builder -- see
+     * {@link #checkSameContext}.
+     */
+    Builder addContig(ContigMetadata md) {
       requireNonNull(md, "CONTIG");
+      checkSameContext(md, m_context, "CONTIG");
       if (md.getId() == null || md.getId().trim().isEmpty()) {
-        warnOrThrow(m_warnings, "CONTIG metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
+        warnOrThrow(m_context, "CONTIG metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
       }
-      if (warnIfDuplicate(m_contig, md.getId(), "CONTIG", m_warnings)) {
+      if (warnIfDuplicate(m_contig, md.getId(), "CONTIG", m_context)) {
         return this;
       }
       m_contig.put(md.getId(), md);
       return this;
     }
 
-    public Builder addSample(IdDescriptionMetadata md) {
+    /**
+     * Adds an already-built declaration. Package-private: this shape is retained only for internal
+     * same-context callers (notably {@code VcfMetadata.toBuilder()}). It is not public because
+     * {@link VcfMetadata#getSample}-style getters hand out existing declarations, so a public
+     * overload would let a caller move one built under another context into this builder -- see
+     * {@link #checkSameContext}.
+     */
+    Builder addSample(IdDescriptionMetadata md) {
       requireNonNull(md, "SAMPLE");
+      checkSameContext(md, m_context, "SAMPLE");
       if (md.getId() == null || md.getId().trim().isEmpty()) {
-        warnOrThrow(m_warnings, "SAMPLE metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
+        warnOrThrow(m_context, "SAMPLE metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
       }
-      if (warnIfDuplicate(m_sample, md.getId(), "SAMPLE", m_warnings)) {
+      if (warnIfDuplicate(m_sample, md.getId(), "SAMPLE", m_context)) {
         return this;
       }
       m_sample.put(md.getId(), md);
@@ -908,11 +1076,12 @@ public class VcfMetadata {
      * for consistency and so it stays correct if that ever changes, without paying an O(n) rescan on every call
      * in the common case (sequential adds with no interleaved direct-list mutation).
      */
-    public Builder addPedigree(PedigreeMetadata md) {
+    Builder addPedigree(PedigreeMetadata md) {
       requireNonNull(md, "PEDIGREE");
+      checkSameContext(md, m_context, "PEDIGREE");
       String id = md.getPropertyRaw("ID");
       if (id != null && hasPedigreeIdCollision(id)) {
-        warnOrThrow(m_warnings, "Duplicate ID \"{}\" for PEDIGREE metadata declaration ignored; keeping the first " +
+        warnOrThrow(m_context, "Duplicate ID \"{}\" for PEDIGREE metadata declaration ignored; keeping the first " +
             "declaration", id);
         return this;
       }
@@ -964,7 +1133,7 @@ public class VcfMetadata {
         // this cannot currently be reached through normal parsing -- VcfParser.parseMetadata's switch routes
         // every reserved name to the structured path, never to addRawProperty -- but it closes the hole for
         // direct/programmatic Builder use, matching the empty-value case below's warn-and-drop style
-        warnOrThrow(m_warnings, "Metadata property name \"{}\" collides with a structured declaration keyword and was " +
+        warnOrThrow(m_context, "Metadata property name \"{}\" collides with a structured declaration keyword and was " +
             "dropped: {}", name, value);
         return this;
       }
@@ -976,13 +1145,13 @@ public class VcfMetadata {
         // through "bcftools view -h" unmodified). Dropping it here is a deliberate stricter choice, the same way
         // this library is already stricter than bcftools for an empty ID/FILTER/ALT list entry -- see
         // EMPTY_FIELD_HANDLING.md's "position-independent list: drop" strategy, used there for the same reason.
-        warnOrThrow(m_warnings, "Metadata property \"{}\" has an empty value and was dropped: {}", name, value);
+        warnOrThrow(m_context, "Metadata property \"{}\" has an empty value and was dropped: {}", name, value);
         return this;
       }
       if (collidesWithAttributeListGrammar(value)) {
         // see collidesWithAttributeListGrammar's own comment: htslib special-cases any generic property value shaped
         // like this regardless of key, so this is not scoped to "assembly"/"pedigreeDB" specifically
-        warnOrThrow(m_warnings, "Metadata property \"{}\" is wrapped in angle brackets with no key=value content, " +
+        warnOrThrow(m_context, "Metadata property \"{}\" is wrapped in angle brackets with no key=value content, " +
             "which bcftools cannot parse as a generic property value, and was dropped: {}", name, value);
         return this;
       }
@@ -1001,11 +1170,8 @@ public class VcfMetadata {
     }
 
     public VcfMetadata build() {
-      if (m_fileFormat == null) {
-        throw new VcfFormatException("Not a VCF file: no ##fileformat line");
-      }
       return new VcfMetadata(m_fileFormat, m_alt, m_info, m_filter, m_format, m_contig, m_sample, m_pedigree,
-          m_columns, m_properties, m_warnings);
+          m_columns, m_properties, m_context);
     }
   }
 }

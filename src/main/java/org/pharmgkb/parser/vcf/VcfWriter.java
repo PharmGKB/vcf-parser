@@ -69,12 +69,20 @@ public class VcfWriter implements Closeable {
   private boolean m_closed;
   private @Nullable Exception m_invalidatingCause;
   private final VcfWarnings m_warnings;
+  private final @Nullable String m_targetFileFormat;
+  // the context for this write. Built in writeHeader() -- the Builder has no metadata to build it from -- and
+  // rebuilt on each writeHeader() attempt, since a content rejection permits a corrected retry with different
+  // metadata. writeLine() cannot be reached before writeHeader() has succeeded (it throws) with anything but
+  // that same metadata instance (it throws for that too), so by then it is fixed.
+  private @Nullable VcfContext m_context;
 
-  private VcfWriter(@Nullable Path file, PrintWriter writer, boolean validateBeforeWrite, VcfWarnings warnings) {
+  private VcfWriter(@Nullable Path file, PrintWriter writer, boolean validateBeforeWrite, VcfWarnings warnings,
+      @Nullable String targetFileFormat) {
     m_file = file;
     m_writer = writer;
     m_validateBeforeWrite = validateBeforeWrite;
     m_warnings = warnings;
+    m_targetFileFormat = targetFileFormat;
   }
 
   /**
@@ -111,6 +119,30 @@ public class VcfWriter implements Closeable {
     if (m_headerWritten) {
       throw new VcfFormatException("writeHeader() was already called; a VCF file must have exactly one header");
     }
+    // Reject a target/metadata version mismatch before anything else happens, and in particular before a single
+    // byte is emitted: AGENTS.md's Writer Validation and Round-Trip Policy states a writer "must not emit a
+    // fileformat declaration for another VCF version unless the emitted output is also valid under that
+    // declared version", and this library implements no conversion, so any mismatch would advertise a version
+    // the data does not conform to.
+    //
+    // Compared canonicalized, not raw and not resolved. Raw-string comparison would reject
+    // targetFileFormat("VCFv4.02") against VCFv4.2 metadata, though VcfVersion deliberately treats those as the
+    // same version. Resolved-version comparison would be wrong the other way: VCFv4.7 and VCFv4.9 both fall
+    // back to 4.3 and would compare equal despite being genuinely different declarations.
+    String targetFileFormat = m_targetFileFormat;
+    if (targetFileFormat != null
+        && !VcfVersion.canonicalize(targetFileFormat).equals(VcfVersion.canonicalize(metadata.getFileFormat()))) {
+      throw new VcfFormatException("Writer target " + targetFileFormat + " does not match the metadata's "
+          + metadata.getFileFormat() + "; cross-version conversion is not supported");
+    }
+    // Rebuilt on every writeHeader() attempt, deliberately NOT cached across attempts. A content rejection
+    // below (validateMetadata, a line-terminator check) does not invalidate this writer -- only an IO failure
+    // does -- so a corrected retry with different metadata is supported and tested
+    // (testHeaderContentRejectionAllowsCorrectedRetry). Caching the first attempt's context would leave that
+    // retry writing the REJECTED metadata's ##fileformat over the accepted metadata's content, which is the
+    // very thing the cross-version check above exists to prevent, reached around it (that check only compares
+    // m_targetFileFormat, which is null in the inherit-from-metadata case).
+    m_context = VcfContext.lenient(declaredFileFormatFor(metadata), m_warnings);
     // claim after this method's own structural checks, matching writeLine()'s convention: a rejected call must not
     // leave every metadata declaration's warning sink re-pointed at this writer as a side effect
     claimMetadataWarningsSinks(metadata);
@@ -155,8 +187,13 @@ public class VcfWriter implements Closeable {
   private List<String> buildHeaderLines(VcfMetadata metadata) {
     List<String> lines = new ArrayList<>();
 
-    // file format
-    lines.add("##fileformat=" + metadata.getFileFormat());
+    // Derived from the argument, not read back off m_context, for two reasons. It keeps a retried writeHeader()
+    // honest (see that method's own comment), and it keeps writeLine()'s header-text snapshot able to detect a
+    // post-header setFileFormat() change: sourcing this from the fixed context would make the recomputed header
+    // text identical no matter what the caller did to the metadata's own declaration afterward. (VcfMetadata's
+    // setFileFormat only permits a re-spelling of the same version, e.g. VCFv4.2 -> VCFv4.02, since it must
+    // agree with its own context -- but that still changes the emitted bytes, so it must still be caught.)
+    lines.add("##fileformat=" + declaredFileFormatFor(metadata));
 
     // metadata, in order from spec
     addMetadataLines(lines, "INFO", metadata.getInfo().values());
@@ -182,6 +219,16 @@ public class VcfWriter implements Closeable {
     lines.add(sb.toString());
 
     return lines;
+  }
+
+  /**
+   * @return the {@code ##fileformat} value this writer emits for {@code metadata}: an explicit
+   * {@link Builder#targetFileFormat} if one was set, otherwise the metadata's own declaration. Returned
+   * verbatim -- {@code writeHeader}'s canonicalized cross-version check decides only whether the two agree,
+   * never what gets written -- so {@code targetFileFormat("VCFv4.02")} emits {@code ##fileformat=VCFv4.02}.
+   */
+  private String declaredFileFormatFor(VcfMetadata metadata) {
+    return m_targetFileFormat != null ? m_targetFileFormat : metadata.getFileFormat();
   }
 
   /**
@@ -568,7 +615,9 @@ public class VcfWriter implements Closeable {
       }
       entry.validate();
       if ("ALT".equals(kind) && entry instanceof IdDescriptionMetadata idDescriptionMetadata) {
-        VcfMetadata.validateAlt(idDescriptionMetadata, m_warnings);
+        VcfContext context = m_context;
+        assert context != null; // validateMetadata only runs from writeHeader/writeLine, after the context exists
+        VcfMetadata.validateAlt(idDescriptionMetadata, context);
       }
       Map<String, String> properties = entry.getPropertiesRaw();
       validateMetadataProperties(kind, properties);
@@ -1166,6 +1215,7 @@ public class VcfWriter implements Closeable {
     private boolean m_validateBeforeWrite;
     private boolean m_warningsToFile;
     private @Nullable Path m_warningsFile;
+    private @Nullable String m_targetFileFormat;
 
     /**
      * Files are written as UTF-8, matching {@link org.pharmgkb.parser.vcf.VcfParser.Builder#fromFile}.
@@ -1191,6 +1241,32 @@ public class VcfWriter implements Closeable {
         throw new IllegalStateException("Already writing to a file");
       }
       m_writer = writer;
+      return this;
+    }
+
+    /**
+     * Declares the VCF version this writer emits, overriding the version the metadata itself declares.
+     * <p>
+     * Optional, and inherited from the metadata when not set. It is a {@code Builder} option rather than a
+     * {@code writeHeader} parameter because a decorator flow constructs the sink before parsing (and therefore
+     * before any metadata) exists; it is optional rather than required for the same reason.
+     * <p>
+     * This does <em>not</em> convert anything. {@link #writeHeader} rejects a target naming a different version
+     * than the metadata declares -- see its own comment for why, and why the comparison is canonicalized. The
+     * value given here is emitted verbatim, so {@code targetFileFormat("VCFv4.02")} writes
+     * {@code ##fileformat=VCFv4.02} over {@code VCFv4.2} metadata.
+     *
+     * @param fileFormat Ex: "VCFv4.2"
+     */
+    public Builder targetFileFormat(String fileFormat) {
+      // VCF content, not a caller-configuration object like toFile(Path)/toWriter(PrintWriter): this string is
+      // written into the output verbatim, so AGENTS.md's Public API Null-Safety Policy calls for
+      // VcfFormatException rather than Preconditions' raw NullPointerException. The value's own well-formedness
+      // is checked in writeHeader(), where VcfVersion.canonicalize runs.
+      if (fileFormat == null) {
+        throw new VcfFormatException("targetFileFormat() was called with a null file format");
+      }
+      m_targetFileFormat = fileFormat;
       return this;
     }
 
@@ -1306,7 +1382,7 @@ public class VcfWriter implements Closeable {
           throw e;
         }
       }
-      return new VcfWriter(m_file, writer, m_validateBeforeWrite, warnings);
+      return new VcfWriter(m_file, writer, m_validateBeforeWrite, warnings, m_targetFileFormat);
     }
 
   }

@@ -3,7 +3,7 @@
 This is the itemized, per-case reference for exactly which VCF content this library rejects immediately
 (`VcfFormatException`) versus which it warns about and recovers from. It's the detailed complement to
 [`VALIDATION_PHILOSOPHY.md`](VALIDATION_PHILOSOPHY.md), which states the architectural "why" (which of the
-four principles applies, which of the two dispatch shapes a class uses) but deliberately doesn't itemize
+four principles applies, how the `VcfContext`-driven strict/lenient dispatch reaches a class) but deliberately doesn't itemize
 every individual rule. See `README.md`'s "Validation" section for a short summary and
 where this file fits into the rest of this repo's docs.
 
@@ -53,45 +53,70 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   sentinel in the spec, unlike `ALT`/`ID`/`FILTER`): in every case the output would not be valid, re-parseable VCF.
 ### Direct/programmatic construction
 
-- A typed metadata constructor given directly (e.g. `new InfoMetadata(id, ...)`, `new FormatMetadata(id,
-  ...)`, `new ContigMetadata(id, ...)`, `new IdDescriptionMetadata(label, id, description)`) throws, *at
-  construction time*, for every condition that class's own declaration-level checks would otherwise flag -- a
+- A metadata declaration built under a strict `VcfContext` (e.g.
+  `new VcfMetadata.Builder(VcfContext.strict("VCFv4.2")).addInfo(id, description, type, number, source,
+  version)`) throws, *at construction time*, for every condition that class's own declaration-level checks
+  would otherwise flag -- a
   missing/empty/whitespace-only `ID` (VCFv4.3.tex line 121), an `##INFO`/`##FORMAT` `ID` that doesn't match
   the required tag-name grammar (VCFv4.3.tex line 368/429: must start with a letter or underscore, followed
   only by letters, digits, underscores, or periods -- `##INFO` additionally allows the legacy value
   `1000G`), an invalid `Number`, a `Type=Flag`/non-zero-`Number` mismatch, a reserved property's Number/Type
   mismatch, a malformed `##contig` URL, or a `##contig` ID starting with `*`/`=` or containing an invalid
   character (see `VCF_SPEC_AMBIGUITIES.md`'s "`##contig` ID character set" entry). This is a
-  property of the constructor only, not of the resulting object: calling `validate()` later on that same
-  object (e.g. after mutating it through `getPropertiesRaw()`) always warns instead of throwing, the same as
-  an object built via the lenient constructor -- see [`VcfWarnings`](README.md#vcfwarnings-explicit-warning-routing)
-  for why. `VcfPosition`'s own constructor (see below) follows the identical construction-time-only
-  rule for FILTER/INFO/FORMAT declaration-level mistakes. This only applies to direct/programmatic
-  construction; a file parsed by `VcfParser` with the same malformed content is handled per the lenient
-  section below, not rejected outright. A caller that wants today's warn-and-recover behavior for direct
-  construction instead of a throw can use each metadata class's lenient `Map`-based constructor (or, for
-  `VcfPosition`, its 11-argument lenient overload described below), which takes an explicit
-  [`VcfWarnings`](README.md#vcfwarnings-explicit-warning-routing) instance to route the warnings to.
-- `new VcfPosition(...)`'s 10-argument constructor throws, at construction time, for FILTER combining `PASS`
+  property of the context, not of the moment of construction: calling `validate()` later on that same object
+  (e.g. after mutating it through `getPropertiesRaw()`) re-runs the same checks under that same context, so a
+  declaration built under a *lenient* context warns there and one built under a strict context throws there.
+  **`VcfPosition.validate()` and `VcfSample.validate()` do not work this way for their recoverable conditions**
+  -- those always warn, whatever context created them, because they pass their warnings sink to their check
+  helpers unconditionally rather than deriving strictness from the context the way the constructor path does.
+  Each also has structural checks that are a separate case and still throw unconditionally in both contexts:
+  `VcfSample.validate()` throws via `checkNoStructuralDelimiter` (`VcfSample.java:130-143`) for a null property
+  key, a line terminator, or a `:`/tab in a key or (non-`GLE`) value; `VcfPosition.validate()` throws via
+  `checkChromosome`/`checkPosition`/`checkRef` (none of which take a warnings sink at all) and via
+  `checkFormat`'s null-sub-field-name, duplicate-key, and GT-not-first checks (`VcfPosition.java:544/572/578`),
+  none of which consult the warnings sink either. So a strictly-constructed position mutated into an invalid
+  *recoverable* state (e.g. an empty INFO key) and re-validated warns, while a strictly-constructed declaration
+  in the same situation throws; a position mutated into a *structurally* invalid state (e.g. a duplicate FORMAT
+  key) still throws from `validate()` regardless of which context created it. This only applies to
+  direct/programmatic construction under a strict context; a file parsed by `VcfParser` with the same malformed
+  content is handled per the lenient section below, not rejected outright. **Which overload shape you use does not affect this**: the typed `addInfo(id, description, ...)`
+  and the raw-map `addInfo(Map)` shapes behave identically for equivalent invalid content, because the
+  strict-vs-lenient decision comes from the `VcfContext` alone. A caller that wants warn-and-recover behavior
+  for direct construction builds its objects from `VcfContext.lenient(fileFormat, warnings)` instead, which
+  also supplies the [`VcfWarnings`](README.md#vcfwarnings-explicit-warning-routing) instance the warnings are
+  routed to.
+- `VcfContext.newPosition(...)` under a strict context throws, at construction time, for FILTER combining `PASS`
   with another code, a duplicate value within `ID` or `FILTER`, an INFO value containing `=`, an empty INFO
   key, an empty FORMAT sub-field name, a FORMAT sub-field name that doesn't match the required tag-name
   grammar (the same grammar an `##INFO`/`##FORMAT` declaration `ID` enforces above -- see
   `VCF_SPEC_AMBIGUITIES.md`'s "Data-line FORMAT key fails tag-name grammar" entry), or an empty
   ID/ALT/FILTER entry -- the same conditions the lenient
-  section below describes as warned-and-recovered when parsed; its
-  own `validate()` method always warns instead, matching the metadata classes above. A separate 11-argument
-  overload, taking an explicit [`VcfWarnings`](README.md#vcfwarnings-explicit-warning-routing) instance as its last
-  parameter, restores exactly that warn-and-recover behavior; this is the overload `VcfParser` itself uses.
+  section below describes as warned-and-recovered when parsed. The identical factory called on a lenient
+  context warns and recovers instead; that is what `VcfParser` itself uses.
   `VcfParser` caches FORMAT-column validation across consecutive records sharing the exact same FORMAT text
   (real VCFs often repeat one FORMAT string across large blocks of records) -- a FORMAT that would warn (e.g.
   an empty sub-field name) warns once per contiguous block of identical FORMAT text, not once per record.
-- `VcfMetadata.Builder` throws for a missing/duplicate declaration ID, an invalid `##ALT` structural code, an
-  empty `assembly`/`pedigreeDB` value, or an `assembly`/`pedigreeDB`/other generic property value shaped like
-  an empty or no-`=` bracketed attribute list (e.g. `<>` or `<http://foo.com>`), unless built with
-  `.lenient(VcfWarnings)`, which restores today's warn-and-keep-first behavior (matching bcftools; see
-  [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md)) routed to the supplied instance.
-  `VcfParser`'s own internal use always calls `.lenient(...)`, so parsing a file's behavior is unchanged by
-  any of this.
+- `VcfMetadata.Builder` constructed with a strict `VcfContext` throws for a missing/duplicate declaration ID,
+  an invalid `##ALT` structural code, an empty `assembly`/`pedigreeDB` value, or an
+  `assembly`/`pedigreeDB`/other generic property value shaped like an empty or no-`=` bracketed attribute list
+  (e.g. `<>` or `<http://foo.com>`). Constructed with a lenient one, each of those warns and keeps the first
+  declaration instead (matching bcftools; see
+  [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md)), routed to that context's
+  `VcfWarnings`. `VcfParser`'s own internal use always builds a lenient context, so parsing a file's behavior
+  is unchanged by any of this.
+- `VcfMetadata.Builder` and `VcfMetadata`'s own declaration mutators both throw `VcfFormatException` for a
+  declaration built under a *different* `VcfContext` instance (compared by reference, not value). `getInfo()`
+  and its siblings hand out live declarations, so without this a caller could move one between two
+  differently-configured objects and silently route its later validation warnings to the wrong sink.
+- `VcfContext.newRecord` throws `VcfFormatException` if its position or any of its samples was created under a
+  different `VcfContext` instance, for the same reason -- a record assembled from two contexts has no
+  unambiguous warnings destination.
+- `VcfWriter.Builder.targetFileFormat(String)` throws `VcfFormatException` from `writeHeader` if it names a
+  different VCF version than the metadata declares, before emitting any output: this library implements no
+  cross-version conversion, so emitting that declaration would advertise a version the data does not conform
+  to (AGENTS.md's Writer Validation and Round-Trip Policy). The comparison is canonicalized via
+  `VcfVersion.canonicalize`, so `VCFv4.02` matches `VCFv4.2`; the requested spelling is still what gets
+  emitted.
 
 These checks run when a `VcfPosition` is constructed (including by the parser). Its setters and mutations made
 through its accessors (e.g. `getAltBases()`, `getFilters()`) do *not* re-run them, to support transformation
@@ -273,6 +298,21 @@ is a structural failure and still throws -- see the strict section above):
   corroboration the way the whitespace check above does.
 
 ### Other lenient behavior
+
+A `##fileformat` declaring a VCF 4.x version this library does not implement (`VCFv4.0` and below, `VCFv4.4`
+and above) is warned about once and interpreted under the nearest implemented version — 4.1 for anything below
+it, 4.3 for anything above. The declared value itself is preserved verbatim and re-emitted unchanged on write,
+so such a file still round-trips under its own declaration; the fallback governs interpretation only. A
+structurally unusable value (not matching `VCFv4.<digits>`) still throws, in both strict and lenient contexts —
+this is a well-formed declaration for an unimplemented version, not invalid content. See
+`VcfVersion.resolve`.
+
+Note that both `VcfParser` and `VcfWriter` build their own `VcfContext`, so this warning is emitted once per
+parse *and* once per write: a parse-then-write round trip of a `VCFv4.4`/`VCFv4.5` file reports it twice. That
+duplication is known and deferred rather than suppressed — whether the emitted output is actually valid under
+the declared version is not answerable until version-gated behavior exists, so the writer has nothing more
+specific to say yet. Pinned by
+`VcfWriterTest.testWriteSideVersionFallbackWarningIsEmittedForAnUnimplementedDeclaration`.
 
 An empty ("zero-length") entry in a delimited record field — e.g. `ID=rs1;;rs2`, `ALT=T,`, `FILTER=q10;`,
 `FORMAT=GT:DP:`, a sample value like `0/1:`, or `INFO=AD=1,,2` — is also lenient rather than strict when it can be

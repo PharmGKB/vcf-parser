@@ -58,16 +58,16 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
     m_dataStore.setMetadata(metadata);
     // parseLine() is public and callable directly, so per AGENTS.md's Public API Null-Safety Policy a null
     // record is rejected with VcfFormatException rather than raw-crashing on the unpack below. This subsumes
-    // the former explicit null-position/null-sample-list checks: every VcfRecord funnels through one private
-    // constructor that already rejects both, including on the VcfRecord.newTrusted() fast path, so neither is
-    // reachable here any more.
+    // the former explicit null-position/null-sample-list checks: every VcfRecord funnels through one
+    // constructor that already rejects both, including on the VcfContext.newTrustedRecord() fast path, so
+    // neither is reachable here any more.
     if (record == null) {
       throw new VcfFormatException("parseLine() was called with a null record");
     }
     VcfPosition position = record.getPosition();
     List<VcfSample> sampleData = record.getSamples();
-    // a null sample element does survive VcfRecord.newTrusted(), which skips the public constructor's own
-    // per-element check, so this loop -- unlike the two checks it replaced -- is still reachable
+    // a null sample element does survive VcfContext.newTrustedRecord(), which skips the per-element check
+    // VcfContext.newRecord makes, so this loop -- unlike the two checks it replaced -- is still reachable
     for (int sampleIndex = 0; sampleIndex < sampleData.size(); sampleIndex++) {
       if (sampleData.get(sampleIndex) == null) {
         throw new VcfFormatException("parseLine() was called with a null sample at index " + sampleIndex);
