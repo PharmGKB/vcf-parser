@@ -2,6 +2,7 @@ package org.pharmgkb.parser.vcf;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -11,6 +12,7 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.LinkedListMultimap;
 import com.google.common.collect.ListMultimap;
+import com.google.common.collect.Multimaps;
 import org.jspecify.annotations.Nullable;
 
 
@@ -28,9 +30,20 @@ import org.jspecify.annotations.Nullable;
  * 8 - FORMAT
  * </pre>
  *
+ * <p>
+ * Effectively immutable: there are no setters, and every collection-returning getter returns an unmodifiable
+ * view, so no method changes any value a caller can observe once construction (or {@link Builder#build()}) has
+ * returned. QUAL and INFO are the one internal exception -- {@link #getQuality()}/{@link #getInfo()} and
+ * friends parse lazily on first access, writing {@link #m_quality}/{@link #m_info} (and clearing
+ * {@link #m_rawQuality}/{@link #m_rawInfo}) the first time either is actually read. That caching has no
+ * observable effect on a single-threaded caller, but it is unsynchronized, so <b>this class is not
+ * thread-safe</b>: sharing one instance across threads before its QUAL/INFO have both been read at least once
+ * is not safe without external synchronization. A caller that needs a changed position derives a new one via
+ * {@link #toBuilder()}.
+ *
  * @author Mark Woon
  */
-public class VcfPosition {
+public final class VcfPosition {
 
   private static final Joiner sf_commaJoiner = Joiner.on(",");
   private String m_chromosome;
@@ -39,15 +52,28 @@ public class VcfPosition {
   private String m_refBases;
   private List<String> m_altBases = new ArrayList<>();
   // QUAL is stored either as a parsed BigDecimal (eager path) or as raw text parsed lazily on first getQuality()
-  // (parser path via setRawQuality); many consumers never read QUAL.
+  // (parser path via this class's own constructor rawQual parameter); many consumers never read QUAL.
   private @Nullable BigDecimal m_quality;
   private @Nullable String m_rawQuality;
   private List<String> m_filter = new ArrayList<>();
   // INFO is stored either as a parsed multimap (eager constructor path) or as raw text parsed lazily on first access
-  // (parser path via setRawInfo); at most one is non-null at a time.
+  // (parser path via this class's own constructor rawInfo parameter); at most one is non-null at a time.
   private @Nullable ListMultimap<String, String> m_info;
   private @Nullable String m_rawInfo;
   private List<String> m_format = new ArrayList<>();
+  // Memoized unmodifiable views over m_ids/m_altBases/m_filter/m_format/m_info, returned by the getters below
+  // instead of allocating a fresh wrapper on every call -- VcfWriter calls these getters repeatedly per record
+  // (once per sample property key, in VcfSample-materialization loops), and VcfParser's FORMAT-validation cache
+  // calls getFormat() once per cache-miss record, so a per-call allocation here is a measurable hot-path cost.
+  // m_ids/m_altBases/m_filter/m_format/m_info are reassigned only by validate() (never by these getters, and
+  // never externally, since this class has no setters) -- validate() clears all six caches below before it
+  // reassigns anything, so a stale cache is never returned; see its own comment.
+  private @Nullable List<String> m_idsView;
+  private @Nullable List<String> m_altBasesView;
+  private @Nullable List<String> m_filtersView;
+  private @Nullable List<String> m_formatView;
+  private @Nullable ListMultimap<String, String> m_infoView;
+  private @Nullable Set<String> m_infoKeysView;
   // originating line number in the source VCF file, or -1 if this position wasn't produced by parsing a real
   // file (e.g. constructed directly by a caller/test) -- used to attach line-number context to any
   // VcfFormatException this instance's own validation throws, guarded so a lineNumber of -1 (not produced by
@@ -74,7 +100,9 @@ public class VcfPosition {
    * are two of the three factories that skip it ({@code newPositionCopyingTrustedFields} is the third, but -- true
    * to its name -- copies anyway, for a different reason; see its own Javadoc).
    * {@link #getIds()}, {@link #getAltBases()}, {@link #getFilters()}, {@link #getFormat()}, and
-   * {@link #getInfo()} return these same objects (or an equivalent list/multimap produced by normalization).
+   * {@link #getInfo()} return unmodifiable views over these same objects (or an equivalent list/multimap
+   * produced by normalization) -- taking ownership rather than copying is still worth doing, since it skips a
+   * copy the caller has no way to observe the absence of once every getter's view is unmodifiable.
    * <p>
    * Strictness comes from {@code context}, never from which overload was called: under
    * {@link VcfContext#strict}, every recoverable condition ({@code checkWarnings == null} below) throws
@@ -99,11 +127,11 @@ public class VcfPosition {
    * itself re-runs whichever of these four checks a field actually changed since it was seeded, so by the time
    * that factory is reached every field is either freshly re-validated or provably unchanged from an
    * already-valid source -- {@code trustedFields=true} tells this constructor not to redundantly check it again.
-   * @param rawQual raw, not-yet-parsed QUAL column text to attach via {@link #setRawQuality} when {@code qual} is
-   * {@code null} -- lets a caller construct a lazily-parsed position in one call instead of a separate
-   * post-construction {@code setRawQuality}. Ignored (and never stored) when {@code qual} is non-null, mirroring
-   * {@link #setRawQuality}'s own "parsed and raw are never both non-null" invariant.
-   * @param rawInfo the {@code rawQual} parameter's exact counterpart for INFO/{@link #setRawInfo}.
+   * @param rawQual raw, not-yet-parsed QUAL column text to store as {@link #m_rawQuality}, parsed lazily on first
+   * {@link #getQuality()}, when {@code qual} is {@code null} -- lets a caller construct a lazily-parsed position
+   * in one call instead of a separate post-construction mutation. Ignored (and never stored) when {@code qual}
+   * is non-null, preserving this class's "parsed and raw are never both non-null" invariant for QUAL.
+   * @param rawInfo the {@code rawQual} parameter's exact counterpart for INFO.
    */
   VcfPosition(VcfContext context, String chr, long pos,
       @Nullable List<String> ids,
@@ -275,9 +303,10 @@ public class VcfPosition {
   }
 
   private static void checkChromosome(String chr) {
-    // chr is typed non-@Nullable, but setChromosome() (unlike the constructors) does not enforce that at runtime,
-    // by design -- see validate()'s Javadoc. Guard here rather than letting chr.isEmpty() below throw a raw
-    // NullPointerException; this runs from both constructors and validate(), so it also closes the same gap there.
+    // chr is typed non-@Nullable, but nothing enforces that at runtime -- a caller can still pass null to the
+    // public VcfContext.newPosition factory. Guard here rather than letting chr.isEmpty() below throw a raw
+    // NullPointerException, per AGENTS.md's Public API Null-Safety Policy; this runs from both constructors and
+    // validate(), so it also closes the same gap there.
     if (chr == null) {
       throw new VcfFormatException("CHROM is null");
     }
@@ -320,10 +349,10 @@ public class VcfPosition {
   }
 
   private static void checkRef(String ref) {
-    // ref is typed non-@Nullable, but setRef() (unlike the constructors) does not enforce that at runtime, by
-    // design -- see validate()'s Javadoc. Guard here rather than letting isValidRefBases(ref) below throw
-    // a raw NullPointerException; this runs from both constructors and validate(), so it also closes the same gap
-    // there.
+    // ref is typed non-@Nullable, but nothing enforces that at runtime -- a caller can still pass null to the
+    // public VcfContext.newPosition factory. Guard here rather than letting isValidRefBases(ref) below throw
+    // a raw NullPointerException, per AGENTS.md's Public API Null-Safety Policy; this runs from both constructors
+    // and validate(), so it also closes the same gap there.
     if (ref == null) {
       throw new VcfFormatException("REF is null");
     }
@@ -659,47 +688,60 @@ public class VcfPosition {
   }
 
   /**
-   * Normalizes a lone {@code "PASS"} or {@code "."} in {@link #m_filter} into a fresh, independently-mutable list
-   * -- {@code "."} becomes an empty list ({@link FilterStatus#NONE}); {@code "PASS"} is copied into a new
-   * single-element list containing just {@code "PASS"} (still {@link FilterStatus#PASSED}), so a caller can mutate
-   * it afterward via {@link #getFilters()} (e.g. {@code clear()}) even if the list originally passed to the
-   * constructor was immutable. Neither case is a caller mistake to warn about -- {@code "PASS"} is itself the sole
-   * representation of {@link FilterStatus#PASSED}. Assumes {@link #checkFilters} has already validated
-   * {@link #m_filter}. Idempotent: a no-op once {@link #m_filter} no longer has exactly one such element.
+   * Normalizes a lone {@code "."} in {@link #m_filter} to an empty list ({@link FilterStatus#NONE}). A lone
+   * {@code "PASS"} needs no normalization at all -- it is already the sole representation of
+   * {@link FilterStatus#PASSED} exactly as given, and {@link #getFilters()} returns an unmodifiable view
+   * regardless of whether the list backing it is the caller's own original object, so (unlike before
+   * {@code VcfPosition} was frozen) there is no remaining reason to copy it into an independently-mutable list.
+   * Assumes {@link #checkFilters} has already validated {@link #m_filter}. Idempotent: a no-op once
+   * {@link #m_filter} is no longer the single-element list {@code ["."]}.
    */
   private void normalizeFilters() {
-    if (m_filter.size() == 1) {
-      if (m_filter.get(0).equals(".")) {
-        m_filter = new ArrayList<>();
-      } else if (m_filter.get(0).equals("PASS")) {
-        m_filter = new ArrayList<>(m_filter);
-      }
+    if (m_filter.size() == 1 && m_filter.get(0).equals(".")) {
+      m_filter = new ArrayList<>();
     }
   }
 
   /**
    * Re-validates this position's current field values, throwing {@link VcfFormatException} if any are no longer valid.
-   * As a side effect (matching the constructor), normalizes a lone {@code "."} FILTER value left by a mutation so
-   * that {@link #getFilterStatus()} continues to report correctly.
+   * As a side effect (matching the constructor), normalizes a lone {@code "."} FILTER value so that
+   * {@link #getFilterStatus()} continues to report correctly.
    * <p>
-   * The constructors validate their arguments, but {@link #setChromosome}, {@link #setRef}, {@link #setPosition}, and
-   * mutations made through {@link #getIds}, {@link #getAltBases}, {@link #getFilters}, {@link #getFormat}, and
-   * {@link #getInfo()} do <em>not</em> validate their input, to support transformation pipelines that mutate a
-   * position in place. Each of those accessors returns a mutable list/multimap regardless of what was handed to
-   * {@link VcfContext#newPosition}, which defensively copies every one of them. Call this method after such
-   * mutations if you need to confirm the position is still valid.
+   * {@link VcfPosition} has no public mutation route for its ID/ALT/FILTER/FORMAT/INFO-multimap fields -- every
+   * value reaching those fields via {@link VcfContext#newPosition} or {@link Builder#build()} (which re-runs
+   * exactly the checks below for any field a setter marked dirty since the builder was seeded; see its own
+   * Javadoc) is already validated by the time either returns. <b>QUAL and INFO are the one exception, and this
+   * method remains genuinely load-bearing because of it</b>: {@link Builder#rawQuality}/{@link Builder#rawInfo}
+   * (and the matching {@code rawQual}/{@code rawInfo} parameters {@code VcfContext.newPositionTakingOwnership}/
+   * {@code newPositionWithTrustedFormat} accept) attach raw, not-yet-parsed text without validating it at
+   * construction or build time at all -- that is deferred to first access ({@link #getQuality()}/
+   * {@link #getInfo()}) or to an explicit call to this method. A position built this way can therefore still
+   * hold invalid raw QUAL/INFO text after {@link Builder#build()} returns, and this method is the only way to
+   * surface that without also triggering the ordinary lazy-access warning path. {@code VcfWriter}'s
+   * {@code validateBeforeWrite()} relies on exactly this, calling it on every position before writing -- do not
+   * remove or bypass this method, and do not assume every field it checks is already guaranteed valid the way
+   * ID/ALT/FILTER/FORMAT/INFO-multimap are.
    * <p>
    * {@link #getFilterStatus()} is always derived directly from {@link #getFilters()}'s current contents (see its
-   * Javadoc), so emptying the FILTER list by any means -- including {@code clear()} -- always produces
-   * {@link FilterStatus#NONE}, regardless of what the list contained before. {@link FilterStatus#PASSED} is
-   * always an explicit opt-in: set {@link #getFilters()} to the single-element list {@code ["PASS"]} and call this
-   * method to reach it.
+   * Javadoc); {@link FilterStatus#PASSED} is always an explicit opt-in -- construct or rebuild (via
+   * {@link #toBuilder()}) with the single-element FILTER list {@code ["PASS"]} to reach it.
    * <p>
    * The whole method body is wrapped in a single guarded catch rather than annotating individual checks:
    * {@link #m_lineNumber} identifies which line this record came from, not which line a specific value came from,
    * so any validation failure on this record gets the same line-number attachment.
    */
   public void validate() {
+    // Clear every memoized getter view BEFORE running the checks below, not after: each check may reassign the
+    // field it validates to a new object (e.g. checkIds drops an empty entry into a new list), which would leave
+    // a cache still wrapping the OLD object if cleared only on success. Clearing first means a check that throws
+    // partway through still leaves no stale cache behind -- the cost is that a getter called after a caught
+    // exception rebuilds its view from whatever the fields ended up at, which is correct, not stale, either way.
+    m_idsView = null;
+    m_altBasesView = null;
+    m_filtersView = null;
+    m_formatView = null;
+    m_infoView = null;
+    m_infoKeysView = null;
     try {
       checkChromosome(m_chromosome);
       checkPosition(m_position);
@@ -726,27 +768,20 @@ public class VcfPosition {
     return m_chromosome;
   }
 
-  public void setChromosome(String chromosome) {
-    m_chromosome = chromosome;
-  }
-
-  public void setRef(String ref) {
-    m_refBases = ref;
-  }
-
   public long getPosition() {
     return m_position;
-  }
-
-  public void setPosition(long position) {
-    m_position = position;
   }
 
   /**
    * Gets the list of unique identifiers for this position.
    */
   public List<String> getIds() {
-    return m_ids;
+    List<String> view = m_idsView;
+    if (view == null) {
+      view = Collections.unmodifiableList(m_ids);
+      m_idsView = view;
+    }
+    return view;
   }
 
   /**
@@ -764,7 +799,12 @@ public class VcfPosition {
    * </p>
    */
   public List<String> getAltBases() {
-    return m_altBases;
+    List<String> view = m_altBasesView;
+    if (view == null) {
+      view = Collections.unmodifiableList(m_altBases);
+      m_altBasesView = view;
+    }
+    return view;
   }
 
   /**
@@ -801,20 +841,6 @@ public class VcfPosition {
       }
     }
     return m_quality;
-  }
-
-  /**
-   * Sets the raw QUAL column text, to be parsed lazily on first {@link #getQuality()}. Used by the parser so positions
-   * whose QUAL is never read do not pay to build a {@link BigDecimal}.
-   */
-  public void setRawQuality(@Nullable String rawQuality) {
-    m_rawQuality = rawQuality;
-    m_quality = null;
-  }
-
-  public void setQuality(@Nullable BigDecimal quality) {
-    m_quality = quality;
-    m_rawQuality = null;
   }
 
   /**
@@ -862,16 +888,12 @@ public class VcfPosition {
    * {@link FilterStatus#FAILED}. Use {@link #getFilterStatus()} to interpret this without re-deriving it by hand.
    */
   public List<String> getFilters() {
-    return m_filter;
-  }
-
-  /**
-   * Sets the raw INFO column text, to be parsed lazily on first access. Used by the parser so positions whose INFO is
-   * never read do not pay to build the INFO multimap.
-   */
-  public void setRawInfo(@Nullable String rawInfo) {
-    m_rawInfo = rawInfo;
-    m_info = null;
+    List<String> view = m_filtersView;
+    if (view == null) {
+      view = Collections.unmodifiableList(m_filter);
+      m_filtersView = view;
+    }
+    return view;
   }
 
   /**
@@ -965,7 +987,12 @@ public class VcfPosition {
    * Gets all INFO fields for every key.
    */
   public ListMultimap<String, String> getInfo() {
-    return info();
+    ListMultimap<String, String> view = m_infoView;
+    if (view == null) {
+      view = Multimaps.unmodifiableListMultimap(info());
+      m_infoView = view;
+    }
+    return view;
   }
 
   /**
@@ -974,7 +1001,10 @@ public class VcfPosition {
    * @return list of values or null if there is no INFO metadata for the specified id
    */
   public @Nullable List<String> getInfo(String id) {
-    ListMultimap<String, String> info = info();
+    // reuses the same memoized, already-unmodifiable view getInfo() caches -- Multimaps.unmodifiableListMultimap
+    // wraps get(key) too, so there is no need for this method's own Collections.unmodifiableList(...) wrapper on
+    // top of it
+    ListMultimap<String, String> info = getInfo();
     if (info.containsKey(id)) {
       return info.get(id);
     }
@@ -1068,11 +1098,21 @@ public class VcfPosition {
   }
 
   public List<String> getFormat() {
-    return m_format;
+    List<String> view = m_formatView;
+    if (view == null) {
+      view = Collections.unmodifiableList(m_format);
+      m_formatView = view;
+    }
+    return view;
   }
 
   public Set<String> getInfoKeys() {
-    return info().keySet();
+    Set<String> view = m_infoKeysView;
+    if (view == null) {
+      view = Collections.unmodifiableSet(info().keySet());
+      m_infoKeysView = view;
+    }
+    return view;
   }
 
   /**
@@ -1196,9 +1236,11 @@ public class VcfPosition {
 
     /**
      * Sets raw, not-yet-parsed QUAL column text, to be parsed lazily on the built position's first
-     * {@link #getQuality()} -- clears any parsed value set via {@link #quality}. This is {@code VcfParser}'s
-     * route to a lazily-parsed QUAL, replacing the {@code setRawQuality} method it used before this builder
-     * existed.
+     * {@link #getQuality()} -- clears any parsed value set via {@link #quality}. For a caller rebuilding a
+     * position via {@link VcfPosition#toBuilder()} that wants to preserve lazy QUAL parsing. {@code VcfParser}'s
+     * own per-record construction does not go through this builder at all -- it attaches raw QUAL/INFO directly
+     * via {@code VcfContext.newPositionTakingOwnership}/{@code newPositionWithTrustedFormat}'s own
+     * {@code rawQual}/{@code rawInfo} parameters, to avoid this builder's per-record allocation cost.
      */
     public Builder rawQuality(@Nullable String rawQuality) {
       m_rawQuality = rawQuality;
@@ -1238,8 +1280,8 @@ public class VcfPosition {
 
     /**
      * Sets raw, not-yet-parsed INFO column text, to be parsed lazily on the built position's first
-     * {@link #getInfo()} -- clears any parsed value set via {@link #info}. This is {@code VcfParser}'s route to
-     * a lazily-parsed INFO, replacing the {@code setRawInfo} method it used before this builder existed.
+     * {@link #getInfo()} -- clears any parsed value set via {@link #info}. See {@link #rawQuality}'s identical
+     * reasoning for why {@code VcfParser} does not use this method either.
      */
     public Builder rawInfo(@Nullable String rawInfo) {
       m_rawInfo = rawInfo;
@@ -1293,6 +1335,12 @@ public class VcfPosition {
       if (m_formatDirty && m_format != null) {
         m_format = checkFormat(m_format, checkWarnings);
       }
+      // This factory's "always copies, so two build() calls (or build() and this builder's own retained fields)
+      // never alias each other" contract is no longer independently pinned by a dedicated test: Task 8 made
+      // every getter return an unmodifiable view, which removed the only way a test had to make sharing
+      // externally observable (mutate one result, check the other is unaffected) -- see task-8-report.md's
+      // Group B. The contract itself is unchanged and still enforced by this call; a regression here would
+      // currently surface only via internal/reflective inspection, not a public-API-level test failure.
       return m_context.newPositionCopyingTrustedFields(m_chromosome, m_position, m_ids, m_ref, m_altBases,
           m_quality, m_filter, m_info, m_format, m_lineNumber, m_rawQuality, m_rawInfo);
     }

@@ -363,9 +363,12 @@ public class VcfParser implements Closeable {
       if (data.size() >= 9) {
         rawFormat = data.get(8);
         if (rawFormat.equals(m_lastFormatRawText)) {
-          // a fresh copy is required, never the cached prototype itself: VcfPosition.getFormat() is documented
-          // and tested as safe to mutate in place, and a caller doing so must never be able to corrupt a later
-          // record's cache hit
+          // a fresh copy is made, never the cached prototype's own List object, so this record's own position
+          // (via newPositionWithTrustedFormat's ownership-taking contract below) never aliases m_lastValidatedFormat
+          // itself or another record's position built from the same cache entry -- matching every other
+          // *TakingOwnership/*WithTrustedFormat caller's convention of handing off an exclusively-owned collection
+          // (see VcfContext.newPositionTakingOwnership's own Javadoc), independent of whether VcfPosition.getFormat()
+          // happens to be mutable
           format = new ArrayList<>(m_lastValidatedFormat);
           formatCacheHit = true;
         } else {
@@ -379,7 +382,8 @@ public class VcfParser implements Closeable {
       }
       boolean noFormatFields = format != null && format.isEmpty();
 
-      // QUAL and INFO are parsed lazily by VcfPosition (see setRawQuality/setRawInfo); many consumers never read them.
+      // QUAL and INFO are parsed lazily by VcfPosition, attached below via the rawQual/rawInfo parameters of
+      // whichever factory this line reaches; many consumers never read them.
       VcfContext context = m_context;
       assert context != null; // parseMetadata() above always builds it before any data line is read
       // Both branches take ownership rather than copying: ids/alt/filters/format are all produced by toList()
@@ -388,11 +392,14 @@ public class VcfParser implements Closeable {
       // checkFormat, a hit already has. The miss branch is not rare: the cache holds only the single most
       // recent FORMAT text, so a file alternating FORMAT between adjacent records (gVCF reference blocks
       // interleaved with variant sites; GATK output with conditional PGT:PID) misses on every record.
+      // Both also attach this line's raw, not-yet-parsed QUAL/INFO text directly (rather than a separate
+      // post-construction setter call or an intermediate VcfPosition.Builder allocation) -- see
+      // VcfContext.newPositionTakingOwnership's own rawQual/rawInfo Javadoc for why.
       pos = formatCacheHit
           ? context.newPositionWithTrustedFormat(chromosome, position, ids, ref, alt, null, filters, null, format,
-              m_lineNumber)
+              m_lineNumber, data.get(5), data.get(7))
           : context.newPositionTakingOwnership(chromosome, position, ids, ref, alt, null, filters, null, format,
-              m_lineNumber);
+              m_lineNumber, data.get(5), data.get(7));
       if (!formatCacheHit && rawFormat != null) {
         // cache a defensive COPY of pos.getFormat() -- what checkFormat actually produced -- not the
         // pre-checkFormat `format` local: checkFormat is a normalizing check (like checkIds's own
@@ -400,19 +407,22 @@ public class VcfParser implements Closeable {
         // in content, not just object identity. Caching pos.getFormat() directly keeps the invariant "the cache
         // always holds exactly what a real VcfPosition ended up with" true by construction, not by the current
         // coincidence that checkFormat happens to return its argument unchanged on every path VcfParser reaches.
-        // Also never the list itself: pos.getFormat() may be mutated in place later (by this callback), and that
-        // must never corrupt a later record's cache hit.
+        // Also never the list itself: this cache field's own lifetime outlives any single record, so it must
+        // never alias a specific VcfPosition's own m_format -- keeping them as distinct List objects (even
+        // though VcfPosition.getFormat() is now an unmodifiable view, so neither could actually mutate the
+        // other) means a future change to either side's internals can't silently corrupt the other through a
+        // shared reference neither one would expect.
         m_lastFormatRawText = rawFormat;
         m_lastValidatedFormat = new ArrayList<>(pos.getFormat());
       }
-      pos.setRawQuality(data.get(5));
-      pos.setRawInfo(data.get(7));
       samples = new ArrayList<>();
-      // VcfSample must never share the same List object as VcfPosition's own m_format: VcfPosition.getFormat() is
-      // documented and tested as safe to mutate in place, but VcfSample's own parallel keys/values lists require
-      // keys.size() == values.size() to hold, and are corrupted by an in-place mutation applied through a
-      // shared reference. One copy per line (not per sample) is sufficient:
-      // no VcfSample method ever mutates its own keys list in place.
+      // VcfSample must never share the same List object as VcfPosition's own m_format: both classes' "taking
+      // ownership" constructors (VcfContext.newPositionTakingOwnership/newPositionWithTrustedFormat here,
+      // newTrustedSample below) assume each is the collection's sole owner. VcfPosition.getFormat() is now an
+      // unmodifiable view and no VcfSample method ever mutates its own keys list in place, so nothing currently
+      // mutates a shared list -- but aliasing the two anyway would mean a future change to either class's
+      // internals could silently corrupt the other through a reference it doesn't know is shared. One copy per
+      // line (not per sample) is sufficient.
       // Only skipped when format itself is null (no FORMAT column at all); deliberately not guarded for the
       // zero-sample-columns case (format non-null but the loop below never runs), since that copy's cost is
       // negligible (proportional to a typically-single-digit FORMAT key count) and guarding it would add more

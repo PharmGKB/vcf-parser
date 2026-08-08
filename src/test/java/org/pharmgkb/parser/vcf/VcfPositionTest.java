@@ -23,29 +23,23 @@ public class VcfPositionTest {
 
   @Test
   public void testLazyQuality() {
-    VcfPosition value = newPosition();
-    value.setRawQuality("29.5");
+    VcfPosition value = newPosition().toBuilder().rawQuality("29.5").build();
     assertEquals(new BigDecimal("29.5"), value.getQuality());
     assertEquals(new BigDecimal("29.5"), value.getQuality()); // stable across repeated reads
 
-    VcfPosition missing = newPosition();
-    missing.setRawQuality(".");
+    VcfPosition missing = newPosition().toBuilder().rawQuality(".").build();
     assertNull(missing.getQuality());
 
-    VcfPosition empty = newPosition();
-    empty.setRawQuality("");
+    VcfPosition empty = newPosition().toBuilder().rawQuality("").build();
     assertNull(empty.getQuality());
 
     // an invalid QUAL is a value-quality issue, not a structural one; it warns and is treated as missing, rather
     // than throwing
-    VcfPosition bad = newPosition();
-    bad.setRawQuality("not-a-number");
+    VcfPosition bad = newPosition().toBuilder().rawQuality("not-a-number").build();
     assertNull(bad.getQuality());
 
-    // setQuality overrides any pending raw value
-    VcfPosition override = newPosition();
-    override.setRawQuality("1");
-    override.setQuality(new BigDecimal("2"));
+    // Builder#quality overrides any pending raw value
+    VcfPosition override = newPosition().toBuilder().rawQuality("1").quality(new BigDecimal("2")).build();
     assertEquals(new BigDecimal("2"), override.getQuality());
   }
 
@@ -56,8 +50,7 @@ public class VcfPositionTest {
     // value. An oversized value is now rejected before the expensive parse is attempted, treated the same as
     // any other unparseable QUAL (warns, falls back to the missing value). 3 seconds is a wide margin above
     // the fixed behavior's near-instant fallback at this size.
-    VcfPosition pathological = newPosition();
-    pathological.setRawQuality("1".repeat(500_000));
+    VcfPosition pathological = newPosition().toBuilder().rawQuality("1".repeat(500_000)).build();
     assertTimeoutPreemptively(java.time.Duration.ofSeconds(3), () -> assertNull(pathological.getQuality()));
   }
 
@@ -74,8 +67,7 @@ public class VcfPositionTest {
     appender.start();
     root.addAppender(appender);
     try {
-      VcfPosition value = newPosition();
-      value.setRawQuality("5.");
+      VcfPosition value = newPosition().toBuilder().rawQuality("5.").build();
       assertEquals(new BigDecimal("5"), value.getQuality());
       assertTrue(appender.hasWarnOrHigher());
       assertTrue(appender.anyMessageContains("does not match the VCF Float grammar"));
@@ -94,8 +86,7 @@ public class VcfPositionTest {
     appender.start();
     root.addAppender(appender);
     try {
-      VcfPosition value = newPosition();
-      value.setRawQuality("29.5");
+      VcfPosition value = newPosition().toBuilder().rawQuality("29.5").build();
       value.getQuality();
       assertFalse(appender.hasWarnOrHigher());
     } finally {
@@ -106,8 +97,7 @@ public class VcfPositionTest {
 
   @Test
   public void testLazyInfo() {
-    VcfPosition p = newPosition();
-    p.setRawInfo("DP=35;AF=0.5,0.25;FLAG");
+    VcfPosition p = newPosition().toBuilder().rawInfo("DP=35;AF=0.5,0.25;FLAG").build();
     assertEquals(Collections.singletonList("35"), p.getInfo("DP"));
     assertEquals(Arrays.asList("0.5", "0.25"), p.getInfo("AF"));
     assertTrue(p.hasInfo("FLAG"));
@@ -115,8 +105,7 @@ public class VcfPositionTest {
     assertNull(p.getInfo("MISSING"));
     assertFalse(p.hasInfo("MISSING"));
 
-    VcfPosition dot = newPosition();
-    dot.setRawInfo(".");
+    VcfPosition dot = newPosition().toBuilder().rawInfo(".").build();
     assertTrue(dot.getInfo().isEmpty());
     assertFalse(dot.hasInfo("X"));
   }
@@ -125,37 +114,31 @@ public class VcfPositionTest {
   public void testLazyInfoWithEmptyEntries() {
     // VCF does not allow zero-length fields; these warn and normalize rather than throw or silently drop-then-hide
     // the problem (see EMPTY_FIELD_HANDLING.md). DP=10;;AF=0.5 -> the empty prop between ';'s is dropped entirely.
-    VcfPosition emptyProp = newPosition();
-    emptyProp.setRawInfo("DP=10;;AF=0.5");
+    VcfPosition emptyProp = newPosition().toBuilder().rawInfo("DP=10;;AF=0.5").build();
     assertEquals(Collections.singletonList("10"), emptyProp.getInfo("DP"));
     assertEquals(Collections.singletonList("0.5"), emptyProp.getInfo("AF"));
     assertEquals(2, emptyProp.getInfo().size());
 
     // a trailing ';' is the same as an interior empty prop
-    VcfPosition trailingProp = newPosition();
-    trailingProp.setRawInfo("DP=10;");
+    VcfPosition trailingProp = newPosition().toBuilder().rawInfo("DP=10;").build();
     assertEquals(Collections.singletonList("10"), trailingProp.getInfo("DP"));
     assertEquals(1, trailingProp.getInfo().size());
 
     // AD=1,,2 -> the empty value between ','s is treated as the missing value '.'
-    VcfPosition emptyValue = newPosition();
-    emptyValue.setRawInfo("AD=1,,2");
+    VcfPosition emptyValue = newPosition().toBuilder().rawInfo("AD=1,,2").build();
     assertEquals(Arrays.asList("1", ".", "2"), emptyValue.getInfo("AD"));
 
     // a trailing ',' is the same as an interior empty value
-    VcfPosition trailingValue = newPosition();
-    trailingValue.setRawInfo("AD=1,2,");
+    VcfPosition trailingValue = newPosition().toBuilder().rawInfo("AD=1,2,").build();
     assertEquals(Arrays.asList("1", "2", "."), trailingValue.getInfo("AD"));
 
     // AD= (no comma at all) -> a single missing value, not a flag (which is stored the same way internally, but only
     // when there is no '=' sign at all)
-    VcfPosition wholeEmpty = newPosition();
-    wholeEmpty.setRawInfo("AD=");
+    VcfPosition wholeEmpty = newPosition().toBuilder().rawInfo("AD=").build();
     assertEquals(Collections.singletonList("."), wholeEmpty.getInfo("AD"));
 
     // a flag (no '=' sign) is unaffected: its sentinel empty value must not be confused with a real empty field
-    VcfPosition flag = newPosition();
-    flag.setRawInfo("DB;DP=10");
+    VcfPosition flag = newPosition().toBuilder().rawInfo("DB;DP=10").build();
     assertTrue(flag.hasInfo("DB"));
     assertEquals(Collections.singletonList(""), flag.getInfo("DB"));
     assertEquals(Collections.singletonList("10"), flag.getInfo("DP"));
@@ -165,15 +148,13 @@ public class VcfPositionTest {
   public void testLazyInfoDotCannotCombineWithOtherProperties() {
     // "." (no INFO at all) cannot be combined with a real property, the same as ALT/FILTER's exclusivity rule for
     // their own "." sentinel
-    VcfPosition combined = newPosition();
-    combined.setRawInfo(".;DP=1");
+    VcfPosition combined = newPosition().toBuilder().rawInfo(".;DP=1").build();
     assertThrows(VcfFormatException.class, combined::getInfo);
 
     // a stray trailing ';' after a lone "." is not "combined with other content" (the only other split part is an
     // empty-string artifact, already warned about and dropped elsewhere) -- must not throw, and the leftover "."
     // is still the "no INFO at all" sentinel, not a literal property named "."
-    VcfPosition trailingSemicolon = newPosition();
-    trailingSemicolon.setRawInfo(".;");
+    VcfPosition trailingSemicolon = newPosition().toBuilder().rawInfo(".;").build();
     assertTrue(trailingSemicolon.getInfo().isEmpty());
   }
 
@@ -182,8 +163,7 @@ public class VcfPositionTest {
     // regression test: a VcfPosition NOT produced by parsing a real file (lineNumber=-1, the newPosition() helper's
     // default) must keep today's existing bare-message exception shape -- proving this feature is purely additive
     // for every non-parser-constructed VcfPosition, existing or future
-    VcfPosition combined = newPosition();
-    combined.setRawInfo(".;DP=1");
+    VcfPosition combined = newPosition().toBuilder().rawInfo(".;DP=1").build();
     VcfFormatException ex = assertThrows(VcfFormatException.class, combined::getInfo);
     assertEquals(-1, ex.getLineNumber());
     assertFalse(ex.getMessage().contains("[Line #"));
@@ -194,8 +174,7 @@ public class VcfPositionTest {
     // VCFv4.2's INFO grammar note ("no whitespace, semicolons, or equals-signs permitted") technically disallows
     // this, but bcftools 1.23.1 accepts it silently (verified live: "DP=1=2" round-trips as-is, splitting only on
     // the first '='); this parser matches that tolerance instead of rejecting it
-    VcfPosition position = newPosition();
-    position.setRawInfo("DP=1=2");
+    VcfPosition position = newPosition().toBuilder().rawInfo("DP=1=2").build();
     assertEquals(Collections.singletonList("1=2"), position.getInfo("DP"));
   }
 
@@ -206,21 +185,18 @@ public class VcfPositionTest {
     // with no warning, and bcftools keeps only the first occurrence ("1"), not "1,2". This parser warns (rather
     // than throwing) and matches that same "keep first, drop rest" behavior, instead of silently merging
     // duplicates into what would look like a legitimate multi-value list.
-    VcfPosition position = newPosition();
-    position.setRawInfo("DP=1;DP=2");
+    VcfPosition position = newPosition().toBuilder().rawInfo("DP=1;DP=2").build();
     assertEquals(Collections.singletonList("1"), position.getInfo("DP"));
 
     // a duplicate flag-form key (no "=") behaves the same way
-    VcfPosition flagPosition = newPosition();
-    flagPosition.setRawInfo("DB;DB");
+    VcfPosition flagPosition = newPosition().toBuilder().rawInfo("DB;DB").build();
     assertEquals(Collections.singletonList(""), flagPosition.getInfo("DB"));
   }
 
   @Test
   public void testGetInfoMappingQuality() {
     // MQ is a float reserved property; getInfo must convert it (it was previously typed Float.class, which threw)
-    VcfPosition p = newPosition();
-    p.setRawInfo("MQ=52.4");
+    VcfPosition p = newPosition().toBuilder().rawInfo("MQ=52.4").build();
     assertEquals(VcfFloat.of(new BigDecimal("52.4")), p.getInfo(ReservedInfoProperty.MappingQuality));
   }
 
@@ -228,10 +204,7 @@ public class VcfPositionTest {
   public void testGetInfoCigarIsListValued() {
     // VCFv4.2 only describes CIGAR in prose with no formal Number, but VCFv4.3/4.4/4.5 all declare it Number=A
     // (one value per ALT allele); a multi-allelic record's CIGAR must therefore convert to a List, not a scalar
-    VcfPosition p = newPosition();
-    p.getAltBases().add("T");
-    p.getAltBases().add("C");
-    p.setRawInfo("CIGAR=1M,2M");
+    VcfPosition p = newPosition().toBuilder().altBases(List.of("T", "C")).rawInfo("CIGAR=1M,2M").build();
     assertEquals(Arrays.asList("1M", "2M"), p.getInfo(ReservedInfoProperty.Cigar));
   }
 
@@ -240,9 +213,7 @@ public class VcfPositionTest {
     // AD/ADF/ADR were previously missing from ReservedInfoProperty entirely, so getInfo(ReservedInfoProperty)
     // could not be called with them at all; Number=R means one value per allele, including REF, so a biallelic
     // record's AD converts to a two-element List, not a scalar
-    VcfPosition p = newPosition();
-    p.getAltBases().add("T");
-    p.setRawInfo("AD=10,5");
+    VcfPosition p = newPosition().toBuilder().altBases(List.of("T")).rawInfo("AD=10,5").build();
     assertEquals(Arrays.asList(10L, 5L), p.getInfo(ReservedInfoProperty.AlleleDepth));
   }
 
@@ -250,17 +221,14 @@ public class VcfPositionTest {
   public void testGetInfoFloatAcceptsSpecialValues() {
     // VCFv4.2 doesn't define Float's grammar at all; VCFv4.5 clarifies it accepts NAN/INF/INFINITY (case-insensitive,
     // optionally signed) in addition to a normal decimal number -- a plain BigDecimal can't represent these at all
-    VcfPosition nan = newPosition();
-    nan.setRawInfo("MQ=NaN");
+    VcfPosition nan = newPosition().toBuilder().rawInfo("MQ=NaN").build();
     assertEquals(VcfFloat.ofSpecial(VcfFloat.Special.NAN), nan.getInfo(ReservedInfoProperty.MappingQuality));
 
-    VcfPosition posInf = newPosition();
-    posInf.setRawInfo("MQ=INFINITY");
+    VcfPosition posInf = newPosition().toBuilder().rawInfo("MQ=INFINITY").build();
     assertEquals(VcfFloat.ofSpecial(VcfFloat.Special.POSITIVE_INFINITY),
         posInf.getInfo(ReservedInfoProperty.MappingQuality));
 
-    VcfPosition negInf = newPosition();
-    negInf.setRawInfo("MQ=-inf");
+    VcfPosition negInf = newPosition().toBuilder().rawInfo("MQ=-inf").build();
     assertEquals(VcfFloat.ofSpecial(VcfFloat.Special.NEGATIVE_INFINITY),
         negInf.getInfo(ReservedInfoProperty.MappingQuality));
   }
@@ -271,8 +239,7 @@ public class VcfPositionTest {
     assertEquals("HOMSEQ", ReservedInfoProperty.HomologySequence.getId());
     // Number=. is genuinely multi-valued (per VCFv4.3's clarifying example for this family of keys), so this
     // returns a List rather than a bare String
-    VcfPosition p = newPosition();
-    p.setRawInfo("HOMSEQ=ACGT");
+    VcfPosition p = newPosition().toBuilder().rawInfo("HOMSEQ=ACGT").build();
     assertEquals(Collections.singletonList("ACGT"), p.getInfo(ReservedInfoProperty.HomologySequence));
   }
 
@@ -280,8 +247,7 @@ public class VcfPositionTest {
   public void testGetInfoStructuralVariantLengthIsMultiValued() {
     // SVLEN was previously declared isList=false, but VCFv4.3 confirms with an example (SVLEN=-100,-110 for a
     // deletion with two ALT alleles) that Number=. here means genuinely multi-valued, one per ALT allele
-    VcfPosition p = newPosition();
-    p.setRawInfo("SVLEN=-100,-110");
+    VcfPosition p = newPosition().toBuilder().rawInfo("SVLEN=-100,-110").build();
     assertEquals(Arrays.asList(-100L, -110L), p.getInfo(ReservedInfoProperty.StructuralVariantLength));
   }
 
@@ -298,9 +264,7 @@ public class VcfPositionTest {
     appender.start();
     root.addAppender(appender);
     try {
-      VcfPosition p = newPosition();
-      p.getAltBases().add("T");
-      p.setRawInfo("AC=1,2");
+      VcfPosition p = newPosition().toBuilder().altBases(List.of("T")).rawInfo("AC=1,2").build();
       assertEquals(Arrays.asList(1L, 2L), p.getInfo(ReservedInfoProperty.AlleleCount));
       assertTrue(appender.anyMessageContains("INFO AC has 2 value(s), but Number=A requires 1"));
     } finally {
@@ -319,8 +283,7 @@ public class VcfPositionTest {
     appender.start();
     root.addAppender(appender);
     try {
-      VcfPosition p = newPosition();
-      p.setRawInfo("CIPOS=1,2,3");
+      VcfPosition p = newPosition().toBuilder().rawInfo("CIPOS=1,2,3").build();
       assertEquals(Arrays.asList(1L, 2L, 3L), p.getInfo(ReservedInfoProperty.ConfidenceIntervalForPosition));
       assertTrue(appender.anyMessageContains("INFO CIPOS has 3 value(s), but Number=2 requires 2"));
     } finally {
@@ -338,10 +301,7 @@ public class VcfPositionTest {
     appender.start();
     root.addAppender(appender);
     try {
-      VcfPosition p = newPosition();
-      p.getAltBases().add("T");
-      p.getAltBases().add("C");
-      p.setRawInfo("AC=1,2");
+      VcfPosition p = newPosition().toBuilder().altBases(List.of("T", "C")).rawInfo("AC=1,2").build();
       assertEquals(Arrays.asList(1L, 2L), p.getInfo(ReservedInfoProperty.AlleleCount));
       assertFalse(appender.anyMessageContains("value(s), but Number="));
     } finally {
@@ -362,9 +322,7 @@ public class VcfPositionTest {
     appender.start();
     root.addAppender(appender);
     try {
-      VcfPosition p = newPosition();
-      p.getAltBases().add("T");
-      p.setRawInfo("AD=");
+      VcfPosition p = newPosition().toBuilder().altBases(List.of("T")).rawInfo("AD=").build();
       assertEquals(Collections.singletonList("."), p.getInfo("AD"));
       assertNull(p.getInfo(ReservedInfoProperty.AlleleDepth));
       assertFalse(appender.anyMessageContains("value(s), but Number="));
@@ -387,8 +345,7 @@ public class VcfPositionTest {
     appender.start();
     root.addAppender(appender);
     try {
-      VcfPosition p = newPosition();
-      p.setRawInfo("AA=1,23");
+      VcfPosition p = newPosition().toBuilder().rawInfo("AA=1,23").build();
       assertEquals("1", p.getInfo(ReservedInfoProperty.AncestralAllele));
       assertEquals(1, appender.countMessagesContaining("INFO AA has 2 value(s), but Number=1 requires 1"));
     } finally {
@@ -409,8 +366,7 @@ public class VcfPositionTest {
     appender.start();
     root.addAppender(appender);
     try {
-      VcfPosition p = newPosition();
-      p.setRawInfo("DP=1,23");
+      VcfPosition p = newPosition().toBuilder().rawInfo("DP=1,23").build();
       assertEquals(Long.valueOf(1L), p.getInfo(ReservedInfoProperty.Depth));
       assertEquals(1, appender.countMessagesContaining("INFO DP has 2 value(s), but Number=1 requires 1"));
     } finally {
@@ -428,8 +384,7 @@ public class VcfPositionTest {
     appender.start();
     root.addAppender(appender);
     try {
-      VcfPosition p = newPosition();
-      p.setRawInfo("AA=A");
+      VcfPosition p = newPosition().toBuilder().rawInfo("AA=A").build();
       assertEquals("A", p.getInfo(ReservedInfoProperty.AncestralAllele));
       assertEquals(0, appender.countMessagesContaining("value(s), but Number="));
     } finally {
@@ -442,8 +397,7 @@ public class VcfPositionTest {
   public void testGetInfoKeysPreservesInsertionOrder() {
     // confirmed via direct reproduction during the writer-ordering investigation: ArrayListMultimap's key
     // iteration order is hash-based, not insertion order, so this previously came back as [AC, AF, AN]
-    VcfPosition p = newPosition();
-    p.setRawInfo("AN=2184;AC=249;AF=0.11");
+    VcfPosition p = newPosition().toBuilder().rawInfo("AN=2184;AC=249;AF=0.11").build();
     assertEquals(Arrays.asList("AN", "AC", "AF"), new ArrayList<>(p.getInfoKeys()));
   }
 
@@ -460,14 +414,6 @@ public class VcfPositionTest {
     assertEquals("A", position.getAllele(1));
     assertEquals("T", position.getAllele(2));
     assertThrows(IndexOutOfBoundsException.class, () -> position.getAllele(3));
-
-    // lookup reflects a mutation to REF (no stale cache)
-    position.setRef("G");
-    assertEquals("G", position.getAllele(0));
-
-    // lookup reflects a mutation to the ALT list (no stale cache)
-    position.getAltBases().add("N");
-    assertEquals("N", position.getAllele(3));
   }
 
   @Test
@@ -719,58 +665,33 @@ public class VcfPositionTest {
   }
 
   @Test
-  public void testValidateCatchesUnvalidatedMutation() {
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "C", new ArrayList<>(Arrays.asList("A", "T")),
-        null, null,
-        null, null, -1);
-    position.validate(); // valid as constructed
+  public void testConstructorRejectsNullCollectionElementsInsteadOfThrowingNpe() {
+    // a parsed value can never be null; only a caller-supplied list/multimap passed directly to a public
+    // factory could contain one (VcfPosition has no mutation route since Task 8's freeze, so a null element
+    // can now only reach checkIds/checkAltBases/checkFilters/checkFormat/checkInfoEntries at construction
+    // time). Each must reject a null element with VcfFormatException, not let it reach a raw NullPointerException
+    // deeper in the check.
+    assertThrows(VcfFormatException.class, () ->
+        STRICT_CONTEXT.newPosition("chr", 1, Arrays.asList("rs1", null), "C", null, null, null, null, null, -1));
 
-    // setters and the mutable lists returned by accessors do not validate on their own...
-    position.setRef("X");
-    // ...but validate() catches the resulting invalid state
-    assertThrows(VcfFormatException.class, position::validate);
+    assertThrows(VcfFormatException.class, () ->
+        STRICT_CONTEXT.newPosition("chr", 1, null, "C", Arrays.asList("T", null), null, null, null, null, -1));
 
-    position.setRef("C");
-    position.validate(); // valid again
+    assertThrows(VcfFormatException.class, () ->
+        STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, Arrays.asList("q10", null), null, null, -1));
 
-    position.getAltBases().add("A"); // duplicate is fine for ALT (only "." exclusivity and pattern are checked)
-    position.validate();
+    assertThrows(VcfFormatException.class, () ->
+        STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, null, Arrays.asList("GT", null), -1));
 
-    position.getIds().add("rs1");
-    position.getIds().add("rs1"); // duplicate ID -- validate() warns (via m_warnings, never null), doesn't
-    // throw, matching testValidateAlwaysWarnsRegardlessOfOriginalConstructor's established pattern; see
-    // VCF_SPEC_AMBIGUITIES.md's "Duplicate ID/FILTER entries within one record" entry
-    position.validate();
-  }
+    ListMultimap<String, String> infoNullKey = ArrayListMultimap.create();
+    infoNullKey.put(null, "value");
+    assertThrows(VcfFormatException.class, () ->
+        STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, infoNullKey, null, -1));
 
-  @Test
-  public void testValidateRejectsNullEntriesInsteadOfThrowingNpe() {
-    // a parsed value can never be null; only a value set directly through a mutable accessor (getIds(), getAltBases(),
-    // getFilters(), getFormat(), getInfo()) could be. Each of validate()'s five post-mutation checkers must reject a
-    // null element with VcfFormatException, not let it reach a raw NullPointerException deeper in the check.
-    VcfPosition ids = newPosition();
-    ids.getIds().add(null);
-    assertThrows(VcfFormatException.class, ids::validate);
-
-    VcfPosition altBases = newPosition();
-    altBases.getAltBases().add(null);
-    assertThrows(VcfFormatException.class, altBases::validate);
-
-    VcfPosition filters = newPosition();
-    filters.getFilters().add(null);
-    assertThrows(VcfFormatException.class, filters::validate);
-
-    VcfPosition format = newPosition();
-    format.getFormat().add(null);
-    assertThrows(VcfFormatException.class, format::validate);
-
-    VcfPosition infoKey = newPosition();
-    infoKey.getInfo().put(null, "value");
-    assertThrows(VcfFormatException.class, infoKey::validate);
-
-    VcfPosition infoValue = newPosition();
-    infoValue.getInfo().put("KEY", null);
-    assertThrows(VcfFormatException.class, infoValue::validate);
+    ListMultimap<String, String> infoNullValue = ArrayListMultimap.create();
+    infoNullValue.put("KEY", null);
+    assertThrows(VcfFormatException.class, () ->
+        STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, infoNullValue, null, -1));
   }
 
   @Test
@@ -785,22 +706,6 @@ public class VcfPositionTest {
   public void testConstructorRejectsNullRefInsteadOfThrowingNpe() {
     assertThrows(VcfFormatException.class,
         () -> STRICT_CONTEXT.newPosition("chr", 1, null, null, null, null, null, null, null, -1));
-  }
-
-  @Test
-  public void testValidateRejectsNullChromosomeInsteadOfThrowingNpe() {
-    // setChromosome() does not validate its input, by design (see validate()'s Javadoc); validate() must still
-    // reject a null via checkChromosome() with VcfFormatException, not a raw NullPointerException
-    VcfPosition position = newPosition();
-    position.setChromosome(null);
-    assertThrows(VcfFormatException.class, position::validate);
-  }
-
-  @Test
-  public void testValidateRejectsNullRefInsteadOfThrowingNpe() {
-    VcfPosition position = newPosition();
-    position.setRef(null);
-    assertThrows(VcfFormatException.class, position::validate);
   }
 
   @Test
@@ -823,104 +728,17 @@ public class VcfPositionTest {
   }
 
   @Test
-  public void testValidateAttachesLineNumberToNonInfoCheckFailures() {
-    // regression test: validate() previously annotated only its checkInfoEntries(...) call with line-number
-    // metadata, leaving its other checks (checkChromosome, checkPosition, checkRef, checkIds, checkAltBases,
-    // checkFilters, checkFormat) unannotated. m_lineNumber identifies which line this whole record came from, not
-    // which line a specific value came from, so validate() now wraps its entire body in one guarded catch --
-    // proving a non-INFO check failure (an invalid REF base, via setRef) also gets line-number attachment.
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "C", null, null, null, null, null, 42);
-    position.validate(); // valid as constructed
-    position.setRef("X"); // invalid REF base -- fails checkRef, not checkInfoEntries
-    VcfFormatException ex = assertThrows(VcfFormatException.class, position::validate);
-    assertEquals(42, ex.getLineNumber());
-    assertTrue(ex.getMessage().contains("[Line #42]"));
-  }
-
-  @Test
-  public void testValidateNormalizesLoneFilterSentinel() {
-    VcfPosition dot = STRICT_CONTEXT.newPosition("chr1", 1, null, "C", null, null, null, null, null, -1);
-    dot.getFilters().add(".");
-    dot.validate();
+  public void testFilterStatusIsNotStuckAfterRebuildingWithADifferentFilterList() {
+    // regression test: FilterStatus is derived fresh from getFilters()'s current contents every time, so a
+    // position rebuilt (via toBuilder()) from one that was normalized from "." can still report PASSED once its
+    // FILTER list is explicitly set to ["PASS"] -- there is no separate persisted flag that could get stuck
+    VcfPosition dot = STRICT_CONTEXT.newPosition("chr1", 1, null, "C", null, null,
+        new ArrayList<>(List.of(".")), null, null, -1);
     assertEquals(VcfPosition.FilterStatus.NONE, dot.getFilterStatus());
-    assertTrue(dot.getFilters().isEmpty());
 
-    // a lone "PASS" is left as-is by validate() -- it is not a sentinel to normalize away, it IS the
-    // representation of PASSED
-    VcfPosition pass = STRICT_CONTEXT.newPosition("chr1", 1, null, "C", null, null, null, null, null, -1);
-    pass.getFilters().add("PASS");
-    pass.validate();
+    VcfPosition pass = dot.toBuilder().filters(List.of("PASS")).build();
     assertEquals(VcfPosition.FilterStatus.PASSED, pass.getFilterStatus());
     assertEquals(Collections.singletonList("PASS"), pass.getFilters());
-
-    // validate() is idempotent: calling it again after normalization is a no-op
-    dot.validate();
-    assertEquals(VcfPosition.FilterStatus.NONE, dot.getFilterStatus());
-  }
-
-  @Test
-  public void testValidateResetsFilterStatusAfterDotThenPass() {
-    // regression test: FilterStatus is derived fresh from getFilters()'s contents every time, so a position that
-    // was ever normalized from "." can still report PASSED once its list is explicitly set to ["PASS"] -- there is
-    // no separate persisted flag that could get stuck
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "C", null, null, null, null, null, -1);
-    position.getFilters().add(".");
-    position.validate();
-    assertEquals(VcfPosition.FilterStatus.NONE, position.getFilterStatus());
-
-    position.getFilters().add("PASS");
-    position.validate();
-    assertEquals(VcfPosition.FilterStatus.PASSED, position.getFilterStatus());
-  }
-
-  @Test
-  public void testClearingFiltersFromNoneStaysNoneNotPassed() {
-    // regression test: clearing FILTER always produces NONE, regardless of what state the position was in before
-    // -- FilterStatus is derived fresh from getFilters()'s contents, not a separate persisted flag. Verified this
-    // matches bcftools 1.23.1's own convention: "bcftools annotate -x FILTER" on a fixture with FILTER values ".",
-    // "PASS", and a real filter code converts ALL of them to "." (never to "PASS").
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "C", null, null, null, null, null, -1);
-    position.getFilters().add(".");
-    position.validate();
-    assertEquals(VcfPosition.FilterStatus.NONE, position.getFilterStatus());
-
-    position.getFilters().clear(); // already empty; a genuine no-op on the list itself
-    position.validate();
-    assertEquals(VcfPosition.FilterStatus.NONE, position.getFilterStatus());
-
-    // the only way to reach PASSED from here is the documented "PASS" sentinel, not merely clearing
-    position.getFilters().add("PASS");
-    position.validate();
-    assertEquals(VcfPosition.FilterStatus.PASSED, position.getFilterStatus());
-  }
-
-  @Test
-  public void testClearingFiltersFromFailedProducesNoneNotPassed() {
-    // regression test: clearing a position that actually FAILED a filter (not one that started as NONE)
-    // previously left a stale "true" default behind and
-    // reported PASSED, which contradicts bcftools 1.23.1's "annotate -x FILTER" convention (a real filter code
-    // becomes "." when cleared, never "PASS"). Verified live against the compiled library before this fix:
-    // constructing with FILTER=q10 then clearing+validating produced PASSED, not NONE.
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "C", null, null,
-        new ArrayList<>(Collections.singletonList("q10")), null, null, -1);
-    assertEquals(VcfPosition.FilterStatus.FAILED, position.getFilterStatus());
-
-    position.getFilters().clear();
-    position.validate();
-    assertEquals(VcfPosition.FilterStatus.NONE, position.getFilterStatus());
-  }
-
-  @Test
-  public void testPassFilterIsIndependentlyMutableRegardlessOfInputListMutability() {
-    // regression test: a lone "PASS" must be defensively copied into a fresh, mutable list, exactly like "." --
-    // otherwise passing an immutable list (e.g. List.of("PASS")) makes getFilters() permanently immutable,
-    // breaking the documented "clear() to change FilterStatus" pattern this same redesign introduced
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "C", null, null, List.of("PASS"), null, null,
-        -1);
-    assertEquals(VcfPosition.FilterStatus.PASSED, position.getFilterStatus());
-    position.getFilters().clear(); // must not throw UnsupportedOperationException
-    position.validate();
-    assertEquals(VcfPosition.FilterStatus.NONE, position.getFilterStatus());
   }
 
   @Test
@@ -1036,23 +854,26 @@ public class VcfPositionTest {
   @Test
   public void testInfoValueWithStructuralCharactersRejected() {
     // a raw ";" or "," in an INFO value (or ";"/"=" in a key) would corrupt round-trip parsing (a parsed value can
-    // never contain them, since they were already split on to arrive at the value); reject them, including via a
-    // direct mutation through getInfo(), not just at construction
-    VcfPosition semicolonInValue = newPosition();
-    semicolonInValue.getInfo().put("KEY", "a;b");
-    assertThrows(VcfFormatException.class, semicolonInValue::validate);
+    // never contain them, since they were already split on to arrive at the value); reject them at construction
+    ListMultimap<String, String> semicolonInValue = ArrayListMultimap.create();
+    semicolonInValue.put("KEY", "a;b");
+    assertThrows(VcfFormatException.class, () ->
+        STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, semicolonInValue, null, -1));
 
-    VcfPosition commaInValue = newPosition();
-    commaInValue.getInfo().put("KEY", "a,b");
-    assertThrows(VcfFormatException.class, commaInValue::validate);
+    ListMultimap<String, String> commaInValue = ArrayListMultimap.create();
+    commaInValue.put("KEY", "a,b");
+    assertThrows(VcfFormatException.class, () ->
+        STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, commaInValue, null, -1));
 
-    VcfPosition semicolonInKey = newPosition();
-    semicolonInKey.getInfo().put("KEY;X", "value");
-    assertThrows(VcfFormatException.class, semicolonInKey::validate);
+    ListMultimap<String, String> semicolonInKey = ArrayListMultimap.create();
+    semicolonInKey.put("KEY;X", "value");
+    assertThrows(VcfFormatException.class, () ->
+        STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, semicolonInKey, null, -1));
 
-    VcfPosition equalsInKey = newPosition();
-    equalsInKey.getInfo().put("KEY=X", "value");
-    assertThrows(VcfFormatException.class, equalsInKey::validate);
+    ListMultimap<String, String> equalsInKey = ArrayListMultimap.create();
+    equalsInKey.put("KEY=X", "value");
+    assertThrows(VcfFormatException.class, () ->
+        STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, equalsInKey, null, -1));
   }
 
   @Test
@@ -1069,16 +890,14 @@ public class VcfPositionTest {
 
   @Test
   public void testFactoryCopiesAltBasesEvenWhenNoEmptyEntryNeedsNormalizing() {
-    // VcfContext.newPosition defensively copies every mutable input, so an immutable argument no longer makes
-    // the position's own ALT list immutable (the pre-VcfContext behavior this replaces): the copy is always a
-    // fresh, mutable ArrayList, matching getAltBases()'s documented live-mutable contract regardless of what
-    // was passed in.
-    List<String> immutable = List.of("T", "C");
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "C", immutable, null, null, null, null, -1);
+    // VcfContext.newPosition defensively copies every mutable input, so a caller mutating their own reference
+    // afterward can never reach the position's backing state -- an immutable List.of(...) argument can't be
+    // mutated to prove that either way, so this uses a caller-owned mutable list instead.
+    List<String> callerOwned = new ArrayList<>(List.of("T", "C"));
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "C", callerOwned, null, null, null, null, -1);
     assertEquals(Arrays.asList("T", "C"), position.getAltBases());
-    assertNotSame(immutable, position.getAltBases());
-    position.getAltBases().add("G");
-    assertEquals(Arrays.asList("T", "C", "G"), position.getAltBases());
+    callerOwned.add("G");
+    assertEquals(Arrays.asList("T", "C"), position.getAltBases());
   }
 
   @Test
@@ -1207,15 +1026,6 @@ public class VcfPositionTest {
     assertEquals(Collections.singletonList("10"), position.getInfo("DP"));
     assertNull(position.getInfo(""));
     assertTrue(sink.toString().contains("has an empty key"));
-
-    // re-validating an already-constructed position (e.g. after a live mutation via getInfo()) must catch the
-    // same defect, not just the constructor
-    VcfPosition mutated = newPosition();
-    mutated.getInfo().put("", "1");
-    mutated.getInfo().put("AF", "0.5");
-    mutated.validate();
-    assertEquals(Collections.singletonList("0.5"), mutated.getInfo("AF"));
-    assertNull(mutated.getInfo(""));
   }
 
   @Test
@@ -1236,8 +1046,9 @@ public class VcfPositionTest {
     // typed conversion with a confusing "Expected integer; got " VcfFormatException instead of the graceful
     // null this library's missing-value convention specifies everywhere else, even though EMPTY_FIELD_HANDLING's
     // "invalid content silently accepted" floor is squarely triggered here.
-    VcfPosition position = newPosition();
-    position.getInfo().put("DP", "");
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("DP", "");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, info, null, -1);
     Long dp = position.getInfo(ReservedInfoProperty.Depth);
     assertNull(dp);
   }
@@ -1247,8 +1058,9 @@ public class VcfPositionTest {
     // same defect, worse symptom for a String-typed scalar reserved key (AA): convertElement() for String is a
     // no-op passthrough, so the empty value doesn't throw -- it silently returns "" instead of null, violating
     // the "absent -> null" contract every other reserved-property getter in this class follows
-    VcfPosition position = newPosition();
-    position.getInfo().put("AA", "");
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("AA", "");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, info, null, -1);
     String aa = position.getInfo(ReservedInfoProperty.AncestralAllele);
     assertNull(aa);
   }
@@ -1259,8 +1071,9 @@ public class VcfPositionTest {
     // pre-existing, deliberate encoding (VcfPosition.info()'s own "if (idx == -1) info.put(key, \"\")" for a
     // bare flag with no "=" at all) meaning "present", not "missing" -- convertProperty's new empty-value check
     // must not swallow this into null the way it now does for every other scalar type
-    VcfPosition position = newPosition();
-    position.getInfo().put("H2", "");
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("H2", "");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, info, null, -1);
     Boolean h2 = position.getInfo(ReservedInfoProperty.Hapmap2);
     assertEquals(Boolean.TRUE, h2);
   }
@@ -1432,17 +1245,34 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testGetQualityWarnsToConfiguredSinkForNonNumericValue() {
+    // Task 7: setWarningsSink was removed -- route the sink through the position's own construction-time
+    // context (lenientContext(...)) instead of redirecting it afterward.
+    StringWriter sink = new StringWriter();
+    VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("1", 100, "A", null, -1)
+        .toBuilder().rawQuality("not-a-number").build();
+    assertNull(position.getQuality());
+    assertTrue(sink.toString().contains("is not a number"));
+  }
+
+  @Test
   public void testValidateAlwaysWarnsRegardlessOfOriginalConstructor() {
-    // built via the STRICT constructor with a valid FILTER list, then mutated to the ambiguous case, then
-    // validate()'d -- must warn (via whatever m_warnings currently is), never throw, since validate() is
-    // re-validation, not construction. Task 7: setWarningsSink was removed, and VcfContext.strict(...) has no
-    // way to supply a custom VcfWarnings (it always uses VcfWarnings.DEFAULT), so this now observes the warning
-    // via the shared SLF4J logger instead of a redirected sink -- that's still the right way to pin this, since
+    // regression test: a recoverable condition validate() (or the lazy info() parse it forces) re-checks always
+    // warns -- via whatever m_warnings currently is -- never throws, because that path passes m_warnings
+    // unconditionally rather than deriving strict-vs-lenient from the context the way the eager constructor path
+    // does. Contrast with identical content (an empty INFO key) reaching the EAGER constructor directly under
+    // the same strict context, which throws -- see testStrictConstructorThrowsForInfoEmptyKey.
+    //
+    // VcfPosition has no mutation route, so the only way left to reach this asymmetry is Builder#rawInfo(): raw
+    // INFO text is never validated at construction or build() time (only at first access, e.g. getInfo(), or via
+    // this method) -- see validate()'s own Javadoc -- so a strict-context position can still hold unvalidated
+    // raw INFO after build() returns. Task 7: setWarningsSink was removed, and VcfContext.strict(...) has no way
+    // to supply a custom VcfWarnings (it always uses VcfWarnings.DEFAULT), so this observes the warning via the
+    // shared SLF4J logger instead of a redirected sink -- that's still the right way to pin this, since
     // switching construction to a custom lenientContext(...) would lose the strict-construction contrast this
     // test is actually about.
-    VcfPosition position = STRICT_CONTEXT.newPosition("1", 100, null, "A", null, null,
-        new java.util.ArrayList<>(List.of("q10")), null, null, -1);
-    position.getFilters().add(0, "PASS");
+    VcfPosition position = STRICT_CONTEXT.newPosition("1", 100, null, "A", null, null, null, null, null, -1)
+        .toBuilder().rawInfo("=orphan").build();
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -1451,22 +1281,11 @@ public class VcfPositionTest {
     root.addAppender(appender);
     try {
       assertDoesNotThrow(position::validate);
-      assertTrue(appender.anyMessageContains("PASS along with other filters"));
+      assertTrue(appender.anyMessageContains("has an empty key"));
     } finally {
       root.detachAppender(appender);
       appender.stop();
     }
-  }
-
-  @Test
-  public void testGetQualityWarnsToConfiguredSinkForNonNumericValue() {
-    // Task 7: setWarningsSink was removed -- route the sink through the position's own construction-time
-    // context (lenientContext(...)) instead of redirecting it afterward.
-    StringWriter sink = new StringWriter();
-    VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("1", 100, "A", null, -1);
-    position.setRawQuality("not-a-number");
-    assertNull(position.getQuality());
-    assertTrue(sink.toString().contains("is not a number"));
   }
 
   @Test
@@ -1520,55 +1339,14 @@ public class VcfPositionTest {
   }
 
   @Test
-  public void testBuilderBuildCalledTwiceSharesNoCollectionBetweenTheTwoResults() {
-    // VcfPosition.Builder is documented reusable -- a second build() call must not alias the first result's
-    // mutable state (or the builder's own retained fields) through ids/altBases/filters/format/info
-    ListMultimap<String, String> info = ArrayListMultimap.create();
-    info.put("NS", "3");
-    VcfPosition.Builder builder = STRICT_CONTEXT.newPosition("chr1", 100, List.of("rs1"), "A", List.of("T"),
-            null, List.of("PASS"), null, List.of("GT"), -1).toBuilder()
-        .info(info);
-    VcfPosition a = builder.build();
-    VcfPosition c = builder.build();
-    assertNotSame(a.getIds(), c.getIds());
-    assertNotSame(a.getAltBases(), c.getAltBases());
-    assertNotSame(a.getFilters(), c.getFilters());
-    assertNotSame(a.getFormat(), c.getFormat());
-    assertNotSame(a.getInfo(), c.getInfo());
-    a.getIds().add("rs2");
-    a.getAltBases().add("G");
-    a.getFilters().add("q10");
-    a.getFormat().add("DP");
-    a.getInfo().put("NS", "4");
-    assertEquals(List.of("rs1"), c.getIds());
-    assertEquals(List.of("T"), c.getAltBases());
-    assertEquals(List.of("PASS"), c.getFilters());
-    assertEquals(List.of("GT"), c.getFormat());
-    assertEquals(List.of("3"), c.getInfo().get("NS"));
-  }
-
-  @Test
-  public void testToBuilderIdsDoesNotAliasSourcesOwnLiveList() {
-    // toBuilder() seeds ids(...) from the source's own getIds() list (a documented live, mutable view) --
-    // mutating the SOURCE's own list afterward (not a caller-held separate reference) must not reach the copy
-    // either, which is only guaranteed if toBuilder()'s ids(...) call defensively copies exactly like an
-    // explicit caller-supplied ids(...) call does.
-    VcfPosition original = STRICT_CONTEXT.newPosition("chr1", 100, new ArrayList<>(List.of("rs1")), "A",
-        List.of("T"), null, null, null, null, -1);
-    VcfPosition copy = original.toBuilder().build();
-    original.getIds().add("rs2");
-    assertEquals(List.of("rs1"), copy.getIds());
-  }
-
-  @Test
   public void testToBuilderPreservesRawQualityAndInfoWithoutMaterializingOrWarning() {
     // both QUAL and INFO are left as raw, not-yet-parsed text (the parser's own construction shape) -- QUAL's
     // raw text is even unparseable, so materializing it via getQuality() WOULD emit a warning if toBuilder()
     // read through the getter instead of the raw field directly (see toBuilder()'s own Javadoc)
     StringWriter sink = new StringWriter();
-    VcfPosition parsed = lenientContext(new VcfWarnings(sink)).newPosition("chr1", 100, "A", null, -1);
-    parsed.setRawQuality("not-a-number");
-    parsed.setRawInfo("NS=3");
+    VcfPosition parsed = lenientContext(new VcfWarnings(sink)).newPosition("chr1", 100, "A", null, -1)
+        .toBuilder().rawQuality("not-a-number").rawInfo("NS=3").build();
+    assertEquals("", sink.toString(), "attaching raw QUAL/INFO via the builder must not materialize or warn");
     VcfPosition copy = parsed.toBuilder().build();
     assertEquals("", sink.toString(), "copying alone must not materialize or warn");
     // both resolve identically once actually read
@@ -1616,19 +1394,6 @@ public class VcfPositionTest {
     assertFalse(sink.toString().contains("Duplicate ID"), sink::toString);
     assertTrue(sink.toString().contains("Duplicate FILTER code"), sink::toString);
     assertEquals(List.of("q10", "q10"), copy.getFilters());
-  }
-
-  @Test
-  public void testToBuilderDoesNotThrowForALiveMutatedInvalidFilterUnderStrictContext() {
-    // a position live-mutated (via the documented mutable getFilters() view) into an invalid state -- PASS
-    // combined with another filter -- used to make toBuilder().build() throw under a strict context, since
-    // build() used to unconditionally re-validate every field; validate() remains the documented opt-in for
-    // catching this kind of live mutation, not a copy operation (see toBuilder()'s own Javadoc)
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 100, null, "A", null, null,
-        new ArrayList<>(List.of("q10")), null, null, -1);
-    position.getFilters().add(0, "PASS");
-    VcfPosition copy = assertDoesNotThrow(() -> position.toBuilder().build());
-    assertEquals(List.of("PASS", "q10"), copy.getFilters());
   }
 
 }

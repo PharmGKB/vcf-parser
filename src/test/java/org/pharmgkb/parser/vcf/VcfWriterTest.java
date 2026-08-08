@@ -15,6 +15,8 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.ListMultimap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.pharmgkb.parser.vcf.spec.FailingWriter;
@@ -36,38 +38,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class VcfWriterTest {
 
   @Test
-  public void testWriteLineRejectsEmptyRef() throws Exception {
-    // REF cannot be empty through the constructor, but setRef() does not validate. REF has no missing-value
-    // sentinel in the spec, so writing "." here would not be valid VCF either -- just a placeholder that avoids
-    // crashing. The writer now rejects this outright instead of emitting non-compliant output.
-    StringWriter sw = new StringWriter();
-    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.setRef("");
-    writer.writeHeader(metadata);
-    VcfFormatException e = assertThrows(VcfFormatException.class,
-        () -> writer.writeLine(metadata, position, Collections.emptyList()));
-    assertTrue(e.getMessage().contains("has a null or empty REF, which the VCF spec does not allow"));
-  }
-
-  @Test
-  public void testWriteLineDoesNotValidateByDefault() throws Exception {
-    // getAltBases() is mutable and does not re-validate (by design, to support transformation pipelines); by
-    // default, writeLine does not call position.validate() either, so a position mutated into an invalid state is
-    // written without error
-    StringWriter sw = new StringWriter();
-    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
-    writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("not-a-valid-base");
-    writer.writeLine(metadata, position, Collections.emptyList());
-    assertTrue(sw.toString().contains("not-a-valid-base"));
-  }
-
-  @Test
   public void testMidWriteLineWarningReportsTheLineCurrentlyBeingWritten() throws Exception {
     // regression test: a warning fired while writeLine() is still building the current data line used to read
     // m_lineNumber before this line's own printLine() call had run, under-reporting by exactly one line. A
@@ -77,8 +47,10 @@ public class VcfWriterTest {
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getInfo().put("AD", "1"); // AD is not declared in metadata's (empty) INFO map
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("AD", "1"); // AD is not declared in metadata's (empty) INFO map
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, new BigDecimal("0"), null, info,
+        null, -1);
 
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -97,46 +69,25 @@ public class VcfWriterTest {
   }
 
   @Test
-  public void testDefaultWriteRejectsNullIdInsteadOfWritingLiteralNullText() throws Exception {
-    // getIds() is a live view; VcfPosition.validate()'s checkIds() null guard only runs under
-    // validateBeforeWrite(), so addListOrElse() must guard the default path itself, since
-    // StringBuilder.append(Object) would otherwise silently stringify a null entry into the literal text "null"
-    StringWriter sw = new StringWriter();
-    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
-    writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getIds().add(null);
-
-    assertThrows(VcfFormatException.class, () -> writer.writeLine(metadata, position, Collections.emptyList()));
-  }
-
-  @Test
-  public void testDefaultWriteRejectsNullFilterInsteadOfWritingLiteralNullText() throws Exception {
-    StringWriter sw = new StringWriter();
-    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
-    writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getFilters().add(null);
-
-    assertThrows(VcfFormatException.class, () -> writer.writeLine(metadata, position, Collections.emptyList()));
-  }
-
-  @Test
   public void testDefaultWriteDropsEmptyIdEntry() throws Exception {
     // regression test: the default path previously only null-checked ID/FILTER/ALT entries, silently writing a
-    // zero-length VCF field for a non-null empty string inserted via the live getIds()/getFilters()/getAltBases()
-    // view. ID is position-independent (nothing indexes into it), so EMPTY_FIELD_HANDLING.md's strategy is to
-    // drop the empty entry, matching the parser's own lenient behavior.
+    // zero-length VCF field for a non-null empty string. ID is position-independent (nothing indexes into it), so
+    // EMPTY_FIELD_HANDLING.md's strategy is to drop the empty entry, matching the parser's own lenient behavior.
+    //
+    // VcfPosition's own construction-time checkIds() already drops an empty ID entry (with the identical
+    // warning) before a position holding one can exist at all, under both strict and lenient contexts -- so this
+    // uses the package-private newPositionCopyingTrustedFields() factory (reachable here only because this test
+    // class is in the same package as VcfPosition/VcfContext) to deliberately bypass that check, the same way
+    // Builder#build() trusts an unchanged field without re-checking it. This is not testing that a caller can
+    // reach this state through the public API -- it can't -- it is testing that VcfWriter.addListOrElse()'s own,
+    // separately-implemented copy of this drop-vs-substitute decision (see its own comment) still does the right
+    // thing if it were ever reached, since nothing else in this test suite exercises that specific method.
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getIds().add("rs1");
-    position.getIds().add("");
-    position.getIds().add("rs2");
+    VcfPosition position = LENIENT_CONTEXT.newPositionCopyingTrustedFields("chr1", 1,
+        Arrays.asList("rs1", "", "rs2"), "A", null, new BigDecimal("0"), null, null, null, -1, null, null);
 
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -157,14 +108,14 @@ public class VcfWriterTest {
   @Test
   public void testDefaultWriteDropsAllEmptyIdEntriesRendersMissingValue() throws Exception {
     // edge case: dropping every entry must still render the field's own missing-value sentinel, not an
-    // accidentally-empty column
+    // accidentally-empty column. See testDefaultWriteDropsEmptyIdEntry for why this uses
+    // newPositionCopyingTrustedFields() rather than ordinary construction.
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getIds().add("");
-    position.getIds().add("");
+    VcfPosition position = LENIENT_CONTEXT.newPositionCopyingTrustedFields("chr1", 1, Arrays.asList("", ""), "A",
+        null, new BigDecimal("0"), null, null, null, -1, null, null);
 
     writer.writeLine(metadata, position, Collections.emptyList());
     // pin down the ID field specifically (between POS and REF) -- a loose "\t.\t" check would trivially match
@@ -174,13 +125,14 @@ public class VcfWriterTest {
 
   @Test
   public void testDefaultWriteDropsEmptyFilterEntry() throws Exception {
+    // see testDefaultWriteDropsEmptyIdEntry for why this uses newPositionCopyingTrustedFields() rather than
+    // ordinary construction -- checkFilters() would otherwise already drop the empty entry at construction time.
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getFilters().add("q10");
-    position.getFilters().add("");
+    VcfPosition position = LENIENT_CONTEXT.newPositionCopyingTrustedFields("chr1", 1, null, "A", null,
+        new BigDecimal("0"), Arrays.asList("q10", ""), null, null, -1, null, null);
 
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -201,15 +153,15 @@ public class VcfWriterTest {
   @Test
   public void testDefaultWriteSubstitutesEmptyAltEntryWithDot() throws Exception {
     // ALT is position-dependent (GT genotype values index into it), so an empty entry is substituted with "."
-    // rather than dropped -- dropping would shift every later allele's index
+    // rather than dropped -- dropping would shift every later allele's index. See testDefaultWriteDropsEmptyIdEntry
+    // for why this uses newPositionCopyingTrustedFields() rather than ordinary construction -- checkAltBases()
+    // would otherwise already substitute the empty entry at construction time.
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getAltBases().add("");
-    position.getAltBases().add("C");
+    VcfPosition position = LENIENT_CONTEXT.newPositionCopyingTrustedFields("chr1", 1, null, "A",
+        Arrays.asList("T", "", "C"), new BigDecimal("0"), null, null, null, -1, null, null);
 
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -225,52 +177,6 @@ public class VcfWriterTest {
       root.detachAppender(appender);
       appender.stop();
     }
-  }
-
-  @Test
-  public void testDefaultWriteRejectsNullFormatKeyInsteadOfWritingLiteralNullText() throws Exception {
-    // getFormat() is a live view; VcfPosition.validate()'s checkFormat() null guard only runs under
-    // validateBeforeWrite(), so addFormatConditionally() must guard the default path itself
-    StringWriter sw = new StringWriter();
-    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
-        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
-        .build();
-    writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getFormat().add(null);
-    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
-
-    assertThrows(VcfFormatException.class,
-        () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
-  }
-
-  @Test
-  public void testDefaultWriteRejectsNullInfoKeyInsteadOfWritingLiteralNullText() throws Exception {
-    // getInfo() is a live LinkedListMultimap view that permits null keys/values; VcfPosition.validate()'s
-    // checkInfoEntries() null guard only runs under validateBeforeWrite(), so addInfoOrDot() must guard the
-    // default path itself
-    StringWriter sw = new StringWriter();
-    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
-    writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getInfo().put(null, "1");
-
-    assertThrows(VcfFormatException.class, () -> writer.writeLine(metadata, position, Collections.emptyList()));
-  }
-
-  @Test
-  public void testDefaultWriteRejectsNullInfoValueInsteadOfWritingLiteralNullText() throws Exception {
-    StringWriter sw = new StringWriter();
-    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
-    writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getInfo().put("NS", null);
-
-    assertThrows(VcfFormatException.class, () -> writer.writeLine(metadata, position, Collections.emptyList()));
   }
 
   @Test
@@ -290,8 +196,10 @@ public class VcfWriterTest {
         .addInfo(new InfoMetadata(LENIENT_CONTEXT, "XX", "d", InfoType.String, "1", null, null))
         .build();
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getInfo().put("XX", "");
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("XX", "");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, new BigDecimal("0"), null, info,
+        null, -1);
 
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -322,8 +230,10 @@ public class VcfWriterTest {
         .addInfo(new InfoMetadata(LENIENT_CONTEXT, "XX", "d", InfoType.String, "1", null, null))
         .build();
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getInfo().put("XX", "");
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("XX", "");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, new BigDecimal("0"), null, info,
+        null, -1);
 
     writer.writeLine(metadata, position, Collections.emptyList());
     assertTrue(sw.toString().contains("XX=."));
@@ -339,8 +249,10 @@ public class VcfWriterTest {
         .addInfo(new InfoMetadata(LENIENT_CONTEXT, "DB", "d", InfoType.Flag, "0", null, null))
         .build();
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getInfo().put("DB", "");
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("DB", "");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, new BigDecimal("0"), null, info,
+        null, -1);
 
     writer.writeLine(metadata, position, Collections.emptyList());
     assertTrue(sw.toString().contains("DB"));
@@ -364,8 +276,10 @@ public class VcfWriterTest {
     assertNull(info.getType());
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addInfo(info).build();
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getInfo().put("XX", "");
+    ListMultimap<String, String> positionInfo = ArrayListMultimap.create();
+    positionInfo.put("XX", "");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, new BigDecimal("0"), null,
+        positionInfo, null, -1);
 
     writer.writeLine(metadata, position, Collections.emptyList());
     assertTrue(sw.toString().contains("XX=."));
@@ -382,8 +296,10 @@ public class VcfWriterTest {
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getInfo().put("DB", "");
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("DB", "");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, new BigDecimal("0"), null, info,
+        null, -1);
 
     writer.writeLine(metadata, position, Collections.emptyList());
     assertTrue(sw.toString().contains("DB"));
@@ -404,10 +320,12 @@ public class VcfWriterTest {
         .addInfo(new InfoMetadata(LENIENT_CONTEXT, "XY", "d", InfoType.Integer, "3", null, null))
         .build();
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getInfo().put("XY", "1");
-    position.getInfo().put("XY", "");
-    position.getInfo().put("XY", "2");
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("XY", "1");
+    info.put("XY", "");
+    info.put("XY", "2");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, new BigDecimal("0"), null, info,
+        null, -1);
 
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -442,10 +360,12 @@ public class VcfWriterTest {
         .addInfo(new InfoMetadata(LENIENT_CONTEXT, "XY", "d", InfoType.Integer, "3", null, null))
         .build();
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getInfo().put("XY", "1");
-    position.getInfo().put("XY", "");
-    position.getInfo().put("XY", "2");
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("XY", "1");
+    info.put("XY", "");
+    info.put("XY", "2");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, new BigDecimal("0"), null, info,
+        null, -1);
 
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -476,10 +396,12 @@ public class VcfWriterTest {
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build(); // XY not declared
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getInfo().put("XY", "1");
-    position.getInfo().put("XY", "");
-    position.getInfo().put("XY", "2");
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("XY", "1");
+    info.put("XY", "");
+    info.put("XY", "2");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, new BigDecimal("0"), null, info,
+        null, -1);
 
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -511,28 +433,34 @@ public class VcfWriterTest {
     StringWriter leading = new StringWriter();
     VcfWriter leadingWriter = new VcfWriter.Builder().toWriter(new PrintWriter(leading)).build();
     leadingWriter.writeHeader(metadata);
-    VcfPosition leadingPos = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    leadingPos.getInfo().put("XY", "");
-    leadingPos.getInfo().put("XY", "2");
+    ListMultimap<String, String> leadingInfo = ArrayListMultimap.create();
+    leadingInfo.put("XY", "");
+    leadingInfo.put("XY", "2");
+    VcfPosition leadingPos = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, new BigDecimal("0"), null,
+        leadingInfo, null, -1);
     leadingWriter.writeLine(metadata, leadingPos, Collections.emptyList());
     assertTrue(leading.toString().contains("XY=.,2"));
 
     StringWriter trailing = new StringWriter();
     VcfWriter trailingWriter = new VcfWriter.Builder().toWriter(new PrintWriter(trailing)).build();
     trailingWriter.writeHeader(metadata);
-    VcfPosition trailingPos = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    trailingPos.getInfo().put("XY", "1");
-    trailingPos.getInfo().put("XY", "");
+    ListMultimap<String, String> trailingInfo = ArrayListMultimap.create();
+    trailingInfo.put("XY", "1");
+    trailingInfo.put("XY", "");
+    VcfPosition trailingPos = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, new BigDecimal("0"), null,
+        trailingInfo, null, -1);
     trailingWriter.writeLine(metadata, trailingPos, Collections.emptyList());
     assertTrue(trailing.toString().contains("XY=1,."));
 
     StringWriter allEmpty = new StringWriter();
     VcfWriter allEmptyWriter = new VcfWriter.Builder().toWriter(new PrintWriter(allEmpty)).build();
     allEmptyWriter.writeHeader(metadata);
-    VcfPosition allEmptyPos = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    allEmptyPos.getInfo().put("XZ", "");
-    allEmptyPos.getInfo().put("XZ", "");
-    allEmptyPos.getInfo().put("XZ", "");
+    ListMultimap<String, String> allEmptyInfo = ArrayListMultimap.create();
+    allEmptyInfo.put("XZ", "");
+    allEmptyInfo.put("XZ", "");
+    allEmptyInfo.put("XZ", "");
+    VcfPosition allEmptyPos = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, new BigDecimal("0"), null,
+        allEmptyInfo, null, -1);
     allEmptyWriter.writeLine(metadata, allEmptyPos, Collections.emptyList());
     assertTrue(allEmpty.toString().contains("XZ=.,.,."));
   }
@@ -548,10 +476,12 @@ public class VcfWriterTest {
         .addInfo(new InfoMetadata(LENIENT_CONTEXT, "XY", "d", InfoType.Integer, "3", null, null))
         .build();
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getInfo().put("XY", "1");
-    position.getInfo().put("XY", "");
-    position.getInfo().put("XY", "2");
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("XY", "1");
+    info.put("XY", "");
+    info.put("XY", "2");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, new BigDecimal("0"), null, info,
+        null, -1);
     writer.writeLine(metadata, position, Collections.emptyList());
     // asserted on the raw written text, not just the reparsed result: the parser's own INFO empty-value
     // handling would independently normalize a literal "XY=1,,2" to the same [1, ".", 2] on reparse, which
@@ -638,36 +568,6 @@ public class VcfWriterTest {
   }
 
   @Test
-  public void testDefaultWriteRejectsNullChromosomeInsteadOfWritingLiteralNullText() throws Exception {
-    // setChromosome() does not validate its input, by design (see VcfPosition.validate()'s Javadoc);
-    // VcfWriter's default path must guard this itself, since CHROM has no missing-value sentinel and
-    // StringBuilder.append(Object) would otherwise silently stringify a null into the literal text "null"
-    StringWriter sw = new StringWriter();
-    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
-    writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.setChromosome(null);
-
-    assertThrows(VcfFormatException.class, () -> writer.writeLine(metadata, position, Collections.emptyList()));
-  }
-
-  @Test
-  public void testDefaultWriteRejectsNullRefInsteadOfWritingLiteralNullText() throws Exception {
-    // unlike the other null-guard regressions in this class, this previously crashed with a raw
-    // NullPointerException even on the default path (position.getRef().isEmpty() ran unconditionally), not just
-    // silently stringified to "null"
-    StringWriter sw = new StringWriter();
-    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
-    writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.setRef(null);
-
-    assertThrows(VcfFormatException.class, () -> writer.writeLine(metadata, position, Collections.emptyList()));
-  }
-
-  @Test
   public void testWriteLineDoesNotWarnAboutPassFilter() throws Exception {
     // PASS is VCF's reserved "all filters passed" keyword (VCFv4.2.tex line 185) and is never expected to have its
     // own ##FILTER=<ID=PASS,...> declaration. FILTER combining PASS with another code now warns instead of
@@ -679,9 +579,8 @@ public class VcfWriterTest {
         .addFilter(new IdDescriptionMetadata(LENIENT_CONTEXT, "FILTER", "STD_FILTER", "Standard filter"))
         .build();
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getFilters().add("STD_FILTER");
-    position.getFilters().add("PASS");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, new BigDecimal("0"),
+        List.of("STD_FILTER", "PASS"), null, null, -1);
 
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -692,38 +591,6 @@ public class VcfWriterTest {
     try {
       writer.writeLine(metadata, position, Collections.emptyList());
       assertFalse(appender.anyMessageContains("has FILTER PASS"));
-    } finally {
-      root.detachAppender(appender);
-      appender.stop();
-    }
-  }
-
-  @Test
-  public void testWriteLineDoesNotWarnAboutDotFilter() throws Exception {
-    // regression test: "." (FILTER "not applied") is VCF's other reserved FILTER sentinel, also never expected
-    // to have its own ##FILTER=<ID=.,...> declaration -- the undeclared-FILTER warning below previously excluded
-    // only "PASS", not this one. Not normally reachable as a getFilters() element (normalizeFilters() collapses
-    // a lone "." to an empty list, and checkFilters() rejects "." combined with another code), but reachable via
-    // direct mutation of the live list returned by getFilters() without a subsequent validate() call.
-    StringWriter sw = new StringWriter();
-    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
-        .addFilter(new IdDescriptionMetadata(LENIENT_CONTEXT, "FILTER", "STD_FILTER", "Standard filter"))
-        .build();
-    writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getFilters().add("STD_FILTER");
-    position.getFilters().add(".");
-
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
-        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
-    appender.start();
-    root.addAppender(appender);
-    try {
-      writer.writeLine(metadata, position, Collections.emptyList());
-      assertFalse(appender.anyMessageContains("has FILTER ."));
     } finally {
       root.detachAppender(appender);
       appender.stop();
@@ -760,27 +627,14 @@ public class VcfWriterTest {
   }
 
   @Test
-  public void testWriteLineValidatesWhenBuiltWithValidateBeforeWrite() throws Exception {
-    StringWriter sw = new StringWriter();
-    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("not-a-valid-base");
-    writer.writeHeader(metadata);
-    assertThrows(VcfFormatException.class,
-        () -> writer.writeLine(metadata, position, Collections.emptyList()));
-  }
-
-  @Test
   public void testValidateBeforeWriteRejectsMutatedSampleValue() throws Exception {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getFormat().add("DP");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("DP"), -1);
     VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
     sample.putProperty("DP", "1");
     sample.propertyEntrySet().iterator().next().setValue("1:2");
@@ -800,9 +654,8 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getFormat().add("DP");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("DP"), -1);
     VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
     sample.putProperty("DP", "");
 
@@ -818,9 +671,8 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getFormat().add("GT");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("GT"), -1);
     VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
     sample.putProperty("GT", "0/1");
     sample.putProperty("DP", "10");
@@ -844,10 +696,8 @@ public class VcfWriterTest {
         .addFormat(new FormatMetadata(LENIENT_CONTEXT, "GT", "Genotype", "1", FormatType.String))
         .addFormat(new FormatMetadata(LENIENT_CONTEXT, "GLE", "Genotype likelihoods", "G", FormatType.String))
         .build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getFormat().add("GT");
-    position.getFormat().add("GLE");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("GT", "GLE"), -1);
     VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
     sample.putProperty("GT", "0/1");
     sample.putProperty("GLE", "0:-75.22,1:-223.42,0/0:-323.03,1/0:-99.29,1/1:-802.53");
@@ -882,10 +732,8 @@ public class VcfWriterTest {
         .addFormat(new FormatMetadata(LENIENT_CONTEXT, "GT", "Genotype", "1", FormatType.String))
         .addFormat(new FormatMetadata(LENIENT_CONTEXT, "CNP", "Copy number posterior probabilities", "G", FormatType.Float))
         .build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getFormat().add("GT");
-    position.getFormat().add("CNP");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("GT", "CNP"), -1);
     VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
     sample.putProperty("GT", "0/1");
     sample.putProperty("CNP", "0.1,0.2,0.3,0.2,0.2");
@@ -920,10 +768,8 @@ public class VcfWriterTest {
         .addFormat(new FormatMetadata(LENIENT_CONTEXT, "GT", "Genotype", "1", FormatType.String))
         .addFormat(new FormatMetadata(LENIENT_CONTEXT, "XY", "d", "3", FormatType.Integer))
         .build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getFormat().add("GT");
-    position.getFormat().add("XY");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("GT", "XY"), -1);
     VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
     sample.putProperty("GT", "0/1");
     sample.putProperty("XY", "1,,2");
@@ -955,10 +801,10 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
         .build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getAltBases().add("C");
-    position.getInfo().put("AC", "1"); // 2 ALT alleles but only 1 value -- a real Number=A violation
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("AC", "1"); // 2 ALT alleles but only 1 value -- a real Number=A violation
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T", "C"), new BigDecimal("0"),
+        null, info, null, -1);
 
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -988,10 +834,8 @@ public class VcfWriterTest {
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .addFormat(new FormatMetadata(LENIENT_CONTEXT, "GT", "Genotype", "1", FormatType.String))
         .build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getFormat().add("GT");
-    position.getFormat().add("AD");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("GT", "AD"), -1);
     VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
     sample.putProperty("GT", "0/1");
     sample.putProperty("AD", "10"); // Number=R with 1 ALT allele expects 2 values, only 1 given
@@ -1025,9 +869,8 @@ public class VcfWriterTest {
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .addFormat(new FormatMetadata(LENIENT_CONTEXT, "PL", "Phred-scaled genotype likelihoods", "G", FormatType.Integer))
         .build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getFormat().add("PL");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("PL"), -1);
     VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
     sample.putProperty("PL", "1,2"); // assumed diploidy + 1 ALT allele expects 3 values, only 2 given
 
@@ -1361,9 +1204,10 @@ public class VcfWriterTest {
     props.put("Number", "999999999999999999999");
     InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, props);
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addInfo(info).build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getInfo().put("NS", "1");
+    ListMultimap<String, String> positionInfo = ArrayListMultimap.create();
+    positionInfo.put("NS", "1");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        positionInfo, null, -1);
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
 
@@ -1379,10 +1223,10 @@ public class VcfWriterTest {
     // must not throw, and the value must round-trip unchanged.
     InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "AF", "d", InfoType.Float, "A", null, null);
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addInfo(info).build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getAltBases().add("C");
-    position.getInfo().put("AF", ".");
+    ListMultimap<String, String> positionInfo = ArrayListMultimap.create();
+    positionInfo.put("AF", ".");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T", "C"), new BigDecimal("0"),
+        null, positionInfo, null, -1);
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
 
@@ -1402,9 +1246,8 @@ public class VcfWriterTest {
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .addFormat(ft)
         .build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getFormat().add("FT");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("FT"), -1);
     VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
     sample.putProperty("FT", "PASS;q10");
 
@@ -1426,9 +1269,8 @@ public class VcfWriterTest {
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .addFormat(ft)
         .build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getFormat().add("FT");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("FT"), -1);
     VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
     sample.putProperty("FT", "PASS;;q10");
 
@@ -1450,9 +1292,8 @@ public class VcfWriterTest {
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .addFormat(ps)
         .build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getFormat().add("PS");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("PS"), -1);
     VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
     sample.putProperty("PS", "-5");
 
@@ -1475,9 +1316,10 @@ public class VcfWriterTest {
         "A",
         null, null);
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addInfo(ac).build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getInfo().put("AC", "-1");
+    ListMultimap<String, String> positionInfo = ArrayListMultimap.create();
+    positionInfo.put("AC", "-1");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        positionInfo, null, -1);
 
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
@@ -1507,9 +1349,10 @@ public class VcfWriterTest {
         "A",
         null, null);
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addInfo(cigar).build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getInfo().put("CIGAR", "123MYCIGAR");
+    ListMultimap<String, String> positionInfo = ArrayListMultimap.create();
+    positionInfo.put("CIGAR", "123MYCIGAR");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        positionInfo, null, -1);
 
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
@@ -1535,8 +1378,8 @@ public class VcfWriterTest {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, null, -1);
 
     assertThrows(VcfFormatException.class,
         () -> writer.writeLine(metadata, position, Collections.emptyList()));
@@ -1558,8 +1401,8 @@ public class VcfWriterTest {
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     VcfMetadata headerMetadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     VcfMetadata otherMetadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, null, -1);
 
     writer.writeHeader(headerMetadata);
     // a different (even if equivalent-looking) VcfMetadata object than the one used for the header would make the
@@ -1581,9 +1424,10 @@ public class VcfWriterTest {
 
     metadata.addInfo(new InfoMetadata(metadata.getContext(), "NS", "d", InfoType.Integer, "1", null, null));
 
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getInfo().put("NS", "1");
+    ListMultimap<String, String> positionInfo = ArrayListMultimap.create();
+    positionInfo.put("NS", "1");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        positionInfo, null, -1);
 
     assertThrows(VcfFormatException.class,
         () -> writer.writeLine(metadata, position, Collections.emptyList()));
@@ -1597,13 +1441,12 @@ public class VcfWriterTest {
     InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "NS", "Number of samples with data", InfoType.Integer, "1",
         null, null);
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addInfo(info).build();
-    VcfPosition first = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    first.getAltBases().add("T");
-    first.getInfo().put("NS", "0");
-    first.getIds().add("rsa");
-    VcfPosition second = LENIENT_CONTEXT.newPosition("chr1", 2, "A", new BigDecimal("0"), -1);
-    second.getAltBases().add("T");
-    second.getIds().add("rsb");
+    ListMultimap<String, String> firstInfo = ArrayListMultimap.create();
+    firstInfo.put("NS", "0");
+    VcfPosition first = LENIENT_CONTEXT.newPosition("chr1", 1, List.of("rsa"), "A", List.of("T"),
+        new BigDecimal("0"), null, firstInfo, null, -1);
+    VcfPosition second = LENIENT_CONTEXT.newPosition("chr1", 2, List.of("rsb"), "A", List.of("T"),
+        new BigDecimal("0"), null, null, null, -1);
     writer.writeHeader(metadata);
     writer.writeLine(metadata, first, Collections.emptyList());
     writer.writeLine(metadata, second, Collections.emptyList());
@@ -1618,16 +1461,12 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     writer.writeHeader(metadata);
 
-    VcfPosition none = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, null, Collections.singletonList("."),
-        null, null, -1);
-    none.getAltBases().add("T");
-    VcfPosition passed = LENIENT_CONTEXT.newPosition("chr1", 2, null, "A", null, null,
-        Collections.singletonList("PASS"),
-        null, null, -1);
-    passed.getAltBases().add("T");
-    VcfPosition failed = LENIENT_CONTEXT.newPosition("chr1", 3, null, "A", null, null, Collections.singletonList("q10"),
-        null, null, -1);
-    failed.getAltBases().add("T");
+    VcfPosition none = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null,
+        Collections.singletonList("."), null, null, -1);
+    VcfPosition passed = LENIENT_CONTEXT.newPosition("chr1", 2, null, "A", List.of("T"), null,
+        Collections.singletonList("PASS"), null, null, -1);
+    VcfPosition failed = LENIENT_CONTEXT.newPosition("chr1", 3, null, "A", List.of("T"), null,
+        Collections.singletonList("q10"), null, null, -1);
 
     writer.writeLine(metadata, none, Collections.emptyList());
     writer.writeLine(metadata, passed, Collections.emptyList());
@@ -1648,9 +1487,10 @@ public class VcfWriterTest {
         new String[]{"ID=NS", "Number=1", "Description=\"n\""}, VcfWarnings.DEFAULT));
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addInfo(info).build();
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getInfo().put("NS", "3");
+    ListMultimap<String, String> positionInfo = ArrayListMultimap.create();
+    positionInfo.put("NS", "3");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        positionInfo, null, -1);
     writer.writeLine(metadata, position, Collections.emptyList());
     assertTrue(sw.toString().contains("NS=3"));
   }
@@ -1684,9 +1524,8 @@ public class VcfWriterTest {
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "SAMPLE1"))
         .build();
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getFormat().add("GT");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("GT"), -1);
     VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
     sample.putProperty(ReservedFormatProperty.Genotype, "0/1");
     // FORMAT metadata is absent: this previously threw NullPointerException
@@ -1702,10 +1541,8 @@ public class VcfWriterTest {
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "SAMPLE1"))
         .build();
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getFormat().add("GT");
-    position.getFormat().add("DP");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("GT", "DP"), -1);
     VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
     sample.putProperty(ReservedFormatProperty.Genotype, "0/1"); // no DP property
     // sample has fewer properties than FORMAT: this previously threw NoSuchElementException
@@ -1725,10 +1562,8 @@ public class VcfWriterTest {
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "SAMPLE1"))
         .build();
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getFormat().add("GT");
-    position.getFormat().add("DP");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("GT", "DP"), -1);
     VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
     sample.putProperty(ReservedFormatProperty.Genotype, "0/1");
     sample.putProperty("DP", "");
@@ -1759,9 +1594,10 @@ public class VcfWriterTest {
     InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "AN", "d", InfoType.Integer, "1", null, null);
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addInfo(info).build();
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getInfo().put("AN", "not-a-number"); // Type=Integer declared, but the value doesn't parse as one
+    ListMultimap<String, String> positionInfo = ArrayListMultimap.create();
+    positionInfo.put("AN", "not-a-number"); // Type=Integer declared, but the value doesn't parse as one
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        positionInfo, null, -1);
     writer.writeLine(metadata, position, Collections.emptyList());
     assertTrue(sw.toString().contains("AN=not-a-number"));
   }
@@ -1775,9 +1611,8 @@ public class VcfWriterTest {
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "SAMPLE1"))
         .build();
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getFormat().add("DP");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("DP"), -1);
     VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
     sample.putProperty("DP", "not-a-number"); // Type=Integer declared, but the value doesn't parse as one
     writer.writeLine(metadata, position, Collections.singletonList(sample));
@@ -1790,9 +1625,8 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1", "S2"))
         .build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getFormat().add("GT");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("GT"), -1);
     VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
     sample.putProperty(ReservedFormatProperty.Genotype, "0/1");
     StringWriter sw = new StringWriter();
@@ -1809,9 +1643,8 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getFormat().add("GT");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("GT"), -1);
     VcfSample sample1 = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
     sample1.putProperty(ReservedFormatProperty.Genotype, "0/1");
     VcfSample sample2 = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
@@ -1828,9 +1661,8 @@ public class VcfWriterTest {
   public void testWriteLineRejectsSampleDataWhenHeaderHasNoSamples() throws Exception {
     // header declares no samples (no setColumns call), but FORMAT/sample data is provided anyway
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
-    position.getFormat().add("GT");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("GT"), -1);
     VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
     sample.putProperty(ReservedFormatProperty.Genotype, "0/1");
     StringWriter sw = new StringWriter();
@@ -1849,8 +1681,8 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, null, -1);
     // position.getFormat() is left empty
     VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
     sample.putProperty(ReservedFormatProperty.Genotype, "0/1");
@@ -1868,8 +1700,8 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, null, -1);
     VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
@@ -2023,8 +1855,8 @@ public class VcfWriterTest {
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, null, -1);
     VcfSample badSample = LENIENT_CONTEXT.newSample(new java.util.ArrayList<>(), new java.util.ArrayList<>());
     assertThrows(VcfFormatException.class,
         () -> writer.writeLine(metadata, position, Collections.singletonList(badSample)));
@@ -2169,8 +2001,8 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     writer.writeHeader(metadata);
     failingWriter.startFailing();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getAltBases().add("T");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, null, -1);
     assertThrows(UncheckedIOException.class, () -> {
       for (int i = 0; i < 1000; i++) {
         writer.writeLine(metadata, position, Collections.emptyList());
@@ -2189,7 +2021,11 @@ public class VcfWriterTest {
     mdBuilder.setFileFormat("VCFv4.2");
     mdBuilder.setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"));
     VcfMetadata metadata = mdBuilder.build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
+    // an INFO key with no matching metadata declaration triggers a warning in validateBeforeWrite() mode
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("UNDECLARED", "1");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, info, null,
+        -1);
 
     Path vcfFile = tempDir.resolve("out.vcf");
     VcfWriter writer = new VcfWriter.Builder()
@@ -2198,8 +2034,6 @@ public class VcfWriterTest {
         .warningsToFile()
         .build();
     writer.writeHeader(metadata);
-    // an INFO key with no matching metadata declaration triggers a warning in validateBeforeWrite() mode
-    position.getInfo().put("UNDECLARED", "1");
     writer.writeLine(metadata, position, List.of());
     writer.close();
 
@@ -2252,9 +2086,10 @@ public class VcfWriterTest {
         .build();
     writer.writeHeader(metadata);
     for (int i = 1; i <= 3; i++) {
-      VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", i, null, "A", List.of("T"), null, null, null, null,
+      ListMultimap<String, String> info = ArrayListMultimap.create();
+      info.put("UNDECLARED" + i, "1");
+      VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", i, null, "A", List.of("T"), null, null, info, null,
           -1);
-      position.getInfo().put("UNDECLARED" + i, "1");
       writer.writeLine(metadata, position, List.of());
     }
     writer.close();
@@ -2272,7 +2107,11 @@ public class VcfWriterTest {
     mdBuilder.setFileFormat("VCFv4.2");
     mdBuilder.setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"));
     VcfMetadata metadata = mdBuilder.build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
+    // an INFO key with no matching metadata declaration triggers a warning in validateBeforeWrite() mode
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("UNDECLARED", "1");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, info, null,
+        -1);
 
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -2288,8 +2127,6 @@ public class VcfWriterTest {
           .warningsToFile()
           .build();
       writer.writeHeader(metadata);
-      // an INFO key with no matching metadata declaration triggers a warning in validateBeforeWrite() mode
-      position.getInfo().put("UNDECLARED", "1");
       writer.writeLine(metadata, position, List.of());
       writer.close();
       assertFalse(appender.hasWarnOrHigher());
@@ -2367,7 +2204,11 @@ public class VcfWriterTest {
     mdBuilder.setFileFormat("VCFv4.2");
     mdBuilder.setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"));
     VcfMetadata writeMetadata = mdBuilder.build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
+    // an INFO key with no matching metadata declaration triggers a warning in validateBeforeWrite() mode
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("UNDECLARED", "1");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, info, null,
+        -1);
 
     Path outFile = tempDir.resolve("out.vcf");
     Path writerWarnings = tempDir.resolve("writer.warn.log");
@@ -2377,8 +2218,6 @@ public class VcfWriterTest {
         .warningsToFile(writerWarnings)
         .build();
     writer.writeHeader(writeMetadata);
-    // an INFO key with no matching metadata declaration triggers a warning in validateBeforeWrite() mode
-    position.getInfo().put("UNDECLARED", "1");
     writer.writeLine(writeMetadata, position, List.of());
     writer.close();
 
@@ -2423,7 +2262,10 @@ public class VcfWriterTest {
     mdBuilder.setFileFormat("VCFv4.2");
     mdBuilder.setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"));
     VcfMetadata writeMetadata = mdBuilder.build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("UNDECLARED", "1");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, info, null,
+        -1);
 
     Path outFile = tempDir.resolve("out.vcf");
     VcfWriter writer = new VcfWriter.Builder()
@@ -2432,7 +2274,6 @@ public class VcfWriterTest {
         .warningsToFile(sharedWarnings)
         .build();
     writer.writeHeader(writeMetadata);
-    position.getInfo().put("UNDECLARED", "1");
     writer.writeLine(writeMetadata, position, List.of());
     writer.close();
 
@@ -2504,8 +2345,9 @@ public class VcfWriterTest {
     // diagnostics (e.g. an undeclared INFO key) still land there.
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").setColumns(List.of("#CHROM", "POS",
         "ID", "REF", "ALT", "QUAL", "FILTER", "INFO")).build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("1", 100, "A", null, -1);
-    position.setRawQuality("notanumber"); // never accessed yet -- writeLine() must be what fires the lazy parse
+    VcfPosition position = LENIENT_CONTEXT.newPosition("1", 100, "A", null, -1).toBuilder()
+        .rawQuality("notanumber") // never accessed yet -- writeLine() must be what fires the lazy parse
+        .build();
     Path outFile = tempDir.resolve("out.vcf");
     Path warningsFile = tempDir.resolve("warnings.log");
 

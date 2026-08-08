@@ -140,9 +140,13 @@ here. The rest of this section states the concrete per-shape rules that follow f
   trusted-bypass method actually skips before assuming one is a precedent for another. See
   `VALIDATION_PHILOSOPHY.md`'s "How the principles interact" section. Two of `InternalUtils`'s null-guards are
   kept as exceptions to its own exemption, since they're genuinely load-bearing: `unquote` (see its own
-  comment) and the per-element checks in `dropEmptyEntries`/`fillEmptyEntriesWithDot` (reachable via
-  `VcfPosition`'s documented live-mutation contract on its own genuinely-supported getters, not through
-  `InternalUtils` itself).
+  comment) and the per-element checks in `dropEmptyEntries`/`fillEmptyEntriesWithDot` (reachable via a
+  caller-supplied `List` containing a `null` element passed directly to `VcfContext.newPosition` or
+  `VcfPosition.Builder`'s `ids`/`altBases`/`filters` setters -- both defensively copy via a plain `new
+  ArrayList<>(...)`, which preserves rather than rejects a `null` element, so it still reaches `checkIds`/
+  `checkAltBases`/`checkFilters` at construction time. `VcfPosition` itself has no mutation route since Task 8
+  froze it -- every getter now returns an unmodifiable view -- so this is no longer reachable via a live
+  mutation the way it was before that task; the caller-supplied-list route above is what survives it).
 
 
 ## Repository Guidelines

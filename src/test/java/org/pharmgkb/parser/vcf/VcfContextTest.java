@@ -209,7 +209,11 @@ class VcfContextTest {
   @Test
   void testNewPositionTakingOwnershipDoesNotCopyItsCollections() {
     // the whole reason it exists: the caller-owned lists are stored by reference, so the per-record parse path
-    // pays no copy. Contrast testNewPositionCopiesEveryMutableInput for the public factory.
+    // pays no copy. Contrast testNewPositionCopiesEveryMutableInput for the public factory. Since getIds() and
+    // friends now return an unmodifiable VIEW (not the backing list itself), object identity between the
+    // caller's own list and the getter's return value no longer proves this -- mutating the caller's own list
+    // afterward and confirming the position's getter reflects it immediately does, since only a live view (not
+    // a copy) could ever do that.
     VcfContext ctx = VcfContext.strict("VCFv4.2");
     List<String> ids = new ArrayList<>(List.of("rs1"));
     List<String> alt = new ArrayList<>(List.of("T"));
@@ -217,10 +221,14 @@ class VcfContextTest {
     List<String> format = new ArrayList<>(List.of("GT"));
     VcfPosition position = ctx.newPositionTakingOwnership("chr1", 100, ids, "A", alt, null, filter, null,
         format, -1);
-    assertSame(ids, position.getIds());
-    assertSame(alt, position.getAltBases());
-    assertSame(filter, position.getFilters());
-    assertSame(format, position.getFormat());
+    ids.add("rs2");
+    alt.add("C");
+    filter.add("q20");
+    format.add("DP");
+    assertEquals(ids, position.getIds());
+    assertEquals(alt, position.getAltBases());
+    assertEquals(filter, position.getFilters());
+    assertEquals(format, position.getFormat());
   }
 
 }

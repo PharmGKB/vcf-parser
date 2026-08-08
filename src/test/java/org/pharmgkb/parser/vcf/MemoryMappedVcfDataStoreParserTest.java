@@ -14,6 +14,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import static org.pharmgkb.parser.vcf.TestUtils.LENIENT_CONTEXT;
 import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -514,16 +515,17 @@ public class MemoryMappedVcfDataStoreParserTest {
     // duplicate was in the data store yet and the collision went undetected; the later linking loop then
     // silently kept only the first occurrence (KEEP_FIRST-equivalent behavior) with no exception at all. Built
     // by calling parseLine() directly (not through VcfParser/a raw VCF string): parsing "ID=rs1;rs1" through
-    // VcfParser would have VcfPosition's own constructor-time checkIds() reject the duplicate first, before
-    // this class's own gap could ever be exercised -- getIds() is a live list that bypasses that check.
+    // VcfParser would have VcfPosition's own constructor-time checkIds() reject the duplicate first under a
+    // strict context, before this class's own gap could ever be exercised -- so this uses a lenient context to
+    // construct the position (which warns and keeps a duplicate ID, matching bcftools), independent of
+    // MemoryMappedVcfLineParser's own FAIL duplicate handler under test here.
     MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build(); // FAIL is the default
-    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     lineParser.parseMetadata(metadata);
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    position.getIds().add("rs1");
-    position.getIds().add("rs1");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, List.of("rs1", "rs1"), "A", null,
+        new BigDecimal("0"), null, null, null, -1);
 
-    VcfRecord record = STRICT_CONTEXT.newRecord(position, Collections.emptyList());
+    VcfRecord record = LENIENT_CONTEXT.newRecord(position, Collections.emptyList());
     assertThrows(VcfFormatException.class, () -> lineParser.parseLine(metadata, record));
   }
 

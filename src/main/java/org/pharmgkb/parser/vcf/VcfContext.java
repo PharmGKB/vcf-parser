@@ -96,12 +96,13 @@ public final class VcfContext {
   /**
    * Creates a fully-specified {@link VcfPosition} bound to this context.
    * <p>
-   * <b>Every mutable argument is defensively copied.</b> Unmodifiable getters would not be enough on their own:
-   * if this stored the caller's {@code List}/{@code ListMultimap} by reference, the caller would keep a live
-   * handle and could mutate the position's state from outside. The copies are real, mutable
-   * {@link ArrayList}/{@link LinkedListMultimap} instances, not {@code List.copyOf(...)} -- normalizing helpers
-   * such as {@code InternalUtils.fillEmptyEntriesWithDot} mutate their argument in place and require a mutable
-   * list, and {@link VcfPosition#getFilters()} and friends remain documented as live, mutable views.
+   * <b>Every mutable argument is defensively copied.</b> Unmodifiable getters alone would not be enough: if this
+   * stored the caller's {@code List}/{@code ListMultimap} by reference, {@link VcfPosition#getFilters()} and
+   * friends would return an unmodifiable view wrapping that same caller-owned object, so the caller could still
+   * mutate the position's backing state from outside by mutating their own reference directly, bypassing the
+   * view entirely. The copies are real, mutable {@link ArrayList}/{@link LinkedListMultimap} instances, not
+   * {@code List.copyOf(...)} -- normalizing helpers such as {@code InternalUtils.fillEmptyEntriesWithDot} mutate
+   * their argument in place and require a mutable list.
    *
    * @param lineNumber the originating line number in the source VCF file, or {@code -1} if this position was not
    * produced by parsing a real file
@@ -135,8 +136,9 @@ public final class VcfContext {
    * <p>
    * Safe only because {@code VcfParser} produces each of these lists by splitting the data line it is
    * currently parsing and never shares them. Never call with a collection an external caller might still hold
-   * a reference to: the position would expose that caller's own live object through
-   * {@link VcfPosition#getIds()} and friends.
+   * a reference to: {@link VcfPosition#getIds()} and friends return an unmodifiable view, but it would still be
+   * backed by that caller's own still-mutable object, so a later mutation through the caller's own reference
+   * would be visible through the position instead of the position holding an independent, truly immutable copy.
    * <p>
    * Package-private, not public-with-{@code @RestrictedApi}: that annotation is documentation-only here, so
    * visibility is what actually enforces the restriction.
@@ -151,8 +153,8 @@ public final class VcfContext {
   /**
    * Same as the overload above, but also accepts raw, not-yet-parsed QUAL/INFO column text to attach in the same
    * call -- lets {@code VcfParser} construct a lazily-parsed position in one call, without a second
-   * post-construction {@code setRawQuality}/{@code setRawInfo} call or an intermediate {@link VcfPosition.Builder}
-   * allocation. {@code rawQual} is only meaningful (and only stored) when {@code qual} is {@code null} -- mirrors
+   * post-construction call or an intermediate {@link VcfPosition.Builder} allocation. {@code rawQual} is only
+   * meaningful (and only stored) when {@code qual} is {@code null} -- mirrors
    * {@link VcfPosition.Builder}'s own quality-vs-rawQuality mutual exclusivity; likewise {@code rawInfo} vs
    * {@code info}. Package-private for the same reason as the overload above.
    */

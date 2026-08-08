@@ -704,8 +704,9 @@ public class InternalUtilsTest {
 
   @Test
   public void testDropEmptyEntriesRejectsNullEntry() {
-    // a null entry can only reach here through a caller-mutated list (e.g. VcfPosition.getIds().add(null)), never
-    // through parsing; it must be rejected with VcfFormatException, not a raw NullPointerException from isEmpty()
+    // a null entry can only reach here through a caller-supplied list passed directly to a public factory (e.g.
+    // VcfContext.newPosition(chr, pos, Arrays.asList("rs1", null), ...)), never through parsing; it must be
+    // rejected with VcfFormatException, not a raw NullPointerException from isEmpty()
     assertThrows(VcfFormatException.class,
         () -> InternalUtils.dropEmptyEntries("ID", new ArrayList<>(Arrays.asList("rs1", null)), null));
   }
@@ -891,8 +892,7 @@ public class InternalUtilsTest {
 
   @Test
   public void testGetPloidyDerivesFromGtAlleleCount() {
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     assertEquals(Integer.valueOf(2), InternalUtils.getPloidy(position, "0|1", "Sample", VcfWarnings.DEFAULT));
     assertEquals(Integer.valueOf(1), InternalUtils.getPloidy(position, "0", "Sample", VcfWarnings.DEFAULT));
     assertNull(InternalUtils.getPloidy(position, null, "Sample", VcfWarnings.DEFAULT));
@@ -900,8 +900,7 @@ public class InternalUtilsTest {
 
   @Test
   public void testGetPloidyWarnsForOutOfRangeAlleleIndex() {
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     StringWriter sink = new StringWriter();
     VcfWarnings warnings = new VcfWarnings(sink);
     // only 1 ALT allele (index 0 or 1 valid); "2" is out of range

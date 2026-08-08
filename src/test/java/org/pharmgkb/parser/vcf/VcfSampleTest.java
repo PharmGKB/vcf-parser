@@ -417,8 +417,7 @@ class VcfSampleTest {
     map.put("GT", "0|1");
     map.put("PL", "1,2");
     VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -441,8 +440,7 @@ class VcfSampleTest {
     map.put("GT", "0|1");
     map.put("PL", "1,2,3");
     VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -466,8 +464,7 @@ class VcfSampleTest {
     map.put("GT", "0|1");
     map.put("GLE", gle);
     VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -492,8 +489,7 @@ class VcfSampleTest {
     map.put("GT", "0|1");
     map.put("CNP", "0.1,0.2,0.3,0.2,0.2");
     VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -521,8 +517,7 @@ class VcfSampleTest {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("XX", "1,2");
     VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").addFormat(xxFormat).build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -548,8 +543,7 @@ class VcfSampleTest {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("PL", "1,2");
     VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -572,8 +566,7 @@ class VcfSampleTest {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("PL", "1,2,3");
     VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -598,8 +591,7 @@ class VcfSampleTest {
     map.put("GT", "0/1");
     map.put("FT", "STD_FILTER,extra");
     VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -620,8 +612,7 @@ class VcfSampleTest {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0/1");
     VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
 
     assertNull(sample.getProperty(position, metadata, "PL")); // not present on this sample
@@ -637,8 +628,7 @@ class VcfSampleTest {
     map.put("GT", "0/1");
     map.put("DS", "1.5");
     VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     FormatMetadata dsFormat = new FormatMetadata(STRICT_CONTEXT, "DS", "Genotype dosage", "1", FormatType.Float);
     VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").addFormat(dsFormat).build();
 
@@ -651,8 +641,7 @@ class VcfSampleTest {
     map.put("GT", "0/1");
     map.put("DS", "1.5,2.5");
     VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     FormatMetadata dsFormat = new FormatMetadata(STRICT_CONTEXT, "DS", "Genotype dosage", "1", FormatType.Float);
     VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").addFormat(dsFormat).build();
 
@@ -676,9 +665,8 @@ class VcfSampleTest {
     map.put("GT", "0/1");
     map.put("AL", "0.1,0.2");
     VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
-    position.getAltBases().add("C");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T", "C"), null, null, null,
+    null, -1);
     FormatMetadata alFormat = new FormatMetadata(STRICT_CONTEXT, "AL", "Alt allele field", "A", FormatType.Float);
     VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").addFormat(alFormat).build();
 
@@ -702,8 +690,7 @@ class VcfSampleTest {
     map.put("GT", "0/1");
     map.put("DS", "my_string");
     VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     FormatMetadata dsFormat = new FormatMetadata(STRICT_CONTEXT, "DS", "Genotype dosage", "1", FormatType.Float);
     VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").addFormat(dsFormat).build();
 
@@ -718,8 +705,7 @@ class VcfSampleTest {
     map.put("GT", "0|1");
     map.put("GL", ".");
     VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -747,8 +733,7 @@ class VcfSampleTest {
     map.put("GT", "0/1");
     map.put("XX", "a,b,c");
     VcfSample sample = LENIENT_CONTEXT.newSample(map);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     FormatMetadata xxFormat = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
         new String[] {"ID=XX", "Type=String", "Description=\"no Number\""}, VcfWarnings.DEFAULT));
     assertNull(xxFormat.getNumber());
@@ -778,8 +763,7 @@ class VcfSampleTest {
     map.put("GT", "0/1");
     map.put("XX", "1,2,3");
     VcfSample sample = LENIENT_CONTEXT.newSample(map);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     FormatMetadata xxFormat = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
         new String[] {"ID=XX", "Type=Integer", "Description=\"no Number\""}, VcfWarnings.DEFAULT));
     assertNull(xxFormat.getNumber());
@@ -796,8 +780,7 @@ class VcfSampleTest {
     map.put("GT", "0/1");
     map.put("XX", "5");
     VcfSample sample = LENIENT_CONTEXT.newSample(map);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     FormatMetadata xxFormat = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
         new String[] {"ID=XX", "Type=Integer", "Description=\"no Number\""}, VcfWarnings.DEFAULT));
     assertNull(xxFormat.getNumber());
@@ -816,8 +799,7 @@ class VcfSampleTest {
     map.put("GT", "0/1");
     map.put("XX", "1.0,abc");
     VcfSample sample = LENIENT_CONTEXT.newSample(map);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     FormatMetadata xxFormat = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
         new String[] {"ID=XX", "Type=Float", "Description=\"no Number\""}, VcfWarnings.DEFAULT));
     assertNull(xxFormat.getNumber());
@@ -832,8 +814,7 @@ class VcfSampleTest {
     map.put("GT", "0/1");
     map.put("DS", "1.5");
     VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build(); // no ##FORMAT=<ID=DS,...>
 
     assertNull(sample.getProperty(position, metadata, "DS"));
@@ -926,8 +907,7 @@ class VcfSampleTest {
   @Test
   void testGetGenotypeReturnsNullForAbsentOrEmptyGt() {
     VcfSample noGt = STRICT_CONTEXT.newSample(List.of("DP"), List.of("10"));
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     assertNull(noGt.getGenotype(position));
 
     VcfSample emptyGt = STRICT_CONTEXT.newSample(List.of("GT"), new ArrayList<>(List.of("")));
@@ -937,8 +917,7 @@ class VcfSampleTest {
   @Test
   void testGetGenotypeReturnsNullForFullyMissingCall() {
     VcfSample sample = STRICT_CONTEXT.newSample(List.of("GT"), List.of("./."));
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     assertNull(sample.getGenotype(position));
   }
 
@@ -946,9 +925,8 @@ class VcfSampleTest {
   void testGetGenotypeResolvesAllelesAndPreservesMixedPhasing() {
     // "0|1/2" -- boundary 0-1 is phased, boundary 1-2 is unphased
     VcfSample sample = STRICT_CONTEXT.newSample(List.of("GT"), List.of("0|1/2"));
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
-    position.getAltBases().add("C");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T", "C"), null, null, null,
+    null, -1);
     VcfSample.Genotype genotype = sample.getGenotype(position);
     assertNotNull(genotype);
     assertEquals(List.of("A", "T", "C"), genotype.getAlleles());
@@ -960,16 +938,14 @@ class VcfSampleTest {
   void testGetGenotypeThrowsForOutOfRangeAlleleIndex() {
     // ALT has one allele (T), so valid indices are 0 (REF) and 1; index 5 is out of range
     VcfSample sample = STRICT_CONTEXT.newSample(List.of("GT"), List.of("5/0"));
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     assertThrows(VcfFormatException.class, () -> sample.getGenotype(position));
   }
 
   @Test
   void testGetGenotypeThrowsForNonNumericAlleleIndex() {
     VcfSample sample = STRICT_CONTEXT.newSample(List.of("GT"), List.of("X/0"));
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     assertThrows(VcfFormatException.class, () -> sample.getGenotype(position));
   }
 
@@ -979,8 +955,7 @@ class VcfSampleTest {
     // Task 7: setWarningsSink was removed -- the sink is now fixed at construction via the sample's own context.
     java.io.StringWriter sink = new java.io.StringWriter();
     VcfSample sample = lenientContext(new VcfWarnings(sink)).newSample(List.of("GT"), new ArrayList<>(List.of("0/")));
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     VcfSample.Genotype genotype = sample.getGenotype(position);
     assertNotNull(genotype);
     assertEquals(2, genotype.getAlleles().size());
@@ -998,8 +973,7 @@ class VcfSampleTest {
     // property unpinned for strict construction -- a refactor routing the empty-allele path through
     // warnOrThrow would otherwise pass every remaining test while breaking strictly-constructed callers.
     VcfSample sample = STRICT_CONTEXT.newSample(List.of("GT"), new ArrayList<>(List.of("0/")));
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
-    position.getAltBases().add("T");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();

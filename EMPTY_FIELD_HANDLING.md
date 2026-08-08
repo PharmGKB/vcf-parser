@@ -182,7 +182,14 @@ for rejection purposes, but they are still a data-loss case in practice.
 - `InternalUtils.dropEmptyEntries` / `InternalUtils.fillEmptyEntriesWithDot` — the two shared normalization
   strategies, used by `VcfPosition`'s own constructor-time checks and `validate()`.
 - `VcfWriter.addListOrElse()` (ID/ALT/FILTER) and `addSampleConditionally()` (a sample's FORMAT sub-field
-  value) — the default write path's own equivalent of the same two strategies, for a live-mutated empty entry
+  value) — the default write path's own equivalent of the same two strategies. **Stale as of Task 8** (see
+  `task-8-report.md`): `VcfPosition` is now frozen, so `addListOrElse()`'s ID/ALT/FILTER empty-entry branch can
+  no longer actually be reached via a live mutation the way the wording below still describes -- it remains
+  reachable only through `VcfWriterTest`'s own package-private trusted-bypass construction (see that test
+  class), which is what keeps this row's coverage alive; `VcfSample` isn't frozen yet, so
+  `addSampleConditionally()`'s row is unaffected. Updating this row's wording, or removing the now-dead
+  guard(s) it also protects, is Task 11's job. Historical wording, still accurate about the *mechanism* if not
+  the *reachability*: for a live-mutated empty entry
   that reaches `writeLine()` without `position.validate()`/`sample.validate()` ever having run (the default
   path skips those for performance; see `VALIDATION_PHILOSOPHY.md`). `addListOrElse()` folds the drop/substitute
   decision into its own single pass over the list rather than calling `dropEmptyEntries`/`fillEmptyEntriesWithDot`
@@ -221,9 +228,15 @@ for rejection purposes, but they are still a data-loss case in practice.
 - `VcfSample.validate()` — warns and substitutes `.` for a sample property whose value was mutated to empty through
   `propertyEntrySet()`, consistent with `VcfWriter`'s own warn-only treatment (in `validateBeforeWrite()` mode) of
   an empty comma-separated FORMAT element.
-- `VcfWriter.addInfoOrDot()` — warns and substitutes `.` for an INFO key's value list mutated to a single empty
-  string through `VcfPosition.getInfo()`'s live view, but only when the key is declared with a `Type` other than
-  `Flag`. A key declared `Type=Flag`, or one with no `##INFO` declaration at all (the "INFO flag (no `=`)" row
+- `VcfWriter.addInfoOrDot()` — warns and substitutes `.` for an INFO key's value list holding a single empty
+  string, but only when the key is declared with a `Type` other than
+  `Flag`. **Stale wording as of Task 8** (see `task-8-report.md`): this row used to describe that empty string
+  as reaching `writeLine()` through `VcfPosition.getInfo()`'s live view; `VcfPosition` no longer has one, but
+  unlike the `addListOrElse()` row above, this row's own coverage is not lost -- an empty INFO *value* (as
+  opposed to an empty key) is not rejected or altered by any construction-time check, so `VcfWriterTest` still
+  reaches this exact branch via ordinary direct construction (a `ListMultimap` built with the empty value,
+  passed straight to `VcfContext.newPosition`), no bypass needed. Only the *mechanism* description was out of
+  date, not the reachability. A key declared `Type=Flag`, or one with no `##INFO` declaration at all (the "INFO flag (no `=`)" row
   above), still writes bare: an empty value there is either a genuine flag or indistinguishable from one, since
   `VcfPosition.info()` produces the identical single-empty-string representation for both. Unlike every other row
   in this table, this runs in **both** write modes, not just `validateBeforeWrite()` — the ambiguity this resolves

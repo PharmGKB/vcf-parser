@@ -407,6 +407,11 @@ public class VcfWriter implements Closeable {
       return;
     }
     while (formats.hasNext()) {
+      // STALE as of Task 8 (see task-8-report.md): position.getFormat() is no longer a live view -- VcfPosition
+      // is frozen, so this null guard can no longer be reached via any current public API path (checkFormat's own
+      // null-element check already throws unconditionally at construction/build() time, in every context). Left
+      // in place and untouched -- removing this guard is Task 11's job (which also touches this file to remove
+      // the writer's mutation defenses), not this comment fix's.
       // position.getFormat() is a live view a caller can insert a null entry into directly, bypassing
       // VcfPosition.validate()'s own checkFormat() null guard, which only runs under validateBeforeWrite(). On the
       // default path, StringBuilder.append(Object) would otherwise silently stringify a null key into the literal
@@ -927,6 +932,10 @@ public class VcfWriter implements Closeable {
 
     while (keys.hasNext()) {
       String key = keys.next();
+      // STALE as of Task 8 (see task-8-report.md): position.getInfo() is no longer a live view -- VcfPosition is
+      // frozen, so this null guard can no longer be reached via any current public API path (checkInfoEntries's
+      // own null-key/null-value checks already throw unconditionally at construction/build() time, in every
+      // context). Left in place and untouched -- removing this guard is Task 11's job, not this comment fix's.
       // position.getInfo() is a live LinkedListMultimap view that permits null keys/values (see
       // VcfPosition.checkInfoEntries's identical comment), bypassing VcfPosition.validate()'s own null guard, which
       // only runs under validateBeforeWrite(). Left unguarded, a null value would reach values.get(0).isEmpty()
@@ -1055,6 +1064,18 @@ public class VcfWriter implements Closeable {
 
   private void addListOrElse(String fieldName, List<String> list, String delimiter, String missingValue,
       boolean substituteEmptyWithDot, StringBuilder sb) {
+    // STALE as of Task 8 (see task-8-report.md): position.getIds()/getAltBases()/getFilters() are no longer live
+    // views -- VcfPosition is frozen, so the null branch below can no longer be reached via any current public
+    // API path (dropEmptyEntries's/checkAltBases's own null-element checks already throw unconditionally at
+    // construction/build() time, in every context). The empty-entry branch is a different case: it is the ONLY
+    // place this per-field drop-vs-substitute decision is implemented for the writer (see the "independently
+    // implement the SAME per-field decision table" note below) -- VcfPositionTest/InternalUtilsTest only cover
+    // InternalUtils's own copy, not this one, so VcfWriterTest's testDefaultWriteDropsEmptyIdEntry/
+    // testDefaultWriteDropsAllEmptyIdEntriesRendersMissingValue/testDefaultWriteDropsEmptyFilterEntry/
+    // testDefaultWriteSubstitutesEmptyAltEntryWithDot construct the position via the package-private
+    // newPositionCopyingTrustedFields() factory (deliberately bypassing checkIds/checkAltBases/checkFilters,
+    // reachable only because that test class is in this same package) to keep this branch under test. Removing
+    // either branch, or the null-guard-specific tests these superseded, is Task 11's job, not this comment fix's.
     // list (position.getIds()/getAltBases()/getFilters()) is a live view a caller can insert a null or empty
     // entry into directly, bypassing VcfPosition.validate()'s own guards (checkIds/checkAltBases/checkFilters),
     // which only run under validateBeforeWrite(). On the default path, StringBuilder.append(Object) would

@@ -73,13 +73,17 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   `VcfSample.validate()` throws via `checkNoStructuralDelimiter` (`VcfSample.java:130-143`) for a null property
   key, a line terminator, or a `:`/tab in a key or (non-`GLE`) value; `VcfPosition.validate()` throws via
   `checkChromosome`/`checkPosition`/`checkRef` (none of which take a warnings sink at all) and via
-  `checkFormat`'s null-sub-field-name, duplicate-key, and GT-not-first checks (`VcfPosition.java:544/572/578`),
-  none of which consult the warnings sink either. So a strictly-constructed position mutated into an invalid
-  *recoverable* state (e.g. an empty INFO key) and re-validated warns, while a strictly-constructed declaration
-  in the same situation throws; a position mutated into a *structurally* invalid state (e.g. a duplicate FORMAT
-  key) still throws from `validate()` regardless of which context created it. This only applies to
-  direct/programmatic construction under a strict context; a file parsed by `VcfParser` with the same malformed
-  content is handled per the lenient section below, not rejected outright. **Which overload shape you use does not affect this**: the typed `addInfo(id, description, ...)`
+  `checkFormat`'s null-sub-field-name, duplicate-key, and GT-not-first checks (`VcfPosition.java:632/660/666`),
+  none of which consult the warnings sink either. `VcfSample` can still be mutated after construction (`putProperty`,
+  `propertyEntrySet()`), so `VcfSample.validate()`'s recoverable-vs-structural distinction above remains
+  reachable there the same way it always was. `VcfPosition` cannot: since Task 8 froze it (no setters, every
+  getter an unmodifiable view), a position obtained through the public API -- whether via a constructor or
+  `Builder#build()` -- is always already in the state `validate()` would produce, so calling it is a no-op in
+  practice. It remains public and behaves exactly as described above if a caller still invokes it (e.g.
+  `VcfWriter`'s `validateBeforeWrite()` does, defensively). This strict-throws-on-mutation behavior only applies
+  to direct/programmatic construction (and, for a metadata declaration, later mutation) under a strict context;
+  `VcfParser`'s own internal use always builds a lenient context, so a file it parses is never rejected outright
+  for the same content. **Which overload shape you use does not affect this**: the typed `addInfo(id, description, ...)`
   and the raw-map `addInfo(Map)` shapes behave identically for equivalent invalid content, because the
   strict-vs-lenient decision comes from the `VcfContext` alone. A caller that wants warn-and-recover behavior
   for direct construction builds its objects from `VcfContext.lenient(fileFormat, warnings)` instead, which
@@ -118,11 +122,14 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   `VcfVersion.canonicalize`, so `VCFv4.02` matches `VCFv4.2`; the requested spelling is still what gets
   emitted.
 
-These checks run when a `VcfPosition` is constructed (including by the parser). Its setters and mutations made
-through its accessors (e.g. `getAltBases()`, `getFilters()`) do *not* re-run them, to support transformation
-pipelines that mutate a position in place; call `VcfPosition.validate()` after such mutations to re-check validity —
-this also re-normalizes a lone `.` `FILTER` value left by such a mutation, matching construction. `PASS` is never
-normalized away -- it is itself the sole representation of a passing FILTER (see `VcfPosition.getFilterStatus()`).
+These checks run once, when a `VcfPosition` is constructed (including by the parser) or rebuilt via
+`toBuilder()`/`Builder#build()` -- `VcfPosition` has no setters and every accessor returns an unmodifiable view,
+so there is no way to mutate a position in place and no reason to re-check it afterward. `Builder#build()`
+re-runs the same checks for any field a setter marked
+dirty since the builder was seeded; an unchanged field is left exactly as seeded, already known valid (see
+`VcfPosition.Builder`'s own Javadoc). A lone `.` `FILTER` value is normalized to empty every time a position is
+constructed or rebuilt, matching construction. `PASS` is never normalized away -- it is itself the sole
+representation of a passing FILTER (see `VcfPosition.getFilterStatus()`).
 
 One exception: `Builder.rsidsOnly()` is a true pre-filter, not a post-parse one -- a data line whose ID doesn't
 match an RSID is treated as though it were never in the file at all, the same as if it had been removed by an
@@ -138,8 +145,9 @@ would silently discard instead aborts parsing before a line parser ever gets a c
 
 ### Writer output
 
-Mutating `position.getFormat()` (adding or removing a FORMAT key) does *not* automatically update that line's
-`VcfSample` properties -- the two must be kept in agreement by the caller. If they diverge, the default writer path
+Building a new position via `position.toBuilder().format(...).build()` with a FORMAT list that no longer matches
+an already-built `VcfSample`'s own keys does *not* automatically update that sample's properties -- the two must
+be kept in agreement by the caller. If they diverge, the default writer path
 warns and reconciles by key name: a FORMAT key with no corresponding sample value is substituted with `.`, and a
 sample property not declared in FORMAT is dropped. `VcfWriter.Builder.validateBeforeWrite()` still substitutes `.`
 for the first case, but rejects the second (a sample property not declared in FORMAT) with `VcfFormatException`.
