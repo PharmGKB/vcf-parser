@@ -143,9 +143,6 @@ public class VcfWriter implements Closeable {
     // very thing the cross-version check above exists to prevent, reached around it (that check only compares
     // m_targetFileFormat, which is null in the inherit-from-metadata case).
     m_context = VcfContext.lenient(declaredFileFormatFor(metadata), m_warnings);
-    // claim after this method's own structural checks, matching writeLine()'s convention: a rejected call must not
-    // leave every metadata declaration's warning sink re-pointed at this writer as a side effect
-    claimMetadataWarningsSinks(metadata);
     if (m_validateBeforeWrite) {
       validateMetadata(metadata);
       checkSampleMetadataMatchesChromColumns(metadata);
@@ -278,10 +275,6 @@ public class VcfWriter implements Closeable {
       if (samples.get(sampleIndex) == null) {
         throw new VcfFormatException("Sample #" + sampleIndex + " is null");
       }
-    }
-    position.setWarningsSink(m_warnings);
-    for (VcfSample sample : samples) {
-      sample.setWarningsSink(m_warnings);
     }
     if (m_validateBeforeWrite) {
       // metadata == m_headerMetadata only proves it's the same object, not that it's unchanged: a caller can
@@ -444,14 +437,12 @@ public class VcfWriter implements Closeable {
     // compare against; duplicate IDs across entries must still be checked directly here
     Set<String> pedigreeIds = new HashSet<>();
     for (BaseMetadata pedigree : metadata.getPedigrees()) {
-      // getPedigrees() is a live view, so a caller can insert a null element after writeHeader() already ran
-      // claimMetadataWarningsSinks()'s own null check -- same reasoning as validateKeyedMetadataEntries()'s
-      // identical guard above. Currently masked on both of validateMetadata()'s call sites: in writeHeader(),
-      // validateMetadata() runs BEFORE buildHeaderLines()/addMetadataLines(), so claimMetadataWarningsSinks()'s
-      // own checkNoNullMetadataEntries() (called even earlier, at line 127) is what actually catches it there;
-      // in writeLine()'s post-header-mutation check, buildHeaderLines()/addMetadataLines() runs first instead.
-      // Kept anyway so this method stays a correct, self-contained validation pass on its own terms -- not
-      // dependent on call-order elsewhere in this class remaining exactly as it is today.
+      // getPedigrees() is a live view, so a caller can insert a null element after writeHeader() has already
+      // started -- same reasoning as validateKeyedMetadataEntries()'s identical guard above. In writeHeader(),
+      // this method runs BEFORE buildHeaderLines()/addMetadataLines(), so this check is what actually catches
+      // it there; in writeLine()'s post-header-mutation check, buildHeaderLines()/addMetadataLines() runs first
+      // instead. Kept anyway so this method stays a correct, self-contained validation pass on its own terms --
+      // not dependent on call-order elsewhere in this class remaining exactly as it is today.
       if (pedigree == null) {
         throw new VcfFormatException("PEDIGREE metadata contains a null entry");
       }
@@ -553,42 +544,6 @@ public class VcfWriter implements Closeable {
   }
 
   /**
-   * Claims every metadata declaration's warning sink for this writer, unconditionally -- called from
-   * {@link #writeHeader} after its own structural checks (non-null metadata, header-not-already-written) but
-   * before {@link #buildHeaderLines} or {@link #validateMetadata} run, so a lazy warning from any of these
-   * objects (today: none exist, but this matches {@link #writeLine}'s identical claiming of {@code position}/
-   * each {@code sample} and the design's own stated contract for forward compatibility) is always captured by
-   * this writer's own destination.
-   *
-   * @throws VcfFormatException if any declaration map/list contains a null entry -- checked before claiming
-   * anything, so a null found partway through never leaves some entries claimed and others not
-   */
-  private void claimMetadataWarningsSinks(VcfMetadata metadata) {
-    checkNoNullMetadataEntries("INFO", metadata.getInfo().values());
-    checkNoNullMetadataEntries("FILTER", metadata.getFilters().values());
-    checkNoNullMetadataEntries("FORMAT", metadata.getFormats().values());
-    checkNoNullMetadataEntries("ALT", metadata.getAlts().values());
-    checkNoNullMetadataEntries("contig", metadata.getContigs().values());
-    checkNoNullMetadataEntries("SAMPLE", metadata.getSamples().values());
-    checkNoNullMetadataEntries("PEDIGREE", metadata.getPedigrees());
-    metadata.getInfo().values().forEach(entry -> entry.setWarningsSink(m_warnings));
-    metadata.getFilters().values().forEach(entry -> entry.setWarningsSink(m_warnings));
-    metadata.getFormats().values().forEach(entry -> entry.setWarningsSink(m_warnings));
-    metadata.getAlts().values().forEach(entry -> entry.setWarningsSink(m_warnings));
-    metadata.getContigs().values().forEach(entry -> entry.setWarningsSink(m_warnings));
-    metadata.getSamples().values().forEach(entry -> entry.setWarningsSink(m_warnings));
-    metadata.getPedigrees().forEach(entry -> entry.setWarningsSink(m_warnings));
-  }
-
-  private static void checkNoNullMetadataEntries(String kind, Collection<? extends BaseMetadata> entries) {
-    for (BaseMetadata entry : entries) {
-      if (entry == null) {
-        throw new VcfFormatException(kind + " metadata contains a null entry");
-      }
-    }
-  }
-
-  /**
    * Validates every entry of a metadata map (INFO/FORMAT/FILTER/ALT/contig/SAMPLE), including that each entry's own
    * {@code ID} property still matches the map key it's stored under. That invariant normally holds automatically
    * (these maps are keyed by {@code getId()} when built), but {@link VcfMetadata#getInfo()} and its siblings return
@@ -603,13 +558,11 @@ public class VcfWriter implements Closeable {
       String mapKey = mapEntry.getKey();
       BaseMetadata entry = mapEntry.getValue();
       // entriesByKey is a live view (see this method's own Javadoc), so a caller can insert a null value after
-      // writeHeader() already ran claimMetadataWarningsSinks()'s own null check. Currently masked on both of
-      // this method's call sites: in writeHeader(), this method runs BEFORE buildHeaderLines()/
-      // addMetadataLines(), so claimMetadataWarningsSinks()'s own checkNoNullMetadataEntries() (called even
-      // earlier, at line 127) is what actually catches it there; in writeLine()'s post-header-mutation check,
-      // buildHeaderLines()/addMetadataLines() runs first instead. Kept anyway so validateMetadata() stays a
-      // correct, self-contained validation pass on its own terms -- not dependent on call-order elsewhere in
-      // this class remaining exactly as it is today.
+      // writeHeader() has already started. In writeHeader(), this method runs BEFORE buildHeaderLines()/
+      // addMetadataLines(), so this check is what actually catches it there; in writeLine()'s
+      // post-header-mutation check, buildHeaderLines()/addMetadataLines() runs first instead. Kept anyway so
+      // validateMetadata() stays a correct, self-contained validation pass on its own terms -- not dependent on
+      // call-order elsewhere in this class remaining exactly as it is today.
       if (entry == null) {
         throw new VcfFormatException(kind + " metadata contains a null entry");
       }
@@ -1163,13 +1116,13 @@ public class VcfWriter implements Closeable {
     for (BaseMetadata metadata : list) {
       // list is a live view of a VcfMetadata collection (see getAllProperties()'s own comment on
       // metadata.getPropertiesRaw() for the identical live-view concern one level down); a caller can insert a
-      // null element after writeHeader() has already run. This guard is reachable only in validateBeforeWrite()
-      // mode: the default write path never calls buildHeaderLines() from writeLine() at all, and on the first
-      // writeHeader() call, claimMetadataWarningsSinks() already rejects a null entry earlier (line 127) before
-      // buildHeaderLines() (and this method, via it) ever runs. The one place this guard actually fires is
-      // writeLine()'s post-header-mutation check in validateBeforeWrite() mode, where buildHeaderLines() (and so
-      // this method) runs BEFORE validateMetadata()'s equivalent null checks -- so this guard is not redundant
-      // with those, it's the one that actually runs first there.
+      // null element after writeHeader() has already run. This guard fires in two places: on the very first
+      // writeHeader() call in DEFAULT (non-validateBeforeWrite()) mode, where it is the ONLY null check that
+      // runs at all (validateMetadata() never runs in that mode); and in writeLine()'s post-header-mutation
+      // check in validateBeforeWrite() mode, where buildHeaderLines() (and so this method) runs BEFORE
+      // validateMetadata()'s equivalent null checks -- so this guard is not redundant with those there either.
+      // On the first writeHeader() call in validateBeforeWrite() mode, by contrast, validateMetadata() itself
+      // runs first and already rejects a null entry before buildHeaderLines() (and this method) is ever reached.
       if (metadata == null) {
         throw new VcfFormatException(name + " metadata contains a null entry");
       }
@@ -1274,6 +1227,11 @@ public class VcfWriter implements Closeable {
      * Enables full-output diagnostics. Before writing, the writer validates metadata, positions, INFO, FORMAT, and
      * sample values. It rejects content that would produce structurally invalid VCF and warns about detected semantic
      * non-compliance. This is off by default to keep the direct parse-and-write path fast.
+     * <p>
+     * Where those warnings land is not uniform: see {@link #warningsToFile()} for the split between diagnostics
+     * this writer generates itself and lazy content warnings from models built under a different context.
+     *
+     * @see #warningsToFile()
      */
     public Builder validateBeforeWrite() {
       m_validateBeforeWrite = true;
@@ -1289,14 +1247,15 @@ public class VcfWriter implements Closeable {
      * default-derived name happens to collide with another {@code warningsToFile()}-configured
      * {@link VcfWriter}/{@link VcfParser}'s own default-derived name (e.g. an in-place parse-then-write).
      * <p>
-     * This redirection is scoped to this {@link VcfWriter}'s own write calls. {@link VcfWriter#writeLine} claims
-     * {@code position} and every sample in {@code samples} for this writer's own destination after its own
-     * structural checks (header-written, metadata identity, and the null position/samples/sample-element checks)
-     * but before any lazy getter or validation logic runs -- so a {@code VcfPosition}/{@code VcfSample} field
-     * that's still unparsed when handed to {@link #writeLine} has its lazy warning correctly captured here,
-     * even if the object was originally parsed or built under a different destination. A getter accessed and cached *before* being handed to
-     * {@link #writeLine} at all is not retroactively fixed -- the value is already resolved by then, so there is
-     * nothing left to warn about at write time.
+     * <b>This only captures diagnostics this {@link VcfWriter} generates itself</b> -- e.g. an undeclared INFO/
+     * FORMAT key, a header/sample mismatch, or a version-fallback warning for the {@code ##fileformat} this
+     * writer emits. It does <em>not</em> capture a lazy content warning from the {@code metadata}/{@code
+     * position}/{@code samples} handed to {@link #writeHeader}/{@link #writeLine} (e.g. an out-of-range QUAL, a
+     * duplicate FORMAT key, or a malformed metadata attribute discovered on first access): every model object's
+     * warnings destination is fixed at construction, from its own {@link VcfContext}, and this writer never
+     * re-points it -- see {@link VcfWarnings}'s class Javadoc for the full attribution rule. A caller who needs
+     * such a warning captured here must build {@code metadata}/{@code position}/{@code samples} under a context
+     * that already points at this same destination.
      */
     public Builder warningsToFile() {
       m_warningsToFile = true;
@@ -1318,14 +1277,15 @@ public class VcfWriter implements Closeable {
      * result is a byte-level overwrite/interleave (potentially leaving a zero-filled gap) rather than a clean,
      * complete truncation of one side's content.
      * <p>
-     * This redirection is scoped to this {@link VcfWriter}'s own write calls. {@link VcfWriter#writeLine} claims
-     * {@code position} and every sample in {@code samples} for this writer's own destination after its own
-     * structural checks (header-written, metadata identity, and the null position/samples/sample-element checks)
-     * but before any lazy getter or validation logic runs -- so a {@code VcfPosition}/{@code VcfSample} field
-     * that's still unparsed when handed to {@link #writeLine} has its lazy warning correctly captured here,
-     * even if the object was originally parsed or built under a different destination. A getter accessed and cached *before* being handed to
-     * {@link #writeLine} at all is not retroactively fixed -- the value is already resolved by then, so there is
-     * nothing left to warn about at write time.
+     * <b>This only captures diagnostics this {@link VcfWriter} generates itself</b> -- e.g. an undeclared INFO/
+     * FORMAT key, a header/sample mismatch, or a version-fallback warning for the {@code ##fileformat} this
+     * writer emits. It does <em>not</em> capture a lazy content warning from the {@code metadata}/{@code
+     * position}/{@code samples} handed to {@link #writeHeader}/{@link #writeLine} (e.g. an out-of-range QUAL, a
+     * duplicate FORMAT key, or a malformed metadata attribute discovered on first access): every model object's
+     * warnings destination is fixed at construction, from its own {@link VcfContext}, and this writer never
+     * re-points it -- see {@link VcfWarnings}'s class Javadoc for the full attribution rule. A caller who needs
+     * such a warning captured here must build {@code metadata}/{@code position}/{@code samples} under a context
+     * that already points at this same destination.
      */
     public Builder warningsToFile(Path customFile) {
       // customFile is a caller-configuration object, matching the established convention (see toFile(Path)

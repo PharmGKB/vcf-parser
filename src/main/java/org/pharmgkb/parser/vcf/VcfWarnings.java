@@ -17,11 +17,23 @@ import org.slf4j.helpers.MessageFormatter;
  * caller-supplied {@link Writer} sink, or -- for {@link #DEFAULT}, or any instance after {@link #close()} has
  * run -- falls back to this class's own shared SLF4J logger.
  * <p>
- * Model classes in this package hold a mutable reference to whichever instance is
- * currently responsible for their warnings, explicitly re-claimed via each class's own {@code setWarningsSink}
- * method -- there is no ambient/thread-local dispatch. See {@code VcfParser.Builder#warningsToFile()} and
- * {@code VcfWriter.Builder#warningsToFile()} for the common way an instance gets built and wired up; construct
- * one directly (or use {@link #DEFAULT}) around manual/standalone model construction.
+ * Every model class in this package (a {@code VcfPosition}, {@code VcfSample}, {@code VcfMetadata}, or metadata
+ * declaration) is handed a {@link VcfContext} at construction, and that context's
+ * instance of this class is its warnings destination for the rest of its lifetime -- fixed, not
+ * reassignable, and never re-pointed by anything constructed later, including a {@code VcfWriter} it is later
+ * handed to. There is no ambient/thread-local dispatch and no re-claim mechanism. See {@code
+ * VcfParser.Builder#warningsToFile()} and {@code VcfWriter.Builder#warningsToFile()} for the common way an
+ * instance gets built and wired into a context; construct one directly (or use {@link #DEFAULT}) around
+ * manual/standalone model construction.
+ * <p>
+ * This fixed-at-construction rule has a real consequence for a parse-then-write flow: a {@code VcfPosition}/
+ * {@code VcfSample}/declaration parsed under one {@code VcfContext} (e.g. a {@code VcfParser} with its own
+ * {@code warningsToFile()}) and then handed to a {@code VcfWriter}'s {@code writeHeader}/{@code writeLine} keeps
+ * warning to that original context's sink -- never to the writer's own {@code warningsToFile()} destination,
+ * even while the writer is actively processing it. Only diagnostics the writer generates itself (e.g. an
+ * undeclared INFO/FORMAT key, or a header/sample mismatch) reach the writer's own destination. A caller who
+ * needs every warning collected in one place must build every model object under the same context up front,
+ * rather than relying on the writer to collect them.
  * <p>
  * Not for non-VCF-content log output (e.g. I/O housekeeping, progress logging) -- those stay on SLF4J directly,
  * unconditionally.

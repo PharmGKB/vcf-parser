@@ -23,16 +23,15 @@ public class BaseMetadata {
   private final String m_label;
   private final VcfContext m_context;
   /**
-   * Where this instance's own lazy/re-validation warnings go. Initialized from this declaration's
-   * {@link VcfContext}'s own sink; {@link #setWarningsSink} lets {@code VcfWriter}/{@code VcfParser} explicitly
-   * claim this instance for the duration of a specific parse or write. This is a live, mutable field -- the same
-   * category of caller-mutable state already exposed by e.g. {@link #getPropertiesRaw()} -- not thread-local or
-   * ambient.
+   * Where this instance's own lazy/re-validation warnings go. Fixed at construction, from this declaration's
+   * {@link VcfContext}'s own sink, for this instance's entire lifetime -- nothing (including a {@code
+   * VcfWriter} this instance is later handed to) can re-point it afterward. See {@link VcfWarnings}'s class
+   * Javadoc for the full attribution rule.
    * <p>
    * This is the warnings <em>destination</em> only. Whether a recoverable condition warns here at all or instead
    * throws is decided by {@link VcfContext#isLenient()}, never by this field -- see {@link #warnOrThrow}.
    */
-  protected VcfWarnings m_warnings;
+  protected final VcfWarnings m_warnings;
 
   /**
    * Package-private, not public: nothing should instantiate the base declaration type directly. Every subclass
@@ -100,16 +99,6 @@ public class BaseMetadata {
    */
   protected final String getLabel() {
     return m_label;
-  }
-
-  /**
-   * Redirects this instance's future lazy/re-validation warnings to {@code warnings}, replacing whatever was
-   * previously configured (the constructor's own choice, or an earlier call to this method). Used by
-   * {@code VcfWriter}/{@code VcfParser} to claim an object for the duration of a specific write or parse, even
-   * if it was originally built (or last used) under a different destination.
-   */
-  public void setWarningsSink(VcfWarnings warnings) {
-    m_warnings = Preconditions.checkNotNull(warnings, "warnings must not be null");
   }
 
   /**

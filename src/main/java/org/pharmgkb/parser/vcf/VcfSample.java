@@ -31,14 +31,12 @@ public class VcfSample {
   private @Nullable List<String> m_values;
   // Materialized on demand (mutation / key or entry iteration), or supplied directly via the map constructor.
   private @Nullable LinkedHashMap<String, String> m_properties;
-  /** See {@link org.pharmgkb.parser.vcf.BaseMetadata#m_warnings}'s identical Javadoc -- same pattern, this
-   * class just isn't a {@code BaseMetadata} subclass so it needs its own copy of the field and setter. */
-  private VcfWarnings m_warnings;
+  // Fixed at construction, from m_context's own sink, for this instance's entire lifetime -- nothing (including
+  // a VcfWriter this instance is later handed to) can re-point it afterward. See VcfWarnings's class Javadoc for
+  // the full attribution rule. Same pattern as BaseMetadata#m_warnings; this class just isn't a BaseMetadata
+  // subclass so it needs its own copy of the field.
+  private final VcfWarnings m_warnings;
   private final VcfContext m_context;
-
-  public void setWarningsSink(VcfWarnings warnings) {
-    m_warnings = Preconditions.checkNotNull(warnings, "warnings must not be null");
-  }
 
   /**
    * The single construction path for a parallel-list sample. Package-private: every caller goes through

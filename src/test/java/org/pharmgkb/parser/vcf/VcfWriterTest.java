@@ -2079,12 +2079,12 @@ public class VcfWriterTest {
   @Test
   public void testValidateBeforeWriteRejectsNullMetadataEntryInsteadOfThrowingNpe() throws Exception {
     // regression test: getInfo()/getFilters()/getFormats()/getAlts()/getContigs()/getSamples()/getPedigrees()
-    // all return their live backing collection directly, so a caller can insert a null entry after
-    // writeHeader() already ran claimMetadataWarningsSinks()'s own one-time null check. writeLine()'s
-    // post-header-mutation guard calls buildHeaderLines() -> addMetadataLines() -> getAllProperties() BEFORE
-    // validateMetadata()'s own (equally-unguarded) checks ever run, so this previously raw-crashed with
-    // NullPointerException instead of VcfFormatException -- verified for both a Map-based kind (INFO) and the
-    // List-based kind (PEDIGREE), since addMetadataLines() is the single shared implementation for both shapes
+    // all return their live backing collection directly, so a caller can insert a null entry after writeHeader()
+    // has already validated the metadata once. writeLine()'s post-header-mutation guard calls buildHeaderLines()
+    // -> addMetadataLines() -> getAllProperties() BEFORE validateMetadata()'s own (equally-unguarded) checks
+    // ever run, so this previously raw-crashed with NullPointerException instead of VcfFormatException --
+    // verified for both a Map-based kind (INFO) and the List-based kind (PEDIGREE), since addMetadataLines() is
+    // the single shared implementation for both shapes
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
@@ -2110,8 +2110,9 @@ public class VcfWriterTest {
     // regression test: unlike the null VALUE case above, LinkedHashMap also tolerates a null KEY, so
     // metadata.getInfo().put(null, someInfoMetadata) reaches validateKeyedMetadataEntries with mapKey itself
     // null. Reachable on the very FIRST writeHeader() call, not just the writeLine()-after-mutation scenario the
-    // null-entry test above needs -- claimMetadataWarningsSinks() (which runs first, in writeHeader()) only
-    // checks .values() via checkNoNullMetadataEntries, never keys.
+    // null-entry test above needs -- validateMetadata() (called at the start of writeHeader() in
+    // validateBeforeWrite() mode) runs validateKeyedMetadataEntries directly, and that method's own null-VALUE
+    // guard doesn't catch a null KEY -- only the later mapKey.equals(id) check further down does.
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
@@ -2494,24 +2495,45 @@ public class VcfWriterTest {
   }
 
   @Test
-  public void testWarningsToFileCapturesLazyQualityGetterFiredDuringWriteLine(
+  public void testWarningsToFileDoesNotCaptureLazyQualityGetterUnderADifferentContext(
       @org.junit.jupiter.api.io.TempDir Path tempDir) throws IOException {
+    // Task 7: setWarningsSink was removed, so a model's warnings destination is fixed at construction from its
+    // own VcfContext and is never re-pointed by a later VcfWriter. `position` is built under LENIENT_CONTEXT
+    // (VcfWarnings.DEFAULT, the shared SLF4J logger), so the lazy QUAL parse warning writeLine() triggers goes
+    // there -- not to this writer's own warningsToFile() destination, even though the writer's own generated
+    // diagnostics (e.g. an undeclared INFO key) still land there.
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").setColumns(List.of("#CHROM", "POS",
         "ID", "REF", "ALT", "QUAL", "FILTER", "INFO")).build();
     VcfPosition position = LENIENT_CONTEXT.newPosition("1", 100, "A", null, -1);
     position.setRawQuality("notanumber"); // never accessed yet -- writeLine() must be what fires the lazy parse
     Path outFile = tempDir.resolve("out.vcf");
     Path warningsFile = tempDir.resolve("warnings.log");
-    try (VcfWriter writer = new VcfWriter.Builder().toFile(outFile).warningsToFile(warningsFile).build()) {
-      writer.writeHeader(metadata);
-      writer.writeLine(metadata, position, List.of());
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      try (VcfWriter writer = new VcfWriter.Builder().toFile(outFile).warningsToFile(warningsFile).build()) {
+        writer.writeHeader(metadata);
+        writer.writeLine(metadata, position, List.of());
+      }
+      assertFalse(java.nio.file.Files.readString(warningsFile).contains("is not a number"));
+      assertTrue(appender.anyMessageContains("is not a number"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
     }
-    assertTrue(java.nio.file.Files.readString(warningsFile).contains("is not a number"));
   }
 
   @Test
-  public void testWarningsToFileCapturesLazyDuplicateFormatKeyWarningDuringWriteLine(
+  public void testWarningsToFileDoesNotCaptureLazyDuplicateFormatKeyWarningUnderADifferentContext(
       @org.junit.jupiter.api.io.TempDir Path tempDir) throws IOException {
+    // Task 7: same attribution rule as the QUAL case above, for a sample's own lazy duplicate-FORMAT-key
+    // warning. `sample` is built under LENIENT_CONTEXT (VcfWarnings.DEFAULT), so this warning also goes to the
+    // shared SLF4J logger, not this writer's own warningsToFile() destination.
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
         .addFormat(new FormatMetadata(LENIENT_CONTEXT, "DP", "depth", "1", FormatType.Integer))
         .setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
@@ -2521,21 +2543,35 @@ public class VcfWriterTest {
         List.of("1", "2")); // duplicate key, never accessed yet
     Path outFile = tempDir.resolve("out.vcf");
     Path warningsFile = tempDir.resolve("warnings.log");
-    try (VcfWriter writer = new VcfWriter.Builder().toFile(outFile).warningsToFile(warningsFile).build()) {
-      writer.writeHeader(metadata);
-      writer.writeLine(metadata, position, List.of(sample));
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      try (VcfWriter writer = new VcfWriter.Builder().toFile(outFile).warningsToFile(warningsFile).build()) {
+        writer.writeHeader(metadata);
+        writer.writeLine(metadata, position, List.of(sample));
+      }
+      assertFalse(java.nio.file.Files.readString(warningsFile).contains("duplicate FORMAT key"));
+      assertTrue(appender.anyMessageContains("duplicate FORMAT key"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
     }
-    assertTrue(java.nio.file.Files.readString(warningsFile).contains("duplicate FORMAT key"));
   }
 
   @Test
-  public void testWarningsToFileCapturesMetadataDeclarationWarningDuringWriteHeaderValidation(
+  public void testWarningsToFileDoesNotCaptureMetadataDeclarationWarningDuringWriteHeaderValidation(
       @org.junit.jupiter.api.io.TempDir Path tempDir) throws IOException {
-    // finding #7 of this plan's external review: the design says writeHeader() claims metadata declarations
-    // before validating them, but the tests above only cover writeLine() -- this exercises the writeHeader()
-    // side specifically. Build a valid ContigMetadata via the strict constructor, then mutate its raw URL
-    // property directly (bypassing the constructor's own throw-on-malformed-URL check, the same way a caller
-    // mutating a live view always can), so the warning is only reachable via validateBeforeWrite()'s
+    // Task 7: writeHeader()'s validateBeforeWrite() validation still calls each declaration's own validate(),
+    // but -- setWarningsSink having been removed -- that call now warns to the declaration's own fixed context
+    // (here LENIENT_CONTEXT's VcfWarnings.DEFAULT, the shared SLF4J logger), never to this writer's own
+    // warningsToFile() destination. Build a valid ContigMetadata via the strict constructor, then mutate its
+    // raw URL property directly (bypassing the constructor's own throw-on-malformed-URL check, the same way a
+    // caller mutating a live view always can), so the warning is only reachable via validateBeforeWrite()'s
     // entry.validate() call inside writeHeader() -- not at construction time.
     org.pharmgkb.parser.vcf.ContigMetadata contig =
         new org.pharmgkb.parser.vcf.ContigMetadata(LENIENT_CONTEXT, "1", 1000L, "GRCh38", null,
@@ -2547,22 +2583,34 @@ public class VcfWriterTest {
         .build();
     Path outFile = tempDir.resolve("out.vcf");
     Path warningsFile = tempDir.resolve("warnings.log");
-    try (VcfWriter writer = new VcfWriter.Builder().toFile(outFile).warningsToFile(warningsFile)
-        .validateBeforeWrite().build()) {
-      writer.writeHeader(metadata);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      try (VcfWriter writer = new VcfWriter.Builder().toFile(outFile).warningsToFile(warningsFile)
+          .validateBeforeWrite().build()) {
+        writer.writeHeader(metadata);
+      }
+      assertFalse(java.nio.file.Files.readString(warningsFile).contains("is malformed"));
+      assertTrue(appender.anyMessageContains("is malformed"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
     }
-    assertTrue(java.nio.file.Files.readString(warningsFile).contains("is malformed"));
   }
 
   @Test
-  public void testDefaultWriteHeaderClaimsMetadataDeclarationsEvenWithoutValidateBeforeWrite(
+  public void testDefaultWriteHeaderDoesNotClaimMetadataDeclarations(
       @org.junit.jupiter.api.io.TempDir Path tempDir) throws IOException {
-    // finding #1 of this plan's second-round external review (blocking): writeHeader() must claim every
-    // metadata declaration's warning sink unconditionally, not only inside validateBeforeWrite()'s own
-    // validation. Metadata declarations have no lazy getters of their own today, so there's no
-    // automatically-triggered warning to observe in the default path -- this demonstrates the claim happened
-    // by manually calling validate() on the SAME object after a default-mode writeHeader() call and confirming
-    // it now warns to the writer's own sink instead of the shared logger, proving setWarningsSink was called.
+    // Task 7: writeHeader() used to unconditionally re-point every metadata declaration's warning sink at this
+    // writer -- even in default, non-validateBeforeWrite() mode -- via setWarningsSink, so a LATER manual
+    // validate() call on the same object (after writeHeader() already returned) would still land in this
+    // writer's own destination. setWarningsSink has been removed: a declaration's own warnings destination is
+    // fixed at construction, and writeHeader() has no effect on it in either mode.
     org.pharmgkb.parser.vcf.ContigMetadata contig =
         new org.pharmgkb.parser.vcf.ContigMetadata(LENIENT_CONTEXT, "1", 1000L, "GRCh38", null,
             null, null, null);
@@ -2572,23 +2620,36 @@ public class VcfWriterTest {
         .build();
     Path outFile = tempDir.resolve("out.vcf");
     Path warningsFile = tempDir.resolve("warnings.log");
-    try (VcfWriter writer = new VcfWriter.Builder().toFile(outFile).warningsToFile(warningsFile).build()) {
-      writer.writeHeader(metadata); // default mode -- no validateBeforeWrite()
-      contig.getPropertiesRaw().put(org.pharmgkb.parser.vcf.ContigMetadata.URL, "not a url");
-      contig.validate();
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      try (VcfWriter writer = new VcfWriter.Builder().toFile(outFile).warningsToFile(warningsFile).build()) {
+        writer.writeHeader(metadata); // default mode -- no validateBeforeWrite()
+        contig.getPropertiesRaw().put(org.pharmgkb.parser.vcf.ContigMetadata.URL, "not a url");
+        contig.validate();
+      }
+      assertFalse(java.nio.file.Files.readString(warningsFile).contains("is malformed"));
+      assertTrue(appender.anyMessageContains("is malformed"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
     }
-    assertTrue(java.nio.file.Files.readString(warningsFile).contains("is malformed"));
   }
 
   @Test
-  public void testSecondWriterReclaimsAnAlreadyClaimedObjectAndOverridesTheFirstsDestination(
+  public void testSecondWriterDoesNotClaimAnAlreadyBuiltObjectEither(
       @org.junit.jupiter.api.io.TempDir Path tempDir) throws IOException {
-    // the design's Testing Plan requires proving a re-claim genuinely OVERRIDES a prior destination, not just
-    // that a fresh object gets claimed once: the same ContigMetadata is claimed by two different VcfWriters in
-    // sequence, and the warning fired after the second claim must reach only the second writer's destination.
-    // Both writers stay open across the whole test, so a failed re-claim would be observable as a second
-    // "is malformed" line in the FIRST writer's still-open warnings file rather than as a silent SLF4J
-    // fallback (a closed VcfWarnings falls back to the shared logger, which would mask the failure).
+    // Task 7: previously, handing the SAME ContigMetadata to two different VcfWriters in sequence re-pointed
+    // its warning sink at each one in turn via setWarningsSink, so a warning fired between the two writeHeader()
+    // calls went to the first writer's destination and one fired after the second call went to the second's.
+    // setWarningsSink has been removed, so neither writeHeader() call has any effect on the contig's own fixed
+    // destination (LENIENT_CONTEXT's VcfWarnings.DEFAULT, the shared SLF4J logger) -- both warnings land there,
+    // and neither writer's own warningsToFile() destination ever sees either one.
     org.pharmgkb.parser.vcf.ContigMetadata contig =
         new org.pharmgkb.parser.vcf.ContigMetadata(LENIENT_CONTEXT, "1", 1000L, "GRCh38", null,
             null, null, null);
@@ -2598,22 +2659,36 @@ public class VcfWriterTest {
         .build();
     Path firstWarningsFile = tempDir.resolve("first-warnings.log");
     Path secondWarningsFile = tempDir.resolve("second-warnings.log");
-    try (VcfWriter firstWriter = new VcfWriter.Builder().toFile(tempDir.resolve("first.vcf"))
-        .warningsToFile(firstWarningsFile).build()) {
-      firstWriter.writeHeader(metadata); // claims contig for firstWriter
-      contig.getPropertiesRaw().put(org.pharmgkb.parser.vcf.ContigMetadata.URL, "not a url");
-      contig.validate(); // warning #1 -> firstWarningsFile
 
-      try (VcfWriter secondWriter = new VcfWriter.Builder().toFile(tempDir.resolve("second.vcf"))
-          .warningsToFile(secondWarningsFile).build()) {
-        secondWriter.writeHeader(metadata); // re-claims the SAME contig for secondWriter
-        contig.validate(); // warning #2 -> must go to secondWarningsFile, not firstWarningsFile
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      try (VcfWriter firstWriter = new VcfWriter.Builder().toFile(tempDir.resolve("first.vcf"))
+          .warningsToFile(firstWarningsFile).build()) {
+        firstWriter.writeHeader(metadata);
+        contig.getPropertiesRaw().put(org.pharmgkb.parser.vcf.ContigMetadata.URL, "not a url");
+        contig.validate(); // warning #1 -> the contig's own fixed destination, not firstWarningsFile
+
+        try (VcfWriter secondWriter = new VcfWriter.Builder().toFile(tempDir.resolve("second.vcf"))
+            .warningsToFile(secondWarningsFile).build()) {
+          secondWriter.writeHeader(metadata);
+          contig.validate(); // warning #2 -> the same fixed destination, not secondWarningsFile
+        }
       }
+      assertEquals(0, countMalformedUrlWarnings(firstWarningsFile),
+          "the first writer's destination must not have received a warning that was never routed to it");
+      assertEquals(0, countMalformedUrlWarnings(secondWarningsFile),
+          "the second writer's destination must not have received a warning that was never routed to it");
+      assertEquals(2, appender.countMessagesContaining("is malformed"),
+          "both warnings must have reached the contig's own fixed destination instead");
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
     }
-    assertEquals(1, countMalformedUrlWarnings(firstWarningsFile),
-        "the first writer's destination must have received only the pre-re-claim warning");
-    assertEquals(1, countMalformedUrlWarnings(secondWarningsFile),
-        "the post-re-claim warning must have been routed to the second writer's destination");
   }
 
   private static long countMalformedUrlWarnings(Path warningsFile) throws IOException {

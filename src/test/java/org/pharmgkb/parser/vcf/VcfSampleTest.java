@@ -221,11 +221,12 @@ class VcfSampleTest {
     // warnings-sink assertion re-establishes that distinction: an incorrect "" return would additionally trigger
     // convertProperty's own (context-free) "is an empty entry" warning, which checkFilterLikeValue's correct
     // "." return must never reach at all.
+    // Task 7: setWarningsSink was removed -- route the sink through the sample's own construction-time context
+    // (lenientContext(...)) instead of redirecting it afterward.
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("FT", ";;");
-    VcfSample sample = STRICT_CONTEXT.newSample(map);
     java.io.StringWriter sink = new java.io.StringWriter();
-    sample.setWarningsSink(new VcfWarnings(sink));
+    VcfSample sample = lenientContext(new VcfWarnings(sink)).newSample(map);
     assertNull(sample.getProperty(ReservedFormatProperty.Filter));
     assertFalse(sink.toString().contains("is an empty entry"));
   }
@@ -373,9 +374,10 @@ class VcfSampleTest {
 
   @Test
   void testValidateWarnsToConfiguredSinkForEmptyValue() {
-    VcfSample sample = STRICT_CONTEXT.newSample(List.of("DP"), new ArrayList<>(List.of("")));
+    // Task 7: setWarningsSink was removed -- the sink is now fixed at construction via the sample's own context.
     java.io.StringWriter sink = new java.io.StringWriter();
-    sample.setWarningsSink(new org.pharmgkb.parser.vcf.VcfWarnings(sink));
+    VcfSample sample = lenientContext(new org.pharmgkb.parser.vcf.VcfWarnings(sink))
+        .newSample(List.of("DP"), new ArrayList<>(List.of("")));
     sample.validate();
     assertTrue(sink.toString().contains("has an empty value"));
     assertEquals(".", sample.getProperty("DP"));
@@ -383,9 +385,10 @@ class VcfSampleTest {
 
   @Test
   void testDuplicateFormatKeyWarnsToConfiguredSinkOnLazyMaterialization() {
-    VcfSample sample = STRICT_CONTEXT.newSample(List.of("DP", "DP"), List.of("1", "2"));
+    // Task 7: setWarningsSink was removed -- the sink is now fixed at construction via the sample's own context.
     java.io.StringWriter sink = new java.io.StringWriter();
-    sample.setWarningsSink(new org.pharmgkb.parser.vcf.VcfWarnings(sink));
+    VcfSample sample = lenientContext(new org.pharmgkb.parser.vcf.VcfWarnings(sink))
+        .newSample(List.of("DP", "DP"), List.of("1", "2"));
     assertEquals("1", sample.getPropertyKeys().contains("DP") ? sample.getProperty("DP") : null);
     assertTrue(sink.toString().contains("duplicate FORMAT key"));
   }
@@ -973,9 +976,9 @@ class VcfSampleTest {
   @Test
   void testGetGenotypeEmptyAlleleWarnsToConfiguredSink() {
     // a trailing '/' (e.g. "0/") is a zero-length allele where '.' should have been used
-    VcfSample sample = STRICT_CONTEXT.newSample(List.of("GT"), new ArrayList<>(List.of("0/")));
+    // Task 7: setWarningsSink was removed -- the sink is now fixed at construction via the sample's own context.
     java.io.StringWriter sink = new java.io.StringWriter();
-    sample.setWarningsSink(new VcfWarnings(sink));
+    VcfSample sample = lenientContext(new VcfWarnings(sink)).newSample(List.of("GT"), new ArrayList<>(List.of("0/")));
     VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
     position.getAltBases().add("T");
     VcfSample.Genotype genotype = sample.getGenotype(position);
@@ -984,6 +987,33 @@ class VcfSampleTest {
     assertEquals("A", genotype.getAlleles().get(0));
     assertEquals(".", genotype.getAlleles().get(1));
     assertTrue(sink.toString().contains("empty allele"));
+  }
+
+  @Test
+  void testGetGenotypeEmptyAlleleWarnsRatherThanThrowsUnderAStrictContext() {
+    // pins the recoverable-vs-structural split for getGenotype() specifically: its two neighbours
+    // (testGetGenotypeThrowsForOutOfRangeAlleleIndex / ...NonNumericAlleleIndex) THROW under a strict context,
+    // so a zero-length allele being merely warn-and-recover is the exception, not the rule. The sink-routing
+    // sibling above had to move to a lenient context when Task 7 removed setWarningsSink, which left this
+    // property unpinned for strict construction -- a refactor routing the empty-allele path through
+    // warnOrThrow would otherwise pass every remaining test while breaking strictly-constructed callers.
+    VcfSample sample = STRICT_CONTEXT.newSample(List.of("GT"), new ArrayList<>(List.of("0/")));
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", null, -1);
+    position.getAltBases().add("T");
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      VcfSample.Genotype genotype = sample.getGenotype(position);
+      assertNotNull(genotype);
+      assertEquals(".", genotype.getAlleles().get(1));
+      assertTrue(appender.anyMessageContains("empty allele"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
   }
 
   @Test

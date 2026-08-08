@@ -17,17 +17,17 @@ import org.jspecify.annotations.Nullable;
 /**
  * This class captures all the VCF metadata from a VCF file.
  * <p>
- * Unlike every other class in this package that holds a {@link VcfWarnings} reference, this one has no
- * {@code setWarningsSink} method: both its warnings destination and its strict-vs-lenient behavior come from
- * the {@link VcfContext} its {@link Builder} was constructed with, and that context is fixed for this object's
- * whole lifetime. The consequence for a caller handing a {@code VcfMetadata} to a
- * {@link org.pharmgkb.parser.vcf.VcfWriter}: the writer claims each individual <em>declaration</em>
- * ({@link InfoMetadata}, {@link ContigMetadata}, etc.) for its own warnings destination, but it cannot re-route
- * this container object's own warn sites ({@link #addInfo}, {@link #addAssembly}, and friends). Those always go
- * wherever this {@code VcfMetadata}'s own context points -- for a parsed file, the parser's sink, which by write
- * time may already be closed, in which case {@link VcfWarnings} falls back to its shared SLF4J logger. So a
- * warning triggered by mutating a {@code VcfMetadata} after handing it to a writer will not appear in that
- * writer's {@code warningsToFile()} destination.
+ * Both its warnings destination and its strict-vs-lenient behavior come from the {@link VcfContext} its
+ * {@link Builder} was constructed with, and that context is fixed for this object's whole lifetime -- the same
+ * is true of every individual <em>declaration</em> it holds ({@link InfoMetadata}, {@link ContigMetadata},
+ * etc.), each fixed to its own construction-time context. The consequence for a caller handing a
+ * {@code VcfMetadata} to a {@link org.pharmgkb.parser.vcf.VcfWriter}: the writer cannot re-route this
+ * container's own warn sites ({@link #addInfo}, {@link #addAssembly}, and friends) or any individual
+ * declaration's -- they always go wherever their own context points -- for a parsed file, the parser's sink,
+ * which by write time may already be closed, in which case {@link VcfWarnings} falls back to its shared SLF4J
+ * logger. So a warning triggered by mutating a {@code VcfMetadata} (or one of its declarations) after handing
+ * it to a writer will not appear in that writer's {@code warningsToFile()} destination. See
+ * {@link VcfWarnings}'s class Javadoc for the full attribution rule.
  *
  * @author Mark Woon
  */

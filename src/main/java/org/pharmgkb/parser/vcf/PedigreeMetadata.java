@@ -12,9 +12,8 @@ import java.util.Map;
  * this class has no typed constructor mirroring a fixed field set -- only the raw properties map is exposed,
  * via the inherited {@link BaseMetadata} accessors.
  * <p>
- * Unlike every other {@link BaseMetadata} subclass, this class's properties are immutable after construction
- * (its inherited {@link #setWarningsSink} is not affected -- that's a caller-configuration detail, not VCF
- * content): {@link #getPropertiesRaw()} returns an unmodifiable view, and {@link #putPropertyRaw}/{@link
+ * Unlike every other {@link BaseMetadata} subclass, this class's properties are immutable after construction:
+ * {@link #getPropertiesRaw()} returns an unmodifiable view, and {@link #putPropertyRaw}/{@link
  * #putAndQuoteProperty} both throw. This class is also {@code final} so no subclass can reintroduce mutability
  * by overriding those methods. The only way to change a PEDIGREE entry's content is to build a new instance and
  * use {@link VcfMetadata#removePedigree}/{@link VcfMetadata#addPedigree} (or the equivalent direct add/remove

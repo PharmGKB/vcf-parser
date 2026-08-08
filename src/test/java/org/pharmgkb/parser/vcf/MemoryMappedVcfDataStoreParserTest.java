@@ -4,13 +4,15 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.StringReader;
-import java.io.StringWriter;
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
 import static org.junit.jupiter.api.Assertions.*;
@@ -270,24 +272,42 @@ public class MemoryMappedVcfDataStoreParserTest {
   }
 
   @Test
-  public void testGenotypeWithEmptyAlleleWarnsToConfiguredSink() throws IOException {
+  public void testGenotypeWithEmptyAlleleWarnsToTheParsersOwnConfiguredSink(@TempDir Path tempDir) throws IOException {
+    // Task 7: setWarningsSink was removed, so a VcfSample built by the parser can no longer be redirected to an
+    // arbitrary new sink after the fact -- its warnings destination is fixed to whatever VcfContext the parser
+    // built it under. A lazy warning fired by a MemoryMappedVcfDataStore's deferred access (like
+    // getGenotypeForId() below) is still reachable, but only via the SAME warningsToFile() destination the
+    // parser itself was configured with up front. It is NOT lost once that destination closes: VcfWarnings.warn()
+    // falls back to the shared SLF4J logger after close() (see VcfParser.Builder#warningsToFile()'s own Javadoc),
+    // so the diagnostic still surfaces -- just not in the file. This test keeps the file open so it can assert on
+    // the file specifically. Driving the parse manually via
+    // parseMetadata()/parseNextLine() (matching VcfParserTest#testParseMetadataThenParseNextLineFlushesWarningsFileOnClose)
+    // rather than the parse() convenience keeps the warnings file open across the deferred getGenotypeForId()
+    // call below.
     String vcf = "##fileformat=VCFv4.2\n" +
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n" +
         "chr1\t1\trsx\tA\tT\t.\tPASS\t.\tGT\t0/\n";
+    Path warningsFile = tempDir.resolve("warnings.log");
     try (BufferedReader reader = new BufferedReader(new StringReader(vcf))) {
       MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
-      new VcfParser.Builder()
+      try (VcfParser parser = new VcfParser.Builder()
           .fromReader(reader)
           .parseWith(lineParser)
-          .build().parse();
-      MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
-      VcfSample sample = dataStore.getSampleForId("rsx", "sample1");
-      assertNotNull(sample);
-      StringWriter sink = new StringWriter();
-      sample.setWarningsSink(new VcfWarnings(sink));
-      dataStore.getGenotypeForId("rsx", "sample1");
-      assertTrue(sink.toString().contains("empty allele"));
+          .warningsToFile(warningsFile)
+          .build()) {
+        parser.parseMetadata();
+        boolean hasNext = true;
+        while (hasNext) {
+          hasNext = parser.parseNextLine();
+        }
+        MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
+        VcfSample sample = dataStore.getSampleForId("rsx", "sample1");
+        assertNotNull(sample);
+        // fires the lazy warning while the warnings file is still open
+        dataStore.getGenotypeForId("rsx", "sample1");
+      }
     }
+    assertTrue(Files.readString(warningsFile).contains("empty allele"));
   }
 
   @Test

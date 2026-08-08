@@ -1435,22 +1435,36 @@ public class VcfPositionTest {
   public void testValidateAlwaysWarnsRegardlessOfOriginalConstructor() {
     // built via the STRICT constructor with a valid FILTER list, then mutated to the ambiguous case, then
     // validate()'d -- must warn (via whatever m_warnings currently is), never throw, since validate() is
-    // re-validation, not construction
+    // re-validation, not construction. Task 7: setWarningsSink was removed, and VcfContext.strict(...) has no
+    // way to supply a custom VcfWarnings (it always uses VcfWarnings.DEFAULT), so this now observes the warning
+    // via the shared SLF4J logger instead of a redirected sink -- that's still the right way to pin this, since
+    // switching construction to a custom lenientContext(...) would lose the strict-construction contrast this
+    // test is actually about.
     VcfPosition position = STRICT_CONTEXT.newPosition("1", 100, null, "A", null, null,
         new java.util.ArrayList<>(List.of("q10")), null, null, -1);
-    StringWriter sink = new StringWriter();
-    position.setWarningsSink(new VcfWarnings(sink));
     position.getFilters().add(0, "PASS");
-    assertDoesNotThrow(position::validate);
-    assertTrue(sink.toString().contains("PASS along with other filters"));
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertDoesNotThrow(position::validate);
+      assertTrue(appender.anyMessageContains("PASS along with other filters"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
   }
 
   @Test
   public void testGetQualityWarnsToConfiguredSinkForNonNumericValue() {
-    VcfPosition position = STRICT_CONTEXT.newPosition("1", 100, "A", null, -1);
-    position.setRawQuality("not-a-number");
+    // Task 7: setWarningsSink was removed -- route the sink through the position's own construction-time
+    // context (lenientContext(...)) instead of redirecting it afterward.
     StringWriter sink = new StringWriter();
-    position.setWarningsSink(new VcfWarnings(sink));
+    VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("1", 100, "A", null, -1);
+    position.setRawQuality("not-a-number");
     assertNull(position.getQuality());
     assertTrue(sink.toString().contains("is not a number"));
   }

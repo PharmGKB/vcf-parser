@@ -246,14 +246,10 @@ public class BaseMetadataTest {
   }
 
   @Test
-  public void testSetWarningsSinkRejectsNull() {
-    BaseMetadata md = new BaseMetadata(LENIENT_CONTEXT, "TESTLABEL", Map.of());
-    assertThrows(NullPointerException.class, () -> md.setWarningsSink(null));
-  }
-
-  @Test
   public void testDefaultWarningsSinkIsSharedLogger() {
-    // no setWarningsSink call at all -- must warn to the shared logger, not throw or silently no-op.
+    // LENIENT_CONTEXT's own sink is VcfWarnings.DEFAULT (Task 7 removed setWarningsSink, so this is the only
+    // sink a BaseMetadata not built with an explicit VcfWarnings can ever have) -- must warn to the shared
+    // logger, not throw or silently no-op.
     // warnIfMissing is protected, not part of any concrete declaration kind's own public behavior, but
     // accessible here (same package) purely as a vehicle to trigger a warning through m_warnings -- any
     // warn() call site would do equally well for this test's actual point.

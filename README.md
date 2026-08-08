@@ -129,10 +129,12 @@ explicitly by constructing a [`VcfWarnings`](src/main/java/org/pharmgkb/parser/v
 `VcfWriter.Builder.warningsToFile()` build and manage one of these internally for their own parse/write call --
 most callers never need to construct a `VcfWarnings` by hand at all.
 
-A `VcfPosition`/`VcfSample`/metadata declaration's own warning destination can be redirected after
-construction via `setWarningsSink(VcfWarnings)` -- `VcfWriter` uses this itself, claiming each object for its
-own destination immediately before writing it, so a lazy warning fired during that write is captured even if
-the object was originally parsed or built under a different destination (or none at all).
+A `VcfPosition`/`VcfSample`/metadata declaration's warning destination is fixed at construction, from its own
+context, for its whole lifetime -- nothing re-points it afterward, including a `VcfWriter` it is later handed
+to. A `VcfWriter`'s own `warningsToFile()` only captures diagnostics the writer generates itself (e.g. an
+undeclared INFO/FORMAT key); a lazy content warning from an object built under a different context still goes
+to that object's own context's sink, never to the writer's destination. A caller who wants every warning
+collected in one place must build every object under the same context up front.
 
 
 ## Conformance and dependency tests

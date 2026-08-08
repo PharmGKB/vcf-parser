@@ -54,7 +54,10 @@ public class VcfPosition {
   // parsing) leaves exception behavior unchanged.
   private int m_lineNumber = -1;
   private final VcfContext m_context;
-  private VcfWarnings m_warnings;
+  // Fixed at construction, from m_context's own sink, for this instance's entire lifetime -- nothing (including
+  // a VcfWriter this instance is later handed to) can re-point it afterward. See VcfWarnings's class Javadoc for
+  // the full attribution rule.
+  private final VcfWarnings m_warnings;
 
 
   /**
@@ -812,11 +815,6 @@ public class VcfPosition {
   public void setQuality(@Nullable BigDecimal quality) {
     m_quality = quality;
     m_rawQuality = null;
-  }
-
-  /** See {@link org.pharmgkb.parser.vcf.BaseMetadata#setWarningsSink}'s identical Javadoc. */
-  public void setWarningsSink(VcfWarnings warnings) {
-    m_warnings = Preconditions.checkNotNull(warnings, "warnings must not be null");
   }
 
   /**
