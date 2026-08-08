@@ -51,17 +51,6 @@ class VcfSampleTest {
   }
 
   @Test
-  void testGetPropertyKeysReflectsALaterMutationMadeThroughOtherMethods() {
-    // companion test: unlike a snapshot copy, getPropertyKeys() remains a view over the live backing map --
-    // a mutation made through putProperty() after the fact is visible through a set obtained beforehand
-    VcfSample sample = STRICT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
-    Set<String> keys = sample.getPropertyKeys();
-    assertFalse(keys.contains("DP"));
-    sample.putProperty("DP", "10");
-    assertTrue(keys.contains("DP"));
-  }
-
-  @Test
   void testOrder() {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("1", "A");
@@ -130,14 +119,20 @@ class VcfSampleTest {
   }
 
   @Test
-  void testPutPropertyRejectsLineTerminator() {
-    // putProperty previously had no line-terminator check at all, unlike the constructors
-    VcfSample sample = STRICT_CONTEXT.newSample(new LinkedHashMap<>());
-    assertThrows(VcfFormatException.class, () -> sample.putProperty("GT", "0/1\nextra"));
-    assertThrows(VcfFormatException.class, () -> sample.putProperty("GT", "0/1\rextra"));
-    assertThrows(VcfFormatException.class, () -> sample.putProperty("bad\nkey", "value"));
-    // the ReservedFormatProperty overload must not bypass the check either
-    assertThrows(VcfFormatException.class, () -> sample.putProperty(ReservedFormatProperty.Genotype, "0/1\nextra"));
+  void testBuilderPropertyDefersLineTerminatorRejectionToBuild() {
+    // Task 9: VcfSample lost its putProperty mutator (there are no mutation routes left at all); Builder.property()
+    // is the replacement, but -- unlike putProperty -- does not itself validate. build() re-validates the whole
+    // property map via the same validating VcfContext.newSample the map-based properties() setter already goes
+    // through, so a bad value is only caught there, not at property()'s own call site.
+    VcfSample.Builder builder1 = STRICT_CONTEXT.newSample(new LinkedHashMap<>()).toBuilder()
+        .property("GT", "0/1\nextra");
+    assertThrows(VcfFormatException.class, builder1::build);
+    VcfSample.Builder builder2 = STRICT_CONTEXT.newSample(new LinkedHashMap<>()).toBuilder()
+        .property("GT", "0/1\rextra");
+    assertThrows(VcfFormatException.class, builder2::build);
+    VcfSample.Builder builder3 = STRICT_CONTEXT.newSample(new LinkedHashMap<>()).toBuilder()
+        .property("bad\nkey", "value");
+    assertThrows(VcfFormatException.class, builder3::build);
   }
 
   @Test
@@ -148,26 +143,30 @@ class VcfSampleTest {
   }
 
   @Test
-  void testReservedFormatPropertyOverloadsHandleNullKeyLikeTheirStringSiblings() {
-    // getProperty/containsProperty/removeProperty(ReservedFormatProperty) must not raw-NPE at key.getId() for a
-    // null key -- each matches its own String-keyed sibling's already-null-tolerant "not present"/no-op contract.
-    // putProperty is the exception: putProperty(String, ...) already throws for a null key, so the
-    // ReservedFormatProperty overload must throw too, not silently tolerate it.
+  void testReservedFormatPropertyReadOverloadsHandleNullKeyLikeTheirStringSiblings() {
+    // getProperty/containsProperty(ReservedFormatProperty) must not raw-NPE at key.getId() for a null key -- each
+    // matches its own String-keyed sibling's already-null-tolerant "not present" contract. (Task 9 removed
+    // putProperty/removeProperty entirely -- there is no longer a mutator overload to check here.)
     VcfSample sample = STRICT_CONTEXT.newSample(new LinkedHashMap<>());
     assertNull(sample.getProperty((ReservedFormatProperty) null));
     assertFalse(sample.containsProperty((ReservedFormatProperty) null));
-    assertThrows(VcfFormatException.class, () -> sample.putProperty((ReservedFormatProperty) null, "value"));
-    sample.removeProperty((ReservedFormatProperty) null); // must not throw
   }
 
   @Test
-  void testPutPropertyRejectsStructuralDelimiters() {
-    // a colon would add a spurious FORMAT subfield, and a tab would add a spurious sample column, when written back out
-    VcfSample sample = STRICT_CONTEXT.newSample(new LinkedHashMap<>());
-    assertThrows(VcfFormatException.class, () -> sample.putProperty("DP", "1:2"));
-    assertThrows(VcfFormatException.class, () -> sample.putProperty("DP", "1\t2"));
-    assertThrows(VcfFormatException.class, () -> sample.putProperty("bad:key", "value"));
-    assertThrows(VcfFormatException.class, () -> sample.putProperty("bad\tkey", "value"));
+  void testBuilderPropertyDefersStructuralDelimiterRejectionToBuild() {
+    // a colon would add a spurious FORMAT subfield, and a tab would add a spurious sample column, when written back
+    // out; see testBuilderPropertyDefersLineTerminatorRejectionToBuild's comment for why this is a build()-time
+    // check now rather than immediate, unlike the former putProperty
+    VcfSample.Builder builder1 = STRICT_CONTEXT.newSample(new LinkedHashMap<>()).toBuilder().property("DP", "1:2");
+    assertThrows(VcfFormatException.class, builder1::build);
+    VcfSample.Builder builder2 = STRICT_CONTEXT.newSample(new LinkedHashMap<>()).toBuilder().property("DP", "1\t2");
+    assertThrows(VcfFormatException.class, builder2::build);
+    VcfSample.Builder builder3 = STRICT_CONTEXT.newSample(new LinkedHashMap<>()).toBuilder()
+        .property("bad:key", "value");
+    assertThrows(VcfFormatException.class, builder3::build);
+    VcfSample.Builder builder4 = STRICT_CONTEXT.newSample(new LinkedHashMap<>()).toBuilder()
+        .property("bad\tkey", "value");
+    assertThrows(VcfFormatException.class, builder4::build);
   }
 
   @Test
@@ -180,15 +179,6 @@ class VcfSampleTest {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("DP", "1:2");
     assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newSample(map));
-  }
-
-  @Test
-  void testValidateRejectsMutationThroughEntryView() {
-    LinkedHashMap<String, String> map = new LinkedHashMap<>();
-    map.put("DP", "1");
-    VcfSample sample = STRICT_CONTEXT.newSample(map);
-    sample.propertyEntrySet().iterator().next().setValue("1:2");
-    assertThrows(VcfFormatException.class, sample::validate);
   }
 
   @Test
@@ -289,25 +279,29 @@ class VcfSampleTest {
     // is the one key exempted from the colon check on its value. The key itself is still checked, and every other
     // key's value is unaffected.
     String gle = "0:-75.22,1:-223.42,0/0:-323.03";
-    VcfSample viaMap = STRICT_CONTEXT.newSample(new LinkedHashMap<>());
-    viaMap.putProperty("GLE", gle);
+    VcfSample viaMap = STRICT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GLE", gle)));
     assertEquals(gle, viaMap.getProperty("GLE"));
     VcfSample viaConstructor = STRICT_CONTEXT.newSample(Collections.singletonList("GLE"),
         Collections.singletonList(gle));
     assertEquals(gle, viaConstructor.getProperty("GLE"));
 
     // the exemption is specific to the key "GLE"; a colon in any other key's value is still rejected
-    VcfSample sample = STRICT_CONTEXT.newSample(new LinkedHashMap<>());
-    assertThrows(VcfFormatException.class, () -> sample.putProperty("DP", gle));
+    LinkedHashMap<String, String> badValue = new LinkedHashMap<>();
+    badValue.put("DP", gle);
+    assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newSample(badValue));
     // a colon in the key "GLE" itself (not its value) is still rejected
-    assertThrows(VcfFormatException.class, () -> sample.putProperty("GLE:bad", "value"));
+    LinkedHashMap<String, String> badKey = new LinkedHashMap<>();
+    badKey.put("GLE:bad", "value");
+    assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newSample(badKey));
     // a tab in GLE's value is still rejected (tab always means a spurious sample column, regardless of key)
-    assertThrows(VcfFormatException.class, () -> sample.putProperty("GLE", "a\tb"));
+    LinkedHashMap<String, String> badTab = new LinkedHashMap<>();
+    badTab.put("GLE", "a\tb");
+    assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newSample(badTab));
   }
 
   @Test
   void testPropertiesMaterializationKeepsFirstOccurrenceOnDuplicateKey() {
-    // properties() (the materialization path triggered by getPropertyKeys()/propertyEntrySet()/putProperty()/etc.)
+    // properties() (the materialization path triggered by getPropertyKeys()/propertyEntrySet()/validate())
     // previously let the LAST occurrence of a duplicate key silently overwrite the first, while getProperty()
     // (the un-materialized linear-scan path) already returned the FIRST occurrence -- the same VcfSample answered
     // a lookup differently depending purely on which path ran first. This constructs a VcfSample directly (the
@@ -368,7 +362,7 @@ class VcfSampleTest {
     List<String> keys = Arrays.asList("key1", "key2");
     List<String> values = Arrays.asList("value1", "value2");
     VcfSample sample = STRICT_CONTEXT.newSample(keys, values);
-    sample.putProperty("key3", "value3"); // forces materialization of m_properties
+    sample.getPropertyKeys(); // forces materialization of m_properties
     assertFalse(sample.containsProperty((String) null));
   }
 

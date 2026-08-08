@@ -450,8 +450,10 @@ into both `m_idToSamples` and `m_locusToSamplesList`, and those are the only wri
 inner list handed out by `getSamplesForId`/`getSamplesAtLocus`/`getAllSamples` is unmodifiable. A caller can
 no longer shift a record's own sample indices out of alignment with the `#CHROM` line's declared columns; the
 attempt now throws `UnsupportedOperationException` at the caller's own mistake. The contained `VcfSample`
-objects themselves remain mutable -- that is a separate axis, and is the subject of Plan A's later
-immutable-model tasks, not this entry.
+objects themselves remained mutable at the time this entry was written -- that was a separate axis, deferred to
+Plan A's later immutable-model tasks. **Now also resolved**: Task 9 froze `VcfSample` itself (no mutators;
+`getPropertyKeys()`/`propertyEntrySet()` are unmodifiable views whose entries also reject `setValue`), the
+identical freeze Task 8 applied to `VcfPosition`.
 
 ## `VcfParser`'s legacy `GLE` FORMAT-value splitter can silently misattribute content from a corrupted GLE value to the next FORMAT key
 

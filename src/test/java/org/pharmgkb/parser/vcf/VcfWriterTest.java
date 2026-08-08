@@ -627,7 +627,19 @@ public class VcfWriterTest {
   }
 
   @Test
-  public void testValidateBeforeWriteRejectsMutatedSampleValue() throws Exception {
+  public void testValidateBeforeWriteRejectsStructurallyInvalidSampleValue() throws Exception {
+    // restores the coverage of the former testValidateBeforeWriteRejectsMutatedSampleValue, which reached this
+    // rejection by mutating an already-built sample -- a route Task 9 removed. The writer-side check it pins
+    // (validateSamples -> VcfSample.validate() -> checkNoStructuralDelimiter) is still live, and removing the
+    // writer's now-unreachable defenses is Task 11's job, gated on Task 11 Step 1 PROVING they're unreachable.
+    // Deleting this test would remove exactly the evidence that proof rests on, and the tripwire if Task 11
+    // drops the wrong guard -- the same mistake Task 8 made and had to reverse.
+    //
+    // newTrustedSample() is the reconstruction route: it skips the structural-delimiter scan by design (its
+    // keys/values are documented as coming from a ':'/tab split and so "can never contain a delimiter"), which
+    // makes it the only remaining way to hand the writer a sample whose value contains a ':'. Package-private,
+    // reachable here because this test is in the same package -- mirroring how Task 8 restored the writer's
+    // empty-entry tests via newPositionCopyingTrustedFields().
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
@@ -635,9 +647,7 @@ public class VcfWriterTest {
         .build();
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, List.of("DP"), -1);
-    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
-    sample.putProperty("DP", "1");
-    sample.propertyEntrySet().iterator().next().setValue("1:2");
+    VcfSample sample = LENIENT_CONTEXT.newTrustedSample(List.of("DP"), List.of("1:2"));
 
     writer.writeHeader(metadata);
     assertThrows(VcfFormatException.class,
@@ -656,8 +666,7 @@ public class VcfWriterTest {
         .build();
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, List.of("DP"), -1);
-    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
-    sample.putProperty("DP", "");
+    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("DP", "")));
 
     writer.writeHeader(metadata);
     writer.writeLine(metadata, position, Collections.singletonList(sample));
@@ -673,9 +682,10 @@ public class VcfWriterTest {
         .build();
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, List.of("GT"), -1);
-    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
-    sample.putProperty("GT", "0/1");
-    sample.putProperty("DP", "10");
+    LinkedHashMap<String, String> sampleProps = new LinkedHashMap<>();
+    sampleProps.put("GT", "0/1");
+    sampleProps.put("DP", "10");
+    VcfSample sample = LENIENT_CONTEXT.newSample(sampleProps);
 
     writer.writeHeader(metadata);
     assertThrows(VcfFormatException.class,
@@ -698,9 +708,10 @@ public class VcfWriterTest {
         .build();
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, List.of("GT", "GLE"), -1);
-    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
-    sample.putProperty("GT", "0/1");
-    sample.putProperty("GLE", "0:-75.22,1:-223.42,0/0:-323.03,1/0:-99.29,1/1:-802.53");
+    LinkedHashMap<String, String> sampleProps = new LinkedHashMap<>();
+    sampleProps.put("GT", "0/1");
+    sampleProps.put("GLE", "0:-75.22,1:-223.42,0/0:-323.03,1/0:-99.29,1/1:-802.53");
+    VcfSample sample = LENIENT_CONTEXT.newSample(sampleProps);
 
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -734,9 +745,10 @@ public class VcfWriterTest {
         .build();
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, List.of("GT", "CNP"), -1);
-    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
-    sample.putProperty("GT", "0/1");
-    sample.putProperty("CNP", "0.1,0.2,0.3,0.2,0.2");
+    LinkedHashMap<String, String> sampleProps = new LinkedHashMap<>();
+    sampleProps.put("GT", "0/1");
+    sampleProps.put("CNP", "0.1,0.2,0.3,0.2,0.2");
+    VcfSample sample = LENIENT_CONTEXT.newSample(sampleProps);
 
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -770,9 +782,10 @@ public class VcfWriterTest {
         .build();
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, List.of("GT", "XY"), -1);
-    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
-    sample.putProperty("GT", "0/1");
-    sample.putProperty("XY", "1,,2");
+    LinkedHashMap<String, String> sampleProps = new LinkedHashMap<>();
+    sampleProps.put("GT", "0/1");
+    sampleProps.put("XY", "1,,2");
+    VcfSample sample = LENIENT_CONTEXT.newSample(sampleProps);
 
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -836,9 +849,10 @@ public class VcfWriterTest {
         .build();
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, List.of("GT", "AD"), -1);
-    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
-    sample.putProperty("GT", "0/1");
-    sample.putProperty("AD", "10"); // Number=R with 1 ALT allele expects 2 values, only 1 given
+    LinkedHashMap<String, String> sampleProps = new LinkedHashMap<>();
+    sampleProps.put("GT", "0/1");
+    sampleProps.put("AD", "10"); // Number=R with 1 ALT allele expects 2 values, only 1 given
+    VcfSample sample = LENIENT_CONTEXT.newSample(sampleProps);
 
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -871,8 +885,8 @@ public class VcfWriterTest {
         .build();
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, List.of("PL"), -1);
-    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
-    sample.putProperty("PL", "1,2"); // assumed diploidy + 1 ALT allele expects 3 values, only 2 given
+    // assumed diploidy + 1 ALT allele expects 3 values, only 2 given
+    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("PL", "1,2")));
 
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -1248,8 +1262,7 @@ public class VcfWriterTest {
         .build();
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, List.of("FT"), -1);
-    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
-    sample.putProperty("FT", "PASS;q10");
+    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("FT", "PASS;q10")));
 
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
@@ -1271,8 +1284,7 @@ public class VcfWriterTest {
         .build();
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, List.of("FT"), -1);
-    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
-    sample.putProperty("FT", "PASS;;q10");
+    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("FT", "PASS;;q10")));
 
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
@@ -1294,8 +1306,7 @@ public class VcfWriterTest {
         .build();
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, List.of("PS"), -1);
-    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
-    sample.putProperty("PS", "-5");
+    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("PS", "-5")));
 
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
@@ -1526,8 +1537,7 @@ public class VcfWriterTest {
     writer.writeHeader(metadata);
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, List.of("GT"), -1);
-    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
-    sample.putProperty(ReservedFormatProperty.Genotype, "0/1");
+    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
     // FORMAT metadata is absent: this previously threw NullPointerException
     writer.writeLine(metadata, position, Collections.singletonList(sample));
     assertTrue(sw.toString().contains("\tGT\t0/1"));
@@ -1543,8 +1553,7 @@ public class VcfWriterTest {
     writer.writeHeader(metadata);
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, List.of("GT", "DP"), -1);
-    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
-    sample.putProperty(ReservedFormatProperty.Genotype, "0/1"); // no DP property
+    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GT", "0/1"))); // no DP property
     // sample has fewer properties than FORMAT: this previously threw NoSuchElementException
     writer.writeLine(metadata, position, Collections.singletonList(sample));
     assertTrue(sw.toString().contains("\tGT:DP\t0/1:."));
@@ -1553,7 +1562,7 @@ public class VcfWriterTest {
   @Test
   public void testDefaultWriteSubstitutesEmptySampleValueWithDot() throws Exception {
     // regression test: the default path previously only substituted "." for a null sample property value, not a
-    // non-null empty one (e.g. via the documented sample.putProperty("DP", "") live-mutation path) --
+    // non-null empty one (e.g. an explicit "" property value) --
     // testValidateBeforeWriteNormalizesEmptySampleValue covers the diagnostics-mode case (via VcfSample.validate()),
     // this covers the default-path sibling EMPTY_FIELD_HANDLING.md's finding said was missing
     StringWriter sw = new StringWriter();
@@ -1564,9 +1573,10 @@ public class VcfWriterTest {
     writer.writeHeader(metadata);
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, List.of("GT", "DP"), -1);
-    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
-    sample.putProperty(ReservedFormatProperty.Genotype, "0/1");
-    sample.putProperty("DP", "");
+    LinkedHashMap<String, String> sampleProps = new LinkedHashMap<>();
+    sampleProps.put("GT", "0/1");
+    sampleProps.put("DP", "");
+    VcfSample sample = LENIENT_CONTEXT.newSample(sampleProps);
 
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -1613,8 +1623,8 @@ public class VcfWriterTest {
     writer.writeHeader(metadata);
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, List.of("DP"), -1);
-    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
-    sample.putProperty("DP", "not-a-number"); // Type=Integer declared, but the value doesn't parse as one
+    // Type=Integer declared, but the value doesn't parse as one
+    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("DP", "not-a-number")));
     writer.writeLine(metadata, position, Collections.singletonList(sample));
     assertTrue(sw.toString().contains("\tDP\tnot-a-number"));
   }
@@ -1627,8 +1637,7 @@ public class VcfWriterTest {
         .build();
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, List.of("GT"), -1);
-    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
-    sample.putProperty(ReservedFormatProperty.Genotype, "0/1");
+    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     writer.writeHeader(metadata);
@@ -1645,10 +1654,8 @@ public class VcfWriterTest {
         .build();
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, List.of("GT"), -1);
-    VcfSample sample1 = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
-    sample1.putProperty(ReservedFormatProperty.Genotype, "0/1");
-    VcfSample sample2 = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
-    sample2.putProperty(ReservedFormatProperty.Genotype, "1/1");
+    VcfSample sample1 = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
+    VcfSample sample2 = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GT", "1/1")));
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     writer.writeHeader(metadata);
@@ -1663,8 +1670,7 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, List.of("GT"), -1);
-    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
-    sample.putProperty(ReservedFormatProperty.Genotype, "0/1");
+    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     writer.writeHeader(metadata);
@@ -1684,8 +1690,7 @@ public class VcfWriterTest {
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, null, -1);
     // position.getFormat() is left empty
-    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
-    sample.putProperty(ReservedFormatProperty.Genotype, "0/1");
+    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     writer.writeHeader(metadata);

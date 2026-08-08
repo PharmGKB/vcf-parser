@@ -102,8 +102,8 @@ here. The rest of this section states the concrete per-shape rules that follow f
   the same operation already has, rather than uniformly rejecting -- e.g.
   `VcfSample.getProperty(ReservedFormatProperty)`/`VcfPosition.getInfo(ReservedInfoProperty)` each match
   their own `String`-keyed sibling's existing behavior instead of introducing a new, inconsistent rule.
-  Only reject with `VcfFormatException` if the sibling itself already does (e.g. `putProperty`, which
-  mutates state).
+  Only reject with `VcfFormatException` if the sibling itself already does (a mutator matching the
+  constructs-or-mutates-state bullet above).
 - This is a distinct question from a `Builder`'s own required-argument check on a caller-configuration
   parameter (a `Path`, a `Reader`, a `VcfLineParser` -- never VCF content, always something the calling
   code constructs and passes in before parsing/writing starts). `Preconditions.checkNotNull`'s raw

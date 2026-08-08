@@ -225,8 +225,14 @@ for rejection purposes, but they are still a data-loss case in practice.
   live `getInfo()` mutation: previously this either raw-crashed the typed conversion (a numeric key) or
   silently returned `""` instead of `null` (a `String`-typed key), with zero warnings either way.
 - `VcfSample.getGenotype` — warns and substitutes `.` for an empty GT allele.
-- `VcfSample.validate()` — warns and substitutes `.` for a sample property whose value was mutated to empty through
-  `propertyEntrySet()`, consistent with `VcfWriter`'s own warn-only treatment (in `validateBeforeWrite()` mode) of
+- `VcfSample.validate()` — warns and substitutes `.` for a sample property holding an empty value. **Stale wording
+  as of Task 9** (see `task-9-report.md`): this row used to describe that empty value as reaching `validate()`
+  through a mutation made via `propertyEntrySet()`; `VcfSample` no longer has any mutation route at all (Task 9
+  froze it the same way Task 8 froze `VcfPosition`), but this row's own coverage is not lost -- an empty (not
+  structurally invalid) property value is not rejected at construction time, so `VcfSampleTest`/`VcfWriterTest`
+  still reach this exact branch via ordinary direct construction (e.g. `VcfContext.newSample` given a map or
+  parallel lists containing an empty value), no bypass needed. Only the *mechanism* description was out of date,
+  not the reachability. Consistent with `VcfWriter`'s own warn-only treatment (in `validateBeforeWrite()` mode) of
   an empty comma-separated FORMAT element.
 - `VcfWriter.addInfoOrDot()` — warns and substitutes `.` for an INFO key's value list holding a single empty
   string, but only when the key is declared with a `Type` other than

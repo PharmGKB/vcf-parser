@@ -42,8 +42,9 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   conversion when a typed value is requested.
 - A key or value set through `BaseMetadata`'s, `VcfSample`'s, or `VcfMetadata`'s mutators (e.g. a `Description`, a
   sample's `GT` value, or an `##assembly` line) containing a line terminator.
-- A `VcfSample` key or value set through its constructors or `putProperty` containing a colon or tab, which would
-  otherwise add a spurious FORMAT sub-field or sample column when written back out. The one exception is a value for
+- A `VcfSample` key or value set through its constructors or `Builder#property` (validated at `build()` time, not
+  at `property()`'s own call site) containing a colon or tab, which would otherwise add a spurious FORMAT
+  sub-field or sample column when written back out. The one exception is a value for
   the key `GLE` (VCFv4.1/4.2's genotype-likelihoods-of-heterogeneous-ploidy key, removed from the spec in VCFv4.3+):
   its own spec example (e.g. `0:-75.22,1:-223.42,...`) is one opaque String that uses colons internally as part of
   its own encoding, not a delimiter between independent sub-fields; a colon in the key `GLE` itself, or a tab in its
@@ -70,18 +71,23 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   -- those always warn, whatever context created them, because they pass their warnings sink to their check
   helpers unconditionally rather than deriving strictness from the context the way the constructor path does.
   Each also has structural checks that are a separate case and still throw unconditionally in both contexts:
-  `VcfSample.validate()` throws via `checkNoStructuralDelimiter` (`VcfSample.java:130-143`) for a null property
+  `VcfSample.validate()` throws via `checkNoStructuralDelimiter` (`VcfSample.java`) for a null property
   key, a line terminator, or a `:`/tab in a key or (non-`GLE`) value; `VcfPosition.validate()` throws via
   `checkChromosome`/`checkPosition`/`checkRef` (none of which take a warnings sink at all) and via
-  `checkFormat`'s null-sub-field-name, duplicate-key, and GT-not-first checks (`VcfPosition.java:632/660/666`),
-  none of which consult the warnings sink either. `VcfSample` can still be mutated after construction (`putProperty`,
-  `propertyEntrySet()`), so `VcfSample.validate()`'s recoverable-vs-structural distinction above remains
-  reachable there the same way it always was. `VcfPosition` cannot: since Task 8 froze it (no setters, every
-  getter an unmodifiable view), a position obtained through the public API -- whether via a constructor or
-  `Builder#build()` -- is always already in the state `validate()` would produce, so calling it is a no-op in
-  practice. It remains public and behaves exactly as described above if a caller still invokes it (e.g.
-  `VcfWriter`'s `validateBeforeWrite()` does, defensively). This strict-throws-on-mutation behavior only applies
-  to direct/programmatic construction (and, for a metadata declaration, later mutation) under a strict context;
+  `checkFormat`'s null-sub-field-name, duplicate-key, and GT-not-first checks, none of which consult the
+  warnings sink either. Neither class can be mutated after construction any more: Task 8 froze `VcfPosition`
+  (no setters, every getter an unmodifiable view) and Task 9 did the identical freeze for `VcfSample` (no
+  mutators; `getPropertyKeys()`/`propertyEntrySet()` are unmodifiable views whose entries also reject
+  `setValue`). A sample or position obtained through the public API -- whether via a constructor or
+  `Builder#build()` -- is therefore always already in the state each class's own `validate()` structural checks
+  would produce, so calling `checkNoStructuralDelimiter`/`checkChromosome`/etc. from `validate()` is a no-op in
+  practice there. `VcfSample.validate()`'s `checkNoStructuralDelimiter` throw remains genuinely reachable only
+  for a sample produced via the package-private, validation-skipping `VcfContext.newTrustedSample`
+  (`VcfParser`'s own fast path); its empty-value-to-`.` canonicalization is a separate, still-ordinarily-
+  reachable case, since a legitimately-constructed sample can hold an empty (not structurally invalid) value.
+  Both `validate()` methods remain public and behave exactly as described above if a caller still invokes them
+  (e.g. `VcfWriter`'s `validateBeforeWrite()` does, defensively). This strict-throws-on-mutation behavior only
+  applies to direct/programmatic construction (and, for a metadata declaration, later mutation) under a strict context;
   `VcfParser`'s own internal use always builds a lenient context, so a file it parses is never rejected outright
   for the same content. **Which overload shape you use does not affect this**: the typed `addInfo(id, description, ...)`
   and the raw-map `addInfo(Map)` shapes behave identically for equivalent invalid content, because the

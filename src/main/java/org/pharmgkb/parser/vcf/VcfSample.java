@@ -15,13 +15,26 @@ import org.jspecify.annotations.Nullable;
 /**
  * This class contains sample data for a VCF position line.
  *
+ * <p>
+ * Effectively immutable: there are no public mutation routes, and {@link #getPropertyKeys()}/
+ * {@link #propertyEntrySet()} each return an unmodifiable view -- an entry's {@link Map.Entry#setValue} also throws
+ * {@link UnsupportedOperationException} -- so no value a caller can observe changes once construction (or
+ * {@link Builder#build()}) has returned. {@link #validate()} is the one internal exception: it mutates
+ * {@link #m_properties} in place to canonicalize an empty value to {@code "."} (see its own Javadoc), the same
+ * design {@link VcfPosition#validate()} uses for its own equivalent in-place normalization.
+ * </p>
+ *
  * <p>To avoid allocating a map for every sample on every line (the common parse-then-read path), the FORMAT keys and
- * their values are kept as parallel lists and read by a short linear scan. A {@link LinkedHashMap} is materialized only
- * when the sample is mutated or its keys/entries are iterated.</p>
+ * their values are kept as parallel lists and read by a short linear scan. A {@link LinkedHashMap} is materialized
+ * only the first time a keys/entries view is requested (or supplied directly via the map constructor), writing
+ * {@link #m_properties} (and clearing {@link #m_keys}/{@link #m_values}) at that point. That caching has no
+ * observable effect on a single-threaded caller, but it is unsynchronized, so <b>this class is not thread-safe</b>:
+ * sharing one instance across threads before its property views have been read at least once is not safe without
+ * external synchronization. A caller that needs a changed sample derives a new one via {@link #toBuilder()}.</p>
  *
  * @author Mark Woon
  */
-public class VcfSample {
+public final class VcfSample {
 
   // Lean representation used on the parse path; both null once m_properties has been materialized. VcfParser may
   // pass the same List instance as m_keys to multiple VcfSample objects for the same data line (one independent
@@ -29,8 +42,16 @@ public class VcfSample {
   // future change that did so would silently corrupt every sample sharing that line's copy.
   private @Nullable List<String> m_keys;
   private @Nullable List<String> m_values;
-  // Materialized on demand (mutation / key or entry iteration), or supplied directly via the map constructor.
+  // Materialized on demand (a keys/entries view is requested, or validate() runs), or supplied directly via the
+  // map constructor.
   private @Nullable LinkedHashMap<String, String> m_properties;
+  // Memoized unmodifiable views over m_properties's keySet()/entrySet(), returned by getPropertyKeys()/
+  // propertyEntrySet() below instead of allocating a fresh wrapper on every call -- VcfWriter calls these once per
+  // sample per record. Once built, each remains valid for this instance's entire lifetime: m_properties itself is
+  // never reassigned to a different object after materialization (validate() mutates entry values in place, but
+  // never replaces the map), so a memoized view never goes stale.
+  private @Nullable Set<String> m_propertyKeysView;
+  private @Nullable Set<Map.Entry<String, String>> m_propertyEntrySetView;
   // Fixed at construction, from m_context's own sink, for this instance's entire lifetime -- nothing (including
   // a VcfWriter this instance is later handed to) can re-point it afterward. See VcfWarnings's class Javadoc for
   // the full attribution rule. Same pattern as BaseMetadata#m_warnings; this class just isn't a BaseMetadata
@@ -130,8 +151,8 @@ public class VcfSample {
 
   /**
    * Rejects a key or value containing a line terminator, a colon, or a tab: a parsed key/value can never contain
-   * these (they were already split on to arrive at this key/value), but one set directly via {@link #putProperty} or
-   * {@link #propertyEntrySet()} could; reject them so the writer's output remains re-parseable (a colon would add a
+   * these (they were already split on to arrive at this key/value), but one supplied directly to a constructor or
+   * {@link Builder#property} could; reject them so the writer's output remains re-parseable (a colon would add a
    * spurious FORMAT subfield, and a tab would add a spurious sample column).
    * <p>
    * {@link ReservedFormatProperty#GenotypeLikelihoodsOfHeterogenousPloidy GLE} (VCFv4.1/4.2's
@@ -161,11 +182,17 @@ public class VcfSample {
   }
 
   /**
-   * Re-validates the current properties after possible mutation through {@link #propertyEntrySet()}, throwing
-   * {@link VcfFormatException} for a structural delimiter. An empty value is not a structural problem -- it does not
-   * corrupt column/sub-field alignment, the same as an empty INFO value or an empty comma-separated FORMAT element
-   * elsewhere in this library -- so it is warned about and normalized to {@code "."} (the VCF missing-value
-   * sentinel) in place, rather than rejected. See {@code EMPTY_FIELD_HANDLING.md}.
+   * Re-validates this sample's current properties, throwing {@link VcfFormatException} for a structural delimiter.
+   * Every public construction path (both constructors, and {@link Builder#build()}) already runs
+   * {@link #checkNoStructuralDelimiter} once, so this is normally a no-op re-check -- it remains genuinely load-
+   * bearing only for a sample built via the package-private, validation-skipping {@code VcfContext.newTrustedSample}
+   * ({@code VcfParser}'s own fast path; see its own Javadoc), which has not had that guarantee independently
+   * verified. {@code VcfWriter}'s {@code validateBeforeWrite()} calls this method for exactly that reason. An empty
+   * value is not a structural problem -- it does not corrupt column/sub-field alignment, the same as an empty INFO
+   * value or an empty comma-separated FORMAT element elsewhere in this library -- so it is warned about and
+   * normalized to {@code "."} (the VCF missing-value sentinel) in place, rather than rejected, mutating
+   * {@link #m_properties} directly (this class's one exception to its own effective-immutability claim; see this
+   * class's own Javadoc). See {@code EMPTY_FIELD_HANDLING.md}.
    */
   public void validate() {
     for (Map.Entry<String, String> entry : properties().entrySet()) {
@@ -557,52 +584,38 @@ public class VcfSample {
     return key != null && containsProperty(key.getId());
   }
 
-  public void putProperty(String key, @Nullable String value) {
-    checkNoStructuralDelimiter(key, value);
-    properties().put(key, value);
-  }
-
-  public void putProperty(ReservedFormatProperty key, @Nullable String value) {
-    // unlike the read/query methods, putProperty(String, ...) already throws for a null key (via
-    // checkNoStructuralDelimiter) -- pass through so a null ReservedFormatProperty key gets the identical
-    // VcfFormatException instead of NPEing here at key.getId()
-    putProperty(key == null ? null : key.getId(), value);
-  }
-
-  public void removeProperty(String key) {
-    properties().remove(key);
-  }
-
-  public void removeProperty(ReservedFormatProperty key) {
-    // null-tolerant no-op, matching removeProperty(String)'s own already-null-tolerant Map.remove(null) behavior
-    if (key != null) {
-      properties().remove(key.getId());
-    }
-  }
-
-  public void clearProperties() {
-    properties().clear();
-  }
-
   /**
-   * @return An order-preserving, unmodifiable view of the property keys. Unlike {@link #propertyEntrySet()}, a
-   * mutation attempt directly on the returned set (e.g. {@link Set#remove}) throws
-   * {@link UnsupportedOperationException} rather than silently affecting this instance -- a later mutation made
-   * through {@link #putProperty}/{@link #removeProperty}/{@link #propertyEntrySet()} is, however, still
-   * reflected here, since this remains a view over the live backing map, not a snapshot copy.
+   * @return An order-preserving, unmodifiable view of the property keys. A mutation attempt directly on the
+   * returned set (e.g. {@link Set#remove}) throws {@link UnsupportedOperationException} rather than silently
+   * affecting this instance. Memoized: the same instance is returned on every call, allocated once on first
+   * access -- {@code VcfWriter} calls this once per sample per record.
    */
   public Set<String> getPropertyKeys() {
-    // LinkedHashMap.keySet() returns a LinkedKeySet, which has guaranteed order; Collections.unmodifiableSet
-    // preserves that ordering since it's a thin wrapper, not a copy
-    return Collections.unmodifiableSet(properties().keySet());
+    Set<String> view = m_propertyKeysView;
+    if (view == null) {
+      // LinkedHashMap.keySet() returns a LinkedKeySet, which has guaranteed order; Collections.unmodifiableSet
+      // preserves that ordering since it's a thin wrapper, not a copy
+      view = Collections.unmodifiableSet(properties().keySet());
+      m_propertyKeysView = view;
+    }
+    return view;
   }
 
   /**
-   * @return The backing, mutable property entries. Unlike {@link #putProperty}, mutating an entry's value directly
-   * (e.g. via {@link Map.Entry#setValue}) does not check for a line terminator, colon, or tab.
+   * @return An unmodifiable view of the property entries: unlike {@link Collections#unmodifiableSet}'s naive
+   * behavior on a plain map's own {@code entrySet()}, an entry obtained from this set also rejects
+   * {@link Map.Entry#setValue} with {@link UnsupportedOperationException} (this is standard, and has been since
+   * Java's own {@code Collections.unmodifiableMap} entrySet() fix), rather than exposing a back door that mutates
+   * this instance despite the set itself refusing structural changes. Memoized: the same instance is returned on
+   * every call, allocated once on first access.
    */
   public Set<Map.Entry<String, String>> propertyEntrySet() {
-    return properties().entrySet();
+    Set<Map.Entry<String, String>> view = m_propertyEntrySetView;
+    if (view == null) {
+      view = Collections.unmodifiableMap(properties()).entrySet();
+      m_propertyEntrySetView = view;
+    }
+    return view;
   }
 
 
@@ -658,6 +671,43 @@ public class VcfSample {
       m_properties = new LinkedHashMap<>(properties);
       m_keys = null;
       m_values = null;
+      return this;
+    }
+
+    /**
+     * Sets a single property -- the natural replacement for {@code VcfSample}'s former {@code putProperty(String,
+     * String)}, now that {@code VcfSample} itself has no mutation routes. Switches this builder to the property-map
+     * representation (like {@link #properties}) if it isn't already: on first call, materializes any parallel-list
+     * representation set via {@link #keys}/{@link #values} into a fresh map (keeping the first value for a
+     * duplicate key, matching {@code VcfSample}'s own materialization convention, minus the warning -- this builder
+     * has no warnings sink of its own to emit one through), then reuses that same map for every subsequent
+     * {@code property}/{@link #properties} call. Unlike {@link #keys}/{@link #values}/{@link #properties}, this does
+     * not itself run {@link VcfSample#checkNoStructuralDelimiter} on {@code key}/{@code value} -- {@link #build()}
+     * always re-validates the whole property map anyway (see its own Javadoc), so validating here too would be
+     * redundant.
+     *
+     * @throws VcfFormatException if {@code key} is null
+     */
+    public Builder property(String key, @Nullable String value) {
+      // key is typed non-@Nullable, but nothing enforces that at runtime; reject immediately per AGENTS.md's
+      // Public API Null-Safety Policy, matching the former putProperty(String, ...)'s identical check
+      if (key == null) {
+        throw new VcfFormatException("Sample property key is null");
+      }
+      if (m_properties == null) {
+        LinkedHashMap<String, String> materialized = new LinkedHashMap<>();
+        List<String> keys = m_keys;
+        List<String> values = m_values;
+        if (keys != null && values != null) {
+          for (int i = 0; i < keys.size(); i++) {
+            materialized.putIfAbsent(keys.get(i), values.get(i));
+          }
+        }
+        m_properties = materialized;
+        m_keys = null;
+        m_values = null;
+      }
+      m_properties.put(key, value);
       return this;
     }
 
