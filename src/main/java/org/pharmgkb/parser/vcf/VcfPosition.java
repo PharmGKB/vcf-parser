@@ -563,10 +563,34 @@ public final class VcfPosition {
             "=" + value);
         continue;
       }
-      // hts-specs test/vcf/4.2/failed/failed_body_info_028.vcf, ##CauseOfFailure=INFO contains a whitespace
-      // (literal INFO="RS Q=123").
-      if (InternalUtils.containsWhitespace(key) || InternalUtils.containsWhitespace(value)) {
+      // Key: no whitespace at all, at any version. VCFv4.2.tex line 186's INFO grammar note ("String, no
+      // whitespace, semicolons, or equals-signs permitted") forbids it, and VCFv4.3.tex line 368's INFO key
+      // grammar (^([A-Za-z_][0-9A-Za-z_.]*|1000G)$, unchanged at VCFv4.4.tex line 384 and VCFv4.5.tex line 433)
+      // excludes every whitespace character from the key's own character class -- so the two versions agree here
+      // and nothing below is version-gated. Reproduces hts-specs
+      // test/vcf/4.2/failed/failed_body_info_028.vcf, ##CauseOfFailure=INFO contains a whitespace (literal
+      // INFO="RS Q=123") -- note that fixture's whitespace is in the KEY, which is why the value-side relaxation
+      // below does not affect it.
+      if (InternalUtils.containsWhitespace(key)) {
         throw new VcfFormatException("INFO column entry \"" + key + "=" + value + "\" contains whitespace");
+      }
+      // Value: U+0020 SPACE only is permitted, at every version. VCFv4.2.tex line 186 (above) forbids all
+      // whitespace in an INFO value, but VCFv4.3.tex line 366 states "Space characters are allowed in values"
+      // (verbatim at VCFv4.4.tex line 382 and VCFv4.5.tex line 431), and the VCFv4.2->4.3 changelog corroborates
+      // it at VCFv4.3.tex line 2151 ("Spaces are allowed in INFO field values"). This library applies the later, more
+      // permissive reading unconditionally rather than gating it on the declared ##fileformat: accepting a space
+      // in a VCFv4.2 file is pure leniency with no misinterpretation risk (a space is not a delimiter in any
+      // version's INFO grammar, so no value's meaning changes), which is this project's established handling
+      // per AGENTS.md. The relaxation is deliberately U+0020-only -- the spec says "space characters", not
+      // whitespace, and no version widens it. A raw tab or line terminator here is structural, not merely
+      // non-conformant: VcfWriter.addInfoOrDot writes this value straight into the record column, where a tab
+      // adds a column and an LF/CR ends the record, and nothing downstream catches it (the ';'/',' check below
+      // does not cover them, and InternalUtils.checkNoLineTerminator is only called on the metadata path). It
+      // stays an unconditional throw for the same reason -- AGENTS.md's Parser Validation Policy keeps a
+      // structural violation an error rather than warn-and-recover.
+      if (InternalUtils.containsWhitespaceOtherThanSpace(value)) {
+        throw new VcfFormatException("INFO value \"" + value + "\" for key \"" + key + "\" contains whitespace " +
+            "other than a space (only U+0020 is permitted in an INFO value)");
       }
       // a parsed value can never contain these (they were already split on to arrive at this value), but a value set
       // directly via getInfo().put(...) could; reject them so the writer's output remains re-parseable

@@ -28,10 +28,21 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   `FORMAT` column with no sample columns following it, an empty sample name, or a duplicate sample name.
 - A data line with the wrong number of tab-separated columns.
 - An empty mandatory fixed field (the missing value must be `.`), an empty `CHROM`, or a negative `POS`.
-- Invalid `REF`/`ALT` bases; whitespace where the spec forbids it (`CHROM`, `ID`, `FILTER`, `INFO`); a `FILTER`
-  of `0`; a `FILTER` missing value (`.`) combined with another filter code; an `INFO` missing value (`.`)
-  combined with a real property; or a `FORMAT` in which `GT` is present but not the first sub-field or a
+- Invalid `REF`/`ALT` bases; whitespace where the spec forbids it (`CHROM`, `ID`, `FILTER`, and an `INFO` key);
+  a `FILTER` of `0`; a `FILTER` missing value (`.`) combined with another filter code; an `INFO` missing value
+  (`.`) combined with a real property; or a `FORMAT` in which `GT` is present but not the first sub-field or a
   (non-empty) key is duplicated.
+- An `INFO` **value** is the one exception to that whitespace rule: a literal space (U+0020) is accepted at
+  every declared version, while a tab, LF, CR, vertical tab, or form feed still throws. VCFv4.2.tex line 186
+  forbids all whitespace in an INFO value, but VCFv4.3.tex line 366 states "Space characters are allowed in
+  values" (verbatim at VCFv4.4.tex line 382 and VCFv4.5.tex line 431), and this library applies that later,
+  more permissive reading unconditionally — see "Rules adopted from a later VCF version, unconditionally"
+  below. The relaxation stops at U+0020 deliberately: the spec says *space characters*, not whitespace, and the
+  remaining five are structural rather than merely non-conformant, since `VcfWriter` writes an INFO value
+  straight into the record column, where a tab adds a column and an LF/CR ends the record. Reachable only
+  through direct construction (`VcfContext.newPosition`, `VcfPosition.Builder.info`) or a raw INFO column
+  containing a vertical tab/form feed — a parsed value can never contain a tab or line terminator, since those
+  are the column and record delimiters.
 - `CHROM` additionally rejects `\`, `,`, `"`, `` ` ``, `'`, `(`, `)`, `{`, `}`, `[`, `]`, or `<`/`>` (unless the
   entire value is a well-formed, fully angle-bracket-wrapped symbolic contig reference like `<1>`) anywhere in
   the value, and a leading `*` or `=` -- matching the SAM reference-sequence-name character set VCFv4.3 aligned
@@ -407,3 +418,72 @@ A `FORMAT` value of `.` (with one or more samples present) means no per-sample f
 record; each sample is read as having zero properties, and any raw sample-column content there is ignored (with a
 warning). See `VCF_SPEC_AMBIGUITIES.md`'s "`FORMAT=\".\"` meaning no per-sample fields" entry for the
 bcftools-confirmed rationale.
+
+## Rules adopted from a later VCF version, unconditionally
+
+This library targets VCFv4.2. Where a later 4.x version *clarifies something VCFv4.2 is silent about*, this
+library adopts the later rule outright and applies it at every declared `##fileformat` rather than branching on
+it — that is `AGENTS.md`'s Spec Ambiguity Decision Hierarchy ("When newer 4.x VCF specifications clarify an
+ambiguity not resolved by the target VCF specification, use them as guidance"), and it is how the FORMAT-key
+grammar and the contig character set already arrived. A version branch is reserved for a rule whose *meaning*
+genuinely differs between versions and where both readings are valid (`GP`, `GLE`) — see the entries for those
+above. **Nothing in this section is version-gated**; a rule here behaves identically for a `VCFv4.1`,
+`VCFv4.2`, and `VCFv4.3` file.
+
+Each entry names the later version's rule, the target version's silence, and where the rule is applied. Line
+numbers are against the `.tex` sources in the [hts-specs](https://github.com/samtools/hts-specs) repository.
+
+- **INFO/FORMAT tag-name grammar.** VCFv4.3.tex line 368: "INFO keys must match the regular expression
+  `^([A-Za-z_][0-9A-Za-z_.]*|1000G)$`" (VCFv4.4.tex line 384, VCFv4.5.tex line 433); the VCFv4.2→4.3 changelog
+  states the same rule for INFO and FORMAT together at VCFv4.3.tex line 2150. VCFv4.2 gives no tag-name grammar
+  for either. Applied via `InternalUtils.INFO_PATTERN`/`FORMAT_PATTERN` to `##INFO`/`##FORMAT` declaration IDs
+  and to data-line FORMAT keys. **Scope note:** a data-line INFO *key* is checked for whitespace and `;`/`=`
+  but is not matched against `INFO_PATTERN`, so a key like `1BAD` is accepted. That gap is version-independent
+  too — closing it would not introduce a branch.
+- **Contig/CHROM character set.** VCFv4.3.tex lines 2136-2138 (the "Changes to VCFv4.3" errata subsection at
+  2129-2144): VCF contig names follow SAM reference-sequence-name rules, with `` \ , " ` ' ( ) { } `` newly
+  invalid and `*` valid when not first; restated in the body at VCFv4.3.tex lines 258-259, and carried into
+  VCFv4.4.tex lines 272/2599 and VCFv4.5.tex lines 321/2781. A colon is explicitly *valid* (VCFv4.3.tex lines
+  2140-2141, "this was unnecessary"). VCFv4.2.tex line 179 states only "no whitespace permitted" for `CHROM`
+  and says nothing at all about `##contig` IDs. Applied via `InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN` in
+  `VcfPosition.checkChromosome` and `ContigMetadata`.
+- **Spaces in INFO values (a relaxation, not a restriction).** VCFv4.3.tex line 366, "Space characters are
+  allowed in values" (VCFv4.4.tex line 382, VCFv4.5.tex line 431), corroborated by the VCFv4.2→4.3 changelog
+  at VCFv4.3.tex line 2151 ("Spaces are allowed in INFO field values"), against VCFv4.2.tex line 186's "no
+  whitespace ... permitted". This is the one entry here where VCFv4.2 is not silent but in conflict; it is
+  still applied unconditionally because doing so is *pure leniency* — a space is not a delimiter in any
+  version's INFO grammar, so accepting one cannot change how any value is interpreted. Applied via
+  `InternalUtils.containsWhitespaceOtherThanSpace` in `VcfPosition.checkInfoEntries`; see the strict section
+  above for the U+0020-only boundary and why the other five whitespace characters remain structural errors.
+- **Integer is 32-bit signed.** VCFv4.3.tex line 100 ("Integer (32-bit, signed)") and line 103 (the values
+  −2³¹ through −2³¹+7 are disallowed in VCF and BCF alike) — VCFv4.4.tex lines 100/103, VCFv4.5.tex lines
+  98/101. VCFv4.2 never states this generally; it states it for exactly one key, `FORMAT/PS` (VCFv4.2.tex line
+  230, "Non-negative 32-bit Integer"). Applied at every version by
+  `InternalUtils.checkNonNegative32BitInteger` for `PS`. **Scope note:** no other Integer-typed INFO/FORMAT
+  value is range-checked — typed access returns a Java `long`, so e.g. `2147483648` in a declared
+  `Type=Integer` field is converted without a diagnostic. That gap, too, is version-independent.
+- **Non-printable characters and line separators.** VCFv4.3.tex line 81 ("non-printable characters
+  U+0000–U+0008, U+000B–U+000C, U+000E–U+001F are disallowed") and line 82 (line separators must be CR+LF or
+  LF and are allowed only at end of line) — VCFv4.4.tex lines 81/82, VCFv4.5.tex lines 79/80. VCFv4.2 is
+  silent. Applied at every version by `InternalUtils.checkNoLineTerminator` (metadata keys and values),
+  `VcfSample.checkNoStructuralDelimiter` (a tab or line terminator in a sample key or value), and
+  `VcfPosition.checkInfoEntries`'s value-side check (tab, LF, CR, vertical tab, or form feed in an INFO value).
+  **Scope note:** the wider C0 range is not scanned, so a NUL or other C0 control elsewhere survives; again,
+  version-independently.
+- **Zero-length fields are not allowed.** VCFv4.3.tex line 39, "Zero length fields are not allowed, a dot
+  (`.`) must be used instead" (VCFv4.4.tex line 39, VCFv4.5.tex line 37); the changelog restates it at
+  VCFv4.3.tex line 2159. VCFv4.2 is silent. Applied at every version;
+  [`EMPTY_FIELD_HANDLING.md`](EMPTY_FIELD_HANDLING.md) is the field-by-field table of what each case
+  normalizes to.
+- **Structured metadata IDs must be unique.** VCFv4.3.tex line 121, "All structured lines require an ID which
+  must be unique within their type" (VCFv4.4.tex line 121, VCFv4.5.tex line 119); the changelog restates it at
+  VCFv4.3.tex lines 2161-2163. VCFv4.2 is silent. Applied at every version;
+  [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md) is the reference for the
+  warn-and-keep-the-first behavior and why it matches bcftools.
+- **UTF-8, and no byte order mark.** VCFv4.3.tex line 77 ("The character encoding of VCF files is UTF-8") and
+  line 80 ("VCF files must not contain a byte order mark") — VCFv4.4.tex lines 77/80, VCFv4.5.tex lines 75/78.
+  VCFv4.2 never names an encoding. Applied at every version: `VcfParser` reads through
+  `Files.newBufferedReader`, whose UTF-8 decoder reports rather than replaces malformed input, and `VcfWriter`
+  encodes with a reporting `CharsetEncoder` for the same reason. A BOM-prefixed file is rejected because its
+  first line is then not a valid `##fileformat` declaration; see `VCF_SPEC_AMBIGUITIES.md`'s "BOM-prefixed
+  file / `+`-prefixed POS" entry, which confirms that matches both bcftools and vcf_validator.

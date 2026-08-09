@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -700,7 +701,7 @@ public class VcfWriterTest {
     // actually makes the test load-bearing for the writer fix, not just the parser's.
     assertTrue(sw.toString().contains("XY=1,.,2"));
 
-    List<VcfPosition> reparsed = new java.util.ArrayList<>();
+    List<VcfPosition> reparsed = new ArrayList<>();
     try (VcfParser parser = new VcfParser.Builder()
         .fromReader(new BufferedReader(new StringReader(sw.toString())))
         .parseWith((md, record) -> reparsed.add(record.getPosition()))
@@ -2323,7 +2324,7 @@ public class VcfWriterTest {
     writer.writeHeader(metadata);
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, null, -1);
-    VcfSample badSample = LENIENT_CONTEXT.newSample(new java.util.ArrayList<>(), new java.util.ArrayList<>());
+    VcfSample badSample = LENIENT_CONTEXT.newSample(new ArrayList<>(), new ArrayList<>());
     assertThrows(VcfFormatException.class,
         () -> writer.writeLine(metadata, position, Collections.singletonList(badSample)));
     assertTrue(writer.isValid());
@@ -2389,7 +2390,7 @@ public class VcfWriterTest {
     infoWithNullEntry.put("AF", new InfoMetadata(LENIENT_CONTEXT, "AF", "d", InfoType.Float, "A", null, null));
     infoWithNullEntry.put("BADKEY", null);
     VcfMetadata badInfo = trustedMetadata("VCFv4.2", infoWithNullEntry, null, null);
-    List<PedigreeMetadata> pedigreesWithNullEntry = new java.util.ArrayList<>();
+    List<PedigreeMetadata> pedigreesWithNullEntry = new ArrayList<>();
     pedigreesWithNullEntry.add(null);
     VcfMetadata badPedigree = trustedMetadata("VCFv4.2", null, pedigreesWithNullEntry, null);
 
@@ -3257,6 +3258,65 @@ public class VcfWriterTest {
     String warnings = Files.readString(warningsFile);
     assertThat(warnings, containsString("VCFv4.5"));
     assertThat(warnings, containsString("4.3"));
+  }
+
+  @Test
+  public void testValidateBeforeWriteRejectsWhitespaceOtherThanSpaceInInfoValue() throws Exception {
+    // The default write path appends an INFO value verbatim (see VcfWriter.addInfoOrDot), so a tab would add a
+    // column and an LF/CR would end the record. Ordinary public construction already rejects these five, so
+    // this builds through the package-private newPositionCopyingTrustedFields() factory (reachable here only
+    // because this test class shares VcfPosition/VcfContext's package) exactly as testDefaultWriteDropsEmptyIdEntry
+    // does. validateBeforeWrite() calls position.validate(), which re-runs checkInfoEntries -- this pins that
+    // full-output diagnostics mode rejects rather than emitting a structurally invalid record.
+    for (char c : new char[] { '\t', '\n', '\u000B', '\f', '\r' }) {
+      String label = String.format("U+%04X", (int) c);
+      ListMultimap<String, String> info = ArrayListMultimap.create();
+      info.put("AA", "a" + c + "b");
+      VcfPosition position = LENIENT_CONTEXT.newPositionCopyingTrustedFields("chr1", 1, null, "A", null,
+          new BigDecimal("0"), null, info, null, -1, null, null);
+
+      StringWriter sw = new StringWriter();
+      VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+      VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addInfo("AA", "d", InfoType.String, "1", null, null).build();
+      writer.writeHeader(metadata);
+      VcfFormatException ex = assertThrows(VcfFormatException.class,
+          () -> writer.writeLine(metadata, position, Collections.emptyList()), label);
+      assertTrue(ex.getMessage().contains("contains whitespace other than a space"), label);
+    }
+  }
+
+  @Test
+  public void testInfoValueWithSpaceRoundTripsAsOneField() throws Exception {
+    // The accepted half of the U+0020 relaxation, end to end: a space must survive the writer and come back
+    // from the parser as ONE INFO field whose value still contains it -- not two fields, and not a truncated
+    // value. Written under a VCFv4.2 declaration on purpose: VCFv4.2.tex line 186 forbids the space and
+    // VCFv4.3.tex line 366 allows it, and this library applies the later reading unconditionally.
+    StringWriter sw = new StringWriter();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addInfo("AA", "d", InfoType.String, "1", null, null).build();
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("AA", "a b");
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, new BigDecimal("0"), null,
+        info, null, -1);
+    try (VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build()) {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, Collections.emptyList());
+    }
+    assertThat(sw.toString(), containsString("\tAA=a b\n"));
+
+    List<String> reparsed = new ArrayList<>();
+    try (BufferedReader reader = new BufferedReader(new StringReader(sw.toString()));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((md, record) -> {
+               assertEquals(Collections.singleton("AA"), record.getPosition().getInfoKeys());
+               reparsed.addAll(record.getPosition().getInfo().get("AA"));
+             })
+             .build()) {
+      parser.parse();
+    }
+    assertEquals(Collections.singletonList("a b"), reparsed);
   }
 
 }

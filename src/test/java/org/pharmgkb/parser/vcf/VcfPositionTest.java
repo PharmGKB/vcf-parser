@@ -1503,4 +1503,69 @@ public class VcfPositionTest {
     assertEquals(pos42.getInfo("XY"), pos43.getInfo("XY"));
   }
 
+  /**
+   * Every character {@code InternalUtils.containsWhitespace} matches except U+0020 SPACE -- i.e. exactly the
+   * set an INFO value must still reject after the space relaxation. Kept exhaustive on purpose: a partial set
+   * is what would let an implementation that dropped the value-side check outright still pass.
+   */
+  private static final char[] NON_SPACE_WHITESPACE = { '\t', '\n', '\u000B', '\f', '\r' };
+
+  @Test
+  public void testInfoValueAcceptsSpace() {
+    // VCFv4.3.tex line 366 ("Space characters are allowed in values", verbatim at VCFv4.4.tex line 382 and
+    // VCFv4.5.tex line 431) relaxes VCFv4.2.tex line 186's blanket "no whitespace, semicolons, or equals-signs
+    // permitted". This library adopts that relaxation unconditionally rather than gating it on the declared
+    // version -- STRICT_CONTEXT and LENIENT_CONTEXT are both VCFv4.2 contexts, so both must accept it. See
+    // VALIDATION_REFERENCE.md's "Rules adopted from a later VCF version, unconditionally".
+    for (VcfContext context : List.of(STRICT_CONTEXT, LENIENT_CONTEXT)) {
+      ListMultimap<String, String> info = ArrayListMultimap.create();
+      info.put("AA", "a b");
+      VcfPosition position = context.newPosition("chr1", 1, null, "A", null, null, null, info, null, -1);
+      assertEquals(Collections.singletonList("a b"), position.getInfo("AA"));
+    }
+  }
+
+  @Test
+  public void testInfoValueRejectsWhitespaceOtherThanSpace() {
+    // The relaxation above is U+0020-only: the spec says "space characters", not whitespace, and no later
+    // version widens it. The other five are structural, not merely non-conformant -- VcfWriter.addInfoOrDot
+    // writes an INFO value straight into the record column, so a tab adds a column and an LF/CR ends the
+    // record, and nothing downstream catches either. They therefore stay an UNCONDITIONAL throw (LENIENT_CONTEXT
+    // here, not STRICT_CONTEXT, pins that it is not warn-and-recover), per AGENTS.md's Parser Validation Policy.
+    for (char c : NON_SPACE_WHITESPACE) {
+      String label = String.format("U+%04X", (int) c);
+      ListMultimap<String, String> info = ArrayListMultimap.create();
+      info.put("AA", "a" + c + "b");
+
+      // route 1: the public factory
+      VcfFormatException fromFactory = assertThrows(VcfFormatException.class,
+          () -> LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, null, null, info, null, -1), label);
+      assertTrue(fromFactory.getMessage().contains("contains whitespace other than a space"), label);
+
+      // route 2: VcfPosition.Builder#info, which re-runs checkInfoEntries at build() time
+      VcfPosition clean = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, null, null, null, null, -1);
+      VcfFormatException fromBuilder = assertThrows(VcfFormatException.class,
+          () -> clean.toBuilder().info(info).build(), label);
+      assertTrue(fromBuilder.getMessage().contains("contains whitespace other than a space"), label);
+    }
+  }
+
+  @Test
+  public void testInfoKeyRejectsEveryWhitespaceCharacterIncludingSpace() {
+    // Companion to testInfoValueRejectsWhitespaceOtherThanSpace: the value-side relaxation must not have
+    // widened to the key. VCFv4.3.tex line 368's INFO key grammar (^([A-Za-z_][0-9A-Za-z_.]*|1000G)$, unchanged
+    // at VCFv4.4.tex line 384 and VCFv4.5.tex line 433) excludes every whitespace character from the key's own
+    // character class, and VCFv4.2.tex line 186 forbids it too -- so a space in a KEY is still rejected. The
+    // assertFalse pins WHICH branch fired: the key-side message has no "other than a space" qualifier.
+    for (char c : new char[] { ' ', '\t', '\n', '\u000B', '\f', '\r' }) {
+      String label = String.format("U+%04X", (int) c);
+      ListMultimap<String, String> info = ArrayListMultimap.create();
+      info.put("A" + c + "A", "1");
+      VcfFormatException ex = assertThrows(VcfFormatException.class,
+          () -> LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, null, null, info, null, -1), label);
+      assertTrue(ex.getMessage().contains("contains whitespace"), label);
+      assertFalse(ex.getMessage().contains("other than a space"), label);
+    }
+  }
+
 }

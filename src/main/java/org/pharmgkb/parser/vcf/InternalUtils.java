@@ -169,11 +169,16 @@ public class InternalUtils {
 
   // VCFv4.2.tex line 179 only states "no whitespace permitted" for CHROM, and doesn't mention ##contig IDs'
   // character set at all; this fuller grammar is VCFv4.2-silent clarifying guidance from VCFv4.3.tex's own
-  // "Changes to VCFv4.3" errata (~line 2129-2144, unchanged in 4.4/4.5): VCF contig names must match SAM
-  // reference-sequence-name rules. Used by both VcfPosition.checkChromosome (CHROM values) and
+  // "Changes to VCFv4.3" errata (the subsection at VCFv4.3.tex lines 2129-2144; the load-bearing sentences are
+  // 2136 -- "The set of characters allowed in VCF contig names is now the same as that allowed in SAM reference
+  // sequence names" -- and 2137-2138, which list exactly the characters below; carried verbatim into
+  // VCFv4.4.tex line 2599 and VCFv4.5.tex line 2781, and restated in the body text at VCFv4.3.tex lines
+  // 258-259, VCFv4.4.tex line 272 and VCFv4.5.tex line 321). Applied at every version this library reads, not
+  // gated on the declared ##fileformat, precisely because VCFv4.2 is silent rather than in conflict. Used by
+  // both VcfPosition.checkChromosome (CHROM values) and
   // ContigMetadata (##contig IDs) -- both are "VCF contig names" per that same errata text, which is why this
   // constant isn't named after either specific call site. Colon is deliberately NOT in this set -- the same
-  // errata explicitly confirms it's valid ("this was unnecessary" to have disallowed it); see
+  // errata explicitly confirms it's valid at VCFv4.3.tex lines 2140-2141 ("this was unnecessary"); see
   // HTS_SPECS_BASELINE_STATUS.md for the fixtures this knowingly diverges from.
   public static final Pattern INVALID_CONTIG_NAME_CHAR_PATTERN = Pattern.compile("[\\\\,\"`'(){}\\[\\]<>]");
 
@@ -229,6 +234,36 @@ public class InternalUtils {
     for (int i = 0; i < s.length(); i++) {
       char c = s.charAt(i);
       if (c == ' ' || c == '\t' || c == '\n' || c == '\u000B' || c == '\f' || c == '\r') {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * {@link #containsWhitespace} minus U+0020 SPACE: matches {@code [\t\n\x0B\f\r]} only.
+   * <p>
+   * Exists solely for INFO <em>values</em>, the one field where a literal space is legal.
+   * {@code VCFv4.3.tex} line 366 states "Space characters are allowed in values" -- repeated verbatim at
+   * {@code VCFv4.4.tex} line 382 and {@code VCFv4.5.tex} line 431, so no later version widens it beyond
+   * U+0020. {@code VCFv4.2.tex} line 186 forbids all whitespace there ("String, no whitespace, semicolons,
+   * or equals-signs permitted"), and this library applies the later, more permissive reading at every
+   * version it reads; see {@code VcfPosition.checkInfoEntries}, this method's only caller, for why that
+   * relaxation is unconditional rather than version-gated.
+   * <p>
+   * <b>Do not substitute {@link #containsWhitespace} here, and do not widen this method to the rest of
+   * {@code \\s}.</b> The spec says <em>space characters</em>, not whitespace: a raw tab in an INFO value adds
+   * a column when {@code VcfWriter.addInfoOrDot} writes that value straight into the record, and a raw
+   * LF/CR ends the record early. Nothing downstream catches either -- the adjacent check in
+   * {@code checkInfoEntries} covers only {@code ';'}/{@code ','}, and {@link #checkNoLineTerminator} is
+   * only ever called on the metadata path -- so this predicate is the sole guard against emitting a
+   * structurally unparseable record.
+   */
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
+  public static boolean containsWhitespaceOtherThanSpace(String s) {
+    for (int i = 0; i < s.length(); i++) {
+      char c = s.charAt(i);
+      if (c == '\t' || c == '\n' || c == '\u000B' || c == '\f' || c == '\r') {
         return true;
       }
     }

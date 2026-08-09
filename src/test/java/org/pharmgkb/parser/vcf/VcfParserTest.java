@@ -16,6 +16,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -2515,6 +2516,153 @@ public class VcfParserTest {
     parser.close();
     String warnings = Files.readString(warningsFile);
     assertThat(warnings, containsString("Duplicate ID"));
+  }
+
+  /**
+   * The declared {@code ##fileformat} values every rule in VALIDATION_REFERENCE.md's "Rules adopted from a
+   * later VCF version, unconditionally" section must behave identically under. Each of the tests below asserts
+   * one such rule fires the same way at all three, so a future change that gates one of them on the declared
+   * version fails here rather than silently diverging.
+   */
+  private static final List<String> UNGATED_RULE_VERSIONS = List.of("VCFv4.1", "VCFv4.2", "VCFv4.3");
+
+  private static final String UNGATED_RULE_HEADER = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+
+  /** Parses {@code vcf} fully, with every deferred/lazy check triggered, and returns the warnings captured. */
+  private static List<String> warningsFromFullParse(String vcf) throws IOException {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+           VcfParser parser = new VcfParser.Builder()
+               .fromReader(reader)
+               .parseWith(new org.pharmgkb.parser.vcf.spec.DeferredValidationLineParser())
+               .build()) {
+        parser.parse();
+      }
+      return appender.getRelevantWarnOrHigherMessages(Set.of());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  private static void assertWarnsAtEveryVersion(Function<String, String> vcfForVersion,
+      String expectedSubstring) throws IOException {
+    for (String version : UNGATED_RULE_VERSIONS) {
+      List<String> warnings = warningsFromFullParse(vcfForVersion.apply(version));
+      assertTrue(warnings.stream().anyMatch(w -> w.contains(expectedSubstring)),
+          () -> version + ": expected a warning containing \"" + expectedSubstring + "\", got " + warnings);
+    }
+  }
+
+  @Test
+  void testInfoValueSpaceIsAcceptedAtEveryDeclaredVersion() throws IOException {
+    // VCFv4.3.tex line 366's "Space characters are allowed in values" is adopted unconditionally, so a space
+    // must survive parsing as part of ONE INFO value even under a VCFv4.1/VCFv4.2 declaration, where
+    // VCFv4.2.tex line 186 forbids it.
+    for (String version : UNGATED_RULE_VERSIONS) {
+      String vcf = "##fileformat=" + version + "\n" +
+          "##INFO=<ID=AA,Number=1,Type=String,Description=\"d\">\n" +
+          UNGATED_RULE_HEADER +
+          "chr1\t1\t.\tA\tT\t.\t.\tAA=a b\n";
+      List<String> values = new ArrayList<>();
+      try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+           VcfParser parser = new VcfParser.Builder()
+               .fromReader(reader)
+               .parseWith((metadata, record) -> values.addAll(record.getPosition().getInfo().get("AA")))
+               .build()) {
+        parser.parse();
+      }
+      assertEquals(Collections.singletonList("a b"), values, version);
+    }
+  }
+
+  @Test
+  void testInfoValueVerticalTabIsRejectedAtEveryDeclaredVersion() throws IOException {
+    // The one non-space whitespace character a real parsed INFO value can actually carry: a tab is the column
+    // delimiter and CR/LF end the record, but U+000B and U+000C are neither, so they reach checkInfoEntries
+    // from a genuine file. VCFv4.3.tex line 81 disallows them ("non-printable characters U+0000--U+0008,
+    // U+000B--U+000C, U+000E--U+001F"), unconditionally in this library, and the space relaxation must not
+    // have widened to them.
+    for (String version : UNGATED_RULE_VERSIONS) {
+      String vcf = "##fileformat=" + version + "\n" +
+          "##INFO=<ID=AA,Number=1,Type=String,Description=\"d\">\n" +
+          UNGATED_RULE_HEADER +
+          "chr1\t1\t.\tA\tT\t.\t.\tAA=a\u000Bb\n";
+      assertThrows(VcfFormatException.class, () -> {
+        try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+             VcfParser parser = new VcfParser.Builder()
+                 .fromReader(reader)
+                 .parseWith((metadata, record) -> record.getPosition().getInfo())
+                 .build()) {
+          parser.parse();
+        }
+      }, version);
+    }
+  }
+
+  @Test
+  void testInfoDeclarationIdGrammarIsCheckedAtEveryDeclaredVersion() throws IOException {
+    // VCFv4.3.tex line 368's INFO tag-name grammar; VCFv4.2 states none at all.
+    assertWarnsAtEveryVersion(version -> "##fileformat=" + version + "\n" +
+            "##INFO=<ID=1BAD,Number=1,Type=String,Description=\"d\">\n" + UNGATED_RULE_HEADER,
+        "does not match the required tag-name grammar");
+  }
+
+  @Test
+  void testContigIdCharacterSetIsCheckedAtEveryDeclaredVersion() throws IOException {
+    // VCFv4.3.tex lines 2136-2138's SAM-aligned contig character set; VCFv4.2.tex line 179 states only "no
+    // whitespace permitted", and says nothing about ##contig IDs at all.
+    assertWarnsAtEveryVersion(version -> "##fileformat=" + version + "\n" +
+            "##contig=<ID=c(tg1>\n" + UNGATED_RULE_HEADER,
+        "contains the invalid character");
+  }
+
+  @Test
+  void testZeroLengthFieldEntryIsRecoveredAtEveryDeclaredVersion() throws IOException {
+    // VCFv4.3.tex line 39, "Zero length fields are not allowed, a dot (\".\") must be used instead"; VCFv4.2 is
+    // silent. See EMPTY_FIELD_HANDLING.md for the per-field normalization this warning accompanies.
+    assertWarnsAtEveryVersion(version -> "##fileformat=" + version + "\n" + UNGATED_RULE_HEADER +
+            "chr1\t1\trs1;;rs2\tA\tT\t.\t.\t.\n",
+        "ID contains an empty entry");
+  }
+
+  @Test
+  void testDuplicateStructuredDeclarationIdIsCheckedAtEveryDeclaredVersion() throws IOException {
+    // VCFv4.3.tex line 121, "All structured lines require an ID which must be unique within their type";
+    // VCFv4.2 is silent. See DUPLICATE_METADATA_ID_HANDLING.md for the keep-the-first behavior.
+    assertWarnsAtEveryVersion(version -> "##fileformat=" + version + "\n" +
+            "##INFO=<ID=DP,Number=1,Type=Integer,Description=\"a\">\n" +
+            "##INFO=<ID=DP,Number=1,Type=Integer,Description=\"b\">\n" + UNGATED_RULE_HEADER,
+        "Duplicate ID \"DP\"");
+  }
+
+  @Test
+  void testPhaseSet32BitRangeIsCheckedAtEveryDeclaredVersion() throws IOException {
+    // VCFv4.3.tex line 100 states Integer is 32-bit signed generally; VCFv4.2 states it for exactly one key,
+    // FORMAT/PS (VCFv4.2.tex line 230, "Non-negative 32-bit Integer"), which is the one place this library
+    // range-checks today. Either way the check is version-independent.
+    assertWarnsAtEveryVersion(version -> "##fileformat=" + version + "\n" +
+            "##FORMAT=<ID=PS,Number=1,Type=Integer,Description=\"d\">\n" +
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+            "chr1\t1\t.\tA\tT\t.\t.\t.\tPS\t4294967296\n",
+        "is not a non-negative 32-bit integer");
+  }
+
+  @Test
+  void testByteOrderMarkIsRejected() throws IOException {
+    // VCFv4.3.tex line 80, "VCF files must not contain a byte order mark" (VCFv4.4.tex line 80, VCFv4.5.tex
+    // line 78); VCFv4.2 never names an encoding at all. Deliberately NOT looped over UNGATED_RULE_VERSIONS the
+    // way the other rules in this group are: a BOM makes the first line something other than a well-formed
+    // ##fileformat declaration, so parsing fails before any version is known. This rule is version-independent
+    // by construction rather than by choice, and looping would only assert the same thing three times.
+    String vcf = "\uFEFF##fileformat=VCFv4.2\n" + UNGATED_RULE_HEADER;
+    assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
   }
 
 }
