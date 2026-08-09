@@ -161,7 +161,22 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   `DUPLICATE_METADATA_ID_HANDLING.md:34`.
 - `VcfContext.newRecord` throws `VcfFormatException` if its position or any of its samples was created under a
   different `VcfContext` instance, for the same reason -- a record assembled from two contexts has no
-  unambiguous warnings destination.
+  unambiguous warnings destination, and no unambiguous resolved VCF version either.
+- `VcfWriter.writeLine` throws `VcfFormatException` if the position, or any sample, was created under a
+  different `VcfContext` instance than the `metadata` argument's. The metadata's context is the pivot, so the
+  position-vs-samples case is covered by transitivity. This is a structural check, not the default path's
+  exempted VCF-semantic re-validation, so it runs in **both** write modes -- `writeLine` derives the record's
+  resolved version from that one context and threads it into the reserved-INFO/FORMAT constraint checks, which
+  is only well-defined if there is exactly one. (It is deliberately not `VcfWriter`'s own `m_context`: that is
+  writer-local diagnostics state, rebuilt on every `writeHeader()` and never reference-identical to the context
+  that built the data.)
+- `VcfSample.getProperty(VcfPosition, VcfMetadata, String)` throws `VcfFormatException` if `position` or
+  `metadata` was created under a different `VcfContext` instance than the sample, for the same reason: the read
+  resolves its version and its warnings sink from the sample's own context, which is meaningless if the three
+  disagree. Checked before the property lookup, so a mismatch does not depend on whether the requested key
+  happens to have a value. This is a separate axis from the method's null tolerance -- a `null` `key`,
+  `position` or `metadata` still returns `null` rather than throwing (see `AGENTS.md`'s Public API Null-Safety
+  Policy).
 - `VcfWriter.Builder.targetFileFormat(String)` throws `VcfFormatException` from `writeHeader` if it names a
   different VCF version than the metadata declares, before emitting any output: this library implements no
   cross-version conversion, so emitting that declaration would advertise a version the data does not conform
@@ -349,7 +364,11 @@ is a structural failure and still throws -- see the strict section above):
   typed read of that key warns and keeps only the first value, the same "keep the first, warn about the rest"
   treatment as a duplicate top-level `INFO` key above.
 - A declared `Number`/`Type` for a well-known reserved `INFO`/`FORMAT` key (e.g. `AC`, `AN`, `GT`, `PL`) that doesn't
-  match VCF's canonical definition for that key.
+  match VCF's canonical definition for that key. Which keys count as reserved is itself version-dependent for
+  exactly one key: from VCFv4.3 a `##FORMAT=<ID=GLE,...>` is no longer measured against the historical
+  `Number=G`/`Type=String` at all (see the removed-`GLE` entry above), so a non-canonical `GLE` declaration
+  warns here under VCFv4.2 and earlier but is accepted without comment from VCFv4.3, where `GLE` is an ordinary
+  custom key whose declaration is the only definition it has.
 - An `##INFO`/`##FORMAT`/`##ALT`/`##FILTER`/`##SAMPLE` declaration whose attributes are out of the canonical
   `ID, Number, Type, Description, Source, Version` order every spec example uses.
 - An `##ALT` structural-variant ID (e.g. `<DEL:ME:ALU>`) that doesn't match VCF's reserved code hierarchy
@@ -437,8 +456,15 @@ it — that is `AGENTS.md`'s Spec Ambiguity Decision Hierarchy ("When newer 4.x 
 ambiguity not resolved by the target VCF specification, use them as guidance"), and it is how the FORMAT-key
 grammar and the contig character set already arrived. A version branch is reserved for a rule whose *meaning*
 genuinely differs between versions and where both readings are valid (`GP`, `GLE`) — see the entries for those
-above. **Nothing in this section is version-gated**; a rule here behaves identically for a `VCFv4.1`,
-`VCFv4.2`, and `VCFv4.3` file.
+above, and `VALIDATION_PHILOSOPHY.md`'s "How the declared version is dispatched" for the mechanism. **Nothing
+in this section is version-gated**; a rule here behaves identically for a `VCFv4.1`, `VCFv4.2`, and `VCFv4.3`
+file.
+
+One entry below — spaces in INFO values — is *not* a VCFv4.2 silence but a direct conflict with it, and is
+here anyway under the single named exception `AGENTS.md`'s Project Overview states just after "Do not let
+newer-version rules override target VCF specification semantics for a conflict" -- an exception scoped to that
+one rule, and expected to disappear when the target version moves to 4.3. It is the only such entry; every
+other one below is a genuine silence.
 
 Each entry names the later version's rule, the target version's silence, and where the rule is applied. Line
 numbers are against the `.tex` sources in the [hts-specs](https://github.com/samtools/hts-specs) repository.
@@ -465,6 +491,14 @@ numbers are against the `.tex` sources in the [hts-specs](https://github.com/sam
   version's INFO grammar, so accepting one cannot change how any value is interpreted. Applied via
   `InternalUtils.containsWhitespaceOtherThanSpace` in `VcfPosition.checkInfoEntries`; see the strict section
   above for the U+0020-only boundary and why the other five whitespace characters remain structural errors.
+  **Scope note:** because the relaxation is unconditional, nothing diagnoses a space in an INFO value on either
+  path -- including `VcfWriter.Builder.validateBeforeWrite()` writing under a declared `##fileformat=VCFv4.2`,
+  where the emitted value is legal by this library's reading but not by VCFv4.2.tex line 186's. That silence is
+  settled behavior, not an oversight in diagnostics mode: the value was already accepted without a diagnostic on
+  construction and on parse, so warning about it on the way out would make the library's own acceptance
+  asymmetric between read and write rather than closing a gap. The only reachable case is a 4.2 context written
+  under 4.2, since `VcfWriter.writeHeader` rejects any target/metadata version mismatch outright and no
+  re-contextualization route exists.
 - **Integer is 32-bit signed.** VCFv4.3.tex line 100 ("Integer (32-bit, signed)") and line 103 (the values
   −2³¹ through −2³¹+7 are disallowed in VCF and BCF alike) — VCFv4.4.tex lines 100/103, VCFv4.5.tex lines
   98/101. VCFv4.2 never states this generally; it states it for exactly one key, `FORMAT/PS` (VCFv4.2.tex line
@@ -492,8 +526,12 @@ numbers are against the `.tex` sources in the [hts-specs](https://github.com/sam
   warn-and-keep-the-first behavior and why it matches bcftools.
 - **UTF-8, and no byte order mark.** VCFv4.3.tex line 77 ("The character encoding of VCF files is UTF-8") and
   line 80 ("VCF files must not contain a byte order mark") — VCFv4.4.tex lines 77/80, VCFv4.5.tex lines 75/78.
-  VCFv4.2 never names an encoding. Applied at every version: `VcfParser` reads through
+  VCFv4.2 never names an encoding. Applied at every version: `VcfParser.Builder.fromFile(Path)` reads through
   `Files.newBufferedReader`, whose UTF-8 decoder reports rather than replaces malformed input, and `VcfWriter`
-  encodes with a reporting `CharsetEncoder` for the same reason. A BOM-prefixed file is rejected because its
+  encodes with a reporting `CharsetEncoder` for the same reason. **Scope note:** that read-side guarantee is a
+  property of the path-based builder only. `VcfParser.Builder.fromReader(BufferedReader)` takes an
+  already-decoded character stream, so the charset, and whether malformed input is reported or silently replaced
+  with U+FFFD, are entirely the caller's to choose; this library cannot observe or enforce it on that route.
+  A BOM-prefixed file is rejected because its
   first line is then not a valid `##fileformat` declaration; see `VCF_SPEC_AMBIGUITIES.md`'s "BOM-prefixed
   file / `+`-prefixed POS" entry, which confirms that matches both bcftools and vcf_validator.

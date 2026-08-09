@@ -5,11 +5,13 @@ It prioritizes preserving and usefully exposing VCF data rather than rejecting e
 
 Target VCF specification: 4.2
 
-The library accepts VCF 4.x input from before and after the target version where it can be represented by this library. When VCF versions differ or an input is ambiguous, behavior is interpreted according to target VCF specification semantics. Features that cannot be represented safely under those semantics may be warned about, normalized, or rejected according to the parser and writer policies below.
+The library accepts VCF 4.x input from before and after the target version where it can be represented by this library. A file is interpreted under the version its own `##fileformat` declares: where a rule's *meaning* genuinely differs across 4.x and both readings are valid, the declared version decides, not the target version -- today that is `FORMAT/GP` and `FORMAT/GLE`, and see `VALIDATION_PHILOSOPHY.md`'s "How the declared version is dispatched" for the mechanism and the `isAtLeast` discipline it must use. A declared version this library does not implement falls back to the nearest one it does. Where versions do not differ in meaning, or an input is ambiguous, behavior is interpreted according to target VCF specification semantics. Features that cannot be represented safely under those semantics may be warned about, normalized, or rejected according to the parser and writer policies below.
 
 The goal is maximum practical compliance with the target VCF specification while preserving and usefully exposing recoverable VCF 4.x data.  "Strict" in this project means structural correctness and transparent diagnostics, not eager rejection of every semantic VCF violation.
 
 When newer 4.x VCF specifications clarify an ambiguity not resolved by the target VCF specification, use them as guidance. Do not let newer-version rules override target VCF specification semantics for a conflict.
+
+One narrow exception, expected to be transitional: VCFv4.3 allows a space in an INFO value (`VCFv4.3.tex` line 366, "Space characters are allowed in values") where VCFv4.2 forbids all whitespace (`VCFv4.2.tex` line 186, "no whitespace, semicolons, or equals-signs permitted"). This library adopts the 4.3 rule unconditionally rather than version-gating it -- a space is not a delimiter and is not meaning-bearing in any version's grammar, so no already-valid input's interpretation changes, and the acceptance is symmetric between read and write. See `VALIDATION_REFERENCE.md`'s "Rules adopted from a later VCF version, unconditionally", whose own preamble is otherwise about target-version *silence*. This exception disappears when the target version moves to 4.3. A conflict that changes what an already-valid value **means** -- `GP`, `GLE` -- is not this case and must be version-gated.
 
 Minimum supported bcftools version: 1.18.
 
@@ -129,8 +131,12 @@ here. The rest of this section states the concrete per-shape rules that follow f
   `VcfMetadata.validateAlt`/`isEmptyMetadataValue`/`collidesWithAttributeListGrammar`,
   and `VcfFloat.parse(String, VcfWarnings)`/`isSpecialValue`/`exceedsMaxDecimalLength`. These are marked
   `@RestrictedApi`/`@hidden` -- a documentation-only exemption, not a technical guarantee.
-  The library's five package-private fast-path factories -- `VcfContext.newPositionTakingOwnership`,
-  `newPositionWithTrustedFormat`, `newPositionCopyingTrustedFields`, `newTrustedSample`, and `newTrustedRecord` --
+  The library's five package-private fast-path **model** factories -- `VcfContext.newPositionTakingOwnership`,
+  `newPositionWithTrustedFormat`, `newPositionCopyingTrustedFields`, `newTrustedSample`, and `newTrustedRecord`
+  (that count is of trusted model factories, not of `VcfContext`'s package-private members: the sixth,
+  `VcfContext.lenientWithoutFallbackWarning`, builds a context rather than a model object and bypasses the
+  version-fallback *warning* rather than a content check, so it is deliberately outside this list -- see
+  `VALIDATION_PHILOSOPHY.md`'s "How the principles interact") --
   are *not* on this list: they are package-private, so visibility enforces what an annotation could only
   advertise, and an external caller cannot reach them at all. Only one of the five is not named `*Trusted*`;
   `newPositionTakingOwnership` deliberately is not, because it skips only the defensive copies and still runs

@@ -6,8 +6,11 @@
 
 This is a Java 17 streaming parser and writer for [VCF](http://en.wikipedia.org/wiki/Variant_Call_Format),
 requiring no runtime configuration beyond what's shown below. The target specification is VCF 4.2;
-representable VCF 4.x input from before and after that version is accepted, using VCF 4.2 semantics where
-versions differ or input is ambiguous (see `AGENTS.md`'s Spec Ambiguity Decision Hierarchy for how those
+representable VCF 4.x input from before and after that version is accepted. Each file is interpreted under the
+version its own `##fileformat` declares -- the few reserved keys whose meaning genuinely changed across 4.x are
+read the way that version defines them, and a declared version this library doesn't implement falls back to the
+nearest one it does, with a warning. Where versions merely differ in how much they spell out, or the input is
+ambiguous, VCF 4.2 semantics decide (see `AGENTS.md`'s Spec Ambiguity Decision Hierarchy for how those
 decisions get made).
 
 It validates record structure strictly but defers validation of non-structural content (INFO, FILTER,
@@ -35,6 +38,10 @@ Reserved INFO/FORMAT keys (e.g. `AC`, `DP`, `GT`, `PL`) are exposed as typed val
 [`ReservedInfoProperty`](src/main/java/org/pharmgkb/parser/vcf/ReservedInfoProperty.java)/
 [`ReservedFormatProperty`](src/main/java/org/pharmgkb/parser/vcf/ReservedFormatProperty.java), via
 `VcfPosition.getInfo(ReservedInfoProperty)`/`VcfSample.getProperty(ReservedFormatProperty)`.
+Values are handed back as the raw text the file contained -- this library never percent-decodes an INFO or
+sample value, and never percent-encodes one on write.
+[`VcfPercentEncoding`](src/main/java/org/pharmgkb/parser/vcf/VcfPercentEncoding.java) is an opt-in utility for
+callers who need the decoded form.
 
 ```java
 try (VcfParser parser = new VcfParser.Builder()
@@ -99,13 +106,12 @@ detail.
 Most callers never construct a model object by hand -- `VcfParser` hands you finished ones. When you do need
 to (building a file from scratch, or a synthetic record for a test), everything is created through a
 [`VcfContext`](src/main/java/org/pharmgkb/parser/vcf/VcfContext.java): one instance per file, carrying its
-`##fileformat`, its warning destination, and whether a recoverable content violation warns or throws.
+`##fileformat` (and the VCF version that resolves to, which is what version-dependent reads consult), its
+warning destination, and whether a recoverable content violation warns or throws.
 
 Every model object (`VcfPosition`, `VcfSample`, `VcfRecord`, and the metadata layer) is immutable once
-constructed -- there are no setters. To derive a changed copy of a `VcfPosition`, `VcfSample`, or `VcfMetadata`,
-call its `toBuilder()`, change what you need on the resulting builder, and call `build()`.
-`VcfRecord` itself has no `toBuilder()` -- rebuild it from a changed `VcfPosition`/sample list via
-`VcfContext.newRecord` instead.
+constructed -- there are no setters. To derive a changed copy, call its `toBuilder()`, change what you need on
+the resulting builder, and call `build()`.
 
 ```java
 VcfContext ctx = VcfContext.strict("VCFv4.2");     // or VcfContext.lenient(fileFormat, warnings)
@@ -122,8 +128,11 @@ VcfMetadata metadata = new VcfMetadata.Builder(ctx)
 `strict` rejects a recoverable content violation outright; `lenient` warns and recovers, which is what
 `VcfParser` uses for a real file. The choice belongs to the context, not to which overload you call -- the
 same invalid content behaves the same way whether you pass typed values or a raw property map. Every object
-made this way is bound to that one context, and mixing objects from two different contexts into one record or
-one `VcfMetadata` is rejected.
+made this way is bound to that one context, and mixing objects from two different contexts is rejected --
+when assembling a `VcfRecord` or a `VcfMetadata`, when handing metadata, a position and samples to
+`VcfWriter.writeLine`, and when a typed sample read is given a position and metadata alongside the sample.
+Two contexts would mean two possible resolved versions and two warning destinations, with nothing to choose
+between them.
 
 
 ## `VcfWarnings`: explicit warning routing

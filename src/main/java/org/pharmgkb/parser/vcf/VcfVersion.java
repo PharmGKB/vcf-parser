@@ -68,7 +68,9 @@ public enum VcfVersion {
    * Interpreting a file under a version it did not declare corrupts data silently in both directions -- reading
    * 4.2 as 4.3 would disable the GLE colon-splitter (misaligning the whole sample column) and read {@code GP}
    * as 0-1 rather than phred-scaled; reading 4.4 as 4.5 would apply 4.5's {@code M[0-9]+} FORMAT reservation to
-   * legal 4.4 custom keys. Fallback is therefore a last resort, always warned.
+   * legal 4.4 custom keys. Fallback is therefore a last resort, and this method always warns about it. (It is
+   * not warned about unconditionally library-wide: {@code VcfWriter} reports it only under
+   * {@code Builder.validateBeforeWrite()} -- see the last paragraph below.)
    * <p>
    * Resolution is uniform across strict and lenient contexts: a well-formed declaration for an unimplemented
    * version is not invalid content, so it warns rather than throwing even under

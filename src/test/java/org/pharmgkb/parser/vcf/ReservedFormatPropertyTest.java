@@ -108,7 +108,10 @@ public class ReservedFormatPropertyTest {
   public void testFromIdResolvesRenamedGenotypePosteriorConstant() {
     // GenotypePosterior was renamed from GenotypePosteriorProbabilitiesPhredScaled: the old name asserted a
     // VCFv4.2-only interpretation (phred-scaled) that VCFv4.3 changed to a 0-1 probability (VCFv4.3.tex line
-    // 491; see the enum entry's own comment). No compatibility alias was kept.
+    // 491; see the enum entry's own comment). No compatibility alias was kept. The line above is the one
+    // deliberate surviving mention of the old identifier outside semantic-release-owned history: it records
+    // what the constant was renamed from and asserts nothing about the old meaning. A rename sweep grepping
+    // for that identifier should expect exactly that one hit and no other.
     assertEquals(ReservedFormatProperty.GenotypePosterior, ReservedFormatProperty.fromId("GP"));
     assertEquals("G", ReservedFormatProperty.GenotypePosterior.getExpectedNumber());
     assertEquals(VcfFloat.class, ReservedFormatProperty.GenotypePosterior.getType());

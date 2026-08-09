@@ -75,6 +75,57 @@ try/catch and re-dispatches its `VcfFormatException` through `warnOrThrow` -- so
 is still made by `validateAlt`'s own `VcfContext` parameter, exactly the mechanism above; only the underlying
 condition check is an always-throwing helper class rather than an inline branch.
 
+## How the declared version is dispatched
+
+Strict-vs-lenient is not the only axis a check dispatches on. A few VCF rules genuinely *changed meaning*
+between 4.x versions, so what a value means depends on the version the file declared -- a separate question
+from whether a violation warns or throws, and resolved by a separate mechanism.
+
+**Where the version comes from.** `VcfContext` resolves the declared `##fileformat` exactly once, at its own
+construction, through `VcfVersion.resolve` -- or, for `VcfWriter`, through `VcfVersion.resolveWithoutWarning`
+plus `VcfContext.lenientWithoutFallbackWarning`, which apply the identical rules but return an unimplemented-
+version fallback as a fact instead of emitting it -- and exposes the result as `getVersion()`. Every model
+object stores its `VcfContext`, so `VcfPosition`, `VcfSample`, `VcfRecord` and every metadata declaration can
+reach the resolved version with no additional plumbing.
+
+**Why that matters at deferred-access time.** Principle 3 defers `getQuality()`/`getInfo()`/`getProperty(...)`
+to first access, which can be arbitrarily long after the header was read and after the parser itself has moved
+on. Because the version rides on the context the object was built with, rather than on parser-local state, a
+lazily-validated value can still answer "which version's rule applies to me" at the moment it is finally read.
+This is the single property the version-context work existed to establish.
+
+**One context per operation, so one version per record.** The version has to be unambiguous at the point of
+use, which is the second reason (alongside the warnings destination) that the reference-identity checks exist:
+`VcfContext.newRecord`, `VcfMetadata.Builder`, `VcfWriter.writeLine`, and
+`VcfSample.getProperty(VcfPosition, VcfMetadata, String)` each reject components built under different
+contexts, because two contexts mean two possible resolved versions and nothing to choose between them. On the
+write path the record's version is the *metadata's* context's version, derived once per `writeLine` and threaded
+explicitly downward -- deliberately never read off `VcfWriter`'s own `m_context`, which is writer-local
+diagnostics state rebuilt on every `writeHeader()` and never reference-identical to the context that built the
+data.
+
+**Version and warnings sink travel as separate arguments, never as one object.**
+`InternalUtils.convertProperty(ReservedProperty, ...)`, `checkReservedFormatConstraints` and
+`checkReservedInfoConstraints` each take a `VcfVersion` and a `VcfWarnings`, not a `VcfContext`. They are
+independent concerns -- on the write path the version comes from the record while the warnings go to the
+writer's own sink -- so there is deliberately nothing in scope inside those helpers to read a version off but
+the value the caller explicitly supplied.
+
+**The `isAtLeast` discipline.** Every version gate is written `version.isAtLeast(VcfVersion.V4_3)` (or its
+negation), never a string comparison against the declared `##fileformat` and never a raw ordinal comparison. A
+string comparison misses the equivalent spellings `VcfVersion.canonicalize` exists to fold together (`VCFv4.02`
+is `VCFv4.2`), and a bare ordinal comparison silently changes meaning if a version is ever inserted into the
+enum. `isAtLeast` also rejects a `null` argument with `VcfFormatException` rather than answering it.
+
+**Gate only a genuine change of meaning.** A version branch is reserved for a rule whose meaning differs
+between versions with both readings valid. Today that is exactly two rules: `FORMAT/GP` (phred-scaled under
+VCFv4.2 and earlier per VCFv4.2.tex line 227, a 0-1 probability from VCFv4.3 per VCFv4.3.tex line 491) and
+`FORMAT/GLE` (a reserved key at VCFv4.1.tex line 208/VCFv4.2.tex line 225, removed by VCFv4.3 per VCFv4.3.tex
+line 2168). Where a later version merely *clarifies* something VCFv4.2 left unsaid, the later rule is adopted
+at every version instead, with no branch at all -- see `VALIDATION_REFERENCE.md`'s "Rules adopted from a later
+VCF version, unconditionally" for that list, and its lenient section for the two gated rules' exact per-version
+behavior.
+
 ## Where this applies
 
 - **`InfoMetadata`/`FormatMetadata`**: the typed constructor reports (throws under a strict context, warns
@@ -130,8 +181,11 @@ condition check is an always-throwing helper class rather than an inline branch.
 - **`VcfSample`**: not part of that dispatch at all -- `VcfContext.newSample` and `newTrustedSample` already
   only throw (a null or mismatched-size key/value list, or -- outside `newTrustedSample` -- a structural
   delimiter in a key/value), never warn, so there is no throw-vs-warn choice to make at construction for this
-  class. Its two warn sites (`validate()`'s empty-value normalization, `properties()`'s duplicate-FORMAT-key
-  handling) are both post-construction. `newTrustedSample` is a principle-3 case, not principle 1/2: it skips
+  class. Every warn site it does have is post-construction -- `validate()`'s empty-value normalization,
+  `properties()`'s duplicate-FORMAT-key handling, and the deferred typed-read diagnostics in
+  `getProperty(VcfPosition, VcfMetadata, String)`, `getGenotype(VcfPosition)` and
+  `containsProperty(ReservedFormatProperty)`. (No count is asserted, deliberately: the list has grown since it
+  was first written down as two.) `newTrustedSample` is a principle-3 case, not principle 1/2: it skips
   the structural-delimiter check entirely (rather than warning in place of throwing) for `VcfParser`'s own
   already-guaranteed-clean input, and is package-private so no external caller can reach it -- see its own
   Javadoc for the measured cost this avoids.
@@ -219,6 +273,14 @@ condition check is an always-throwing helper class rather than an inline branch.
   still rejects a null position and a null sample list -- `MemoryMappedVcfLineParser.parseLine` relies on that
   last guarantee and deliberately does not re-check either. They look like one pattern; check which checks a
   given trusted-bypass method actually skips before assuming one is a precedent for another.
+  <br>**"Five" counts trusted *model* factories, and is not a count of `VcfContext`'s package-private members.**
+  `VcfContext.lenientWithoutFallbackWarning` is a sixth package-private factory of a different kind: it builds a
+  `VcfContext` rather than a model object, and what it bypasses is the version-fallback *warning*
+  `VcfVersion.resolve` would emit (see "How the declared version is dispatched" above), not a content check. It
+  is not a hot-path skip and not a null-safety exemption, so it is deliberately outside the five. Its one
+  caller, `VcfWriter.writeHeader`, has already run `VcfVersion.resolveWithoutWarning` on the same
+  `declaredFileFormat`, so the null/malformed rejection `VcfVersion.resolve` performs for the public `lenient`/
+  `strict` factories has still happened before this one is reached.
 - The metadata layer has two package-private bypasses of the same family, added when it was frozen, and they
   differ from the five above in one important way: **neither has a production call site.**
   `BaseMetadata.trustedMutableProperties()` hands back the live properties map (skipping every check
