@@ -28,13 +28,17 @@ conformance suite, its own reference validator, and the ecosystem's reference im
 acceptable, so `vcf-parser` now matches that practical tolerance: it logs a warning and keeps the first declaration,
 rather than throwing `VcfFormatException`.
 
-For the six `Map`-backed types above, this is effectively construction-time-only: once stored, a `Map<String, ...>`
-can't hold two entries under one key, so a "duplicate" can only be encountered while *adding* a declaration --
-either via `VcfMetadata.Builder`/`VcfParser` at parse time, or via `VcfMetadata`'s own instance `addXxx` methods on
-an already-built object (see "Where this is implemented" below; both paths share the same check). `##PEDIGREE` is
-the one exception: since it's `List`-backed, a duplicate can still exist *inside* an already-built object if an
-entry is added directly through `getPedigrees()`, which is why its own check (below) has to run again at write
-time.
+For the six `Map`-backed types above, this is construction-time-only: once stored, a `Map<String, ...>` can't
+hold two entries under one key, so a "duplicate" can only be encountered while *adding* a declaration, which
+now happens in exactly one place -- `VcfMetadata.Builder` (used directly, or by `VcfParser` at parse time, or
+via `VcfMetadata.toBuilder()`). A built `VcfMetadata` is immutable, with no instance `addXxx` methods and no
+mutable collection getters, so there is no second entry point for this rule to also cover.
+
+`##PEDIGREE` is the one shape that still needs a second, write-time check: it is `List`-backed, so unlike the
+keyed types nothing about the storage itself prevents two same-`ID` entries from coexisting. Its
+`VcfWriter.validateMetadata()` check is retained (warn-only) rather than dropped along with the mutation
+routes -- it also covers a list assembled outside `Builder.addPedigree`, and the writer keeps its own
+defensive validation pass self-contained rather than depending on how its input was built.
 
 ## Reference table
 
@@ -78,10 +82,12 @@ add-time drop is independently preceded by a first warning of its own, from the 
 `IdMetadata.init()` at construction (before `addXxx` ever sees it) -- parsing one malformed header line produces
 both warnings; see `WONT_FIX.md`'s "Multiple independent checks warn separately about the same underlying
 defect" entry's "Missing or blank metadata ID" sub-case. "Never stored" is also specifically an add-time
-guarantee, not a lifetime one: an object *already* in storage whose `ID` is live-mutated to blank afterward
-(e.g. via `getPropertiesRaw()`) is not retroactively removed -- a `Map` can't un-key itself reactively --
-`validate()`/`IdMetadata.init()` only warns on it from then on. See `VALIDATION_REFERENCE.md`'s equivalent
-bullet for that distinct, already-stored case.
+guarantee, not a lifetime one: an object *already* in storage whose `ID` somehow became blank afterward is not
+retroactively removed -- a `Map` can't un-key itself reactively -- `validate()`/`IdMetadata.init()` only warns
+on it from then on. Since the metadata layer was frozen there is no public route to that state at all
+(`getPropertiesRaw()` is an unmodifiable view and `putPropertyRaw` is package-private); it survives only
+through the package-private `BaseMetadata.trustedMutableProperties()` bypass, which is what keeps
+`VcfWriter`'s equivalent write-time check tested. See `VALIDATION_REFERENCE.md`'s equivalent bullet.
 
 ### Missing ID is spec-grounded
 
@@ -139,18 +145,16 @@ surfaces any complaint about a dropped duplicate's content either.
 
 ## Where this is implemented
 
-- `VcfMetadata.warnIfDuplicate(Map, String, String, VcfContext)` — the shared helper, used by both
-  `VcfMetadata`'s own instance `addXxx` methods and `VcfMetadata.Builder`'s `addXxx` methods; a strict context
-  throws instead of warning (see `VALIDATION_PHILOSOPHY.md`).
-- `VcfMetadata.Builder.addAlt()` / `addInfo()` / `addFormat()` / `addFilter()` / `addContig()` / `addSample()`, and
-  `VcfMetadata.addAlt()` / `addInfo()` / `addFormat()` / `addFilter()` / `addContig()` / `addSample()` (the same
-  six) — each calls `warnIfDuplicate()` before storing a new declaration, and returns immediately (without
-  storing) if it reports a duplicate. The six keyed `addXxx` methods on `VcfMetadata` itself each have a matching
-  `removeXxx()` method (`removeAlt()`/`removeInfo()`/`removeFormat()`/`removeFilter()`/`removeContig()`/
-  `removeSample()`) — to replace an existing entry there, call `removeXxx()` first, then add. `Builder` has no
-  `removeXxx` methods at all: it simply doesn't support replacing a declaration mid-build.
-- `VcfMetadata.Builder.addPedigree()` and `VcfMetadata.addPedigree()` — both warn and keep the first entry when a
-  duplicate literal `ID` property is found; both always add when no `ID` property is present.
+- `VcfMetadata.warnIfDuplicate(Map, String, String, VcfContext)` — the shared helper, used by
+  `VcfMetadata.Builder`'s `addXxx` methods; a strict context throws instead of warning (see
+  `VALIDATION_PHILOSOPHY.md`).
+- `VcfMetadata.Builder.addAlt()` / `addInfo()` / `addFormat()` / `addFilter()` / `addContig()` / `addSample()` —
+  each calls `warnIfDuplicate()` before storing a new declaration, and returns immediately (without storing) if
+  it reports a duplicate. There is no `removeXxx` anywhere: a built `VcfMetadata` is immutable, and `Builder`
+  simply doesn't support replacing a declaration mid-build. To produce a `VcfMetadata` without some
+  declaration, build a fresh one rather than editing an existing one.
+- `VcfMetadata.Builder.addPedigree()` — warns and keeps the first entry when a duplicate literal `ID` property
+  is found; always adds when no `ID` property is present.
 - `VcfWriter.validateMetadata()`'s PEDIGREE loop — the same check, but warn-only (never drops), since it runs
   post-construction on content the caller already holds a reference to.
 - `IdMetadata`'s shared `IdMetadata(VcfContext, String label, String id)` constructor -- used by every
@@ -166,13 +170,13 @@ surfaces any complaint about a dropped duplicate's content either.
   check, not a restatement: parsing one malformed header line produces both this warning and the `addXxx`-level
   one in the same log; see `WONT_FIX.md`'s "Missing or blank metadata ID" sub-case (referenced above) for why
   neither is suppressed in favor of the other.
-- `VcfMetadata`'s 6 instance `addXxx` methods and `VcfMetadata.Builder`'s 6 `addXxx` methods each check for a
-  missing or blank `ID` before calling `warnIfDuplicate()`, warning and dropping the declaration entirely (never
-  storing it) if so -- this is what actually removes a malformed declaration from storage, built via the parser's
-  lenient `Map`-based construction path. Under a strict `VcfContext`, both checks throw `VcfFormatException`
-  instead -- see `VALIDATION_PHILOSOPHY.md`. Note that a strict context already rejects a missing/blank `ID`
-  at declaration-construction time, so the `addXxx`-level check is reachable there only for a declaration
-  whose `ID` was removed afterward through the live `getPropertiesRaw()` map.
+- `VcfMetadata.Builder`'s 6 `addXxx` methods each check for a missing or blank `ID` before calling
+  `warnIfDuplicate()`, warning and dropping the declaration entirely (never storing it) if so -- this is what
+  actually removes a malformed declaration from storage, built via the parser's lenient `Map`-based
+  construction path. Under a strict `VcfContext`, both checks throw `VcfFormatException` instead -- see
+  `VALIDATION_PHILOSOPHY.md`. Note that a strict context already rejects a missing/blank `ID` at
+  declaration-construction time, so the `addXxx`-level check is reachable there only for a declaration whose
+  `ID` was removed afterward via the package-private `BaseMetadata.trustedMutableProperties()` bypass.
 
 ## `##PEDIGREE`: a conditional case
 
@@ -193,6 +197,6 @@ Empirical testing shows bcftools still dedupes PEDIGREE by `ID` whenever a line 
 So the rule generalizes: bcftools dedupes by `ID` wherever that key is present, regardless of the declaration's
 tag name — not six special cases plus an unrelated PEDIGREE rule, but one rule (dedupe on `ID` when present) that
 the six keyed types happen to always trigger (their grammar makes `ID` mandatory) and PEDIGREE only sometimes
-triggers (its grammar makes `ID` optional). `VcfMetadata.Builder.addPedigree()`, `VcfMetadata.addPedigree()`
-(the instance method), and `VcfWriter`'s post-construction check all implement this: warn and keep first when
-`ID` is present and duplicated; always add when `ID` is absent.
+triggers (its grammar makes `ID` optional). `VcfMetadata.Builder.addPedigree()` and `VcfWriter`'s
+post-construction check both implement this: warn and keep first when `ID` is present and duplicated; always
+add when `ID` is absent.

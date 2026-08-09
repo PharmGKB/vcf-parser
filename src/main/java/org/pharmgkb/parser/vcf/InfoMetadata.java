@@ -21,7 +21,7 @@ import org.jspecify.annotations.Nullable;
  *
  * @author Mark Woon
  */
-public class InfoMetadata extends IdDescriptionMetadata {
+public final class InfoMetadata extends IdDescriptionMetadata {
 
   public static final String DESCRIPTION = "Description"; // should be quoted
   public static final String NUMBER = "Number";

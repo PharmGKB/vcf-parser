@@ -114,8 +114,10 @@ public class InfoMetadataTest {
 
   @Test
   public void testValidateRefreshesTypeAfterRawMutation() {
+    // getPropertiesRaw() is unmodifiable since the metadata layer was frozen; putPropertyRaw is the
+    // package-private construction-time inserter, used here to reach the same state from inside the package
     InfoMetadata md = new InfoMetadata(STRICT_CONTEXT, "X", "d", InfoType.Integer, "1", null, null);
-    md.getPropertiesRaw().put("Type", "String");
+    md.putPropertyRaw("Type", "String");
     md.validate();
     assertEquals(InfoType.String, md.getType());
   }
@@ -191,7 +193,7 @@ public class InfoMetadataTest {
     // the typed constructor's own Number/Type/Source/Version properties as unexpected extras (see
     // testValidateRefreshesTypeAfterRawMutation for the general validate() re-derivation this exercises)
     InfoMetadata md = new InfoMetadata(STRICT_CONTEXT, "X", "d", InfoType.Integer, "1", "src", "1.0");
-    md.getPropertiesRaw().put("Custom", "extra");
+    md.putPropertyRaw("Custom", "extra");
     md.validate();
     assertEquals(InfoType.Integer, md.getType());
     assertEquals("1", md.getNumber());

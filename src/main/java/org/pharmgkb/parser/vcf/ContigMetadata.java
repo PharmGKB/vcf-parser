@@ -13,7 +13,7 @@ import org.jspecify.annotations.Nullable;
  * VCF metadata for contig=&lt;&gt; elements.
  * @author Douglas Myers-Turnbull
  */
-public class ContigMetadata extends IdMetadata {
+public final class ContigMetadata extends IdMetadata {
 
   public static final String LENGTH = "length";
   public static final String ASSEMBLY = "assembly";

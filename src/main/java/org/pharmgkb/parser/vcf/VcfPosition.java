@@ -410,7 +410,7 @@ public final class VcfPosition {
   // report that caught this): a per-call HashSet<String> costs ~2.7x more than an allocation-free O(n) scan
   // for a typical tiny list (crossover around n=8), but the scan is O(n^2) overall -- a 2.7 MB single-record
   // file with 100,000 IDs took the scan 25.4 SECONDS vs. 91 ms for the HashSet version, the same CPU-exhaustion
-  // shape as the ##PEDIGREE O(n^2) DoS already fixed in VcfMetadata.hasPedigreeIdCollision. This threshold
+  // shape as the ##PEDIGREE O(n^2) DoS already fixed in VcfMetadata.Builder.addPedigree. This threshold
   // keeps the scan's win for the common case while falling back to a HashSet before the list can grow large
   // enough to matter.
   private static final int DUPLICATE_SCAN_THRESHOLD = 8;

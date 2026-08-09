@@ -37,6 +37,37 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class VcfWriterTest {
 
+  /**
+   * Builds a {@link VcfMetadata} through its package-private, trusted constructor, which copies but does not
+   * re-validate its collections' <em>contents</em>.
+   * <p>
+   * This is the metadata-layer counterpart of the {@code VcfContext.newPositionCopyingTrustedFields()} and
+   * {@code VcfContext.newTrustedSample()} bypasses {@code VcfPositionTest}/{@code VcfSampleTest} already use for
+   * the same purpose. Freezing the metadata layer made every {@code VcfMetadata} collection getter an
+   * unmodifiable view and deleted every instance mutator, so no public API route can produce the malformed
+   * containers several of {@code VcfWriter}'s defensive checks below exist to catch -- a null declaration under
+   * a map key, a null raw-property key or value, a duplicate PEDIGREE ID, a line terminator in a raw property.
+   * Those checks are still live code, so their tests must keep running against them rather than being deleted
+   * along with the public route that used to reach them.
+   *
+   * @param info the INFO declarations, or {@code null} for none
+   * @param pedigrees the PEDIGREE declarations, or {@code null} for none
+   * @param rawProperties the generic {@code ##key=value} properties, or {@code null} for none
+   */
+  private static VcfMetadata trustedMetadata(String fileFormat,
+      Map<String, InfoMetadata> info, List<PedigreeMetadata> pedigrees,
+      ListMultimap<String, String> rawProperties) {
+    return new VcfMetadata(fileFormat, null, info, null, null, null, null, pedigrees, List.of(), rawProperties,
+        LENIENT_CONTEXT);
+  }
+
+  /** Convenience for the common case: only one bad generic raw property matters to the test. */
+  private static VcfMetadata trustedMetadataWithRawProperty(String key, String value) {
+    ListMultimap<String, String> properties = ArrayListMultimap.create();
+    properties.put(key, value);
+    return trustedMetadata("VCFv4.2", null, null, properties);
+  }
+
   @Test
   public void testMidWriteLineWarningReportsTheLineCurrentlyBeingWritten() throws Exception {
     // regression test: a warning fired while writeLine() is still building the current data line used to read
@@ -907,7 +938,7 @@ public class VcfWriterTest {
   @Test
   public void testValidateBeforeWriteRejectsMetadataDelimiterInjectedThroughRawView() throws Exception {
     InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "NS", "d", InfoType.Integer, "1", null, null);
-    info.getPropertiesRaw().put("Description", "unquoted,comma");
+    info.trustedMutableProperties().put("Description", "unquoted,comma");
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addInfo(info).build();
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
@@ -920,8 +951,7 @@ public class VcfWriterTest {
     // a raw property ("##key=value") is reread by VcfParser splitting on the FIRST "=" only; a key containing "="
     // shifts that split point. Verified live: writing key "foo=bar" reparses as key "foo", value "bar=value"
     // instead of the original key "foo=bar", value "value" -- genuine data corruption, not just unusual content.
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
-    metadata.getRawProperties().put("foo=bar", "value");
+    VcfMetadata metadata = trustedMetadataWithRawProperty("foo=bar", "value");
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
 
@@ -930,11 +960,11 @@ public class VcfWriterTest {
 
   @Test
   public void testValidateBeforeWriteRejectsNullRawPropertyKey() throws Exception {
-    // getRawProperties() is a live view backed by a LinkedListMultimap, which permits null keys/values; a caller
-    // inserting a null key must get VcfFormatException from validateMetadata(), not a raw NullPointerException
-    // from key.contains("=")
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
-    metadata.getRawProperties().put(null, "value");
+    // the backing LinkedListMultimap permits null keys/values, so a null key must get VcfFormatException from
+    // validateMetadata(), not a raw NullPointerException from key.contains("="). getRawProperties() is an
+    // unmodifiable view since the metadata layer was frozen, so trustedMetadata() is what reaches this state
+    // now -- see its Javadoc.
+    VcfMetadata metadata = trustedMetadataWithRawProperty(null, "value");
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
 
@@ -943,8 +973,7 @@ public class VcfWriterTest {
 
   @Test
   public void testValidateBeforeWriteRejectsNullRawPropertyValue() throws Exception {
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
-    metadata.getRawProperties().put("foo", null);
+    VcfMetadata metadata = trustedMetadataWithRawProperty("foo", null);
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
 
@@ -956,8 +985,7 @@ public class VcfWriterTest {
     // without validateBeforeWrite(), buildHeaderLines() never calls validateMetadata(); addPropertyLines() must
     // guard this itself, since "##" + name + "=" + string would otherwise silently stringify a null name/value
     // into the literal text "null", fabricating content that was never actually in the property
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
-    metadata.getRawProperties().put(null, "value");
+    VcfMetadata metadata = trustedMetadataWithRawProperty(null, "value");
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
 
@@ -966,8 +994,7 @@ public class VcfWriterTest {
 
   @Test
   public void testDefaultWriteRejectsNullRawPropertyValueInsteadOfWritingLiteralNullText() throws Exception {
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
-    metadata.getRawProperties().put("foo", null);
+    VcfMetadata metadata = trustedMetadataWithRawProperty("foo", null);
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
 
@@ -983,7 +1010,7 @@ public class VcfWriterTest {
     // in validateMetadataProperties() (which used to duplicate this check but is now unreachable for it).
     InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "NS", "d", InfoType.Integer, "1", null, null);
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addInfo(info).build();
-    metadata.getInfo().get("NS").getPropertiesRaw().put("Description", null);
+    metadata.getInfo().get("NS").trustedMutableProperties().put("Description", null);
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
 
@@ -997,7 +1024,7 @@ public class VcfWriterTest {
     // StringBuilder.append(Object) into the literal text "null", fabricating content never actually in the property
     InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "NS", "d", InfoType.Integer, "1", null, null);
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addInfo(info).build();
-    metadata.getInfo().get("NS").getPropertiesRaw().put(null, "value");
+    metadata.getInfo().get("NS").trustedMutableProperties().put(null, "value");
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
 
@@ -1008,7 +1035,7 @@ public class VcfWriterTest {
   public void testDefaultWriteRejectsNullInfoPropertyValueInsteadOfWritingLiteralNullText() throws Exception {
     InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "NS", "d", InfoType.Integer, "1", null, null);
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addInfo(info).build();
-    metadata.getInfo().get("NS").getPropertiesRaw().put("Description", null);
+    metadata.getInfo().get("NS").trustedMutableProperties().put("Description", null);
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
 
@@ -1042,7 +1069,7 @@ public class VcfWriterTest {
     // emitted header declare a different ID than what data lines reference by that map key
     InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "NS", "d", InfoType.Integer, "1", null, null);
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addInfo(info).build();
-    metadata.getInfo().get("NS").getPropertiesRaw().put("ID", "DIFFERENT");
+    metadata.getInfo().get("NS").trustedMutableProperties().put("ID", "DIFFERENT");
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
 
@@ -1056,7 +1083,7 @@ public class VcfWriterTest {
     // validateBeforeWrite() must re-check it at write time
     IdDescriptionMetadata alt = new IdDescriptionMetadata(LENIENT_CONTEXT, "ALT", "DEL", "Deletion");
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addAlt(alt).build();
-    metadata.getAlts().get("DEL").getPropertiesRaw().put("Number", "B");
+    metadata.getAlts().get("DEL").trustedMutableProperties().put("Number", "B");
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
 
@@ -1081,7 +1108,7 @@ public class VcfWriterTest {
     // once, inside IdDescriptionMetadata's Map-based constructor -- validateBeforeWrite() must re-check it
     InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "NS", "d", InfoType.Integer, "1", null, null);
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addInfo(info).build();
-    Map<String, String> props = metadata.getInfo().get("NS").getPropertiesRaw();
+    Map<String, String> props = metadata.getInfo().get("NS").trustedMutableProperties();
     String number = props.remove("Number");
     props.put("Number", number);
     StringWriter sw = new StringWriter();
@@ -1104,15 +1131,11 @@ public class VcfWriterTest {
 
   @Test
   public void testValidateBeforeWriteWarnsOnEmptyGenericPropertyValue() throws Exception {
-    // getRawProperties() returns the backing multimap directly; mutating an existing entry's value to empty
-    // bypasses addRawProperty()/addAssembly()/addPedigreeDatabase()'s own checks entirely (those only run once,
-    // at insertion time), so validateBeforeWrite() must re-check it at write time. Unlike the parse-time path,
-    // this only warns -- it does not remove the entry from the caller's own metadata object.
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
-        .addRawProperty("reference", "file:///seq/reference.fasta")
-        .build();
-    metadata.getRawProperties().remove("reference", "file:///seq/reference.fasta");
-    metadata.getRawProperties().put("reference", "");
+    // an empty generic property value bypasses addRawProperty()'s own check entirely (that check only runs at
+    // insertion time, and drops rather than keeps), so validateBeforeWrite() must re-check it at write time.
+    // Unlike the parse-time path, this only warns -- it does not remove the entry from the caller's own
+    // metadata object. Reached via trustedMetadata() (see its Javadoc) now that the metadata layer is frozen.
+    VcfMetadata metadata = trustedMetadataWithRawProperty("reference", "");
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
 
@@ -1142,11 +1165,7 @@ public class VcfWriterTest {
     // trying to read a generic property value shaped like "<...>" back, so writing it out would produce output
     // a reference tool cannot parse at all -- exactly the structurally-unparseable-output case
     // validateBeforeWrite() must reject rather than merely warn about.
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
-        .addRawProperty("reference", "file:///seq/reference.fasta")
-        .build();
-    metadata.getRawProperties().remove("reference", "file:///seq/reference.fasta");
-    metadata.getRawProperties().put("reference", "<http://foo.com>");
+    VcfMetadata metadata = trustedMetadataWithRawProperty("reference", "<http://foo.com>");
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
 
@@ -1159,8 +1178,7 @@ public class VcfWriterTest {
     // collides with a structured declaration keyword (here "INFO") after the builder-side check in
     // addRawProperty() has already run once, at insertion time -- validateBeforeWrite() is the only remaining
     // check that can catch this before the writer emits an "##INFO=bad" line VcfParser cannot read back
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
-    metadata.getRawProperties().put("INFO", "bad");
+    VcfMetadata metadata = trustedMetadataWithRawProperty("INFO", "bad");
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
@@ -1168,20 +1186,21 @@ public class VcfWriterTest {
 
   @Test
   public void testValidateBeforeWriteWarnsOnDuplicatePedigreeIdIntroducedAfterConstruction() throws Exception {
-    // Builder.addPedigree() now warns and drops a duplicate ID at construction time (see
-    // VcfMetadataTest.testAddPedigreeWarnsAndKeepsFirstOnDuplicateId), so the only way a duplicate PEDIGREE ID can
-    // still reach this write-time check is by mutating the mutable List returned by getPedigrees() directly,
-    // bypassing Builder entirely -- e.g. a transformation pipeline that appends to an already-built VcfMetadata
+    // Builder.addPedigree() warns and drops a duplicate ID at construction time (see
+    // VcfMetadataTest.testAddPedigreeWarnsAndKeepsFirstOnDuplicateId), so a duplicate PEDIGREE ID can only
+    // reach this write-time check by bypassing Builder entirely. That used to be getPedigrees()'s mutable
+    // List; since the metadata layer was frozen that list is unmodifiable, so trustedMetadata() is the route
+    // now -- see its Javadoc. The writer-side check itself is unchanged and still live.
     Map<String, String> childProps = new LinkedHashMap<>();
     childProps.put("ID", "Child");
     childProps.put("Father", "Dad");
     Map<String, String> duplicateProps = new LinkedHashMap<>();
     duplicateProps.put("ID", "Child");
     duplicateProps.put("Mother", "Mom");
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
-        .addPedigree(new PedigreeMetadata(LENIENT_CONTEXT, childProps))
-        .build();
-    metadata.getPedigrees().add(new PedigreeMetadata(LENIENT_CONTEXT, duplicateProps));
+    VcfMetadata metadata = trustedMetadata("VCFv4.2", null,
+        List.of(new PedigreeMetadata(LENIENT_CONTEXT, childProps),
+            new PedigreeMetadata(LENIENT_CONTEXT, duplicateProps)),
+        null);
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
 
@@ -1425,15 +1444,23 @@ public class VcfWriterTest {
   @Test
   public void testValidateBeforeWriteRejectsMetadataMutatedAfterHeaderWritten() throws Exception {
     // "metadata != m_headerMetadata" alone only catches a swapped-in different object; it can't catch the SAME
-    // object being mutated in place after writeHeader() already flushed the header text (e.g. addInfo() adding a
-    // declaration the emitted header never had), which would silently make a data line reference a key the header
-    // doesn't declare
+    // object's emitted header text changing after writeHeader() already flushed it, which would silently make a
+    // data line inconsistent with the header the reader actually sees.
+    //
+    // The mutation used to be metadata.addInfo(...) adding a whole declaration the emitted header never had.
+    // Freezing the metadata layer removed that (and every other) instance mutator, so the drift is produced
+    // here by editing an existing declaration's own properties through the package-private
+    // trustedMutableProperties() bypass instead -- buildHeaderLines() reads those properties on every call, so
+    // the recomputed header text still differs from the snapshot, exercising the same guard on the same object.
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
+    InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "NS", "d", InfoType.Integer, "1", null, null);
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addInfo(info)
+        .build();
     writer.writeHeader(metadata);
 
-    metadata.addInfo(new InfoMetadata(metadata.getContext(), "NS", "d", InfoType.Integer, "1", null, null));
+    metadata.getInfo().get("NS").trustedMutableProperties().put("Description", "\"changed after the header\"");
 
     ListMultimap<String, String> positionInfo = ArrayListMultimap.create();
     positionInfo.put("NS", "1");
@@ -1720,7 +1747,7 @@ public class VcfWriterTest {
     // getPropertiesRaw() bypasses checkNoLineTerminator (see its javadoc); printLine previously only checked for
     // "\n", so a lone "\r" injected this way would silently corrupt the output instead of failing loudly
     InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "NS", "d", InfoType.Integer, "1", null, null);
-    info.getPropertiesRaw().put("Description", "bad\rvalue");
+    info.trustedMutableProperties().put("Description", "bad\rvalue");
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addInfo(info).build();
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
@@ -1736,7 +1763,7 @@ public class VcfWriterTest {
     // validateBeforeWrite()-mode path still rejects a line terminator via entry.validate() alone, now that
     // validateMetadataProperties() no longer redundantly re-checks the same property for the same thing
     InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "NS", "d", InfoType.Integer, "1", null, null);
-    info.getPropertiesRaw().put("Description", "bad\rvalue");
+    info.trustedMutableProperties().put("Description", "bad\rvalue");
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addInfo(info).build();
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
@@ -1751,12 +1778,13 @@ public class VcfWriterTest {
     // VcfFormatException, fix the content, retry writeHeader()" pattern, since a retry would then duplicate the
     // already-written clean lines (e.g. a second ##fileformat=VCFv4.2). writeHeader() must scan every line for a
     // terminator before printing any of them, so a rejection leaves nothing written at all.
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
-        .addRawProperty("source", "myProgram")
-        .build();
-    // bypass addRawProperty's own checkNoLineTerminator to inject a bad second raw property, the same raw-view
-    // bypass exercised by testWriteHeaderRejectsLoneCarriageReturnInjectedThroughRawView above
-    metadata.getRawProperties().put("Bad", "bad\rvalue");
+    // bypass addRawProperty's own checkNoLineTerminator to inject a bad SECOND raw property (the first is
+    // clean, and is what proves nothing at all gets written) -- the same trusted bypass exercised by
+    // testWriteHeaderRejectsLoneCarriageReturnInjectedThroughRawView above, one level up
+    ListMultimap<String, String> rawProperties = ArrayListMultimap.create();
+    rawProperties.put("source", "myProgram");
+    rawProperties.put("Bad", "bad\rvalue");
+    VcfMetadata metadata = trustedMetadata("VCFv4.2", null, null, rawProperties);
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
     assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
@@ -1795,8 +1823,8 @@ public class VcfWriterTest {
     java.nio.file.Path file = java.nio.file.Files.createTempFile("vcf-writer-encoding-test", ".vcf");
     VcfWriter writer = null;
     try {
-      VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
-      metadata.getRawProperties().put("BadEncoding", "bad\uD800surrogate"); // lone high surrogate: invalid UTF-8
+      // lone high surrogate: invalid UTF-8
+      VcfMetadata metadata = trustedMetadataWithRawProperty("BadEncoding", "bad\uD800surrogate");
       writer = new VcfWriter.Builder().toFile(file).build();
       final VcfWriter finalWriter = writer;
       assertThrows(UncheckedIOException.class, () -> finalWriter.writeHeader(metadata));
@@ -1901,7 +1929,7 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
         .addInfo(new InfoMetadata(LENIENT_CONTEXT, "AF", "d", InfoType.Float, "A", null, null))
         .build();
-    metadata.getInfo().get("AF").getPropertiesRaw().remove("ID"); // now stored under key "AF" but has no ID at all
+    metadata.getInfo().get("AF").trustedMutableProperties().remove("ID"); // now stored under key "AF" but has no ID at all
     assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
     assertTrue(writer.isValid()); // content rejection, not a write failure -- must not invalidate
 
@@ -1915,47 +1943,68 @@ public class VcfWriterTest {
 
   @Test
   public void testValidateBeforeWriteRejectsNullMetadataEntryInsteadOfThrowingNpe() throws Exception {
-    // regression test: getInfo()/getFilters()/getFormats()/getAlts()/getContigs()/getSamples()/getPedigrees()
-    // all return their live backing collection directly, so a caller can insert a null entry after writeHeader()
-    // has already validated the metadata once. writeLine()'s post-header-mutation guard calls buildHeaderLines()
-    // -> addMetadataLines() -> getAllProperties() BEFORE validateMetadata()'s own (equally-unguarded) checks
-    // ever run, so this previously raw-crashed with NullPointerException instead of VcfFormatException --
-    // verified for both a Map-based kind (INFO) and the List-based kind (PEDIGREE), since addMetadataLines() is
-    // the single shared implementation for both shapes
-    StringWriter sw = new StringWriter();
-    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
-        .addInfo(new InfoMetadata(LENIENT_CONTEXT, "AF", "d", InfoType.Float, "A", null, null))
-        .build();
-    writer.writeHeader(metadata);
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    // regression test: a null entry in a metadata collection must produce VcfFormatException, not a raw
+    // NullPointerException -- verified for both a Map-based kind (INFO) and the List-based kind (PEDIGREE),
+    // since addMetadataLines() is the single shared implementation for both shapes.
+    //
+    // TWO separate guards catch this, and both are exercised here, one per writer mode:
+    //  - default mode: buildHeaderLines() -> addMetadataLines() -> getAllProperties() is the ONLY null check
+    //    that runs at all, since validateMetadata() never runs.
+    //  - validateBeforeWrite() mode: validateMetadata()'s own guards in validateKeyedMetadataEntries() and the
+    //    PEDIGREE loop run first, before buildHeaderLines().
+    // Previously reached by inserting the null into the live backing collection after writeHeader() had already
+    // validated once; the metadata layer is frozen now, so trustedMetadata() (see its Javadoc) is the route.
+    // The consequence is that the null is present from the first writeHeader() rather than appearing between
+    // writeHeader() and writeLine() -- both guards are still covered, but the specific ordering nuance of
+    // writeLine()'s post-header-mutation path (addMetadataLines running before validateMetadata) is no longer
+    // separately reachable.
+    Map<String, InfoMetadata> infoWithNullEntry = new LinkedHashMap<>();
+    infoWithNullEntry.put("AF", new InfoMetadata(LENIENT_CONTEXT, "AF", "d", InfoType.Float, "A", null, null));
+    infoWithNullEntry.put("BADKEY", null);
+    VcfMetadata badInfo = trustedMetadata("VCFv4.2", infoWithNullEntry, null, null);
+    List<PedigreeMetadata> pedigreesWithNullEntry = new java.util.ArrayList<>();
+    pedigreesWithNullEntry.add(null);
+    VcfMetadata badPedigree = trustedMetadata("VCFv4.2", null, pedigreesWithNullEntry, null);
 
-    metadata.getInfo().put("BADKEY", null);
-    VcfFormatException infoEx = assertThrows(VcfFormatException.class,
-        () -> writer.writeLine(metadata, position, Collections.emptyList()));
-    assertTrue(infoEx.getMessage().contains("INFO metadata contains a null entry"));
-    metadata.getInfo().remove("BADKEY"); // fix it for the next scenario
+    for (boolean validateBeforeWrite : new boolean[] {false, true}) {
+      StringWriter sw = new StringWriter();
+      VcfWriter.Builder builder = new VcfWriter.Builder().toWriter(new PrintWriter(sw));
+      if (validateBeforeWrite) {
+        builder.validateBeforeWrite();
+      }
+      VcfWriter writer = builder.build();
+      VcfFormatException infoEx =
+          assertThrows(VcfFormatException.class, () -> writer.writeHeader(badInfo));
+      assertTrue(infoEx.getMessage().contains("INFO metadata contains a null entry"),
+          () -> "validateBeforeWrite=" + validateBeforeWrite + ": " + infoEx.getMessage());
 
-    metadata.getPedigrees().add(null);
-    VcfFormatException pedigreeEx = assertThrows(VcfFormatException.class,
-        () -> writer.writeLine(metadata, position, Collections.emptyList()));
-    assertTrue(pedigreeEx.getMessage().contains("PEDIGREE metadata contains a null entry"));
+      StringWriter sw2 = new StringWriter();
+      VcfWriter.Builder builder2 = new VcfWriter.Builder().toWriter(new PrintWriter(sw2));
+      if (validateBeforeWrite) {
+        builder2.validateBeforeWrite();
+      }
+      VcfWriter writer2 = builder2.build();
+      VcfFormatException pedigreeEx =
+          assertThrows(VcfFormatException.class, () -> writer2.writeHeader(badPedigree));
+      assertTrue(pedigreeEx.getMessage().contains("PEDIGREE metadata contains a null entry"),
+          () -> "validateBeforeWrite=" + validateBeforeWrite + ": " + pedigreeEx.getMessage());
+    }
   }
 
   @Test
   public void testValidateBeforeWriteRejectsNullMetadataKeyInsteadOfThrowingNpe() throws Exception {
     // regression test: unlike the null VALUE case above, LinkedHashMap also tolerates a null KEY, so
-    // metadata.getInfo().put(null, someInfoMetadata) reaches validateKeyedMetadataEntries with mapKey itself
-    // null. Reachable on the very FIRST writeHeader() call, not just the writeLine()-after-mutation scenario the
-    // null-entry test above needs -- validateMetadata() (called at the start of writeHeader() in
-    // validateBeforeWrite() mode) runs validateKeyedMetadataEntries directly, and that method's own null-VALUE
-    // guard doesn't catch a null KEY -- only the later mapKey.equals(id) check further down does.
+    // an INFO map with a null KEY reaches validateKeyedMetadataEntries with mapKey itself null -- that method's
+    // own null-VALUE guard doesn't catch it; only the later mapKey.equals(id) check further down does.
+    // validateMetadata() (called at the start of writeHeader() in validateBeforeWrite() mode) runs
+    // validateKeyedMetadataEntries directly, so this fires on the very first writeHeader() call. Reached via
+    // trustedMetadata() (see its Javadoc) now that getInfo() is an unmodifiable view.
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
-        .addInfo(new InfoMetadata(LENIENT_CONTEXT, "AF", "d", InfoType.Float, "A", null, null))
-        .build();
-    metadata.getInfo().put(null, new InfoMetadata(LENIENT_CONTEXT, "AF2", "d2", InfoType.Float, "A", null, null));
+    Map<String, InfoMetadata> infoWithNullKey = new LinkedHashMap<>();
+    infoWithNullKey.put("AF", new InfoMetadata(LENIENT_CONTEXT, "AF", "d", InfoType.Float, "A", null, null));
+    infoWithNullKey.put(null, new InfoMetadata(LENIENT_CONTEXT, "AF2", "d2", InfoType.Float, "A", null, null));
+    VcfMetadata metadata = trustedMetadata("VCFv4.2", infoWithNullKey, null, null);
 
     VcfFormatException ex = assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
     assertTrue(ex.getMessage().contains("INFO metadata contains a null key"));
@@ -2327,17 +2376,23 @@ public class VcfWriterTest {
     // after writeHeader() requires rebuilding the entire header text on every writeLine() call -- a real
     // per-record cost. This specific case is deliberately NOT promoted to the default fast path and remains
     // validateBeforeWrite()-only; this test pins that boundary so it isn't accidentally regressed later.
+    // see testValidateBeforeWriteRejectsMetadataMutatedAfterHeaderWritten for why the drift is produced
+    // through trustedMutableProperties() rather than a (since-removed) instance mutator
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
+    InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "NS", "d", InfoType.Integer, "1", null, null);
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addInfo(info)
+        .build();
     writer.writeHeader(metadata);
-    metadata.addInfo(new InfoMetadata(metadata.getContext(), "NS", "d", InfoType.Integer, "1", null, null));
+    metadata.getInfo().get("NS").trustedMutableProperties().put("Description", "\"changed after the header\"");
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
     writer.writeLine(metadata, position, Collections.emptyList());
     // no exception thrown -- the assertion is that this line completes normally
     // and the emitted header genuinely does not reflect the post-header mutation, since it happened too late to be
     // written -- this default-mode path doesn't detect or care
-    assertFalse(sw.toString().contains("##INFO=<ID=NS"));
+    assertTrue(sw.toString().contains("Description=\"d\""));
+    assertFalse(sw.toString().contains("changed after the header"));
   }
 
   @Test
@@ -2423,7 +2478,7 @@ public class VcfWriterTest {
     org.pharmgkb.parser.vcf.ContigMetadata contig =
         new org.pharmgkb.parser.vcf.ContigMetadata(LENIENT_CONTEXT, "1", 1000L, "GRCh38", null,
             null, null, null);
-    contig.getPropertiesRaw().put(org.pharmgkb.parser.vcf.ContigMetadata.URL, "not a url");
+    contig.trustedMutableProperties().put(org.pharmgkb.parser.vcf.ContigMetadata.URL, "not a url");
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
         .addContig(contig)
         .setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
@@ -2477,7 +2532,7 @@ public class VcfWriterTest {
     try {
       try (VcfWriter writer = new VcfWriter.Builder().toFile(outFile).warningsToFile(warningsFile).build()) {
         writer.writeHeader(metadata); // default mode -- no validateBeforeWrite()
-        contig.getPropertiesRaw().put(org.pharmgkb.parser.vcf.ContigMetadata.URL, "not a url");
+        contig.trustedMutableProperties().put(org.pharmgkb.parser.vcf.ContigMetadata.URL, "not a url");
         contig.validate();
       }
       assertFalse(java.nio.file.Files.readString(warningsFile).contains("is malformed"));
@@ -2517,7 +2572,7 @@ public class VcfWriterTest {
       try (VcfWriter firstWriter = new VcfWriter.Builder().toFile(tempDir.resolve("first.vcf"))
           .warningsToFile(firstWarningsFile).build()) {
         firstWriter.writeHeader(metadata);
-        contig.getPropertiesRaw().put(org.pharmgkb.parser.vcf.ContigMetadata.URL, "not a url");
+        contig.trustedMutableProperties().put(org.pharmgkb.parser.vcf.ContigMetadata.URL, "not a url");
         contig.validate(); // warning #1 -> the contig's own fixed destination, not firstWarningsFile
 
         try (VcfWriter secondWriter = new VcfWriter.Builder().toFile(tempDir.resolve("second.vcf"))
@@ -2646,23 +2701,30 @@ public class VcfWriterTest {
   }
 
   @Test
-  public void testValidateBeforeWriteStillDetectsAPostHeaderFileFormatRespelling() throws Exception {
+  public void testWriteHeaderDerivesFileFormatFromTheMetadataNotItsContext() throws Exception {
     // regression test for the same root cause as above, on the other side: buildHeaderLines() must derive
     // ##fileformat from the metadata argument, not read it back off the fixed VcfContext. Sourcing it from the
-    // context would make writeLine()'s recomputed header text identical no matter what the caller did to the
-    // metadata's own declaration, silently blinding the header-mutation snapshot. VcfMetadata.setFileFormat
-    // only permits a re-spelling of the same version (it must agree with its own context), but that still
-    // changes the emitted bytes.
+    // context would make writeLine()'s recomputed header text identical no matter what the metadata's own
+    // declaration said, silently blinding the header-mutation snapshot.
+    //
+    // This used to be pinned by re-spelling the version through VcfMetadata.setFileFormat() after writeHeader()
+    // and asserting writeLine() then rejected the drift. Freezing the metadata layer removed setFileFormat()
+    // and made m_fileFormat final, so that drift is now structurally impossible -- which is the stronger
+    // guarantee, but leaves the underlying "read it off the metadata, not the context" invariant untested.
+    // Pin it directly instead: "VCFv4.02" and "VCFv4.2" are the same version (so they agree with the context,
+    // which compares canonicalized) but different bytes, so the emitted line proves which source was used.
     StringWriter sw = new StringWriter();
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.02")
         .setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
         .build();
+    assertEquals("VCFv4.2", LENIENT_CONTEXT.getDeclaredFileFormat());
     try (VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build()) {
       writer.writeHeader(metadata);
-      assertTrue(sw.toString().startsWith("##fileformat=VCFv4.2\n"), sw::toString);
-      metadata.setFileFormat("VCFv4.02"); // same version, different spelling -- still different output bytes
+      assertTrue(sw.toString().startsWith("##fileformat=VCFv4.02\n"), sw::toString);
+      // and a data line still writes cleanly: the recomputed header text matches the snapshot, so the
+      // header-drift guard does not misfire on a spelling the metadata itself has held all along
       VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 100, "A", null, -1);
-      assertThrows(VcfFormatException.class, () -> writer.writeLine(metadata, position, List.of()));
+      writer.writeLine(metadata, position, List.of());
     }
   }
 

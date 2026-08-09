@@ -14,7 +14,7 @@ import org.jspecify.annotations.Nullable;
  *
  * @author Mark Woon
  */
-public class FormatMetadata extends IdDescriptionMetadata {
+public final class FormatMetadata extends IdDescriptionMetadata {
 
   public static final String DESCRIPTION = "Description";
   public static final String NUMBER = "Number";

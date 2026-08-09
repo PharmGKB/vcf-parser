@@ -57,12 +57,11 @@ warned unconditionally, so equivalent invalid content behaved differently purely
 reached for -- a typed overload staying strict under a lenient builder, a map overload staying lenient under a
 strict one.
 
-A built `VcfMetadata` object's own post-build instance methods (`addInfo`, `addAlt`, `removeSample`, etc.) are
-not a separate, third case: `VcfMetadata` stores the `VcfContext` its `Builder` was constructed with, and its
-own `addXxx` methods reuse that same field -- so a `VcfMetadata` built from a strict context stays strict for
-its own later `addXxx` calls too, and one built from a lenient context stays lenient, routed to that same
-context's sink. This is worth stating explicitly since it is not obvious from reading `Builder` alone, and is
-easy to mistake for "`addXxx` is always lenient, regardless of how the object was built."
+There is no third case for a built `VcfMetadata`. It is immutable: it has no instance `addXxx`/`removeXxx`
+methods and every collection getter returns an unmodifiable view, so the only way to produce a changed
+`VcfMetadata` is `toBuilder()` -- which carries the original's `VcfContext` over by reference, keeping the
+strict/lenient decision and the warnings sink identical across the copy. A declaration built under one context
+cannot be moved into a metadata object built under another by any route (see `VcfMetadata.checkSameContext`).
 
 `VcfPosition`'s own structural checks (`checkChromosome`, `checkPosition`, `checkRef`) are not part of either
 shape above and take no `warnings` parameter at all -- they always throw, in every constructor. This is
@@ -138,14 +137,15 @@ condition check is an always-throwing helper class rather than an inline branch.
   Javadoc for the measured cost this avoids.
 - **`PedigreeMetadata`**: also not part of it -- it has no `init()` and no construction-time warn
   site of its own to route. Its only interesting behavior, duplicate-ID handling, lives in
-  `VcfMetadata.addPedigree`/`Builder.addPedigree`, which are covered by the `VcfMetadata`/`Builder` entry above.
-  Unlike every other `BaseMetadata` subclass, its properties are immutable after construction -- `getPropertiesRaw()`
-  returns an unmodifiable view, and `putPropertyRaw`/`putAndQuoteProperty` unconditionally throw
-  `UnsupportedOperationException`, not `VcfFormatException` -- this isn't a content-validity rejection subject to
-  the strict/lenient split, it's "this operation is never supported on this type," the same category as any other
-  JDK unmodifiable-collection contract. See `PedigreeMetadata`'s own class javadoc for why (it exists so
-  `VcfMetadata.addPedigree`'s duplicate-ID cache can trust that a stored entry's `ID` can never change out from
-  under it).
+  `Builder.addPedigree`, which is covered by the `VcfMetadata`/`Builder` entry above.
+- **The `BaseMetadata` hierarchy's immutability**: not part of the strict/lenient split either. Every
+  declaration's properties are fixed after construction -- `getPropertiesRaw()`/`getPropertyKeys()` return
+  unmodifiable views, whose mutation attempts throw `UnsupportedOperationException`, not `VcfFormatException`.
+  That isn't a content-validity rejection subject to the split; it's "this operation is never supported,"
+  the same category as any other JDK unmodifiable-collection contract. `PedigreeMetadata` reached this state
+  first (so `Builder.addPedigree`'s duplicate-ID cache could trust that a stored entry's `ID` can never change
+  out from under it) via its own local overrides; those were removed once the base class itself became
+  immutable and subsumed them.
 - **`VcfFloat`**: a different case again. A genuinely malformed value (neither the special-value pattern nor a
   valid decimal) always throws from `parse(String)` -- in both the public single-argument overload and the
   `public` (but `@RestrictedApi`/`@hidden`, not part of this library's supported public API --
@@ -204,6 +204,17 @@ condition check is an always-throwing helper class rather than an inline branch.
   still rejects a null position and a null sample list -- `MemoryMappedVcfLineParser.parseLine` relies on that
   last guarantee and deliberately does not re-check either. They look like one pattern; check which checks a
   given trusted-bypass method actually skips before assuming one is a precedent for another.
+- The metadata layer has two package-private bypasses of the same family, added when it was frozen, and they
+  differ from the five above in one important way: **neither has a production call site.**
+  `BaseMetadata.trustedMutableProperties()` hands back the live properties map (skipping every check
+  `putPropertyRaw`/`putAndQuoteProperty` run), and `VcfMetadata`'s own constructor is package-private rather
+  than private (it copies its collections but never re-checks their contents -- a null declaration under a map
+  key, a null raw-property key, a duplicate PEDIGREE ID all pass through). `VcfMetadata.Builder#build()` is the
+  constructor's one production caller; `trustedMutableProperties()` has none at all. They exist so this
+  package's own tests can still synthesize the malformed input `VcfWriter`'s defensive checks are written
+  against, now that no public API route can: every metadata collection getter is an unmodifiable view and there
+  are no instance mutators left. A test using either is asserting on a writer-side guard, not on supported
+  behavior.
 
 ## Known, permanent deviations
 

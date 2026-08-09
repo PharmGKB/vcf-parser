@@ -252,8 +252,10 @@ for rejection purposes, but they are still a data-loss case in practice.
   substitutes `.` for an empty entry at any position in a multi-value list (e.g. a live mutation producing
   `["1", "", "2"]`), matching the position-dependent-list rule above -- this half previously only handled the
   single-value case, silently writing a literal zero-length field (`XY=1,,2`) for the multi-value one.
-- `VcfMetadata.Builder.addRawProperty()`, and `VcfMetadata.addAssembly()` / `addPedigreeDatabase()` -- warn and
-  drop a generic metadata property with an empty value (`isEmptyMetadataValue`), or one wrapped in angle
+- `VcfMetadata.Builder.addRawProperty()` -- the single entry point for a generic `##key=value` property,
+  including `##assembly` and `##pedigreeDB` (the dedicated `VcfMetadata.addAssembly()`/`addPedigreeDatabase()`
+  instance methods were removed when the metadata layer was frozen; they applied these same checks). Warns and
+  drops a generic metadata property with an empty value (`isEmptyMetadataValue`), or one wrapped in angle
   brackets whose inner content is empty or has no `=` (`collidesWithAttributeListGrammar`, e.g. `<>` or
   `<http://foo.com>`) under a lenient `VcfContext`; under a strict one, both conditions throw
   `VcfFormatException` instead -- see `VALIDATION_PHILOSOPHY.md`. The two conditions

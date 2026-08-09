@@ -7,8 +7,10 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * A VCF metadata element with an Id (called "ID").
+ * <p>
+ * {@code sealed}: see {@link BaseMetadata}'s class Javadoc for why the hierarchy is closed.
  */
-public abstract class IdMetadata extends BaseMetadata {
+public abstract sealed class IdMetadata extends BaseMetadata permits IdDescriptionMetadata, ContigMetadata {
 
   public static final String ID = "ID";
 
@@ -107,7 +109,7 @@ public abstract class IdMetadata extends BaseMetadata {
    * @return Null only when incorrectly constructed without one
    */
   @Nullable
-  public String getId() {
+  public final String getId() {
     return getPropertyRaw(ID);
   }
 

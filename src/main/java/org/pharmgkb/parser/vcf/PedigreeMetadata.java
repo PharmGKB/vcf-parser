@@ -1,6 +1,5 @@
 package org.pharmgkb.parser.vcf;
 
-import java.util.Collections;
 import java.util.Map;
 
 
@@ -12,20 +11,28 @@ import java.util.Map;
  * this class has no typed constructor mirroring a fixed field set -- only the raw properties map is exposed,
  * via the inherited {@link BaseMetadata} accessors.
  * <p>
- * Unlike every other {@link BaseMetadata} subclass, this class's properties are immutable after construction:
- * {@link #getPropertiesRaw()} returns an unmodifiable view, and {@link #putPropertyRaw}/{@link
- * #putAndQuoteProperty} both throw. This class is also {@code final} so no subclass can reintroduce mutability
- * by overriding those methods. The only way to change a PEDIGREE entry's content is to build a new instance and
- * use {@link VcfMetadata#removePedigree}/{@link VcfMetadata#addPedigree} (or the equivalent direct add/remove
- * mutation of the live list returned by {@link VcfMetadata#getPedigrees()}) to swap it in. This is deliberate,
- * not merely incidental: {@link VcfMetadata#addPedigree}'s duplicate-ID dedup caches seen IDs for performance
- * (see its own javadoc), and that cache is only invalidated by a structural change to {@code m_pedigree} (an
- * add, a remove, or the like) -- if a {@code PedigreeMetadata} already in the list could have its own {@code
- * ID} property mutated in place, the cache would have no way to detect that and could give a stale answer in
- * either direction. Making this class immutable removes that possibility entirely, rather than accepting it as
- * a residual risk. (A {@code List.set(i, ...)}/{@code ListIterator.set(...)} replacement of a list slot's
- * occupant is a separate, narrower, still-accepted residual gap unrelated to this class's own mutability -- see
- * {@code WONT_FIX.md}.)
+ * This class's properties are immutable after construction, and more strictly so than the rest of the
+ * hierarchy. Every {@link BaseMetadata} subclass is immutable through this library's <em>public</em> API (see
+ * that class's own Javadoc), but this one also blocks the two package-private inserters: {@link #putPropertyRaw}
+ * and {@link #putAndQuoteProperty} both throw {@link UnsupportedOperationException} here. That costs nothing --
+ * unlike {@code InfoMetadata} and friends, this class has no typed constructor that needs to insert anything,
+ * since {@code ##PEDIGREE} has no fixed schema. The only way to change a PEDIGREE entry's content is to build a
+ * new instance and rebuild the {@link VcfMetadata} around it via {@link VcfMetadata#toBuilder()}.
+ * <p>
+ * That extra strictness is deliberate, not incidental: {@code VcfMetadata.Builder}'s {@code addPedigree}
+ * dedupes on a {@code Set} of the {@code ID}s it has already seen, and nothing recomputes that set. If a
+ * {@code PedigreeMetadata} already in the builder's list could have its own {@code ID} mutated in place, the
+ * set would silently go stale -- a genuinely new {@code ID=A} would be rejected as a duplicate of an {@code A}
+ * that no longer exists, and the real duplicate would be accepted. The six keyed types cannot make the same
+ * guarantee (their typed constructors need the inserters), which is why the equivalent
+ * {@code getId()}-vs-map-key gap for them is a documented, writer-caught residual rather than a closed one --
+ * see {@code WONT_FIX.md}.
+ * <p>
+ * One in-package route remains, for every declaration type including this one:
+ * {@code BaseMetadata.trustedMutableProperties()}, the deliberately unchecked test-only bypass. It is
+ * package-private and has no production call site, but a caller reaching for it on a stored PEDIGREE entry can
+ * still desync the builder's set. Nothing may treat "the PEDIGREE dedup set can never go stale" as an absolute
+ * invariant of this package's own code -- only of its public API.
  *
  * @author Mark Woon
  */
@@ -36,29 +43,20 @@ public final class PedigreeMetadata extends BaseMetadata {
   }
 
   /**
-   * @return An unmodifiable view of the backing properties map -- unlike {@link BaseMetadata#getPropertiesRaw()},
-   * a mutation attempt throws {@link UnsupportedOperationException} rather than silently succeeding. See this
-   * class's own javadoc for why.
+   * Always throws: this class's properties are immutable after construction, including to this package's own
+   * code. See this class's own Javadoc for why it is stricter here than in {@link BaseMetadata}.
    */
   @Override
-  public Map<String, String> getPropertiesRaw() {
-    return Collections.unmodifiableMap(super.getPropertiesRaw());
-  }
-
-  /**
-   * Always throws: this class's properties are immutable after construction. See this class's own javadoc.
-   */
-  @Override
-  public void putPropertyRaw(String key, String value) {
+  void putPropertyRaw(String key, String value) {
     throw new UnsupportedOperationException(
         "PedigreeMetadata's properties are immutable after construction; build a new instance instead");
   }
 
   /**
-   * Always throws: this class's properties are immutable after construction. See this class's own javadoc.
+   * Always throws: this class's properties are immutable after construction. See this class's own Javadoc.
    */
   @Override
-  public void putAndQuoteProperty(String key, String value) {
+  void putAndQuoteProperty(String key, String value) {
     throw new UnsupportedOperationException(
         "PedigreeMetadata's properties are immutable after construction; build a new instance instead");
   }

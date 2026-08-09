@@ -1175,7 +1175,7 @@ public class VcfPositionTest {
     // regression test: isDuplicateAt's allocation-free scan is O(n) per call (O(n^2) overall) -- fine for a
     // typically-tiny ID list, but ID/FILTER/FORMAT are delimiter-separated lists inside a single column whose
     // element count is bounded only by line length, i.e. attacker-controlled and unbounded, the same DoS shape
-    // as the already-fixed ##PEDIGREE O(n^2) issue in VcfMetadata.hasPedigreeIdCollision. An earlier version of
+    // as the already-fixed ##PEDIGREE O(n^2) issue in VcfMetadata.Builder.addPedigree. An earlier version of
     // this fix wrongly assumed this list's length was bounded by column structure; a real measurement showed a
     // 100,000-ID single record going from 91 ms (HashSet) to 25.4 SECONDS (pure scan) -- DUPLICATE_SCAN_THRESHOLD
     // exists to keep this bounded by falling back to a HashSet once the list is no longer small. 3 seconds is a

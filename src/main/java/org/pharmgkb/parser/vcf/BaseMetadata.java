@@ -15,11 +15,36 @@ import org.slf4j.helpers.MessageFormatter;
 /**
  * VCF metadata in the format XXX=&lt;key=value,key=value,...&gt;.
  * The properties <em>are case-sensitive</em>.
+ * <p>
+ * <strong>Effectively immutable through this library's public API, and not thread-safe.</strong> No public
+ * method mutates a declaration's properties: {@link #getPropertiesRaw()} and {@link #getPropertyKeys()} both
+ * return unmodifiable views, and the property-inserting methods ({@code putPropertyRaw}/
+ * {@code putAndQuoteProperty}) are package-private, reachable only by this package's own subclass constructors,
+ * which run before the instance escapes. "Effectively" rather than outright immutable for two reasons, neither
+ * externally observable for a single-threaded caller: those two unmodifiable views are memoized into fields on
+ * first access (an unsynchronized lazy write), and {@link InfoMetadata}/{@link FormatMetadata} recompute their
+ * cached {@code Type} field inside {@link #validate()}. Because of those lazy writes, this class makes a
+ * <em>value</em> guarantee, not a concurrency guarantee -- do not share an instance across threads without
+ * external synchronization.
+ * <p>
+ * This hierarchy is {@code sealed}: every subclass is in this package and is itself {@code sealed} or
+ * {@code final}, so no external subclass can override a getter to hand back mutable content and reintroduce
+ * the mutability this class no longer has.
+ *
  * @author Douglas Myers-Turnbull
  */
-public class BaseMetadata {
+public sealed class BaseMetadata permits IdMetadata, PedigreeMetadata {
 
   private final Map<String, String> m_properties;
+  /**
+   * Memoized unmodifiable views over {@link #m_properties}. Built on first access and reused thereafter, so a
+   * repeated getter call in a hot path does not allocate a fresh wrapper each time. Safe to cache even though
+   * subclass constructors keep inserting into {@code m_properties} after this class's own constructor returns:
+   * both are <em>views</em> over the live backing map, not snapshot copies, so they always reflect its current
+   * contents. {@code m_properties} itself is never reassigned.
+   */
+  private @Nullable Map<String, String> m_propertiesRawView;
+  private @Nullable Set<String> m_propertyKeysView;
   private final String m_label;
   private final VcfContext m_context;
   /**
@@ -102,9 +127,14 @@ public class BaseMetadata {
   }
 
   /**
-   * Re-validates the current properties after possible mutation through {@link #getPropertiesRaw()}. ({@link
-   * PedigreeMetadata} overrides {@link #getPropertiesRaw()} to be unmodifiable, so this is a no-op re-check for
-   * that subclass specifically -- there is nothing for it to have mutated.)
+   * Re-validates the current properties.
+   * <p>
+   * Every public construction path already validates once, and no public method can mutate a declaration
+   * afterwards (see this class's own Javadoc), so for a declaration obtained through this library's public API
+   * the property checks below are a no-op re-check. They stay because {@code VcfWriter}'s
+   * {@code validateBeforeWrite()} mode calls this on every declaration it is handed, and because the
+   * package-private {@link #trustedMutableProperties()} bypass can put a same-package caller's declaration into
+   * a state no public route can reach. Subclasses override this to re-run their own typed checks as well.
    */
   public void validate() {
     validateProperties();
@@ -115,12 +145,13 @@ public class BaseMetadata {
       if (entry.getKey() == null) {
         throw new VcfFormatException("Metadata contains a null property name");
       }
-      // putPropertyRaw/putAndQuoteProperty already reject a null value at the point of insertion; this closes
-      // the same gap for a value inserted directly through getPropertiesRaw()'s live view, bypassing those put
-      // methods entirely. Unreachable from real VCF parsing (InternalUtils.splitProperty always returns two
-      // non-null halves or throws), but this loop already runs unconditionally at construction (via the
-      // Map-based constructor every parsed declaration uses) and on every validate() re-check, so this is one
-      // more check on an already-active path, not a new one.
+      // putPropertyRaw/putAndQuoteProperty already reject a null value at the point of insertion, and
+      // getPropertiesRaw() is unmodifiable, so no public route can introduce one; this closes the same gap for
+      // a value inserted through the package-private trustedMutableProperties() bypass. Unreachable from real
+      // VCF parsing (InternalUtils.splitProperty always returns two non-null halves or throws), but this loop
+      // already runs unconditionally at construction (via the Map-based constructor every parsed declaration
+      // uses) and on every validate() re-check, so this is one more check on an already-active path, not a new
+      // one.
       if (entry.getValue() == null) {
         throw new VcfFormatException("Metadata property \"" + entry.getKey() + "\" has a null value");
       }
@@ -129,7 +160,7 @@ public class BaseMetadata {
   }
 
   @Nullable
-  public String getPropertyUnquoted(String key) {
+  public final String getPropertyUnquoted(String key) {
     String got = m_properties.get(key);
     if (got == null) {
       return null;
@@ -138,15 +169,18 @@ public class BaseMetadata {
   }
 
   @Nullable
-  public String getPropertyRaw(String key) {
+  public final String getPropertyRaw(String key) {
     return m_properties.get(key);
   }
 
   /**
    * @return A new map of every property, unquoted -- the map-returning complement to
-   * {@link #getPropertyUnquoted(String)}.
+   * {@link #getPropertyUnquoted(String)}. Unlike {@link #getPropertiesRaw()}/{@link #getPropertyKeys()}, this
+   * is a freshly-allocated snapshot copy rather than an unmodifiable view, so it is safe for a caller to mutate
+   * and it is deliberately <em>not</em> memoized: mutating it affects only the returned copy, never this
+   * declaration.
    */
-  public Map<String, String> getPropertiesUnquoted() {
+  public final Map<String, String> getPropertiesUnquoted() {
     Map<String, String> map = new HashMap<>();
     for (Map.Entry<String, String>  entry : m_properties.entrySet()) {
       map.put(entry.getKey(), InternalUtils.unquote(entry.getValue()));
@@ -155,29 +189,57 @@ public class BaseMetadata {
   }
 
   /**
-   * @return The backing, mutable properties map. Unlike {@link #putPropertyRaw} and {@link #putAndQuoteProperty},
-   * mutations made directly through this map do not run {@link InternalUtils#checkNoLineTerminator}.
-   * <strong>{@link PedigreeMetadata} overrides this to return an unmodifiable view instead</strong> -- see its
-   * own class javadoc for why; that subclass's properties are immutable after construction.
+   * @return An order-preserving, unmodifiable view of this declaration's raw properties. A mutation attempt on
+   * the returned map -- including {@link Map.Entry#setValue} on one of its entries -- throws
+   * {@link UnsupportedOperationException} rather than silently changing this declaration.
    */
-  public Map<String, String> getPropertiesRaw() {
+  public final Map<String, String> getPropertiesRaw() {
+    if (m_propertiesRawView == null) {
+      m_propertiesRawView = Collections.unmodifiableMap(m_properties);
+    }
+    return m_propertiesRawView;
+  }
+
+  /**
+   * @return An order-preserving, unmodifiable view of every property key. Like {@link #getPropertiesRaw()}, a
+   * mutation attempt directly on the returned set (e.g. {@link Set#remove}) throws
+   * {@link UnsupportedOperationException}.
+   */
+  public final Set<String> getPropertyKeys() {
+    if (m_propertyKeysView == null) {
+      m_propertyKeysView = Collections.unmodifiableSet(m_properties.keySet());
+    }
+    return m_propertyKeysView;
+  }
+
+  /**
+   * The live, mutable backing properties map -- the one route that can still change a declaration after
+   * construction, deliberately kept package-private so no caller outside this library can reach it.
+   * <p>
+   * This is the metadata-layer counterpart of {@code VcfContext.newPositionCopyingTrustedFields} and
+   * {@code VcfContext.newTrustedSample}: a trusted, validation-skipping bypass that exists so this package's
+   * own tests can still synthesize the malformed declarations {@code VcfWriter}'s defensive checks are written
+   * against, now that no public API route can produce one. Unlike {@link #putPropertyRaw}/
+   * {@link #putAndQuoteProperty} it runs no checks at all, so it can also introduce a null key/value or a line
+   * terminator. Not for production code: nothing in {@code src/main} calls it.
+   */
+  final Map<String, String> trustedMutableProperties() {
     return m_properties;
   }
 
   /**
-   * @return An order-preserving, unmodifiable view of every property key. Unlike {@link #getPropertiesRaw()},
-   * a mutation attempt directly on the returned set (e.g. {@link Set#remove}) throws
-   * {@link UnsupportedOperationException} rather than silently affecting this instance -- a later mutation made
-   * through {@link #getPropertiesRaw()}/{@link #putPropertyRaw}/{@link #putAndQuoteProperty} is, however, still
-   * reflected here, since this remains a view over the live backing map, not a snapshot copy. ({@link
-   * PedigreeMetadata} is the one exception: since its {@link #getPropertiesRaw()} override is itself
-   * unmodifiable, there is no later mutation for this view to reflect.)
+   * Inserts a property, quoting {@code value}. Package-private, not public: a declaration is immutable through
+   * this library's public API (see this class's own Javadoc), and this exists only so a subclass constructor
+   * can populate its own typed properties -- with {@link InternalUtils#checkNoLineTerminator} applied, which a
+   * direct field assignment would skip -- before the instance escapes.
+   * <p>
+   * Not {@code final}, unlike the getters: {@link PedigreeMetadata} overrides this (and
+   * {@link #putPropertyRaw}) to throw, because it has no typed constructor that needs to insert anything and
+   * because {@code VcfMetadata.Builder}'s PEDIGREE duplicate-ID set would go stale if a stored entry's
+   * {@code ID} could change. The hierarchy is {@code sealed} and every subclass is in this package, so leaving
+   * this overridable opens nothing to an external caller.
    */
-  public Set<String> getPropertyKeys() {
-    return Collections.unmodifiableSet(m_properties.keySet());
-  }
-
-  public void putAndQuoteProperty(String key, String value) {
+  void putAndQuoteProperty(String key, String value) {
     // key is typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting a null key
     // reach InternalUtils.checkNoLineTerminator(key, value) below (key.contains(...) would NPE)
     if (key == null) {
@@ -190,7 +252,11 @@ public class BaseMetadata {
     m_properties.put(key, InternalUtils.quote(value));
   }
 
-  public void putPropertyRaw(String key, String value) {
+  /**
+   * Inserts a property verbatim. Package-private, and non-{@code final}, for the same reasons as
+   * {@link #putAndQuoteProperty(String, String)} -- see its Javadoc.
+   */
+  void putPropertyRaw(String key, String value) {
     if (key == null) {
       throw new VcfFormatException("Metadata contains a null property name");
     }

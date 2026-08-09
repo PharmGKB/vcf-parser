@@ -65,8 +65,11 @@ public class BaseMetadataTest {
 
   @Test
   public void testGetPropertyKeysReflectsALaterMutationMadeThroughOtherMethods() {
-    // companion test: unlike a snapshot copy, getPropertyKeys() remains a view over the live backing map --
-    // a mutation made through putPropertyRaw() after the fact is visible through a set obtained beforehand
+    // companion test: unlike a snapshot copy, getPropertyKeys() remains a view over the live backing map -- a
+    // property inserted through putPropertyRaw() after the fact is visible through a set obtained beforehand.
+    // putPropertyRaw is package-private since the metadata layer was frozen (it exists so a subclass
+    // constructor can populate its own typed properties), so this is reachable from here but not by a caller
+    // outside this library -- what makes memoizing the view safe: it is a view, never a snapshot.
     Map<String, String> map = new LinkedHashMap<>();
     map.put("ID", "DP");
     BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", map);
@@ -223,11 +226,13 @@ public class BaseMetadataTest {
   public void testValidateThrowsForNullPropertyValueInsertedViaGetPropertiesRaw() {
     // regression test: putPropertyRaw/putAndQuoteProperty already reject a null value at insertion, but
     // validateProperties() (called by validate(), and unconditionally at construction) only checked for a null
-    // key, tolerating a null value inserted directly through getPropertiesRaw()'s live view
+    // key, tolerating a null value inserted afterward. Since the metadata layer was frozen, getPropertiesRaw()
+    // is unmodifiable and no public route can reach this state at all -- trustedMutableProperties() is the
+    // package-private bypass that still can, and is what keeps this check covered.
     Map<String, String> map = new LinkedHashMap<>();
     map.put("ID", "DP");
     BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", map);
-    metadata.getPropertiesRaw().put("Extra", null);
+    metadata.trustedMutableProperties().put("Extra", null);
     VcfFormatException e = assertThrows(VcfFormatException.class, metadata::validate);
     assertTrue(e.getMessage().contains("null value"));
   }
@@ -235,12 +240,13 @@ public class BaseMetadataTest {
   @Test
   public void testCheckAttributeOrderThrowsForNullPropertyName() {
     // regression test: checkAttributeOrder() used to let CANONICAL_ATTRIBUTE_ORDER.contains(key) throw an
-    // uncaught NullPointerException for a null key (reachable via getPropertiesRaw().put(null, ...)) instead of
-    // the clean VcfFormatException validateProperties() already throws for the identical invalid state.
+    // uncaught NullPointerException for a null key instead of the clean VcfFormatException
+    // validateProperties() already throws for the identical invalid state. See the test above for why the
+    // package-private trustedMutableProperties() bypass, not getPropertiesRaw(), is the route now.
     Map<String, String> map = new LinkedHashMap<>();
     map.put("ID", "DP");
     BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", map);
-    metadata.getPropertiesRaw().put(null, "x");
+    metadata.trustedMutableProperties().put(null, "x");
     VcfFormatException e = assertThrows(VcfFormatException.class, metadata::checkAttributeOrder);
     assertTrue(e.getMessage().contains("null property name"));
   }

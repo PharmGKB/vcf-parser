@@ -395,9 +395,11 @@ public class InternalUtils {
   public static String unquote(String string) {
     // unlike this class's other null-guards (removed as dead code once the class became internal-only), this
     // one stays: BaseMetadata.getPropertiesUnquoted() iterates its live properties map and calls unquote() on
-    // every value with no guard of its own, and a caller can insert a null value directly through
-    // BaseMetadata.getPropertiesRaw()'s own documented bypass -- so this can genuinely receive null in
-    // production today, not just from a hypothetical caller ignoring this class's internal-only documentation
+    // every value with no guard of its own. Since the metadata layer was frozen, no public API route can put a
+    // null value into that map (getPropertiesRaw() is unmodifiable and validateProperties() rejects a null at
+    // construction), but the package-private BaseMetadata.trustedMutableProperties() bypass still can -- and
+    // this library's own tests use exactly that bypass to synthesize the malformed declarations VcfWriter's
+    // defensive checks are written against, so this guard is still exercised, not hypothetical.
     if (string == null) {
       throw new VcfFormatException("Cannot unquote a null string");
     }

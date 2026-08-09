@@ -65,8 +65,12 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   mismatch, a malformed `##contig` URL, or a `##contig` ID starting with `*`/`=` or containing an invalid
   character (see `VCF_SPEC_AMBIGUITIES.md`'s "`##contig` ID character set" entry). This is a
   property of the context, not of the moment of construction: calling `validate()` later on that same object
-  (e.g. after mutating it through `getPropertiesRaw()`) re-runs the same checks under that same context, so a
-  declaration built under a *lenient* context warns there and one built under a strict context throws there.
+  re-runs the same checks under that same context, so a declaration built under a *lenient* context warns
+  there and one built under a strict context throws there. (Since the metadata layer was frozen this is a
+  no-op re-check for any declaration reached through the public API -- nothing can change one after
+  construction. It stays because `VcfWriter.Builder.validateBeforeWrite()` calls it on every declaration it is
+  handed, and because the package-private `BaseMetadata.trustedMutableProperties()` bypass can still produce a
+  state no public route can.)
   **`VcfPosition.validate()` and `VcfSample.validate()` do not work this way for their recoverable conditions**
   -- those always warn, whatever context created them, because they pass their warnings sink to their check
   helpers unconditionally rather than deriving strictness from the context the way the constructor path does.
@@ -161,20 +165,22 @@ for the first case, but rejects the second (a sample property not declared in FO
 `writeHeader()` may not be called more than once, `writeLine()` may not be called before `writeHeader()`, and every
 `writeLine()` call must be given the same `VcfMetadata` object `writeHeader()` was given -- these three checks are
 enforced unconditionally, in both the default and `validateBeforeWrite()` modes, since each is a cheap, one-time
-check rather than a per-record cost. A stricter check -- that the same `VcfMetadata` object hasn't been mutated in
-place since `writeHeader()` was called (e.g. via `addInfo()`/`removeInfo()`) -- is `validateBeforeWrite()`-only,
-since detecting it requires rebuilding the entire header on every `writeLine()` call, a real per-record cost the
-default path avoids.
+check rather than a per-record cost. A stricter check -- that the same `VcfMetadata` object's emitted header text
+hasn't changed since `writeHeader()` was called -- is `validateBeforeWrite()`-only, since detecting it requires
+rebuilding the entire header on every `writeLine()` call, a real per-record cost the default path avoids.
+Freezing the metadata layer removed every public route to that drift (there are no instance mutators and no
+mutable collection getters left); the check remains live and remains tested through the package-private
+`BaseMetadata.trustedMutableProperties()` bypass.
 
 The default writer path is optimized for data written directly after parsing. It preserves parser-normalized values
 and maintains record and sample-column structure without full revalidation. If data has been mutated and a full
 structural validity and diagnostic check is required, build the writer with `VcfWriter.Builder.validateBeforeWrite()`.
 In that mode, structurally invalid output is rejected and detected semantic non-compliance is reported with a
 warning. This mode also enforces that every `INFO`/`FORMAT`/`FILTER`/`ALT`/`contig`/`SAMPLE` metadata entry's own
-`ID` property must still match the key it's stored under in `VcfMetadata`'s maps (mutating an entry's raw `ID`
-through `getPropertiesRaw()` -- changing it to a different value, or removing it entirely -- without it being
-reflected in the map key would otherwise make the header declare a different (or missing) ID than what records
-reference by that entry's map key).
+`ID` property must still match the key it's stored under in `VcfMetadata`'s maps (an entry's raw `ID` changing to
+a different value, or being removed entirely, without it being reflected in the map key would otherwise make the
+header declare a different (or missing) ID than what records reference by that entry's map key). No public API
+route can produce that divergence any more -- see the note above about the trusted bypass that still can.
 
 The writer detects a write failure (disk full, broken pipe, or an encoding failure) and reports it as an
 unchecked `java.io.UncheckedIOException`, but only checks periodically (every 1000 lines) and at

@@ -258,7 +258,40 @@ first place. `DUPLICATE_METADATA_ID_HANDLING.md`'s PEDIGREE table has been updat
 case so a future sweep doesn't re-derive the same question. Revisit only if a future bcftools version
 changes this specific behavior (see `BCFTOOLS_VERSION_DEPENDENCIES.md`).
 
-## Metadata duplicate-ID dedup caches have narrow staleness gaps for uncommon mutation patterns
+## RESOLVED: Metadata duplicate-ID dedup caches had narrow staleness gaps for uncommon mutation patterns
+
+**Both sub-cases below were closed by freezing the metadata layer** (`refactor(parser,writer)!: make metadata
+declarations immutable, closing the live-ID/key gap`), which removed the public mutation routes both depended
+on. The entry is kept, with its original reasoning intact below, because it records exactly what the two gaps
+were and why they were once accepted -- reintroducing any public post-construction mutation route to a
+`VcfMetadata` collection or a `BaseMetadata`'s properties reopens them.
+
+- **`List.set`/`ListIterator.set` on `getPedigrees()`**: `VcfMetadata.getPedigrees()` now returns
+  `Collections.unmodifiableList(...)`, so `set(i, replacement)` and `listIterator().set(...)` both throw
+  `UnsupportedOperationException`. There is no instance `addPedigree` left either, so the built object holds
+  no ID cache at all -- only `VcfMetadata.Builder` does, over a list it never exposes. (Because nothing can
+  desync it any more, that cache was simplified from a `modCount`-guarded, rebuild-on-demand
+  `TrackedPedigreeList` to a plain incrementally-maintained `Set<String>`; the staleness machinery this entry
+  describes no longer exists to be gapped.)
+- **The six `HashMap`-keyed types' in-place `ID` mutation**: this needed an already-added entry's `ID` to
+  change while its map key did not, which required `putPropertyRaw` or a live `getPropertiesRaw()`. Both are
+  gone from the public API: `getPropertiesRaw()` returns an unmodifiable view, and `putPropertyRaw`/
+  `putAndQuoteProperty` are package-private (a subclass constructor's own populate step). Point 1 of the
+  original reasoning below -- "immutability isn't available as an option here, the mutation is real, existing,
+  tested functionality" -- is what changed: the freeze removed that functionality deliberately, from the whole
+  hierarchy at once, rather than for this gap alone. `VcfWriter.validateKeyedMetadataEntries()`'s ID-vs-key
+  mismatch check remains live and remains tested (via the package-private `trustedMutableProperties()` bypass);
+  whether it can now go is Task 11's question, not this entry's.
+
+  **Scope of "closed": the public API, not this package's own code.** For the six keyed types the inserters
+  still work in-package (their typed constructors need them), so a same-package caller can still drift an
+  entry's `ID` away from its map key -- which is exactly what the writer check above exists to catch, and what
+  `VcfWriterTest` uses `trustedMutableProperties()` to exercise. `PedigreeMetadata` is the one exception: it
+  overrides both inserters to throw even in-package, because `Builder.addPedigree`'s dedup `Set` has no
+  recompute path and would silently go stale. Do not generalise PEDIGREE's stronger guarantee to the other
+  five types, or the other five's weaker one to PEDIGREE.
+
+Original reasoning, unedited:
 
 Both of this library's duplicate-ID dedup caches -- `PedigreeMetadata`'s list-based one and the six
 `HashMap`-keyed types' (INFO/FORMAT/FILTER/ALT/contig/SAMPLE) map-based one -- have a residual staleness gap

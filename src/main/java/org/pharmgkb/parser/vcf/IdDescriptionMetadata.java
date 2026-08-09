@@ -13,10 +13,14 @@ import org.jspecify.annotations.Nullable;
  * ##FILTER=<ID=ID,Description="description">
  * }
  * </pre>
+ * <p>
+ * {@code sealed}: see {@link BaseMetadata}'s class Javadoc for why the hierarchy is closed. This class is
+ * itself directly instantiable (it backs {@code ##ALT}, {@code ##FILTER} and {@code ##SAMPLE}, which share this
+ * shape), so it is {@code sealed} rather than {@code final}.
  *
  * @author Mark Woon
  */
-public class IdDescriptionMetadata extends IdMetadata {
+public sealed class IdDescriptionMetadata extends IdMetadata permits InfoMetadata, FormatMetadata {
 
   public static final String DESCRIPTION = "Description";
 
@@ -74,7 +78,7 @@ public class IdDescriptionMetadata extends IdMetadata {
    * @return Null only when incorrectly constructed without one
    */
   @Nullable
-  public String getDescription() {
+  public final String getDescription() {
     return getPropertyUnquoted(DESCRIPTION);
   }
 
