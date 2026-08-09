@@ -182,14 +182,21 @@ for rejection purposes, but they are still a data-loss case in practice.
 - `InternalUtils.dropEmptyEntries` / `InternalUtils.fillEmptyEntriesWithDot` — the two shared normalization
   strategies, used by `VcfPosition`'s own constructor-time checks and `validate()`.
 - `VcfWriter.addListOrElse()` (ID/ALT/FILTER) and `addSampleConditionally()` (a sample's FORMAT sub-field
-  value) — the default write path's own equivalent of the same two strategies. **Stale as of Task 8** (see
-  `task-8-report.md`): `VcfPosition` is now frozen, so `addListOrElse()`'s ID/ALT/FILTER empty-entry branch can
-  no longer actually be reached via a live mutation the way the wording below still describes -- it remains
-  reachable only through `VcfWriterTest`'s own package-private trusted-bypass construction (see that test
-  class), which is what keeps this row's coverage alive; `VcfSample` isn't frozen yet, so
-  `addSampleConditionally()`'s row is unaffected. Updating this row's wording, or removing the now-dead
-  guard(s) it also protects, is Task 11's job. Historical wording, still accurate about the *mechanism* if not
-  the *reachability*: for a live-mutated empty entry
+  value) — the default write path's own equivalent of the same two strategies. **Settled at Task 11**: freezing
+  `VcfPosition` (Task 8) and `VcfSample` (Task 9, commit `7dcf531`) closed every *live-mutation* route into
+  either guard, so the reachability description below (a live-mutated empty entry) is no longer accurate as
+  written -- Task 11 examined both guards and kept them, on different reasoning than "kept alive only for test
+  coverage": `addListOrElse()`'s guard is reached by `VcfContext.newPositionCopyingTrustedFields`, which skips
+  `checkIds`/`checkAltBases`/`checkFilters` outright, and `addSampleConditionally()`'s is reached by ordinary
+  construction of a legitimately-empty (not structurally invalid) sample value -- both are real production fast
+  paths (`VcfParser`'s per-record FORMAT cache, `VcfPosition.Builder.build()`), not test-only bypasses (see
+  `VcfWriter.java`'s own comments on `addListOrElse()` and `addFormatConditionally()`).
+  `VcfWriterTest`'s `testDefaultWriteDropsEmptyIdEntry`/`testDefaultWriteDropsAllEmptyIdEntriesRendersMissingValue`/
+  `testDefaultWriteDropsEmptyFilterEntry`/`testDefaultWriteSubstitutesEmptyAltEntryWithDot` reach
+  `addListOrElse()`'s branch via the package-private `newPositionCopyingTrustedFields` factory -- reachable in
+  that test only because it is in the same package as `VcfPosition`/`VcfContext`, not because the branch itself
+  is otherwise unreachable in production. Historical wording, still accurate about the *mechanism*: for an empty
+  entry
   that reaches `writeLine()` without `position.validate()`/`sample.validate()` ever having run (the default
   path skips those for performance; see `VALIDATION_PHILOSOPHY.md`). `addListOrElse()` folds the drop/substitute
   decision into its own single pass over the list rather than calling `dropEmptyEntries`/`fillEmptyEntriesWithDot`

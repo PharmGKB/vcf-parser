@@ -144,8 +144,14 @@ condition check is an always-throwing helper class rather than an inline branch.
   That isn't a content-validity rejection subject to the split; it's "this operation is never supported,"
   the same category as any other JDK unmodifiable-collection contract. `PedigreeMetadata` reached this state
   first (so `Builder.addPedigree`'s duplicate-ID cache could trust that a stored entry's `ID` can never change
-  out from under it) via its own local overrides; those were removed once the base class itself became
-  immutable and subsumed them.
+  out from under it) via its own local overrides of `putPropertyRaw`/`putAndQuoteProperty`, which throw
+  `UnsupportedOperationException` even in-package. Those overrides were kept, not subsumed, once the base
+  class itself became immutable: deleting them reopens the exact stale-dedup-cache bug they exist to prevent,
+  since the six keyed types' own `putPropertyRaw`/`putAndQuoteProperty` remain callable in-package for their
+  typed constructors' own populate step, and `PedigreeMetadata`'s dedup `Set` (unlike the six keyed types' own
+  `HashMap`, which is keyed by ID and so is self-correcting) has no recompute path if a stored entry's `ID`
+  changes out from under it. See `WONT_FIX.md`'s "Scope of 'closed': the public API, not this package's own
+  code" paragraph and `PedigreeMetadata`'s own class Javadoc.
 - **`VcfFloat`**: a different case again. A genuinely malformed value (neither the special-value pattern nor a
   valid decimal) always throws from `parse(String)` -- in both the public single-argument overload and the
   `public` (but `@RestrictedApi`/`@hidden`, not part of this library's supported public API --

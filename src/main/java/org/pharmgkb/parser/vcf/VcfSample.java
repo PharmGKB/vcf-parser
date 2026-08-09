@@ -565,9 +565,10 @@ public final class VcfSample {
 
   public boolean containsProperty(@Nullable String key) {
     // Property keys can never actually be null in this class (checkNoStructuralDelimiter rejects a null
-    // key in every constructor/mutation path), so a null argument is trivially "not present" -- the same
-    // null-tolerant-predicate shape as InternalUtils.isReservedMetadataKey and
-    // VcfMetadata.getColumnIndex()/getSampleIndex(), not a caller contract violation worth throwing over.
+    // key in every constructor; VcfSample has no mutation route at all since Task 9 froze it), so a null
+    // argument is trivially "not present" -- the same null-tolerant-predicate shape as
+    // InternalUtils.isReservedMetadataKey and VcfMetadata.getColumnIndex()/getSampleIndex(), not a caller
+    // contract violation worth throwing over.
     if (key == null) {
       return false;
     }

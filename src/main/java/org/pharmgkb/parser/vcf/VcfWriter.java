@@ -292,24 +292,12 @@ public class VcfWriter implements Closeable {
       throw new VcfFormatException("Position " + position.getChromosome() + ":" + position.getPosition() +
           " has " + samples.size() + " sample(s), but the header declares " + numSamples);
     }
-    // getChromosome()/getRef() are set via setChromosome()/setRef(), which -- like the live-view accessors above
-    // -- do not validate their input by design (see VcfPosition.validate()'s Javadoc); position.validate() above
-    // (validateBeforeWrite() mode only) would catch a null here via checkChromosome()/checkRef(), but the
-    // default path needs its own guard, since neither has a missing-value sentinel in the spec ("." means
-    // something else entirely for other columns) and StringBuilder.append(Object) would otherwise silently
-    // stringify a null into the literal text "null" instead of a clean rejection.
+    // No null/empty-CHROM or null/empty-REF guard here: VcfPosition.checkChromosome()/checkRef() run
+    // unconditionally in every constructor and are never skipped by any VcfContext trust flag (see
+    // VcfPosition's own Javadoc for its trustedFormat/trustedFields parameters), so a VcfPosition can never
+    // carry either value into this method in the first place.
     String chromosome = position.getChromosome();
-    if (chromosome == null) {
-      throw new VcfFormatException("Position has a null CHROM, which the VCF spec does not allow (CHROM has no " +
-          "missing-value sentinel)");
-    }
     String ref = position.getRef();
-    if (ref == null || ref.isEmpty()) {
-      // writing "." here would not actually be valid VCF, just a placeholder that avoids crashing on a mutated
-      // position
-      throw new VcfFormatException("Position " + chromosome + ":" + position.getPosition() +
-          " has a null or empty REF, which the VCF spec does not allow (REF has no missing-value sentinel)");
-    }
 
     StringBuilder sb = new StringBuilder();
 
@@ -335,8 +323,11 @@ public class VcfWriter implements Closeable {
     // "." (FILTER "not applied") is excluded for the same reason: it's VCF's other reserved FILTER sentinel, also
     // never expected to have its own ##FILTER=<ID=.,...> declaration. Not normally reachable as a list element --
     // VcfPosition.normalizeFilters() collapses a lone "." into an empty list, and checkFilters() rejects "."
-    // combined with another code -- but a caller can still produce it via direct mutation of the live list
-    // returned by getFilters() without calling validate() afterward.
+    // combined with another code -- but VcfContext.newPositionCopyingTrustedFields skips checkFilters entirely,
+    // so a position built via VcfPosition.Builder#build() can still carry a "." combined with another code (see
+    // that factory's own Javadoc: it trusts Builder#build() to have already re-run whichever checks a setter
+    // actually changed, and is a real production fast path, not a test-only bypass). getFilters() itself is an
+    // unmodifiable view, so there is no live-mutation route any more.
     position.getFilters().stream()
         .filter(key -> !key.equals("PASS") && !key.equals(".") && !metadata.getFilters().containsKey(key))
         .forEach(key ->

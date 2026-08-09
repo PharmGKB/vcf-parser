@@ -17,6 +17,7 @@ FORMAT, sample values, and metadata declarations) for performance -- see
 - [Reading a file](#reading-a-file)
 - [Writing a file](#writing-a-file)
 - [Validation](#validation)
+- [`VcfContext`: building VCF objects yourself](#vcfcontext-building-vcf-objects-yourself)
 - [`VcfWarnings`: explicit warning routing](#vcfwarnings-explicit-warning-routing)
 - [Conformance and dependency tests](#conformance-and-dependency-tests)
 - [Get It](#get-it)
@@ -60,7 +61,8 @@ rejected or which record wins.
 ## Writing a file
 
 [`VcfWriter`](src/main/java/org/pharmgkb/parser/vcf/VcfWriter.java) writes a `VcfMetadata` header followed by
-each data line, mirroring the constructs `VcfParser` reads back:
+each data line. Where `VcfParser` hands you a single `VcfRecord`, `writeLine` takes its `VcfPosition` and
+sample list as loose arguments:
 
 ```java
 try (VcfWriter writer = new VcfWriter.Builder().toFile(path).build()) {
@@ -98,6 +100,12 @@ Most callers never construct a model object by hand -- `VcfParser` hands you fin
 to (building a file from scratch, or a synthetic record for a test), everything is created through a
 [`VcfContext`](src/main/java/org/pharmgkb/parser/vcf/VcfContext.java): one instance per file, carrying its
 `##fileformat`, its warning destination, and whether a recoverable content violation warns or throws.
+
+Every model object (`VcfPosition`, `VcfSample`, `VcfRecord`, and the metadata layer) is immutable once
+constructed -- there are no setters. To derive a changed copy of a `VcfPosition`, `VcfSample`, or `VcfMetadata`,
+call its `toBuilder()`, change what you need on the resulting builder, and call `build()`.
+`VcfRecord` itself has no `toBuilder()` -- rebuild it from a changed `VcfPosition`/sample list via
+`VcfContext.newRecord` instead.
 
 ```java
 VcfContext ctx = VcfContext.strict("VCFv4.2");     // or VcfContext.lenient(fileFormat, warnings)

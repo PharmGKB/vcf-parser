@@ -211,6 +211,122 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testDefaultWriteRejectsNullIdEntryInsteadOfStringifyingIt() throws Exception {
+    // regression test: a null ID entry is never reachable via any public API construction path (VcfPosition's
+    // own checkIds() rejects it in every ordinary constructor call, in both strict and lenient contexts), but
+    // VcfContext.newPositionCopyingTrustedFields skips checkIds outright and is a real production fast path
+    // (VcfPosition.Builder.build()), not a test-only bypass -- see addListOrElse()'s own comment. Left unguarded,
+    // StringBuilder.append(Object) would otherwise silently stringify a null entry into the literal text "null"
+    // instead of a clean rejection. See testDefaultWriteDropsEmptyIdEntry for why this uses that factory rather
+    // than ordinary construction.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    VcfPosition position = LENIENT_CONTEXT.newPositionCopyingTrustedFields("chr1", 1,
+        Arrays.asList("rs1", null), "A", null, new BigDecimal("0"), null, null, null, -1, null, null);
+
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.emptyList()));
+    assertEquals("ID contains a null entry", e.getMessage());
+  }
+
+  @Test
+  public void testDefaultWriteRejectsNullAltEntryInsteadOfStringifyingIt() throws Exception {
+    // same reasoning as testDefaultWriteRejectsNullIdEntryInsteadOfStringifyingIt, for ALT instead of ID --
+    // checkAltBases() rejects a null entry unconditionally, so newPositionCopyingTrustedFields (which skips it)
+    // is again the only route that can reach addListOrElse()'s own null guard.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    VcfPosition position = LENIENT_CONTEXT.newPositionCopyingTrustedFields("chr1", 1, null, "A",
+        Arrays.asList("T", null), new BigDecimal("0"), null, null, null, -1, null, null);
+
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.emptyList()));
+    assertEquals("ALT contains a null entry", e.getMessage());
+  }
+
+  @Test
+  public void testDefaultWriteRejectsNullFilterEntryInsteadOfStringifyingIt() throws Exception {
+    // same reasoning as testDefaultWriteRejectsNullIdEntryInsteadOfStringifyingIt, for FILTER instead of ID --
+    // checkFilters() rejects a null entry unconditionally, so newPositionCopyingTrustedFields (which skips it)
+    // is again the only route that can reach addListOrElse()'s own null guard.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    VcfPosition position = LENIENT_CONTEXT.newPositionCopyingTrustedFields("chr1", 1, null, "A", null,
+        new BigDecimal("0"), Arrays.asList("q10", null), null, null, -1, null, null);
+
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.emptyList()));
+    assertEquals("FILTER contains a null entry", e.getMessage());
+  }
+
+  @Test
+  public void testDefaultWriteRejectsNullFormatSubFieldNameInsteadOfStringifyingIt() throws Exception {
+    // regression test: a null FORMAT sub-field name is never reachable via any public API construction path
+    // (VcfPosition's own checkFormat() rejects it unconditionally), but VcfContext.newPositionWithTrustedFormat/
+    // newPositionCopyingTrustedFields skip checkFormat outright and are real production fast paths (VcfParser's
+    // per-record FORMAT cache, VcfPosition.Builder.build()), not test-only bypasses -- see
+    // addFormatConditionally()'s own comment. Left unguarded, StringBuilder.append(Object) would otherwise
+    // silently stringify a null key into the literal text "null" instead of a clean rejection.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .build();
+    writer.writeHeader(metadata);
+    VcfPosition position = LENIENT_CONTEXT.newPositionCopyingTrustedFields("chr1", 1, null, "A", null,
+        new BigDecimal("0"), null, null, Arrays.asList("GT", null), -1, null, null);
+    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
+
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
+    assertEquals("FORMAT contains a null sub-field name", e.getMessage());
+  }
+
+  @Test
+  public void testDefaultWriteRejectsNullInfoKeyInsteadOfStringifyingIt() throws Exception {
+    // regression test: a null INFO key is never reachable via any public API construction path (VcfPosition's
+    // own checkInfoEntries() rejects it unconditionally), but VcfContext.newPositionCopyingTrustedFields skips
+    // checkInfoEntries outright and is a real production fast path (VcfPosition.Builder.build()), not a
+    // test-only bypass -- see addInfoOrDot()'s own comment.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put(null, "1");
+    VcfPosition position = LENIENT_CONTEXT.newPositionCopyingTrustedFields("chr1", 1, null, "A", null,
+        new BigDecimal("0"), null, info, null, -1, null, null);
+
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.emptyList()));
+    assertEquals("INFO column contains a null key", e.getMessage());
+  }
+
+  @Test
+  public void testDefaultWriteRejectsNullInfoValueInsteadOfStringifyingIt() throws Exception {
+    // same reasoning as testDefaultWriteRejectsNullInfoKeyInsteadOfStringifyingIt, for an INFO value instead of
+    // an INFO key.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("DP", null);
+    VcfPosition position = LENIENT_CONTEXT.newPositionCopyingTrustedFields("chr1", 1, null, "A", null,
+        new BigDecimal("0"), null, info, null, -1, null, null);
+
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.emptyList()));
+    assertEquals("INFO value for key \"DP\" is null", e.getMessage());
+  }
+
+  @Test
   public void testDefaultWriteCanonicalizesEmptyNonFlagInfoValueInsteadOfWritingBareFlagKey() throws Exception {
     // position.getInfo() is a live view a caller can mutate directly (e.g. a transformation pipeline). A single
     // empty-string value is the same internal representation VcfPosition.info() uses for a genuine Flag (no "="
@@ -629,6 +745,39 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testWriteLineDoesNotWarnAboutDotFilter() throws Exception {
+    // "." (FILTER "not applied") is VCF's other reserved FILTER sentinel, also never expected to have its own
+    // ##FILTER=<ID=.,...> declaration -- the undeclared-FILTER warning above must exclude it the same way it
+    // excludes "PASS" (see testWriteLineDoesNotWarnAboutPassFilter). Not reachable via any public API
+    // construction path any more: VcfPosition.checkFilters() unconditionally rejects "." combined with another
+    // code, in both strict and lenient contexts. VcfContext.newPositionCopyingTrustedFields skips checkFilters
+    // outright and is a real production fast path (VcfPosition.Builder.build()), not a test-only bypass -- see
+    // testDefaultWriteDropsEmptyIdEntry for why this uses that factory rather than ordinary construction.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addFilter(new IdDescriptionMetadata(LENIENT_CONTEXT, "FILTER", "STD_FILTER", "Standard filter"))
+        .build();
+    writer.writeHeader(metadata);
+    VcfPosition position = LENIENT_CONTEXT.newPositionCopyingTrustedFields("chr1", 1, null, "A", null,
+        new BigDecimal("0"), Arrays.asList("STD_FILTER", "."), null, null, -1, null, null);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertFalse(appender.anyMessageContains("has FILTER ."));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testValidateBeforeWriteWarnsWhenChromSampleMissingFromSampleMetadata() throws Exception {
     // regression test: writeHeader() previously never checked this at all, even though the same mismatch would
     // have been caught had the file been re-parsed from scratch (VcfParser has the identical check, with the
@@ -721,6 +870,46 @@ public class VcfWriterTest {
     writer.writeHeader(metadata);
     assertThrows(VcfFormatException.class,
         () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
+  }
+
+  @Test
+  public void testDefaultWriteDropsSamplePropertyNotDeclaredInFormatWithoutMisaligningColumns() throws Exception {
+    // regression test: this coverage died with the removal of TransformingVcfLineParserTest (whose
+    // testRemovingFormatKeyWithoutUpdatingSampleDropsItInWrittenOutput reached the identical defense by mutating
+    // a live VcfPosition's FORMAT list via the now-removed mutate-in-place transformation pipeline). The
+    // reconciliation-by-key-name behavior it pins (VcfWriter.java's addSampleConditionally()) is unchanged.
+    // Contrast with testValidateBeforeWriteRejectsSamplePropertyMissingFromFormat immediately above: that mode
+    // rejects the identical divergence with VcfFormatException, but the default path must instead warn and drop
+    // the sample's now-undeclared property, keeping FORMAT and the sample column in sync rather than
+    // misaligning every later value.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .build();
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("GT"), -1);
+    LinkedHashMap<String, String> sampleProps = new LinkedHashMap<>();
+    sampleProps.put("GT", "0/1");
+    sampleProps.put("DP", "5");
+    VcfSample sample = LENIENT_CONTEXT.newSample(sampleProps);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, Collections.singletonList(sample));
+      assertTrue(sw.toString().contains("\tGT\t0/1"));
+      assertFalse(sw.toString().contains("DP"));
+      assertTrue(appender.anyMessageContains("contains extra property DP"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
   }
 
   @Test

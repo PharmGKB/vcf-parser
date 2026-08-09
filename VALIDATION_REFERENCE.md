@@ -118,10 +118,15 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md)), routed to that context's
   `VcfWarnings`. `VcfParser`'s own internal use always builds a lenient context, so parsing a file's behavior
   is unchanged by any of this.
-- `VcfMetadata.Builder` and `VcfMetadata`'s own declaration mutators both throw `VcfFormatException` for a
-  declaration built under a *different* `VcfContext` instance (compared by reference, not value). `getInfo()`
-  and its siblings hand out live declarations, so without this a caller could move one between two
-  differently-configured objects and silently route its later validation warnings to the wrong sink.
+- `VcfMetadata.Builder` throws `VcfFormatException` for a declaration built under a *different* `VcfContext`
+  instance (compared by reference, not value) than the builder's own. `VcfMetadata` itself has no instance
+  mutators to add this check to -- it is immutable, and `getInfo()`/its siblings return memoized unmodifiable
+  views over declarations that are themselves immutable. The check still matters because a declaration is a
+  standalone object before it is ever added to a builder: without it, a caller could construct one under one
+  `VcfContext` and add it to a `VcfMetadata.Builder` built under a different one, silently routing that
+  declaration's own future validation (e.g. a re-run of `validate()`) to the wrong `VcfWarnings` sink than the
+  metadata object it now lives in uses. See `VALIDATION_PHILOSOPHY.md:60` and
+  `DUPLICATE_METADATA_ID_HANDLING.md:34`.
 - `VcfContext.newRecord` throws `VcfFormatException` if its position or any of its samples was created under a
   different `VcfContext` instance, for the same reason -- a record assembled from two contexts has no
   unambiguous warnings destination.

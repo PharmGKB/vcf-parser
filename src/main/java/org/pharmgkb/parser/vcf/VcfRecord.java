@@ -10,8 +10,13 @@ import org.jspecify.annotations.Nullable;
 /**
  * A single VCF data record: one {@link VcfPosition} plus its per-sample data, in column order.
  * <p>
- * Structurally immutable -- the sample list is exposed unmodifiable. The contained
- * {@link VcfPosition}/{@link VcfSample} objects carry their own mutability contract.
+ * Structurally immutable -- the sample list is exposed unmodifiable, and every field of this class is
+ * {@code final}, so this object itself is safe to publish across threads. The contained
+ * {@link VcfPosition}/{@link VcfSample} objects carry their own, separate mutability contract, unlike this
+ * class's own: {@code VcfPosition} performs unsynchronized lazy QUAL/INFO parsing on first access and is
+ * documented as not thread-safe on its own terms, so sharing a {@code VcfRecord} across threads is only as
+ * safe as sharing its contained {@code VcfPosition} would be -- this class's own structural immutability does
+ * not, by itself, make the whole record shareable.
  *
  * <p>
  * {@code final} deliberately: with overridable getters, a subclass could return mutable state and the
