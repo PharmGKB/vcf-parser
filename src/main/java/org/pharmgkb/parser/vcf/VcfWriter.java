@@ -139,6 +139,15 @@ public class VcfWriter implements Closeable {
     // very thing the cross-version check above exists to prevent, reached around it (that check only compares
     // m_targetFileFormat, which is null in the inherit-from-metadata case).
     m_context = VcfContext.lenient(declaredFileFormatFor(metadata), m_warnings);
+    // What m_context IS: the ##fileformat spelling this writer emits and the warnings sink this writer's own
+    // generated diagnostics (e.g. an undeclared INFO key) go to.
+    // What m_context is NOT: the record's semantic context. It is a fresh VcfContext built here on every
+    // writeHeader() attempt (see the comment above), so it is never reference-identical to the context that
+    // built metadata/position/samples -- not even for a straight parse-then-write. writeLine()'s own
+    // metadata/position/sample context-agreement check (Task 2) therefore pivots on metadata.getContext(), never
+    // on m_context; a later check that reused m_context here would silently always fail (or, if it fell back to
+    // value comparison instead, would silently accept components from two different contexts that merely
+    // declare the same version -- reintroducing the bug this task removes).
     if (m_validateBeforeWrite) {
       validateMetadata(metadata);
       checkSampleMetadataMatchesChromColumns(metadata);
@@ -268,6 +277,26 @@ public class VcfWriter implements Closeable {
     for (int sampleIndex = 0; sampleIndex < samples.size(); sampleIndex++) {
       if (samples.get(sampleIndex) == null) {
         throw new VcfFormatException("Sample #" + sampleIndex + " is null");
+      }
+    }
+    // Structural, not the default path's exempted VCF-semantic re-validation (AGENTS.md's Writer Validation and
+    // Round-Trip Policy): a record assembled from components built under different VcfContext instances has no
+    // unambiguous resolved version or warnings destination, so this runs in both modes, before the
+    // m_validateBeforeWrite branch below. Every argument is already known non-null at this point. metadata's own
+    // context is the pivot -- it, not m_context (see that field's own comment), is this record's actual semantic
+    // context -- so position and every sample are compared against it, closing the position-vs-samples gap too
+    // by transitivity. Reuses VcfContext.newRecord's and VcfMetadata.checkSameContext's message wording (same
+    // reference-identity rationale: two equal-valued contexts still represent two different operations with
+    // different warnings sinks) so diagnostics stay consistent across the library.
+    VcfContext context = metadata.getContext();
+    if (position.getContext() != context) {
+      throw new VcfFormatException("writeLine() was given a position created under a different VcfContext than " +
+          "the metadata; the record would have no unambiguous version or warnings destination");
+    }
+    for (int sampleIndex = 0; sampleIndex < samples.size(); sampleIndex++) {
+      if (samples.get(sampleIndex).getContext() != context) {
+        throw new VcfFormatException("Sample #" + sampleIndex + " was created under a different VcfContext than " +
+            "the metadata; the record would have no unambiguous version or warnings destination");
       }
     }
     if (m_validateBeforeWrite) {

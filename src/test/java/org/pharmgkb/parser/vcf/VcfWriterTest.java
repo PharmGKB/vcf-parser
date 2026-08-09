@@ -2522,6 +2522,117 @@ public class VcfWriterTest {
     assertTrue(e.getMessage().contains("writeLine() was given different metadata than writeHeader() used"));
   }
 
+  // ---- writeLine: metadata, position and every sample must share one VcfContext (Task 2) ----
+  //
+  // The invariant is a transitive three-way equality (metadata.getContext() == position.getContext() == every
+  // sample's context), and writeLine() already pins metadata to the header instance (see
+  // testWriteLineWithDifferentMetadataThrowsInDefaultMode above), so "metadata vs position", "metadata vs
+  // samples" and "position vs samples" are not three constructible inputs -- a foreign position is simultaneously
+  // a metadata-vs-position and a position-vs-samples mismatch, and a foreign sample is simultaneously
+  // metadata-vs-samples and position-vs-samples. Two independent mismatch shapes (foreign position, foreign
+  // sample) plus a same-context control prove the full predicate by transitivity, matching the precedent
+  // VcfContext.newRecord's own tests set (VcfContextTest.testRecordRejectsComponentsFromDifferentContexts).
+
+  @Test
+  public void testWriteLineRejectsPositionFromDifferentContextInDefaultMode() throws Exception {
+    // The two contexts are deliberately equal in value and differ only by identity, so this fails if the
+    // implementation ever compares context values instead of references (the same trap
+    // VcfContextTest.testRecordRejectsComponentsFromDifferentContexts guards for VcfContext.newRecord).
+    VcfContext ctxA = VcfContext.lenient("VCFv4.2", new VcfWarnings(new StringWriter()));
+    VcfContext ctxB = VcfContext.lenient("VCFv4.2", new VcfWarnings(new StringWriter()));
+    VcfMetadata metadata = new VcfMetadata.Builder(ctxA).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .build();
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    writer.writeHeader(metadata);
+    VcfPosition position = ctxB.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null, null,
+        List.of("GT"), -1);
+    VcfSample sample = ctxA.newSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
+    assertTrue(e.getMessage().contains("different VcfContext"));
+  }
+
+  @Test
+  public void testWriteLineRejectsPositionFromDifferentContextWhenValidateBeforeWrite() throws Exception {
+    VcfContext ctxA = VcfContext.lenient("VCFv4.2", new VcfWarnings(new StringWriter()));
+    VcfContext ctxB = VcfContext.lenient("VCFv4.2", new VcfWarnings(new StringWriter()));
+    VcfMetadata metadata = new VcfMetadata.Builder(ctxA).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .build();
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    writer.writeHeader(metadata);
+    VcfPosition position = ctxB.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null, null,
+        List.of("GT"), -1);
+    VcfSample sample = ctxA.newSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
+    assertTrue(e.getMessage().contains("different VcfContext"));
+  }
+
+  @Test
+  public void testWriteLineRejectsSampleFromDifferentContextAtIndex1InDefaultMode() throws Exception {
+    // A one-sample case would be satisfied by an implementation that only checks samples.get(0); this uses two
+    // samples, with the second one foreign, so the check must actually iterate. The message must name index 1.
+    VcfContext ctxA = VcfContext.lenient("VCFv4.2", new VcfWarnings(new StringWriter()));
+    VcfContext ctxB = VcfContext.lenient("VCFv4.2", new VcfWarnings(new StringWriter()));
+    VcfMetadata metadata = new VcfMetadata.Builder(ctxA).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1", "S2"))
+        .build();
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    writer.writeHeader(metadata);
+    VcfPosition position = ctxA.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null, null,
+        List.of("GT"), -1);
+    VcfSample sample0 = ctxA.newSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
+    VcfSample sample1 = ctxB.newSample(new LinkedHashMap<>(Map.of("GT", "1/1")));
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Arrays.asList(sample0, sample1)));
+    assertTrue(e.getMessage().contains("Sample #1"));
+    assertTrue(e.getMessage().contains("different VcfContext"));
+  }
+
+  @Test
+  public void testWriteLineRejectsSampleFromDifferentContextAtIndex1WhenValidateBeforeWrite() throws Exception {
+    VcfContext ctxA = VcfContext.lenient("VCFv4.2", new VcfWarnings(new StringWriter()));
+    VcfContext ctxB = VcfContext.lenient("VCFv4.2", new VcfWarnings(new StringWriter()));
+    VcfMetadata metadata = new VcfMetadata.Builder(ctxA).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1", "S2"))
+        .build();
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    writer.writeHeader(metadata);
+    VcfPosition position = ctxA.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null, null,
+        List.of("GT"), -1);
+    VcfSample sample0 = ctxA.newSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
+    VcfSample sample1 = ctxB.newSample(new LinkedHashMap<>(Map.of("GT", "1/1")));
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Arrays.asList(sample0, sample1)));
+    assertTrue(e.getMessage().contains("Sample #1"));
+    assertTrue(e.getMessage().contains("different VcfContext"));
+  }
+
+  @Test
+  public void testWriteLineAcceptsPositionAndSamplesFromSameContext() throws Exception {
+    // Same-context two-sample control: proves the two tests above fail because of the context mismatch, not
+    // because a two-sample writeLine() call throws for some unrelated reason.
+    VcfContext ctxA = VcfContext.lenient("VCFv4.2", new VcfWarnings(new StringWriter()));
+    VcfMetadata metadata = new VcfMetadata.Builder(ctxA).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1", "S2"))
+        .build();
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    writer.writeHeader(metadata);
+    VcfPosition position = ctxA.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null, null,
+        List.of("GT"), -1);
+    VcfSample sample0 = ctxA.newSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
+    VcfSample sample1 = ctxA.newSample(new LinkedHashMap<>(Map.of("GT", "1/1")));
+    writer.writeLine(metadata, position, Arrays.asList(sample0, sample1));
+    assertTrue(sw.toString().contains("0/1\t1/1"));
+  }
+
   // testWriteLineDoesNotDetectInPlaceMetadataMutationInDefaultMode used to sit here, pinning the boundary that
   // in-place metadata-mutation detection was validateBeforeWrite()-only (it cost a full header rebuild per
   // record). That boundary no longer exists -- the check is gone from both modes because VcfMetadata is
