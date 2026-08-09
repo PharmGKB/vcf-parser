@@ -516,11 +516,18 @@ public class InternalUtils {
    *
    * @param version the record's resolved VCF version (see {@link VcfContext#getVersion()}), passed as its own
    * argument -- never a {@link VcfContext} -- so a caller can never read it off the wrong context (e.g. a
-   * writer's own diagnostics context instead of the record's). Not yet read anywhere in this method: it is
-   * threaded through so a future version-gated reserved-key rule (in this method or in
-   * {@link #checkReservedFormatConstraints}/{@link #checkReservedInfoConstraints}) has it available at the point
-   * it needs it. Any such future check must dispatch via {@code version.isAtLeast(VcfVersion.V4_3)} (see
+   * writer's own diagnostics context instead of the record's). Read here to reject
+   * {@link ReservedFormatProperty#GenotypeLikelihoodsOfHeterogenousPloidy GLE} under VCFv4.3+ (see below), and
+   * passed on to {@link #checkReservedFormatConstraints}/{@link #checkReservedInfoConstraints} for their own
+   * version-gated rules. Any such check must dispatch via {@code version.isAtLeast(VcfVersion.V4_3)} (see
    * {@link VcfVersion#isAtLeast}), never a string or ordinal comparison on {@link VcfVersion}.
+   * @return {@code null}, after warning, when {@code key} is
+   * {@link ReservedFormatProperty#GenotypeLikelihoodsOfHeterogenousPloidy GLE} and {@code version} is VCFv4.3 or
+   * later: VCFv4.3 removed that key (VCFv4.3.tex line 2168, "Removed unused and ill-defined GLE FORMAT tag"), so
+   * there is no reserved property to convert against. Warn-and-{@code null} rather than throwing, because the
+   * only public route in is {@link VcfSample#getProperty(ReservedFormatProperty)}, a lookup-style accessor whose
+   * {@code String}-keyed sibling is null-tolerant "not present" (AGENTS.md's Public API Null-Safety Policy);
+   * silence would be indistinguishable from an absent value.
    */
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static @Nullable <T> T convertProperty(ReservedProperty key, @Nullable String value, VcfVersion version,
@@ -530,6 +537,17 @@ public class InternalUtils {
     // the wrong side's semantics applied
     String normalized = value;
     if (key instanceof ReservedFormatProperty) {
+      // Placed here, with the FORMAT dispatch, rather than in VcfSample.getProperty(ReservedFormatProperty):
+      // that method delegates to this one, so one check here covers both routes, and this method is itself
+      // public, so a guard there alone would leave this route open.
+      if (key == ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy &&
+          version.isAtLeast(VcfVersion.V4_3)) {
+        warnings.warn("FORMAT GLE is not a reserved key under VCF {} (VCFv4.3 removed it); ignoring this " +
+            "reserved-property read -- use VcfSample.getProperty(String) for the raw value, or " +
+            "getProperty(VcfPosition, VcfMetadata, String) to interpret it against its own ##FORMAT declaration",
+            version.getId());
+        return null;
+      }
       normalized = checkReservedFormatConstraints(key.getId(), value, version, warnings);
     } else if (key instanceof ReservedInfoProperty) {
       checkReservedInfoConstraints(key.getId(), value, version, warnings);
@@ -775,31 +793,47 @@ public class InternalUtils {
 
   // relocated from VcfWriter (was inlined in validateFormatValue there) so both the write path and VcfSample's
   // own read-path cardinality check can derive a FORMAT value's comma-separated pieces identically. GLE (see
-  // ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy) is exempted: its commas are part of its own
-  // internal genotype:likelihood encoding, not a delimiter between independent values.
+  // ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy) is exempted under VCFv4.2 and earlier: its
+  // commas are part of its own internal genotype:likelihood encoding, not a delimiter between independent
+  // values. VCFv4.3 removed the key (VCFv4.3.tex line 2168, "Removed unused and ill-defined GLE FORMAT tag"),
+  // so from 4.3 a key named GLE is an ordinary custom key whose value splits on commas like any other. The
+  // version test is written first so the 4.3+ path short-circuits on an enum ordinal compare instead of a
+  // String.equals -- this is a per-value call on the write path.
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
-  public static String[] splitFormatValue(String key, String value) {
-    if (key.equals(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy.getId())) {
+  public static String[] splitFormatValue(String key, String value, VcfVersion version) {
+    if (!version.isAtLeast(VcfVersion.V4_3) &&
+        key.equals(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy.getId())) {
       return new String[] { value };
     }
     return value.split(",", -1);
   }
 
-  // Reserved FORMAT keys whose formal Number=G does not describe the standard ploidy-derived genotype-ordering
-  // list that getExpectedCardinality's "G" branch computes an expected count for. GLE's value isn't
-  // comma-delimited the normal way at all (see splitFormatValue above). CNP's value IS a genuine
-  // comma-delimited list, but per its own spec prose (ReservedFormatProperty.CopyNumberPosteriorProbabilities'
-  // own comment) means "one value per potential copy number" -- a dimension nothing in a VCF record states,
-  // unlike ploidy + ALT allele count, which genotype-ordering "G" is defined from. There is no correct
-  // expected count to compare either key's actual value against, so both are exempted from the generic
-  // Number=G value-cardinality check specifically (not from Number/Type checks generally).
-  private static final Set<String> KEYS_EXEMPT_FROM_GENOTYPE_ORDERING_CARDINALITY_CHECK = Set.of(
-      ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy.getId(),
-      ReservedFormatProperty.CopyNumberPosteriorProbabilities.getId());
-
+  /**
+   * @return whether {@code key}'s formal {@code Number=G} does not describe the standard ploidy-derived
+   * genotype-ordering list that {@code getExpectedCardinality}'s {@code "G"} branch computes an expected count
+   * for, so that generic {@code Number=G} value-cardinality check specifically (not {@code Number}/{@code Type}
+   * checks generally) must be skipped.
+   * <p>
+   * Two keys qualify, for unrelated reasons, and only one of them is version-dependent:
+   * <ul>
+   *   <li>{@code GLE}, whose value isn't comma-delimited the normal way at all (see
+   *   {@link #splitFormatValue}) -- but only under VCFv4.2 and earlier, since VCFv4.3 removed the key
+   *   (VCFv4.3.tex line 2168) and a 4.3+ key named {@code GLE} is an ordinary custom key that gets the ordinary
+   *   check against whatever {@code Number} its own {@code ##FORMAT} declaration states.</li>
+   *   <li>{@code CNP}, whose value IS a genuine comma-delimited list, but per its own spec prose
+   *   ({@link ReservedFormatProperty#CopyNumberPosteriorProbabilities}'s own comment) means "one value per
+   *   potential copy number" -- a dimension nothing in a VCF record states, unlike ploidy + ALT allele count,
+   *   which genotype-ordering {@code "G"} is defined from. <b>Not version-gated</b>: {@code CNP} is reserved at
+   *   every version this library interprets, and its exemption has nothing to do with {@code GLE}'s.</li>
+   * </ul>
+   */
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
-  public static boolean isExemptFromGenotypeOrderingCardinalityCheck(String key) {
-    return KEYS_EXEMPT_FROM_GENOTYPE_ORDERING_CARDINALITY_CHECK.contains(key);
+  public static boolean isExemptFromGenotypeOrderingCardinalityCheck(String key, VcfVersion version) {
+    if (!version.isAtLeast(VcfVersion.V4_3) &&
+        key.equals(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy.getId())) {
+      return true;
+    }
+    return key.equals(ReservedFormatProperty.CopyNumberPosteriorProbabilities.getId());
   }
 
   // GL's own spec definition (VCFv4.2.tex line 224: "In presence of the GT field the same ploidy is expected

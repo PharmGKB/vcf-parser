@@ -506,7 +506,9 @@ no real tool disagreement to arbitrate in the first place, and the `"."` substit
 
 **Decision:** keep `CNP`'s declared `Number="G"` (so a genuinely wrong declared `Number` is still caught), and
 instead generalize the pre-existing `GLE`-only value-*cardinality*-check exemption
-(`InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck`) to also cover `CNP`. The lesson generalizes:
+(`InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck`) to also cover `CNP`. The two exemptions have
+been version-split since: `GLE`'s applies only under VCFv4.2 and earlier (VCFv4.3 removed the key), while
+`CNP`'s — whose rationale is this entry's, not `GLE`'s — is unconditional. The lesson generalizes:
 bcftools's silence on a specific check is not evidence it endorses either side of a disagreement — verify
 what the tool actually validates before treating its behavior as decisive.
 

@@ -92,8 +92,9 @@ public final class VcfSample {
       throw new VcfFormatException("Number of FORMAT entries does not match number of sample entries");
     }
     if (!trusted) {
+      VcfVersion version = context.getVersion();
       for (int x = 0; x < keys.size(); x++) {
-        checkNoStructuralDelimiter(keys.get(x), values.get(x));
+        checkNoStructuralDelimiter(keys.get(x), values.get(x), version);
       }
     }
     m_keys = keys;
@@ -115,8 +116,9 @@ public final class VcfSample {
       throw new VcfFormatException("Sample properties map is null");
     }
     m_properties = properties;
+    VcfVersion version = context.getVersion();
     for (Map.Entry<String, String> entry : m_properties.entrySet()) {
-      checkNoStructuralDelimiter(entry.getKey(), entry.getValue());
+      checkNoStructuralDelimiter(entry.getKey(), entry.getValue(), version);
     }
   }
 
@@ -151,18 +153,24 @@ public final class VcfSample {
    * {@link Builder#property} could; reject them so the writer's output remains re-parseable (a colon would add a
    * spurious FORMAT subfield, and a tab would add a spurious sample column).
    * <p>
-   * {@link ReservedFormatProperty#GenotypeLikelihoodsOfHeterogenousPloidy GLE} (VCFv4.1/4.2's
-   * genotype-likelihoods-of-heterogeneous-ploidy key; removed from the spec in VCFv4.3+ and confirmed absent from
-   * both the VCFv4.3 and VCFv4.4 specs) is exempted from the colon check on its <em>value</em> only: the spec's own
-   * example for this key (e.g. {@code 0:-75.22,1:-223.42,0/0:-323.03,1/0:-99.29,1/1:-802.53}) is one opaque String
-   * that uses colons internally as part of its own genotype:likelihood encoding, not a delimiter between independent
-   * FORMAT sub-fields. There is no VCF version where a key literally named {@code GLE} should still be
-   * colon-rejected: either it means this VCFv4.1/4.2 encoding (which requires colons), or -- since {@code GLE} isn't
-   * reserved past VCFv4.2 -- it's just a made-up custom key, free to contain whatever its author wants, same as any
-   * other non-reserved key today. This exemption does not apply to the key itself (a colon in the key name is always
-   * rejected) or to any other key's value.
+   * <b>Under VCFv4.2 and earlier only</b>,
+   * {@link ReservedFormatProperty#GenotypeLikelihoodsOfHeterogenousPloidy GLE} (VCFv4.1.tex line 208/VCFv4.2.tex
+   * line 225's genotype-likelihoods-of-heterogeneous-ploidy key) is exempted from the colon check on its
+   * <em>value</em> only: the spec's own example for this key
+   * ({@code GLE=0:-75.22,1:-223.42,0/0:-323.03,1/0:-99.29,1/1:-802.53}) is one opaque String that uses colons
+   * internally as part of its own genotype:likelihood encoding, not a delimiter between independent FORMAT
+   * sub-fields, so rejecting those colons would make the spec's own example unrepresentable.
+   * <p>
+   * From VCFv4.3 the exemption does not apply: VCFv4.3 removed the key (VCFv4.3.tex line 2168, "Removed unused
+   * and ill-defined GLE FORMAT tag"), so a 4.3+ key named {@code GLE} is an ordinary custom key with no reserved
+   * meaning, and its value is colon-rejected exactly like every other non-reserved key's -- a colon there would
+   * add a spurious FORMAT sub-field on write, which is precisely what this method exists to prevent. Keeping the
+   * exemption past 4.2 would privilege one arbitrary custom key name over every other.
+   * <p>
+   * The exemption never applies to the key itself (a colon in the key name is always rejected), to a tab in any
+   * value, or to any other key's value.
    */
-  private static void checkNoStructuralDelimiter(String key, @Nullable String value) {
+  private static void checkNoStructuralDelimiter(String key, @Nullable String value, VcfVersion version) {
     if (key == null) {
       throw new VcfFormatException("Sample property key is null");
     }
@@ -170,7 +178,8 @@ public final class VcfSample {
     if (key.contains(":") || key.contains("\t")) {
       throw new VcfFormatException("Sample property key \"" + key + "\" contains ':' or a tab");
     }
-    boolean isGle = key.equals(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy.getId());
+    boolean isGle = !version.isAtLeast(VcfVersion.V4_3) &&
+        key.equals(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy.getId());
     if (value != null && (value.contains("\t") || (!isGle && value.contains(":")))) {
       throw new VcfFormatException("Sample property value \"" + value + "\" for key \"" + key +
           "\" contains ':' or a tab");
@@ -191,8 +200,9 @@ public final class VcfSample {
    * class's own Javadoc). See {@code EMPTY_FIELD_HANDLING.md}.
    */
   public void validate() {
+    VcfVersion version = m_context.getVersion();
     for (Map.Entry<String, String> entry : properties().entrySet()) {
-      checkNoStructuralDelimiter(entry.getKey(), entry.getValue());
+      checkNoStructuralDelimiter(entry.getKey(), entry.getValue(), version);
       if (entry.getValue() != null && entry.getValue().isEmpty()) {
         m_warnings.warn("Sample property {} has an empty value (VCF does not allow zero-length fields); treating " +
             "it as the missing value '.'", entry.getKey());
@@ -249,6 +259,14 @@ public final class VcfSample {
   /**
    * Returns the value for the reserved property as the type specified by both {@link ReservedFormatProperty#getType()}
    * and {@link ReservedFormatProperty#isList()}.
+   *
+   * <p>
+   * Returns {@code null}, after warning, when {@code key} is
+   * {@link ReservedFormatProperty#GenotypeLikelihoodsOfHeterogenousPloidy GLE} and this sample's context declares
+   * VCFv4.3 or later: VCFv4.3 removed that key, so there is no reserved property to read. The check lives in
+   * {@code InternalUtils.convertProperty(ReservedProperty, ...)}, which this method delegates to; see its Javadoc.
+   * Use {@link #getProperty(String)} or {@link #getProperty(VcfPosition, VcfMetadata, String)} for a 4.3+ key
+   * named {@code GLE}.
    *
    * @param <T> The type specified by {@code ReservedInfoProperty.getType()} if {@code ReservedFormatProperty.isList()}
    *           is false;
@@ -324,7 +342,12 @@ public final class VcfSample {
     if (rawValue.equals(".")) {
       return null;
     }
-    ReservedFormatProperty reserved = ReservedFormatProperty.fromId(key);
+    // read once and reused by every version-gated call below
+    VcfVersion version = m_context.getVersion();
+    // version-aware: GLE stops being a reserved key at VCFv4.3, so from there it takes the non-reserved branch
+    // below (validated against its own ##FORMAT declaration, or the standard "no metadata declaration" warning
+    // when undeclared) instead of this library's reserved canonical Number/Type
+    ReservedFormatProperty reserved = ReservedFormatProperty.fromId(key, version);
     FormatMetadata format = null;
     String number;
     boolean isList;
@@ -372,8 +395,8 @@ public final class VcfSample {
       // -- treating it as scalar here is a defensive default for non-compliant input, not a real case.
       isList = !number.equals("0") && !number.equals("1");
     }
-    String[] pieces = InternalUtils.splitFormatValue(key, rawValue);
-    if (!InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck(key)) {
+    String[] pieces = InternalUtils.splitFormatValue(key, rawValue, version);
+    if (!InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck(key, version)) {
       Integer ploidy = InternalUtils.getPloidy(position, getProperty("GT"), "FORMAT " + key, m_warnings);
       // GL/PL/GP/PP's own spec-stated "diploidy is assumed" default when GT is absent -- see
       // InternalUtils.resolvePloidyForCardinalityCheck's own comment for the full citation
@@ -389,7 +412,7 @@ public final class VcfSample {
     // always sets a real value, and the non-reserved branch just substituted "." for an absent declaration.
     String valueToConvert = (!isList && pieces.length > 1) ? pieces[0] : rawValue;
     if (reserved != null) {
-      return InternalUtils.convertProperty(reserved, valueToConvert, m_context.getVersion(), m_warnings);
+      return InternalUtils.convertProperty(reserved, valueToConvert, version, m_warnings);
     }
     FormatType formatType = format.getType();
     Class<?> type = formatType == null ? String.class : InternalUtils.toJavaType(formatType);
@@ -601,9 +624,33 @@ public final class VcfSample {
     return keys.contains(key);
   }
 
+  /**
+   * @return whether this sample carries a value for the <em>reserved</em> property {@code key}. Under VCFv4.3 and
+   * later this always returns {@code false} for
+   * {@link ReservedFormatProperty#GenotypeLikelihoodsOfHeterogenousPloidy GLE}, with a warning: VCFv4.3 removed
+   * that key (VCFv4.3.tex line 2168), so the reserved property being asked about does not exist, even if this
+   * sample does carry a custom key literally named {@code GLE}. Use {@link #containsProperty(String)} to ask that
+   * other question. Warned rather than silent because a bare {@code false} is indistinguishable from "key absent"
+   * and would send a caller hunting for a key that is actually there; the noise is bounded, since it fires only
+   * when this specific constant is passed under 4.3+, which is always a mistake. Unchanged under VCFv4.2 and
+   * earlier.
+   */
   public boolean containsProperty(ReservedFormatProperty key) {
     // null-tolerant, matching containsProperty(String)'s own documented contract above
-    return key != null && containsProperty(key.getId());
+    if (key == null) {
+      return false;
+    }
+    // A predicate never converts, so this cannot ride on InternalUtils.convertProperty's identical GLE guard the
+    // way getProperty(ReservedFormatProperty) does; it needs its own.
+    if (key == ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy) {
+      VcfVersion version = m_context.getVersion();
+      if (version.isAtLeast(VcfVersion.V4_3)) {
+        m_warnings.warn("FORMAT GLE is not a reserved key under VCF {} (VCFv4.3 removed it); answering false -- " +
+            "use containsProperty(String) to ask whether a custom key named GLE is present", version.getId());
+        return false;
+      }
+    }
+    return containsProperty(key.getId());
   }
 
   /**

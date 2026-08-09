@@ -950,6 +950,52 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteGleCommaExemptionIsVersionGated() throws Exception {
+    // behaviors 1 and 2 on the write path. Under <=4.2 GLE's commas are internal to its own encoding, so
+    // splitFormatValue keeps the value whole (one element, no empty-element warning) and the Number=G
+    // cardinality check is skipped entirely. VCFv4.3 removed the key (VCFv4.3.tex line 2168), so a 4.3 key named
+    // GLE splits on commas like any other and is checked against its own declared Number: a 3-element value
+    // declared Number=2 must now warn, and its empty middle element must be reported.
+    VcfContext lenient43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writeOneGleRecord(LENIENT_CONTEXT, "VCFv4.2", "a,,b");
+      assertFalse(appender.anyMessageContains("contains an empty value"));
+      assertFalse(appender.anyMessageContains("Number=2 requires"));
+
+      writeOneGleRecord(lenient43, "VCFv4.3", "a,,b");
+      assertTrue(appender.anyMessageContains("contains an empty value"));
+      assertTrue(appender.anyMessageContains("but Number=2 requires 2"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  /** Writes one record with FORMAT {@code GLE} declared {@code Number=2,Type=String}, in diagnostics mode. */
+  private static void writeOneGleRecord(VcfContext context, String fileFormat, String gleValue) throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder(context).setFileFormat(fileFormat)
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .addFormat(new FormatMetadata(context, "GLE", "custom", "2", FormatType.String))
+        .build();
+    VcfPosition position = context.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("GLE"), -1);
+    LinkedHashMap<String, String> sampleProps = new LinkedHashMap<>();
+    sampleProps.put("GLE", gleValue);
+    VcfSample sample = context.newSample(sampleProps);
+    writer.writeHeader(metadata);
+    writer.writeLine(metadata, position, Collections.singletonList(sample));
+  }
+
+  @Test
   public void testValidateBeforeWriteDoesNotWarnAboutCnpCardinality() throws Exception {
     // CNP's declared Number=G is genuinely a comma-delimited list (unlike GLE), but the list is indexed by
     // "potential copy number," not by the ploidy-derived genotype ordering this codebase's Number=G formula

@@ -971,9 +971,54 @@ public class InternalUtilsTest {
   @Test
   public void testSplitFormatValueExemptsGle() {
     assertArrayEquals(new String[] { "0:-75.22,1:-223.42" },
-        InternalUtils.splitFormatValue("GLE", "0:-75.22,1:-223.42"));
-    assertArrayEquals(new String[] { "1", "2", "3" }, InternalUtils.splitFormatValue("PL", "1,2,3"));
-    assertArrayEquals(new String[] { "5" }, InternalUtils.splitFormatValue("DP", "5"));
+        InternalUtils.splitFormatValue("GLE", "0:-75.22,1:-223.42", VcfVersion.V4_2));
+    assertArrayEquals(new String[] { "1", "2", "3" }, InternalUtils.splitFormatValue("PL", "1,2,3", VcfVersion.V4_2));
+    assertArrayEquals(new String[] { "5" }, InternalUtils.splitFormatValue("DP", "5", VcfVersion.V4_2));
+  }
+
+  @Test
+  public void testSplitFormatValueGleExemptionIsVersionGated() {
+    // VCFv4.3 removed GLE (VCFv4.3.tex line 2168, "Removed unused and ill-defined GLE FORMAT tag"), so from 4.3
+    // a key named GLE is an ordinary custom key whose value splits on commas like any other
+    assertArrayEquals(new String[] { "0:-75.22,1:-223.42" },
+        InternalUtils.splitFormatValue("GLE", "0:-75.22,1:-223.42", VcfVersion.V4_1));
+    assertArrayEquals(new String[] { "0:-75.22", "1:-223.42" },
+        InternalUtils.splitFormatValue("GLE", "0:-75.22,1:-223.42", VcfVersion.V4_3));
+  }
+
+  @Test
+  public void testIsExemptFromGenotypeOrderingCardinalityCheckGatesGleButNotCnp() {
+    // GLE's exemption exists only because its value isn't comma-delimited at all, which is only true while GLE
+    // is the reserved 4.1/4.2 key; CNP's exemption has an unrelated rationale ("one value per potential copy
+    // number") and is reserved at every version, so it must NOT move with the version.
+    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("GLE", VcfVersion.V4_2));
+    assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("GLE", VcfVersion.V4_3));
+    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_2));
+    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_3));
+    assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("PL", VcfVersion.V4_2));
+  }
+
+  @Test
+  public void testConvertPropertyGleIsVersionGated() {
+    // behavior 8: the generic, supertype-typed converter is itself public, so a caller can hand it the GLE
+    // constant directly (this is the route VcfSample.getProperty(ReservedFormatProperty) delegates to). Under
+    // <=4.2 it still returns GLE's historical opaque-String conversion; under 4.3+ it warns and returns null,
+    // since the reserved key no longer exists. Tested here directly, not through getProperty, so a guard placed
+    // in VcfSample instead of here would fail this test.
+    String gle = "0:-75.22,1:-223.42,0/0:-323.03";
+    StringWriter sink42 = new StringWriter();
+    Object under42 = InternalUtils.convertProperty(
+        ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy, gle, VcfVersion.V4_2,
+        new VcfWarnings(sink42));
+    assertEquals(gle, under42);
+    assertEquals("", sink42.toString());
+
+    StringWriter sink43 = new StringWriter();
+    Object under43 = InternalUtils.convertProperty(
+        ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy, gle, VcfVersion.V4_3,
+        new VcfWarnings(sink43));
+    assertNull(under43);
+    assertTrue(sink43.toString().contains("FORMAT GLE is not a reserved key under VCF 4.3"));
   }
 
   @Test

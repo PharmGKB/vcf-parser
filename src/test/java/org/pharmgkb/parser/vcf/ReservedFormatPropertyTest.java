@@ -16,6 +16,29 @@ public class ReservedFormatPropertyTest {
   }
 
   @Test
+  public void testVersionAwareFromIdDropsGleFrom43() {
+    // GLE is reserved in VCFv4.1.tex line 208 and VCFv4.2.tex line 225, and was removed by VCFv4.3
+    // (VCFv4.3.tex line 2168, "Removed unused and ill-defined GLE FORMAT tag", restated in VCFv4.4.tex line
+    // 2630 and VCFv4.5.tex line 2812). It is the only key this overload treats differently from fromId(String).
+    assertEquals(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy,
+        ReservedFormatProperty.fromId("GLE", VcfVersion.V4_1));
+    assertEquals(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy,
+        ReservedFormatProperty.fromId("GLE", VcfVersion.V4_2));
+    assertNull(ReservedFormatProperty.fromId("GLE", VcfVersion.V4_3));
+    // every other reserved key resolves identically at both versions -- this overload is a GLE-specific
+    // existence check, not a version-aware reserved-key table
+    for (ReservedFormatProperty property : ReservedFormatProperty.values()) {
+      if (property == ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy) {
+        continue;
+      }
+      assertEquals(property, ReservedFormatProperty.fromId(property.getId(), VcfVersion.V4_2));
+      assertEquals(property, ReservedFormatProperty.fromId(property.getId(), VcfVersion.V4_3));
+    }
+    assertNull(ReservedFormatProperty.fromId(null, VcfVersion.V4_3));
+    assertNull(ReservedFormatProperty.fromId("NOT_A_RESERVED_KEY", VcfVersion.V4_2));
+  }
+
+  @Test
   public void testFromIdReturnsNullForNonReservedKey() {
     assertNull(ReservedFormatProperty.fromId("NOT_A_RESERVED_KEY"));
   }
@@ -64,7 +87,10 @@ public class ReservedFormatPropertyTest {
     // it's specifically the generic value-cardinality check that's skipped for CNP -- see
     // InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck.
     assertEquals("G", ReservedFormatProperty.CopyNumberPosteriorProbabilities.getExpectedNumber());
-    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP"));
+    // and, unlike GLE's exemption, CNP's is not version-gated: CNP is reserved at every version this library
+    // interprets, so the exemption holds under 4.2 and 4.3 alike
+    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_2));
+    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_3));
     assertEquals(VcfFloat.class, ReservedFormatProperty.CopyNumberPosteriorProbabilities.getType());
     assertTrue(ReservedFormatProperty.CopyNumberPosteriorProbabilities.isList());
   }

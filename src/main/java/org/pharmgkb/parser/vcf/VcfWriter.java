@@ -729,7 +729,9 @@ public class VcfWriter implements Closeable {
           // still validate a reserved key's value against its own canonical Number/Type, matching
           // getProperty(VcfPosition, VcfMetadata, String)'s identical read-path fallback for exactly this
           // situation -- see validateInfo's identical INFO-side fallback for the full rationale
-          ReservedFormatProperty reserved = ReservedFormatProperty.fromId(key);
+          // version-aware: GLE stops being a reserved key at VCFv4.3, so an undeclared 4.3+ key named GLE gets
+          // no reserved-canonical fallback at all, matching getProperty(VcfPosition, VcfMetadata, String)
+          ReservedFormatProperty reserved = ReservedFormatProperty.fromId(key, recordVersion);
           if (reserved != null) {
             validateFormatValue(reserved.getExpectedNumber(), reserved.getType(), value, key, sampleIndex,
                 position.getAltBases().size(), ploidy, recordVersion);
@@ -811,17 +813,19 @@ public class VcfWriter implements Closeable {
       // reserved list-typed FORMAT value's empty entry is also only normalized on read, not on write.
       InternalUtils.checkReservedFormatConstraints(key, value, recordVersion, m_warnings);
     }
-    String[] values = InternalUtils.splitFormatValue(key, value);
+    String[] values = InternalUtils.splitFormatValue(key, value, recordVersion);
     for (String element : values) {
       if (element.isEmpty()) {
         m_warnings.warn("FORMAT {} for sample #{} contains an empty value", key, sampleIndex);
       }
     }
-    if (!InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck(key)) {
-      // GLE's conventional Number=G does not describe a comma-delimited value list the way it does for every other
-      // FORMAT key -- GLE's commas are part of its own internal genotype:likelihood encoding (see
-      // ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy), so values.length is always 1 here and
-      // comparing it against Number=G's combinatorial expected count would always be a false mismatch. CNP's
+    if (!InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck(key, recordVersion)) {
+      // Under VCFv4.2 and earlier, GLE's conventional Number=G does not describe a comma-delimited value list the
+      // way it does for every other FORMAT key -- GLE's commas are part of its own internal genotype:likelihood
+      // encoding (see ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy), so values.length is always
+      // 1 there and comparing it against Number=G's combinatorial expected count would always be a false
+      // mismatch. VCFv4.3 removed GLE, so a 4.3+ key named GLE is no longer exempt and gets the ordinary check
+      // against whatever Number its own declaration states. CNP's
       // value IS a genuine comma-delimited list, but its own Number=G means "per potential copy number," not
       // the ploidy-derived genotype ordering this combinatorial count assumes -- see
       // InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck and

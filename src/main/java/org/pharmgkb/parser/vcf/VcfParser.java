@@ -437,7 +437,7 @@ public class VcfParser implements Closeable {
           }
           values = new ArrayList<>();
         } else {
-          values = toSampleValues(format, data.get(x));
+          values = toSampleValues(format, data.get(x), context.getVersion());
           InternalUtils.fillEmptyEntriesWithDot("sample value", values, m_warnings);
           // per the VCF spec, trailing FORMAT sub-fields may be dropped from a sample; pad any missing ones with the
           // missing value so the sample's value count matches the FORMAT key count
@@ -672,9 +672,21 @@ public class VcfParser implements Closeable {
    * colon-delimited sample values: its value is a String containing comma-separated {@code genotype:likelihood}
    * pairs. See {@code VCFv4.2.tex} line 225's GLE example (
    * {@code GLE=0:-75.22,1:-223.42,0/0:-323.03,1/0:-99.29,1/1:-802.53}).
+   *
+   * @param version this parse's own resolved version (from {@code VcfParser}'s {@link VcfContext}, which is
+   * built from {@code ##fileformat} -- not from any record, since a record's context is this same one). VCFv4.3
+   * removed GLE (VCFv4.3.tex line 2168, "Removed unused and ill-defined GLE FORMAT tag"), so from 4.3 a key
+   * named {@code GLE} is an ordinary custom key and its colons are ordinary sub-field delimiters. Left ungated,
+   * a 4.3 record whose GLE value happened to match {@link #GLE_VALUE_PATTERN} would have its internal colons
+   * hidden from ordinary FORMAT splitting, silently misaligning the sample column.
    */
-  private static List<String> toSampleValues(@Nullable List<String> format, String sample) {
+  private static List<String> toSampleValues(@Nullable List<String> format, String sample, VcfVersion version) {
     if (format == null) {
+      return toList(COLON, sample);
+    }
+    if (version.isAtLeast(VcfVersion.V4_3)) {
+      // checked before format.indexOf(GLE) so the 4.3+ path skips that scan entirely -- this runs once per
+      // sample per data line
       return toList(COLON, sample);
     }
     int gleIndex = format.indexOf(GLE);

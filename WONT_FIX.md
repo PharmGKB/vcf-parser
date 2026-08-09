@@ -503,8 +503,9 @@ fragment of the broken GLE value, not a real depth.
 A real fix would need to know how many `genotype:likelihood` pairs GLE's value *should* contain (its
 `Number` is `G`, the same ploidy/allele-count-derived cardinality this codebase already computes elsewhere
 via `InternalUtils.getExpectedCardinality`/`combinationsWithRepetition`) so a too-short match could be
-flagged as suspicious. But `toSampleValues` is a static, context-free tokenizer that sees only the FORMAT
-key list and one sample's raw text -- it has no access to `GT`/ALT-allele-count at that point in parsing.
+flagged as suspicious. But `toSampleValues` is a static tokenizer that sees only the FORMAT key list, one
+sample's raw text, and the parse's resolved `VcfVersion` (threaded in so the splitter can be skipped
+entirely from VCFv4.3 on) -- it has no access to `GT`/ALT-allele-count at that point in parsing.
 Threading that context in would mean changing this hot-path method's signature and its call site's data
 flow, not a narrow fix.
 
@@ -520,8 +521,10 @@ VCFv4.1/4.2-only: VCFv4.3, 4.4, and 4.5 each remove it outright, with the identi
 unused and ill-defined GLE FORMAT tag" in all three -- the spec's own maintainers gave up on tightening its
 grammar rather than clarifying it in a later version.
 
-**Decision: won't fix.** Narrow blast radius (a VCFv4.1/4.2-only key, requiring a specifically-corrupted
-value to trigger), no reference-tool behavior or later-spec clarification to design a fix against, and a
+**Decision: won't fix.** Narrow blast radius -- a VCFv4.1/4.2-only key, requiring a specifically-corrupted
+value to trigger, and the splitter now runs only when the file declares VCFv4.2 or earlier (from VCFv4.3 a
+key named `GLE` is split on colons like any other, so this misattribution cannot occur there at all) --
+no reference-tool behavior or later-spec clarification to design a fix against, and a
 real fix requires threading ploidy/allele-count context into a currently context-free hot-path tokenizer --
 disproportionate design/coupling cost for a legacy field the spec itself calls "ill-defined." This does not
 affect `GLE`'s well-formed-value handling (`VcfParser.java`'s `GLE_VALUE_PATTERN` splitter and its

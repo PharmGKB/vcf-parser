@@ -44,11 +44,13 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   sample's `GT` value, or an `##assembly` line) containing a line terminator.
 - A `VcfSample` key or value set through its constructors or `Builder#property` (validated at `build()` time, not
   at `property()`'s own call site) containing a colon or tab, which would otherwise add a spurious FORMAT
-  sub-field or sample column when written back out. The one exception is a value for
-  the key `GLE` (VCFv4.1/4.2's genotype-likelihoods-of-heterogeneous-ploidy key, removed from the spec in VCFv4.3+):
-  its own spec example (e.g. `0:-75.22,1:-223.42,...`) is one opaque String that uses colons internally as part of
-  its own encoding, not a delimiter between independent sub-fields; a colon in the key `GLE` itself, or a tab in its
-  value, is still rejected.
+  sub-field or sample column when written back out. The one exception, **under VCFv4.2 and earlier only**, is a
+  value for the key `GLE` (VCFv4.1.tex line 208/VCFv4.2.tex line 225's genotype-likelihoods-of-heterogeneous-ploidy
+  key): its own spec example (e.g. `0:-75.22,1:-223.42,...`) is one opaque String that uses colons internally as part
+  of its own encoding, not a delimiter between independent sub-fields; a colon in the key `GLE` itself, or a tab in
+  its value, is still rejected. VCFv4.3 removed the key (VCFv4.3.tex line 2168, "Removed unused and ill-defined GLE
+  FORMAT tag"), so from VCFv4.3 a key named `GLE` is an ordinary custom key and its value is colon-rejected like
+  every other key's.
 - `VcfWriter.writeLine` is given a number of samples that disagrees with the header's declared sample count, any
   FORMAT/sample data at all when the header declares no samples, or an empty `REF` (which has no missing-value
   sentinel in the spec, unlike `ALT`/`ID`/`FILTER`): in every case the output would not be valid, re-parseable VCF.
@@ -87,7 +89,8 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   `testValidateAlwaysWarnsRegardlessOfOriginalConstructor`, which pins it.
   Each also has structural checks that are a separate case and still throw unconditionally in both contexts:
   `VcfSample.validate()` throws via `checkNoStructuralDelimiter` (`VcfSample.java`) for a null property
-  key, a line terminator, or a `:`/tab in a key or (non-`GLE`) value; `VcfPosition.validate()` throws via
+  key, a line terminator, or a `:`/tab in a key or (non-`GLE`-under-VCFv4.2-and-earlier) value;
+  `VcfPosition.validate()` throws via
   `checkChromosome`/`checkPosition`/`checkRef` (none of which take a warnings sink at all) and via
   `checkFormat`'s null-sub-field-name, duplicate-key, and GT-not-first checks, none of which consult the
   warnings sink either. Neither class can be mutated after construction any more: Task 8 froze `VcfPosition`
@@ -276,6 +279,20 @@ is a structural failure and still throws -- see the strict section above):
   so each comma-separated element is checked independently, reusing the same unit-interval helper (and its two
   exemptions, a special `VcfFloat` value and an overlong value) as `INFO/AF` below. Checked both when a typed
   value is requested and by `VcfWriter.Builder.validateBeforeWrite()`.
+- A read of the **removed** reserved key `GLE` under VCFv4.3 or later. VCFv4.3 removed it (VCFv4.3.tex line
+  2168, "Removed unused and ill-defined GLE FORMAT tag"; present as a reserved key at VCFv4.1.tex line 208 and
+  VCFv4.2.tex line 225), so from VCFv4.3 `GLE` has no reserved status at all: it is classified as an ordinary
+  custom key (validated against its own `##FORMAT` declaration when declared, given the standard "no metadata
+  declaration" treatment when not -- never this library's reserved-canonical `Number=G`/`Type=String`
+  fallback), its value splits on commas and colons like any other key's, and it is not exempt from the
+  `Number=G` value-cardinality check. Two public enum-key accessors still let a caller name the removed
+  constant directly; both warn rather than failing silently, and neither throws (they are lookup-style queries
+  whose `String`-keyed siblings are null-tolerant "not present" -- see `AGENTS.md`'s Public API Null-Safety
+  Policy): `VcfSample.getProperty(ReservedFormatProperty)` (via
+  `InternalUtils.convertProperty(ReservedProperty, ...)`, where the single check lives) warns and returns
+  `null`, and `VcfSample.containsProperty(ReservedFormatProperty)` warns and returns `false`. Use the
+  `String`-keyed overloads to reach a VCFv4.3+ custom key literally named `GLE`. Unchanged under VCFv4.2 and
+  earlier.
 - A reserved `FORMAT/PL`/`GL`/`GP`/`PP` value whose element count doesn't match the `Number=G` cardinality
   implied by the sample's ploidy and the record's ALT allele count. When `GT` is absent, ploidy can't
   otherwise be determined at all, but these four keys specifically default to assumed diploidy rather than
@@ -284,7 +301,9 @@ is a structural failure and still throws -- see the strict section above):
   `GLE`/`CNP` are separately exempted from this check entirely despite declaring `Number=G` themselves -- see
   `VCF_SPEC_AMBIGUITIES.md`'s "`CNP`'s `Number=G` vs. `GT`/`GL`/`PL`/`GP`/`PP`'s `Number=G`" entry (`CNL` is
   unaffected by this exemption since its own declared `Number` is `.`, not `G`, under this library's VCFv4.2
-  target). Also, any `FORMAT` key's value whose element count doesn't match its declared
+  target). The two exemptions have unrelated rationales and only `GLE`'s is version-gated: it applies under
+  VCFv4.2 and earlier only, since VCFv4.3 removed the key, while `CNP` is reserved at every version this library
+  interprets. Also, any `FORMAT` key's value whose element count doesn't match its declared
   `Number`, or whose value doesn't match its declared `Type` (a non-reserved key needs an explicit `##FORMAT`
   declaration for either check to run; a reserved key's own canonical `Number`/`Type` apply even with no
   declaration at all): both cardinality checks (the reserved `Number=G` check above and this declared-`Number`

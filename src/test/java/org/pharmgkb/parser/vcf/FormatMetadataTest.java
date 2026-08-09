@@ -147,6 +147,43 @@ public class FormatMetadataTest {
   }
 
   @Test
+  public void testGleReservedNumberTypeCheckIsVersionGated() {
+    // behavior 4 at the declaration site: a ##FORMAT=<ID=GLE,...> whose Number/Type differ from GLE's reserved
+    // 4.1/4.2 canonical values (Number=G, Type=String) is non-compliant under <=4.2 -- hts-specs itself says so
+    // (test/vcf/4.2/failed/failed_meta_format_029.vcf, ##CauseOfFailure=FORMAT GLE Number is not G) -- but is a
+    // perfectly ordinary custom-key declaration under 4.3+, which removed the key (VCFv4.3.tex line 2168).
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=GLE", "Number=2", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT));
+      assertTrue(appender.anyMessageContains("has Number '2' but the reserved definition expects 'G'"));
+      assertTrue(appender.anyMessageContains("has Type 'Integer' but the reserved definition expects 'String'"));
+      long warnsUnder42 = appender.countMessagesContaining("but the reserved definition expects");
+
+      VcfContext lenient43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
+      new FormatMetadata(lenient43, InternalUtils.extractProperties(
+          new String[]{"ID=GLE", "Number=2", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT));
+      assertEquals(warnsUnder42, appender.countMessagesContaining("but the reserved definition expects"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    // the attribute constructor is the second, independent route into the same check; under a strict 4.3
+    // context the same declaration must be accepted outright rather than thrown on
+    VcfContext strict43 = VcfContext.strict("VCFv4.3");
+    FormatMetadata md = new FormatMetadata(strict43, "GLE", "d", "2", FormatType.Integer);
+    assertEquals("2", md.getNumber());
+    assertEquals(FormatType.Integer, md.getType());
+    assertThrows(VcfFormatException.class,
+        () -> new FormatMetadata(STRICT_CONTEXT, "GLE", "d", "2", FormatType.Integer));
+  }
+
+  @Test
   public void testCorrectlyDeclaredCnpDoesNotWarn() {
     // CNP keeps expectedNumber="G" (the literal, only spec value) despite being exempted from the generic
     // value-cardinality check elsewhere (see InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck) --

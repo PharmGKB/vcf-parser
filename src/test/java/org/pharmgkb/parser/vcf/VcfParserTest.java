@@ -671,6 +671,58 @@ public class VcfParserTest {
   }
 
   @Test
+  void testGleSampleSplitterIsVersionGated() throws IOException {
+    // behavior 5: the parser's own GLE splitter (GLE_VALUE_PATTERN/toSampleValues) never calls
+    // InternalUtils.splitFormatValue, so it needs its own gate. VCFv4.3 removed GLE (VCFv4.3.tex line 2168,
+    // "Removed unused and ill-defined GLE FORMAT tag"), so from 4.3 GLE's internal colons are ordinary FORMAT
+    // sub-field delimiters. The version comes from the parser's own VcfContext (built from ##fileformat), not
+    // from any record.
+    String gle = "0:-75.22,1:-223.42,0/0:-323.03,1/0:-99.29,1/1:-802.53";
+    String line = "chr1\t100\t.\tA\tT\t.\tPASS\t.\tGT:GLE:DP\t0/1:" + gle + ":50\n";
+    String header = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\n";
+
+    // 4.2: the payload parses, GLE stays one opaque value, and the FORMAT key after it stays aligned
+    List<VcfSample> samples42 = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader("##fileformat=VCFv4.2\n" + header + line)))
+        .parseWith((ignored, record) -> samples42.addAll(record.getSamples()))
+        .build()) {
+      parser.parse();
+    }
+    assertEquals(1, samples42.size());
+    assertEquals(gle, samples42.get(0).getProperty("GLE"));
+    assertEquals("50", samples42.get(0).getProperty("DP"));
+
+    // 4.3: the identical payload splits on every colon, yielding 5 sample entries for 3 FORMAT keys. The
+    // trusted-sample constructor still enforces matching counts (the `trusted` flag skips only the delimiter
+    // scan), so the record is REJECTED. Asserting the rejection, not merely "the regex was bypassed": an
+    // implementation that padded or truncated the extra entries would swap obsolete GLE semantics for silent
+    // column corruption and would otherwise pass.
+    List<VcfRecord> delivered = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader("##fileformat=VCFv4.3\n" + header + line)))
+        .parseWith((ignored, record) -> delivered.add(record))
+        .build()) {
+      VcfFormatException e = assertThrows(VcfFormatException.class, parser::parse);
+      assertTrue(e.getMessage().contains("Number of FORMAT entries does not match number of sample entries"),
+          e.getMessage());
+    }
+    assertTrue(delivered.isEmpty(), "no record may reach the callback for a rejected line");
+
+    // a 4.3 GLE value with no internal colon is an ordinary custom-key value and parses fine
+    List<VcfSample> plain43 = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader("##fileformat=VCFv4.3\n" + header +
+            "chr1\t100\t.\tA\tT\t.\tPASS\t.\tGT:GLE:DP\t0/1:abc:50\n")))
+        .parseWith((ignored, record) -> plain43.addAll(record.getSamples()))
+        .build()) {
+      parser.parse();
+    }
+    assertEquals("abc", plain43.get(0).getProperty("GLE"));
+    assertEquals("50", plain43.get(0).getProperty("DP"));
+  }
+
+  @Test
   void testGleValuePatternDoesNotStackOverflowOnLongAlleleSequence() throws IOException {
     // regression test: GLE_VALUE_PATTERN's allele-separator and pair-repetition groups must be possessive.
     // Without it, a GLE value with a long sequence of short "|"-separated allele-index tokens blows the JVM

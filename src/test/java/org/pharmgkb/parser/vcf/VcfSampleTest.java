@@ -300,6 +300,166 @@ class VcfSampleTest {
   }
 
   @Test
+  void testGleColonExemptionIsVersionGated() {
+    // behavior 3: VCFv4.3 removed GLE (VCFv4.3.tex line 2168, "Removed unused and ill-defined GLE FORMAT tag"),
+    // so from 4.3 a key named GLE is an ordinary custom key and a colon in its value is rejected like any other
+    // key's -- it would add a spurious FORMAT sub-field on write. Only direct construction can show this: the
+    // parser never produces a colon-bearing value at all (it split on colons to get here).
+    String gle = "0:-75.22,1:-223.42,0/0:-323.03";
+    VcfContext context43 = VcfContext.strict("VCFv4.3");
+
+    // accepted under 4.2 through both direct-construction routes
+    assertEquals(gle, STRICT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GLE", gle))).getProperty("GLE"));
+    assertEquals(gle, new VcfSample.Builder(STRICT_CONTEXT).property("GLE", gle).build().getProperty("GLE"));
+
+    // rejected under 4.3 through the same two routes
+    LinkedHashMap<String, String> map43 = new LinkedHashMap<>(Map.of("GLE", gle));
+    assertThrows(VcfFormatException.class, () -> context43.newSample(map43));
+    assertThrows(VcfFormatException.class,
+        () -> new VcfSample.Builder(context43).property("GLE", gle).build());
+    // ... and through the parallel-list constructor, the third route into checkNoStructuralDelimiter
+    assertThrows(VcfFormatException.class,
+        () -> context43.newSample(Collections.singletonList("GLE"), Collections.singletonList(gle)));
+
+    // a colon-free GLE value is still fine under 4.3 -- this gate is about the colon exemption, not the key
+    assertEquals("abc", context43.newSample(new LinkedHashMap<>(Map.of("GLE", "abc"))).getProperty("GLE"));
+  }
+
+  @Test
+  void testGetPropertyReservedFormatPropertyGleIsVersionGated() {
+    // behavior 6: the enum-key accessor consults neither metadata nor (before this gate) the version, so under
+    // 4.3 a caller passing the removed key's constant would still get its historical interpretation. It
+    // delegates to InternalUtils.convertProperty(ReservedProperty, ...), where the single guard lives (behavior
+    // 8); this test covers the delegating route, InternalUtilsTest covers the direct one.
+    String gle = "0:-75.22,1:-223.42";
+    VcfContext context43 = VcfContext.strict("VCFv4.3");
+    VcfSample sample42 = STRICT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GLE", gle)));
+    // colon-free under 4.3: a colon-bearing value can no longer be constructed there at all (see
+    // testGleColonExemptionIsVersionGated), which is exactly why this behavior needs its own fixture
+    VcfSample sample43 = context43.newSample(new LinkedHashMap<>(Map.of("GLE", "abc")));
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertEquals(gle,
+          sample42.getProperty(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy));
+      assertFalse(appender.anyMessageContains("not a reserved key"));
+
+      assertNull(sample43.getProperty(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy));
+      assertTrue(appender.anyMessageContains("FORMAT GLE is not a reserved key under VCF 4.3"));
+      // warn-and-null, never a silent null: silence would be indistinguishable from an absent value. This route
+      // never consults metadata, so a 4.3 file that DOES declare ##FORMAT=<ID=GLE,...> gets the same answer --
+      // getProperty(VcfPosition, VcfMetadata, String) is the overload that honors the declaration.
+      assertEquals(1, appender.countMessagesContaining("FORMAT GLE is not a reserved key"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testContainsPropertyReservedFormatPropertyGleIsVersionGated() {
+    // behavior 7: a predicate never converts, so it cannot ride on the converter's guard. Under 4.3 the truthful
+    // answer is false -- the sample carries a key NAMED GLE, but not the reserved property being asked about.
+    VcfContext context43 = VcfContext.strict("VCFv4.3");
+    VcfSample sample42 = STRICT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GLE", "abc")));
+    VcfSample sample43 = context43.newSample(new LinkedHashMap<>(Map.of("GLE", "abc")));
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertTrue(sample42.containsProperty(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy));
+      assertFalse(appender.anyMessageContains("not a reserved key"));
+
+      assertFalse(sample43.containsProperty(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy));
+      assertTrue(appender.anyMessageContains("FORMAT GLE is not a reserved key under VCF 4.3"));
+      // the other question -- "is a custom key named GLE present?" -- still answers true under 4.3
+      assertTrue(sample43.containsProperty("GLE"));
+      // and the gate is specific to GLE: every other reserved constant is unaffected under 4.3
+      VcfSample gt43 = context43.newSample(new LinkedHashMap<>(Map.of("GT", "0|1")));
+      assertTrue(gt43.containsProperty(ReservedFormatProperty.Genotype));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataGleClassificationIsVersionGated() {
+    // behavior 4, observed through the metadata-aware read: under 4.2 an UNDECLARED GLE still gets this
+    // library's reserved canonical Number/Type (so the opaque value comes back); under 4.3 GLE is no longer a
+    // reserved key, so it takes the ordinary "no metadata declaration" path instead. Neither the enum-key
+    // accessor's tests nor the parser-splitting tests can observe classification at all.
+    String gle = "0:-75.22,1:-223.42";
+    VcfContext context43 = VcfContext.strict("VCFv4.3");
+    LinkedHashMap<String, String> map42 = new LinkedHashMap<>();
+    map42.put("GT", "0|1");
+    map42.put("GLE", gle);
+    VcfSample sample42 = STRICT_CONTEXT.newSample(map42);
+    VcfPosition position42 = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
+    VcfMetadata metadata42 = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
+
+    LinkedHashMap<String, String> map43 = new LinkedHashMap<>();
+    map43.put("GT", "0|1");
+    map43.put("GLE", "abc");
+    VcfSample sample43 = context43.newSample(map43);
+    VcfPosition position43 = context43.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
+    VcfMetadata metadata43 = new VcfMetadata.Builder(context43).setFileFormat("VCFv4.3").build();
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertEquals(gle, sample42.getProperty(position42, metadata42, "GLE"));
+      assertFalse(appender.anyMessageContains("has no metadata declaration"));
+
+      assertNull(sample43.getProperty(position43, metadata43, "GLE"));
+      assertTrue(appender.anyMessageContains("FORMAT GLE has no metadata declaration"));
+      // and it is NOT the removed-reserved-key warning: this route reaches the ordinary custom-key path, not
+      // the converter's GLE guard
+      assertFalse(appender.anyMessageContains("not a reserved key"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataDeclaredGleIsAnOrdinaryKeyUnder43() {
+    // behavior 4's other half: a 4.3 file that DOES declare ##FORMAT=<ID=GLE,...> gets its value validated
+    // against its own declaration like any custom key -- here Number=2/Type=Integer, so a two-element value
+    // converts to a List<Long> with no cardinality warning. Under 4.2 the same declaration would be overridden
+    // by GLE's reserved canonical Number=G/Type=String (see testGetPropertyWithPositionAndMetadataExemptsGle
+    // FromCardinalityCheck), which is exactly the difference this gate introduces.
+    VcfContext context43 = VcfContext.strict("VCFv4.3");
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0|1");
+    map.put("GLE", "7,8");
+    VcfSample sample = context43.newSample(map);
+    VcfPosition position = context43.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
+    VcfMetadata metadata = new VcfMetadata.Builder(context43).setFileFormat("VCFv4.3")
+        .addFormat(new FormatMetadata(context43, "GLE", "custom", "2", FormatType.Integer))
+        .build();
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertEquals(List.of(7L, 8L), sample.getProperty(position, metadata, "GLE"));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   void testPropertiesMaterializationKeepsFirstOccurrenceOnDuplicateKey() {
     // properties() (the materialization path triggered by getPropertyKeys()/propertyEntrySet()/validate())
     // previously let the LAST occurrence of a duplicate key silently overwrite the first, while getProperty()

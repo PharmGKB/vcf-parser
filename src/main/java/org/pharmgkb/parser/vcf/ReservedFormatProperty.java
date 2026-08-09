@@ -34,6 +34,15 @@ public enum ReservedFormatProperty implements ReservedProperty {
   // and ill-defined GLE FORMAT tag"). No spec table exists. Sourced instead directly from hts-specs' own fixtures,
   // which consistently expect Number=G: test/vcf/4.1/failed/failed_meta_format_030.vcf and
   // test/vcf/4.2/failed/failed_meta_format_029.vcf both have ##CauseOfFailure=FORMAT GLE Number is not G.
+  // This is the one entry in this enum that is reserved only up to a version: GLE is a reserved FORMAT key in
+  // VCFv4.1.tex line 208 and VCFv4.2.tex line 225 ("GLE : genotype likelihoods of heterogeneous ploidy ...
+  // (String)") and was REMOVED by VCFv4.3 (VCFv4.3.tex line 2168, "Removed unused and ill-defined GLE FORMAT
+  // tag", restated in VCFv4.4.tex line 2630 and VCFv4.5.tex line 2812; it appears nowhere else in any of those
+  // three files, in particular not in VCFv4.3's Reserved genotype keys table). Every special case this library
+  // gives GLE is therefore gated to <=4.2 -- see fromId(String, VcfVersion) below for the classification gate,
+  // and InternalUtils.splitFormatValue/isExemptFromGenotypeOrderingCardinalityCheck/convertProperty,
+  // VcfSample.checkNoStructuralDelimiter/containsProperty and VcfParser.toSampleValues for the rest. The
+  // constant itself remains, since a 4.1/4.2 file may still declare and use the key.
   GenotypeLikelihoodsOfHeterogenousPloidy("GLE",
       "genotype likelihoods of heterogeneous ploidy, used in presence of uncertain copy number.",
       String.class, false, "G"),
@@ -143,6 +152,29 @@ public enum ReservedFormatProperty implements ReservedProperty {
   @Nullable
   public static ReservedFormatProperty fromId(@Nullable String id) {
     return id == null ? null : BY_ID.get(id);
+  }
+
+  /**
+   * The version-aware form of {@link #fromId(String)}: {@code id} is classified as a reserved FORMAT key only if
+   * it is reserved <em>under {@code version}</em>.
+   * <p>
+   * Deliberately <b>not</b> a general version-aware reserved-key table -- it is a single hardcoded check for
+   * {@link #GenotypeLikelihoodsOfHeterogenousPloidy GLE}, the only reserved FORMAT key any version this library
+   * interprets removes (VCFv4.3.tex line 2168, "Removed unused and ill-defined GLE FORMAT tag"; see that
+   * constant's own comment). A real per-version table is a separate, deferred project -- see
+   * {@code InternalUtils.checkReservedInfoConstraints}'s TODO and {@code TODO.md}'s "Investigate bumping the
+   * target VCF spec to 4.4 or 4.5" entry -- so a second version-dependent key must not be bolted on here.
+   *
+   * @return the reserved FORMAT property {@code id} names under {@code version}, or {@code null} if {@code id}
+   * names none (including a key reserved under an older version but not under {@code version})
+   */
+  @Nullable
+  static ReservedFormatProperty fromId(@Nullable String id, VcfVersion version) {
+    ReservedFormatProperty property = fromId(id);
+    if (property == GenotypeLikelihoodsOfHeterogenousPloidy && version.isAtLeast(VcfVersion.V4_3)) {
+      return null;
+    }
+    return property;
   }
 
 }

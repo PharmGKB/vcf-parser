@@ -55,7 +55,10 @@ public final class FormatMetadata extends IdDescriptionMetadata {
     }
     // see InfoMetadata's identical constructor for why Description-quoting and Type-parse-failure have no
     // check here.
-    ReservedFormatProperty reserved = ReservedFormatProperty.fromId(id);
+    // version-aware: GLE stops being a reserved key at VCFv4.3 (VCFv4.3.tex line 2168, "Removed unused and
+    // ill-defined GLE FORMAT tag"), so a 4.3+ ##FORMAT=<ID=GLE,...> is validated only against its own declared
+    // Number/Type, like any custom key -- never against this library's 4.1/4.2 canonical values
+    ReservedFormatProperty reserved = ReservedFormatProperty.fromId(id, getContext().getVersion());
     if (reserved != null) {
       if (!reserved.getExpectedNumber().equals(number)) {
         warnOrThrow("FORMAT {} has Number '{}' but the reserved definition expects '{}'", id, number,
@@ -100,7 +103,8 @@ public final class FormatMetadata extends IdDescriptionMetadata {
             "underscore, followed only by letters, digits, underscores, or periods)", getLabel(), id);
       }
     }
-    ReservedFormatProperty reserved = ReservedFormatProperty.fromId(id);
+    // version-aware; see the attribute constructor's identical call above for the citation
+    ReservedFormatProperty reserved = ReservedFormatProperty.fromId(id, getContext().getVersion());
     if (reserved != null) {
       if (number != null && !reserved.getExpectedNumber().equals(number)) {
         warnOrThrow("{} {} has Number '{}' but the reserved definition expects '{}'", getLabel(), getId(),
