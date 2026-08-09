@@ -811,6 +811,71 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testAltEmptyEntrySubstitutionPreservesGtIndexAcrossDeclaredVersions() {
+    // Task 7: EMPTY_FIELD_HANDLING.md's ALT '.'-substitution is unconditional -- GT indexes into ALT
+    // positionally (VCFv4.2.tex line 217: "1 for the first allele listed in ALT, 2 for the second allele listed
+    // in ALT and so on"; VcfPosition.getAllele(int) implements this as m_altBases.get(index - 1)), so dropping
+    // an empty entry would shift every later allele's index -- a 4.2-grounded requirement, not a 4.3+ one.
+    // VCFv4.3.tex line 350 / VCFv4.4.tex line 367 / VCFv4.5.tex line 416 merely ratify '.' as a sanctioned
+    // per-entry ALT token, a claim 4.2 is silent on rather than one 4.2 forbids. Pins the GT-index invariant end
+    // to end (nothing did before this), via ordinary construction under both a 4.2-declared and a 4.3-declared
+    // context, and asserts the two declared versions behave identically -- a future version-gated branch here
+    // would be a regression, not a fix.
+    for (String declaredFileFormat : Arrays.asList("VCFv4.2", "VCFv4.3")) {
+      VcfContext context = VcfContext.lenient(declaredFileFormat, VcfWarnings.DEFAULT);
+
+      // interior empty entry: T,,C -> T,.,C
+      VcfPosition interior = context.newPosition("chr1", 1, null, "A",
+          new ArrayList<>(Arrays.asList("T", "", "C")), null, null, null, null, -1);
+      assertEquals(Arrays.asList("T", ".", "C"), interior.getAltBases(), declaredFileFormat);
+      assertEquals("A", interior.getAllele(0), declaredFileFormat);
+      assertEquals("T", interior.getAllele(1), declaredFileFormat); // before the empty index
+      assertEquals(".", interior.getAllele(2), declaredFileFormat); // at the empty index
+      assertEquals("C", interior.getAllele(3), declaredFileFormat); // after the empty index
+
+      VcfSample gtAcrossAllFour = context.newSample(List.of("GT"), List.of("0/1/2/3"));
+      VcfSample.Genotype genotypeInterior = gtAcrossAllFour.getGenotype(interior);
+      assertEquals(Arrays.asList("A", "T", ".", "C"), genotypeInterior.getAlleles(), declaredFileFormat);
+
+      // trailing empty entry: T, -> T,.
+      VcfPosition trailing = context.newPosition("chr1", 1, null, "A",
+          new ArrayList<>(Arrays.asList("T", "")), null, null, null, null, -1);
+      assertEquals(Arrays.asList("T", "."), trailing.getAltBases(), declaredFileFormat);
+      assertEquals("A", trailing.getAllele(0), declaredFileFormat);
+      assertEquals("T", trailing.getAllele(1), declaredFileFormat); // before the empty index
+      assertEquals(".", trailing.getAllele(2), declaredFileFormat); // at the empty index
+
+      VcfSample gtAcrossBothOfTwo = context.newSample(List.of("GT"), List.of("0/1/2"));
+      VcfSample.Genotype genotypeTrailing = gtAcrossBothOfTwo.getGenotype(trailing);
+      assertEquals(Arrays.asList("A", "T", "."), genotypeTrailing.getAlleles(), declaredFileFormat);
+    }
+  }
+
+  @Test
+  public void testBuilderAltBasesSubstitutesEmptyEntryBeforeDelegatingToTrustedFactory() {
+    // Companion to testAltEmptyEntrySubstitutionPreservesGtIndexAcrossDeclaredVersions, but for the other
+    // construction route: VcfPosition.Builder#altBases marks the field dirty, and build() runs checkAltBases
+    // (this class's Builder#build() Javadoc) *before* delegating to newPositionCopyingTrustedFields, so a
+    // Builder-made position already holds the substituted list -- unlike the writer's own trusted-factory route
+    // (VcfWriterTest.testDefaultWriteSubstitutesEmptyAltEntryWithDotUnconditionallyAcrossDeclaredVersions), which
+    // deliberately bypasses this check. Same unconditional-across-versions invariant as above.
+    for (String declaredFileFormat : Arrays.asList("VCFv4.2", "VCFv4.3")) {
+      VcfContext context = VcfContext.lenient(declaredFileFormat, VcfWarnings.DEFAULT);
+      VcfPosition seed = context.newPosition("chr1", 1, null, "A", List.of("G"), null, null, null, null, -1);
+
+      VcfPosition interior = seed.toBuilder()
+          .altBases(new ArrayList<>(Arrays.asList("T", "", "C")))
+          .build();
+      assertEquals(Arrays.asList("T", ".", "C"), interior.getAltBases(), declaredFileFormat);
+
+      VcfPosition trailing = seed.toBuilder()
+          .altBases(new ArrayList<>(Arrays.asList("T", "")))
+          .build();
+      assertEquals(Arrays.asList("T", "."), trailing.getAltBases(), declaredFileFormat);
+    }
+  }
+
+  @Test
   public void testZeroFilter() {
     assertThrows(VcfFormatException.class, () -> {
       STRICT_CONTEXT.newPosition("chr1", 1, null, "C", null, null, Collections.singletonList("0"), null, null, -1);

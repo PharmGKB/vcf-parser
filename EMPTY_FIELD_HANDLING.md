@@ -81,6 +81,24 @@ the tie-breaker here per `AGENTS.md` ("If still in doubt, consult bcftools behav
 construction with zero warning, consistent with the newer versions' prose. This library follows bcftools and the
 newer-version prose, not vcf_validator's stricter regex reading, for the reasons given above.
 
+**ALT's `.`-substitution is unconditional across every VCF version this library targets or accepts — it is not
+4.3+ behavior awaiting version dispatch.** The paragraph above states two separate claims that must not be
+conflated into one version-gated rule: *why* an empty entry is substituted rather than dropped (index
+preservation) is grounded entirely in the target spec, `VCFv4.2.tex` line 217's `GT`-indexes-into-`ALT` rule, and
+holds regardless of the declared `##fileformat` — a 4.2-declared file's `GT` values index into `ALT` exactly the
+same way a 4.3-declared file's do. *Whether* `.` is a formally sanctioned per-entry ALT token is the only piece
+that differs by version — 4.2 is silent, 4.3+ states it explicitly — but that difference only ratifies a token
+4.2 never forbade; it does not change what this library does with an empty entry under either version. bcftools
+1.23.1 confirms there is nothing to gate: it substitutes `T,,C` → `T,.,C` and `T,` → `T,.` identically regardless
+of the file's declared version. A version dispatch here would therefore have only two possible shapes, and both
+are wrong: dropping under ≤4.2 would reintroduce the exact index-shift bug the paragraph above describes;
+substituting in both branches would be a no-op branch a future reader would simplify away — back into the first,
+wrong shape. Pinned end to end (construction, `Builder#altBases`, and the writer's independent copy of this
+decision, run under both a 4.2-declared and a 4.3-declared header and asserted identical) by
+`VcfPositionTest.testAltEmptyEntrySubstitutionPreservesGtIndexAcrossDeclaredVersions`,
+`VcfPositionTest.testBuilderAltBasesSubstitutesEmptyEntryBeforeDelegatingToTrustedFactory`, and
+`VcfWriterTest.testDefaultWriteSubstitutesEmptyAltEntryWithDotUnconditionallyAcrossDeclaredVersions`.
+
 ## Reference table
 
 | Field | Input | bcftools 1.23.1 behavior | vcf_validator 0.10.2 | `vcf-parser` behavior | Round-trip output |

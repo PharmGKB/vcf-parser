@@ -211,6 +211,70 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testDefaultWriteSubstitutesEmptyAltEntryWithDotUnconditionallyAcrossDeclaredVersions() throws Exception {
+    // Task 7: EMPTY_FIELD_HANDLING.md's ALT section states the '.' substitution is unconditional -- GT indexes
+    // into ALT positionally (VCFv4.2.tex line 217), so index preservation is a 4.2-grounded requirement, not a
+    // 4.3+ one; VCFv4.3.tex line 350 / VCFv4.4.tex line 367 / VCFv4.5.tex line 416 merely ratify '.' as a
+    // sanctioned per-entry ALT token, a claim 4.2 is silent on rather than one 4.2 forbids. Pins that
+    // addListOrElse()'s substitution branch (see testDefaultWriteSubstitutesEmptyAltEntryWithDot for why this
+    // uses newPositionCopyingTrustedFields() rather than ordinary construction) behaves identically whether the
+    // header declares VCFv4.2 or VCFv4.3 -- a future version-gated branch here would be a regression, not a fix.
+    assertEquals(writeAltThroughTrustedFactory("VCFv4.2", Arrays.asList("T", "", "C")),
+        writeAltThroughTrustedFactory("VCFv4.3", Arrays.asList("T", "", "C")));
+    assertEquals("T,.,C", writeAltThroughTrustedFactory("VCFv4.2", Arrays.asList("T", "", "C")));
+    assertEquals("T,.,C", writeAltThroughTrustedFactory("VCFv4.3", Arrays.asList("T", "", "C")));
+
+    assertEquals(writeAltThroughTrustedFactory("VCFv4.2", Arrays.asList("T", "")),
+        writeAltThroughTrustedFactory("VCFv4.3", Arrays.asList("T", "")));
+    assertEquals("T,.", writeAltThroughTrustedFactory("VCFv4.2", Arrays.asList("T", "")));
+    assertEquals("T,.", writeAltThroughTrustedFactory("VCFv4.3", Arrays.asList("T", "")));
+  }
+
+  /**
+   * Writes a single record whose ALT column is {@code altBases}, built through the package-private
+   * {@code newPositionCopyingTrustedFields()} factory under a context declaring {@code declaredFileFormat} --
+   * see {@link #testDefaultWriteSubstitutesEmptyAltEntryWithDot} for why this factory is used instead of
+   * ordinary construction. Confirms, before writing, that the built position still carries the raw empty entry
+   * (proving {@code checkAltBases()} did not already normalize it, so the assertion on the written output below
+   * actually exercises {@code addListOrElse()}'s own substitution branch rather than passing vacuously), then
+   * returns the serialized ALT column text.
+   *
+   * @return the ALT column of the single written data line
+   */
+  private static String writeAltThroughTrustedFactory(String declaredFileFormat, List<String> altBases)
+      throws Exception {
+    VcfContext context = VcfContext.lenient(declaredFileFormat, VcfWarnings.DEFAULT);
+    VcfPosition position = context.newPositionCopyingTrustedFields("chr1", 1, null, "A", altBases,
+        new BigDecimal("0"), null, null, null, -1, null, null);
+    assertTrue(position.getAltBases().contains(""),
+        "position must still carry the raw empty ALT entry for this test to exercise the writer's own " +
+            "substitution branch, not a pre-normalized value");
+
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(context).setFileFormat(declaredFileFormat).build();
+    writer.writeHeader(metadata);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertTrue(appender.anyMessageContains("ALT contains an empty entry"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+
+    String[] lines = sw.toString().split("\n");
+    String[] columns = lines[lines.length - 1].split("\t", -1);
+    return columns[4]; // #CHROM POS ID REF ALT ...
+  }
+
+  @Test
   public void testDefaultWriteRejectsNullIdEntryInsteadOfStringifyingIt() throws Exception {
     // regression test: a null ID entry is never reachable via any public API construction path (VcfPosition's
     // own checkIds() rejects it in every ordinary constructor call, in both strict and lenient contexts), but
