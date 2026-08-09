@@ -129,6 +129,13 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md)), routed to that context's
   `VcfWarnings`. `VcfParser`'s own internal use always builds a lenient context, so parsing a file's behavior
   is unchanged by any of this.
+- `VcfMetadata.Builder.replaceAlt()` / `replaceInfo()` / `replaceFormat()` / `replaceFilter()` / `replaceContig()`
+  / `replaceSample()` throw `VcfFormatException` for an `ID` with no existing declaration to replace -- in both
+  a lenient and a strict context, unlike every other rule on this page. This is deliberate, not an oversight: a
+  missing replace target is a programming error in either mode, not a content violation, so it is not routed
+  through `warnOrThrow`. See
+  [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md)'s "`replaceXxx`: the supported way to
+  overwrite a declaration" section.
 - `VcfMetadata.Builder` throws `VcfFormatException` for a declaration built under a *different* `VcfContext`
   instance (compared by reference, not value) than the builder's own. `VcfMetadata` itself has no instance
   mutators to add this check to -- it is immutable, and `getInfo()`/its siblings return memoized unmodifiable

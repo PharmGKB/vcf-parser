@@ -736,6 +736,66 @@ public final class VcfMetadata {
       return addPedigree(new PedigreeMetadata(m_context, properties));
     }
 
+    /*
+     * Raw-value replace overloads, mirroring the raw-value add overloads' typed/Map pairing per type above so
+     * leniency keeps coming from the context rather than the overload shape. Unlike addXxx, replaceXxx requires a
+     * declaration already stored under the same ID -- see requirePresentForReplace's own comment below for why a
+     * missing target throws unconditionally, in both a lenient and a strict context. There is no replacePedigree:
+     * PEDIGREE is List-backed with an optional ID (DUPLICATE_METADATA_ID_HANDLING.md's "##PEDIGREE: a conditional
+     * case"), so it has no Map to replace a single entry into.
+     */
+
+    public Builder replaceAlt(@Nullable String id, @Nullable String description) {
+      return replaceAlt(new IdDescriptionMetadata(m_context, "ALT", id, description));
+    }
+
+    public Builder replaceAlt(Map<String, String> properties) {
+      return replaceAlt(new IdDescriptionMetadata(m_context, "ALT", properties));
+    }
+
+    public Builder replaceInfo(@Nullable String id, @Nullable String description, @Nullable InfoType type,
+        @Nullable String number, @Nullable String source, @Nullable String version) {
+      return replaceInfo(new InfoMetadata(m_context, id, description, type, number, source, version));
+    }
+
+    public Builder replaceInfo(Map<String, String> properties) {
+      return replaceInfo(new InfoMetadata(m_context, properties));
+    }
+
+    public Builder replaceFilter(@Nullable String id, @Nullable String description) {
+      return replaceFilter(new IdDescriptionMetadata(m_context, "FILTER", id, description));
+    }
+
+    public Builder replaceFilter(Map<String, String> properties) {
+      return replaceFilter(new IdDescriptionMetadata(m_context, "FILTER", properties));
+    }
+
+    public Builder replaceFormat(@Nullable String id, @Nullable String description, @Nullable String number,
+        @Nullable FormatType type) {
+      return replaceFormat(new FormatMetadata(m_context, id, description, number, type));
+    }
+
+    public Builder replaceFormat(Map<String, String> properties) {
+      return replaceFormat(new FormatMetadata(m_context, properties));
+    }
+
+    public Builder replaceContig(@Nullable String id, @Nullable Long length, @Nullable String assembly,
+        @Nullable String md5, @Nullable String species, @Nullable String taxonomy, @Nullable String url) {
+      return replaceContig(new ContigMetadata(m_context, id, length, assembly, md5, species, taxonomy, url));
+    }
+
+    public Builder replaceContig(Map<String, String> properties) {
+      return replaceContig(new ContigMetadata(m_context, properties));
+    }
+
+    public Builder replaceSample(@Nullable String id, @Nullable String description) {
+      return replaceSample(new IdDescriptionMetadata(m_context, "SAMPLE", id, description));
+    }
+
+    public Builder replaceSample(Map<String, String> properties) {
+      return replaceSample(new IdDescriptionMetadata(m_context, "SAMPLE", properties));
+    }
+
     /**
      * Adds an already-built declaration, validating its content via {@link #validateAlt}. Package-private: this
      * shape is retained only for internal same-context callers -- the public raw-value overloads above, which
@@ -900,6 +960,116 @@ public final class VcfMetadata {
         return this;
       }
       m_pedigree.add(md);
+      return this;
+    }
+
+    /**
+     * Confirms a declaration with {@code id} is already stored in {@code map} before a {@code replaceXxx} call is
+     * allowed to overwrite it -- otherwise throws {@link VcfFormatException}, in both a lenient and a strict
+     * context. This is deliberately not context-dependent, unlike {@link #warnIfDuplicate}: {@code replaceXxx} is
+     * the typo-resistant alternative to the retired remove-then-add idiom (see
+     * DUPLICATE_METADATA_ID_HANDLING.md's "`replaceXxx`: the supported way to overwrite a declaration" section),
+     * so a missing target is a programming error in either mode, not a content violation -- appending on a
+     * mistyped ID would reintroduce the very failure this method exists to prevent, and warning-and-continuing
+     * would leave the transformed {@code VcfMetadata} silently unchanged. Adding a new declaration is
+     * {@code addXxx}'s job.
+     * <p>
+     * {@code id} may be {@code null} ({@link IdMetadata#getId()} returns {@code null} only for a declaration
+     * built from a blank/missing ID under a lenient context) -- reported with its own, more specific message
+     * rather than falling through to {@code map.containsKey(null)} (which would just report absence, since a
+     * blank/missing ID is never stored under {@code addXxx}'s own rule -- see each {@code addXxx} method's "has
+     * no ID and cannot be stored" branch above -- so the map can never hold a {@code null} key to match against).
+     */
+    private static void requirePresentForReplace(Map<String, ?> map, @Nullable String id, String typeName) {
+      if (id == null) {
+        throw new VcfFormatException(typeName + " metadata declaration has no ID to replace by");
+      }
+      if (!map.containsKey(id)) {
+        throw new VcfFormatException("No existing " + typeName + " metadata declaration with ID \"" + id +
+            "\" to replace; use addXxx to add a new declaration instead");
+      }
+    }
+
+    /**
+     * Replaces the existing ALT declaration under {@code md.getId()}, throwing via
+     * {@link #requirePresentForReplace} if none is stored. Content is validated (via {@link #validateAlt})
+     * completely before the single map mutation, and {@link #warnIfDuplicate} is never consulted -- so a
+     * rejected replacement (e.g. an invalid Number/Type extra) leaves the existing declaration installed and this
+     * builder otherwise unchanged. {@code addAlt(md, boolean)} above cannot be reused here: it runs
+     * {@code warnIfDuplicate} before {@code validateAlt}, which would short-circuit a same-ID replacement on the
+     * duplicate-ID warning before content is ever validated (Step 2a of the task that introduced this method).
+     */
+    private Builder replaceAlt(IdDescriptionMetadata md) {
+      requireNonNull(md, "ALT");
+      checkSameContext(md, m_context, "ALT");
+      requirePresentForReplace(m_alt, md.getId(), "ALT");
+      validateAlt(md, m_context);
+      m_alt.put(md.getId(), md);
+      return this;
+    }
+
+    /**
+     * Replaces the existing INFO declaration under {@code md.getId()}, throwing via
+     * {@link #requirePresentForReplace} if none is stored. See {@link #replaceAlt(IdDescriptionMetadata)} for the
+     * shared reasoning; INFO has no equivalent post-construction content check to run before the map mutation.
+     */
+    private Builder replaceInfo(InfoMetadata md) {
+      requireNonNull(md, "INFO");
+      checkSameContext(md, m_context, "INFO");
+      requirePresentForReplace(m_info, md.getId(), "INFO");
+      m_info.put(md.getId(), md);
+      return this;
+    }
+
+    /**
+     * Replaces the existing FILTER declaration under {@code md.getId()}, throwing via
+     * {@link #requirePresentForReplace} if none is stored. See {@link #replaceAlt(IdDescriptionMetadata)} for the
+     * shared reasoning; FILTER has no equivalent post-construction content check to run before the map mutation.
+     */
+    private Builder replaceFilter(IdDescriptionMetadata md) {
+      requireNonNull(md, "FILTER");
+      checkSameContext(md, m_context, "FILTER");
+      requirePresentForReplace(m_filter, md.getId(), "FILTER");
+      m_filter.put(md.getId(), md);
+      return this;
+    }
+
+    /**
+     * Replaces the existing FORMAT declaration under {@code md.getId()}, throwing via
+     * {@link #requirePresentForReplace} if none is stored. See {@link #replaceAlt(IdDescriptionMetadata)} for the
+     * shared reasoning; FORMAT has no equivalent post-construction content check to run before the map mutation.
+     */
+    private Builder replaceFormat(FormatMetadata md) {
+      requireNonNull(md, "FORMAT");
+      checkSameContext(md, m_context, "FORMAT");
+      requirePresentForReplace(m_format, md.getId(), "FORMAT");
+      m_format.put(md.getId(), md);
+      return this;
+    }
+
+    /**
+     * Replaces the existing CONTIG declaration under {@code md.getId()}, throwing via
+     * {@link #requirePresentForReplace} if none is stored. See {@link #replaceAlt(IdDescriptionMetadata)} for the
+     * shared reasoning; CONTIG has no equivalent post-construction content check to run before the map mutation.
+     */
+    private Builder replaceContig(ContigMetadata md) {
+      requireNonNull(md, "CONTIG");
+      checkSameContext(md, m_context, "CONTIG");
+      requirePresentForReplace(m_contig, md.getId(), "CONTIG");
+      m_contig.put(md.getId(), md);
+      return this;
+    }
+
+    /**
+     * Replaces the existing SAMPLE declaration under {@code md.getId()}, throwing via
+     * {@link #requirePresentForReplace} if none is stored. See {@link #replaceAlt(IdDescriptionMetadata)} for the
+     * shared reasoning; SAMPLE has no equivalent post-construction content check to run before the map mutation.
+     */
+    private Builder replaceSample(IdDescriptionMetadata md) {
+      requireNonNull(md, "SAMPLE");
+      checkSameContext(md, m_context, "SAMPLE");
+      requirePresentForReplace(m_sample, md.getId(), "SAMPLE");
+      m_sample.put(md.getId(), md);
       return this;
     }
 

@@ -150,9 +150,11 @@ surfaces any complaint about a dropped duplicate's content either.
   `VALIDATION_PHILOSOPHY.md`).
 - `VcfMetadata.Builder.addAlt()` / `addInfo()` / `addFormat()` / `addFilter()` / `addContig()` / `addSample()` —
   each calls `warnIfDuplicate()` before storing a new declaration, and returns immediately (without storing) if
-  it reports a duplicate. There is no `removeXxx` anywhere: a built `VcfMetadata` is immutable, and `Builder`
-  simply doesn't support replacing a declaration mid-build. To produce a `VcfMetadata` without some
-  declaration, build a fresh one rather than editing an existing one.
+  it reports a duplicate. There is no `removeXxx` anywhere: a built `VcfMetadata` is immutable. To produce a
+  `VcfMetadata` without some declaration entirely, build a fresh one rather than editing an existing one --
+  `Builder` has no way to drop one. To overwrite an existing declaration under the same `ID` instead, use the
+  `replaceXxx` counterpart described below -- routing that through `addXxx` hits `warnIfDuplicate()` above,
+  which discards the edit (warn-and-keep-first) instead of applying it.
 - `VcfMetadata.Builder.addPedigree()` — warns and keeps the first entry when a duplicate literal `ID` property
   is found; always adds when no `ID` property is present.
 - `VcfWriter.validateMetadata()`'s PEDIGREE loop — the same check, but warn-only (never drops), since it runs
@@ -177,6 +179,48 @@ surfaces any complaint about a dropped duplicate's content either.
   `VALIDATION_PHILOSOPHY.md`. Note that a strict context already rejects a missing/blank `ID` at
   declaration-construction time, so the `addXxx`-level check is reachable there only for a declaration whose
   `ID` was removed afterward via the package-private `BaseMetadata.trustedMutableProperties()` bypass.
+
+## `replaceXxx`: the supported way to overwrite a declaration
+
+`VcfMetadata`'s model layer was made immutable before this section was written, which retired every instance
+`removeXxx` method. That left the previously-documented "remove then add" idiom for overwriting a declaration
+(`toBuilder().removeInfo(id).addInfo(id, ...)`) with no supported replacement path: `toBuilder().addInfo(existingId,
+...)` reaches `warnIfDuplicate()` above like any other `addXxx` call, which -- correctly, for `addXxx` -- warns
+and keeps the *first* declaration under a lenient context, silently discarding the caller's intended edit, and
+throws under a strict one. Neither outcome lets a caller actually replace a declaration.
+
+`VcfMetadata.Builder.replaceAlt()` / `replaceInfo()` / `replaceFormat()` / `replaceFilter()` / `replaceContig()` /
+`replaceSample()` are the fix: one pair of overloads per keyed type (a typed overload and a raw-`Map` overload,
+mirroring `addXxx`'s own pairing, so leniency keeps coming from the `VcfContext` rather than the overload shape),
+each bypassing `warnIfDuplicate()` entirely for what is, by calling `replaceXxx`, always an intentional overwrite.
+There is no `replacePedigree`: `##PEDIGREE`'s `List` backing (see below) has no single `Map` entry to overwrite,
+and its `ID` is optional rather than mandatory.
+
+**The missing-target contract is deliberately not context-dependent.** Replacing an `ID` that has no existing
+declaration throws `VcfFormatException` -- in *both* a lenient and a strict context -- and never appends a new
+declaration under that `ID`. This is the one place in this file where lenient and strict behave identically:
+`replaceXxx` exists specifically to be the typo-resistant alternative to the retired remove-then-add idiom, so a
+missing target is a programming error in either mode, not a content violation the way an invalid `Number`/`Type`
+value is. Appending on a mistyped `ID` would reintroduce the exact failure `replaceXxx` exists to prevent (a
+"replace" that actually creates a stray extra declaration), and warning-and-continuing under a lenient context
+would leave the transformed `VcfMetadata` silently unchanged -- exactly the failure mode described above that
+motivated adding `replaceXxx` in the first place. Adding a genuinely new declaration remains `addXxx`'s job.
+`VcfMetadata.Builder.requirePresentForReplace(Map, String, String)` is the single, shared check every `replaceXxx`
+method runs before touching its map, and unconditionally throws rather than delegating to `warnOrThrow`.
+
+**Replacement is atomic with respect to a rejected replacement.** Only `##ALT` has a post-construction content
+check at add time (`VcfMetadata.validateAlt()`, checking a declared `Number`/`Type` extra), and it is the reason
+this needed care rather than being a mechanical wrapper around `addAlt()`: `addAlt()` runs `warnIfDuplicate()`
+*before* `validateAlt()`, so routing a same-`ID` replacement through it would short-circuit on the duplicate-ID
+warning before content is ever validated at all. `replaceAlt()` instead confirms the target `ID` is present, then
+validates the fully-constructed replacement declaration completely, and only then performs the single map
+mutation (`m_alt.put(id, md)`) -- so a rejected replacement (invalid `Number`/`Type`) leaves the existing
+declaration installed and the builder otherwise unchanged. Neither of the two mechanical-looking alternatives
+gives that for free: *remove-then-add* loses the valid original the moment validation throws (nothing left to put
+back), and *put-then-validate* leaves the invalid declaration stored -- `build()` does not re-run add-time
+validation, so it would silently survive into the built `VcfMetadata`. The other five keyed types have no
+add-time content check to preserve this ordering for, but `replaceInfo()`/`replaceFilter()`/`replaceFormat()`/
+`replaceContig()`/`replaceSample()` follow the same present-check-then-mutate shape for consistency.
 
 ## `##PEDIGREE`: a conditional case
 

@@ -1507,4 +1507,215 @@ public class VcfMetadataTest {
         () -> metadata.getInfo().get("AF").getPropertyKeys().remove("ID"));
   }
 
+  @Test
+  public void testReplaceAltReplacesExistingDeclarationUnderLenient() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addAlt(new IdDescriptionMetadata(LENIENT_CONTEXT, "ALT", "DEL", "Deletion"))
+          .replaceAlt("DEL", "Replaced deletion")
+          .build();
+      // the bug this task fixes: toBuilder().addInfo(existingId, ...) used to warn "Duplicate ID" and keep the
+      // first (unreplaced) declaration -- replaceXxx must not go through that path at all
+      assertFalse(appender.anyMessageContains("Duplicate ID"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(1, metadata.getAlts().size());
+    assertEquals("Replaced deletion", metadata.getAlts().get("DEL").getDescription());
+  }
+
+  @Test
+  public void testReplaceAltReplacesExistingDeclarationUnderStrict() {
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2")
+        .addAlt(new IdDescriptionMetadata(STRICT_CONTEXT, "ALT", "DEL", "Deletion"))
+        .replaceAlt("DEL", "Replaced deletion")
+        .build();
+    assertEquals(1, metadata.getAlts().size());
+    assertEquals("Replaced deletion", metadata.getAlts().get("DEL").getDescription());
+  }
+
+  @Test
+  public void testReplaceAltRawMapReplacesExistingDeclaration() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addAlt(new IdDescriptionMetadata(LENIENT_CONTEXT, "ALT", "DEL", "Deletion"))
+          .replaceAlt(org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+              new String[]{"ID=DEL", "Number=1", "Type=String", "Description=\"Replaced deletion\""},
+              VcfWarnings.DEFAULT))
+          .build();
+      assertFalse(appender.anyMessageContains("Duplicate ID"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals("Replaced deletion", metadata.getAlts().get("DEL").getDescription());
+    assertEquals("1", metadata.getAlts().get("DEL").getPropertyRaw("Number"));
+  }
+
+  @Test
+  public void testReplaceInfoReplacesExistingDeclaration() {
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata(LENIENT_CONTEXT, "DP", "First depth", InfoType.Integer, "1", null, null))
+        .replaceInfo("DP", "Replaced depth", InfoType.Integer, "1", null, null)
+        .build();
+    assertEquals(1, metadata.getInfo().size());
+    assertEquals("Replaced depth", metadata.getInfo().get("DP").getDescription());
+  }
+
+  @Test
+  public void testReplaceFilterReplacesExistingDeclaration() {
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addFilter(new IdDescriptionMetadata(LENIENT_CONTEXT, "FILTER", "q10", "First"))
+        .replaceFilter("q10", "Replaced")
+        .build();
+    assertEquals(1, metadata.getFilters().size());
+    assertEquals("Replaced", metadata.getFilters().get("q10").getDescription());
+  }
+
+  @Test
+  public void testReplaceFormatReplacesExistingDeclaration() {
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addFormat(new FormatMetadata(LENIENT_CONTEXT, "GT", "First genotype", "1", FormatType.String))
+        .replaceFormat("GT", "Replaced genotype", "1", FormatType.String)
+        .build();
+    assertEquals(1, metadata.getFormats().size());
+    assertEquals("Replaced genotype", metadata.getFormats().get("GT").getDescription());
+  }
+
+  @Test
+  public void testReplaceContigReplacesExistingDeclaration() {
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addContig(new ContigMetadata(LENIENT_CONTEXT, "1", 100L, "GRCh38", null, null, null, null))
+        .replaceContig("1", 200L, "GRCh37", null, null, null, null)
+        .build();
+    assertEquals(1, metadata.getContigs().size());
+    assertEquals(200L, metadata.getContigs().get("1").getLength());
+  }
+
+  @Test
+  public void testReplaceSampleReplacesExistingDeclaration() {
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addSample(new IdDescriptionMetadata(LENIENT_CONTEXT, "SAMPLE", "S1", "First"))
+        .replaceSample("S1", "Replaced")
+        .build();
+    assertEquals(1, metadata.getSamples().size());
+    assertEquals("Replaced", metadata.getSamples().get("S1").getDescription());
+  }
+
+  @Test
+  public void testReplaceAltMissingIdThrowsUnderLenientTypedOverload() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addAlt(new IdDescriptionMetadata(LENIENT_CONTEXT, "ALT", "DEL", "Deletion"));
+    // "INS" was never added -- a typo'd/nonexistent target must throw even under a lenient context, never
+    // silently append a new declaration
+    assertThrows(VcfFormatException.class, () -> builder.replaceAlt("INS", "Insertion"));
+    assertEquals(1, builder.build().getAlts().size());
+  }
+
+  @Test
+  public void testReplaceAltMissingIdThrowsUnderStrictTypedOverload() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2")
+        .addAlt(new IdDescriptionMetadata(STRICT_CONTEXT, "ALT", "DEL", "Deletion"));
+    assertThrows(VcfFormatException.class, () -> builder.replaceAlt("INS", "Insertion"));
+  }
+
+  @Test
+  public void testReplaceAltMissingIdThrowsUnderLenientMapOverload() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addAlt(new IdDescriptionMetadata(LENIENT_CONTEXT, "ALT", "DEL", "Deletion"));
+    assertThrows(VcfFormatException.class, () -> builder.replaceAlt(
+        org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+            new String[]{"ID=INS", "Description=\"Insertion\""}, VcfWarnings.DEFAULT)));
+  }
+
+  @Test
+  public void testReplaceAltMissingIdThrowsUnderStrictMapOverload() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2")
+        .addAlt(new IdDescriptionMetadata(STRICT_CONTEXT, "ALT", "DEL", "Deletion"));
+    assertThrows(VcfFormatException.class, () -> builder.replaceAlt(
+        org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+            new String[]{"ID=INS", "Description=\"Insertion\""}, VcfWarnings.DEFAULT)));
+  }
+
+  @Test
+  public void testReplaceAltNullIdThrowsUnderLenient() {
+    // reaches requirePresentForReplace's id == null branch directly: under a lenient context, IdDescriptionMetadata's
+    // typed constructor warns (rather than throws) on a null id, so md.getId() is null by the time replaceAlt(md)
+    // runs its own check
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addAlt(new IdDescriptionMetadata(LENIENT_CONTEXT, "ALT", "DEL", "Deletion"));
+    assertThrows(VcfFormatException.class, () -> builder.replaceAlt(null, "Insertion"));
+  }
+
+  @Test
+  public void testReplaceInfoMissingIdThrows() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addInfo(new InfoMetadata(LENIENT_CONTEXT, "DP", "First depth", InfoType.Integer, "1", null, null));
+    assertThrows(VcfFormatException.class,
+        () -> builder.replaceInfo("AF", "Allele frequency", InfoType.Float, "1", null, null));
+  }
+
+  @Test
+  public void testReplaceFilterMissingIdThrows() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addFilter(new IdDescriptionMetadata(LENIENT_CONTEXT, "FILTER", "q10", "First"));
+    assertThrows(VcfFormatException.class, () -> builder.replaceFilter("s50", "Replaced"));
+  }
+
+  @Test
+  public void testReplaceFormatMissingIdThrows() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addFormat(new FormatMetadata(LENIENT_CONTEXT, "GT", "First genotype", "1", FormatType.String));
+    assertThrows(VcfFormatException.class,
+        () -> builder.replaceFormat("DP", "Read depth", "1", FormatType.Integer));
+  }
+
+  @Test
+  public void testReplaceContigMissingIdThrows() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addContig(new ContigMetadata(LENIENT_CONTEXT, "1", 100L, "GRCh38", null, null, null, null));
+    assertThrows(VcfFormatException.class,
+        () -> builder.replaceContig("2", 200L, "GRCh38", null, null, null, null));
+  }
+
+  @Test
+  public void testReplaceSampleMissingIdThrows() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addSample(new IdDescriptionMetadata(LENIENT_CONTEXT, "SAMPLE", "S1", "First"));
+    assertThrows(VcfFormatException.class, () -> builder.replaceSample("S2", "Replaced"));
+  }
+
+  @Test
+  public void testReplaceAltRawMapAtomicOnRejectedContent() {
+    // Step 2a regression: neither "obvious" implementation is atomic. remove-then-addXxx loses the valid
+    // original when validateAlt throws; put-then-validate leaves the invalid declaration stored (build() does not
+    // re-run add-time validation). This seeds a valid ALT=DEL, attempts a same-ID replacement carrying an
+    // invalid Number, and confirms the original DEL declaration survives completely unmodified -- which also
+    // proves replaceAlt retained addAlt's validateAlt call rather than degenerating into an unchecked map put.
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2")
+        .addAlt(new IdDescriptionMetadata(STRICT_CONTEXT, "ALT", "DEL", "Deletion"));
+    java.util.Map<String, String> badReplacement = org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
+        new String[]{"ID=DEL", "Number=B", "Type=String", "Description=\"Replaced deletion\""}, VcfWarnings.DEFAULT);
+    assertThrows(VcfFormatException.class, () -> builder.replaceAlt(badReplacement));
+    VcfMetadata metadata = builder.build();
+    assertEquals(1, metadata.getAlts().size());
+    assertEquals("Deletion", metadata.getAlts().get("DEL").getDescription());
+    assertNull(metadata.getAlts().get("DEL").getPropertyRaw("Number"));
+  }
+
 }
