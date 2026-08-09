@@ -252,13 +252,8 @@ public final class VcfPosition {
     m_lineNumber = lineNumber; // required (-1 if not produced by parsing a real line)
   }
 
-  /**
-   * @return the context this position was created under; never {@code null}.
-   * <p>
-   * Package-private in Plan A on purpose: it would transitively expose {@link VcfContext#getVersion()}, whose
-   * value is not meaningful until version-gated behavior exists. Promoted alongside that accessor.
-   */
-  VcfContext getContext() {
+  /** @return the context this position was created under; never {@code null}. */
+  public VcfContext getContext() {
     return m_context;
   }
 

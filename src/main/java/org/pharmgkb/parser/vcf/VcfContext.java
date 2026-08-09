@@ -70,16 +70,8 @@ public final class VcfContext {
     return m_declaredFileFormat;
   }
 
-  /**
-   * @return the version whose semantics apply, after fallback resolution.
-   * <p>
-   * Package-private in Plan A <em>on purpose</em>. {@link VcfVersion#HIGHEST_IMPLEMENTED} is already
-   * {@link VcfVersion#V4_3}, but no version-gated behavior exists until Plan B -- interpretation is still
-   * uniform across every version. Publishing this accessor now would let a caller read "V4_3" while the
-   * library is not yet applying 4.3 semantics. Promote it to {@code public} in Plan B, in the same change
-   * that makes the value meaningful.
-   */
-  VcfVersion getVersion() {
+  /** @return the version whose semantics apply, after fallback resolution. */
+  public VcfVersion getVersion() {
     return m_version;
   }
 

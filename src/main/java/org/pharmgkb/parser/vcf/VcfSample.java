@@ -120,12 +120,8 @@ public final class VcfSample {
     }
   }
 
-  /**
-   * @return the context this sample was created under; never {@code null}.
-   * <p>
-   * Package-private for the same reason as {@link VcfPosition#getContext()}.
-   */
-  VcfContext getContext() {
+  /** @return the context this sample was created under; never {@code null}. */
+  public VcfContext getContext() {
     return m_context;
   }
 

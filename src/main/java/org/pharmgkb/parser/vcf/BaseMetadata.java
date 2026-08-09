@@ -94,11 +94,9 @@ public sealed class BaseMetadata permits IdMetadata, PedigreeMetadata {
    * @return the context this declaration was created under; never {@code null}.
    * <p>
    * {@code final} so a permitted subclass cannot override it to report a different context and defeat
-   * {@code VcfMetadata.Builder}'s identity check. Package-private for the same reason
-   * {@code VcfPosition.getContext()} is -- it would transitively expose {@code getVersion()}, whose value is
-   * not meaningful until version-gated behavior exists.
+   * {@code VcfMetadata.Builder}'s identity check.
    */
-  final VcfContext getContext() {
+  public final VcfContext getContext() {
     return m_context;
   }
 

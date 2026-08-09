@@ -71,10 +71,8 @@ public final class VcfRecord {
   /**
    * @return the context this record, its position, and every one of its samples were created under; never
    * {@code null}.
-   * <p>
-   * Package-private for the same reason as {@link VcfPosition#getContext()}.
    */
-  VcfContext getContext() {
+  public VcfContext getContext() {
     return m_context;
   }
 
@@ -86,5 +84,70 @@ public final class VcfRecord {
   /** @return per-sample data in column order; never {@code null}, never contains {@code null}, unmodifiable. */
   public List<VcfSample> getSamples() {
     return m_samples;
+  }
+
+  /**
+   * @return a new {@link Builder}, seeded with this record's position and a copy of its current sample list,
+   * bound to this record's own {@link VcfContext} by reference (not a re-derived or newly constructed one --
+   * see {@link VcfContext#newRecord}, which rejects a component built under a different context instance).
+   */
+  public Builder toBuilder() {
+    return new Builder(m_context)
+        .position(m_position)
+        .samples(m_samples);
+  }
+
+
+  /**
+   * A copy-and-modify builder for {@link VcfRecord}, obtained via {@link #toBuilder()}. Every setter
+   * defensively copies its argument on the way in -- matching {@link VcfSample.Builder}'s own convention: a
+   * caller mutating a list handed to a setter, or the list obtained from the source record via
+   * {@link #toBuilder()}, must never be able to reach back into the record {@link #build()} produces.
+   */
+  public static class Builder {
+    private @Nullable VcfPosition m_position;
+    private @Nullable List<VcfSample> m_samples;
+    private final VcfContext m_context;
+
+    Builder(VcfContext context) {
+      m_context = Preconditions.checkNotNull(context, "context must not be null");
+    }
+
+    /**
+     * @throws VcfFormatException if {@code position} is null
+     */
+    public Builder position(VcfPosition position) {
+      // position is typed non-@Nullable, but nothing enforces that at runtime; reject immediately per AGENTS.md's
+      // Public API Null-Safety Policy, matching VcfContext.newRecord's identical check.
+      if (position == null) {
+        throw new VcfFormatException("Position is null");
+      }
+      m_position = position;
+      return this;
+    }
+
+    /**
+     * Defensively copies {@code samples}; see this class's own Javadoc for why.
+     *
+     * @throws VcfFormatException if {@code samples} is null
+     */
+    public Builder samples(List<VcfSample> samples) {
+      // samples is typed non-@Nullable, but nothing enforces that at runtime; reject immediately per AGENTS.md's
+      // Public API Null-Safety Policy, matching VcfContext.newRecord's identical check.
+      if (samples == null) {
+        throw new VcfFormatException("Sample list is null");
+      }
+      m_samples = new ArrayList<>(samples);
+      return this;
+    }
+
+    /**
+     * @return a new {@link VcfRecord}, delegating to {@link VcfContext#newRecord}, which validates
+     * position/sample-list nullness, per-sample nullness, and that every component was created under this
+     * builder's own context.
+     */
+    public VcfRecord build() {
+      return m_context.newRecord(m_position, m_samples);
+    }
   }
 }
