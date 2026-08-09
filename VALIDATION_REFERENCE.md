@@ -74,6 +74,17 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   **`VcfPosition.validate()` and `VcfSample.validate()` do not work this way for their recoverable conditions**
   -- those always warn, whatever context created them, because they pass their warnings sink to their check
   helpers unconditionally rather than deriving strictness from the context the way the constructor path does.
+  **The same is true of the lazy first-access getters, which is the route a caller reaches this by in
+  practice**, not just of an explicit `validate()` call: raw QUAL/INFO text supplied via
+  `VcfPosition.Builder`'s `rawQuality`/`rawInfo` is not checked at `build()` time at all, so it is first
+  parsed (and checked) by `getQuality()`/`getInfo()`, which pass the position's warnings sink unconditionally
+  the same way `validate()` does. Identical content therefore behaves differently under a strict context
+  depending on which setter supplied it -- `info(ListMultimap)` with an empty INFO key throws from `build()`,
+  while `rawInfo("=orphan")` warns on first access and drops the entry. That is deliberate: `rawInfo`/
+  `rawQuality` are the explicit named wire-text escape hatch (the one route by which un-decoded, file-shaped
+  text legitimately enters the model), and leaving them unvalidated at build time is what preserves lazy
+  parsing across a `toBuilder()` copy. See `VcfPositionTest`'s
+  `testValidateAlwaysWarnsRegardlessOfOriginalConstructor`, which pins it.
   Each also has structural checks that are a separate case and still throw unconditionally in both contexts:
   `VcfSample.validate()` throws via `checkNoStructuralDelimiter` (`VcfSample.java`) for a null property
   key, a line terminator, or a `:`/tab in a key or (non-`GLE`) value; `VcfPosition.validate()` throws via
