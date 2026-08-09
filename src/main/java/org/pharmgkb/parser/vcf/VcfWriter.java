@@ -138,7 +138,15 @@ public class VcfWriter implements Closeable {
     // retry writing the REJECTED metadata's ##fileformat over the accepted metadata's content, which is the
     // very thing the cross-version check above exists to prevent, reached around it (that check only compares
     // m_targetFileFormat, which is null in the inherit-from-metadata case).
-    m_context = VcfContext.lenient(declaredFileFormatFor(metadata), m_warnings);
+    //
+    // Resolved through VcfVersion.resolveWithoutWarning rather than by VcfContext.lenient's own
+    // VcfVersion.resolve call: on the write side a version fallback is a validateBeforeWrite() diagnostic, and
+    // resolve() emits unconditionally, so building the context the ordinary way would already have warned by the
+    // time the m_validateBeforeWrite branch below is reached. The fallback is carried as a fact instead and
+    // reported further down, at the only point where the message is true of anything (see there).
+    String declaredFileFormat = declaredFileFormatFor(metadata);
+    VcfVersion.Resolution resolution = VcfVersion.resolveWithoutWarning(declaredFileFormat);
+    m_context = VcfContext.lenientWithoutFallbackWarning(declaredFileFormat, resolution.version(), m_warnings);
     // What m_context IS: the ##fileformat spelling this writer emits and the warnings sink this writer's own
     // generated diagnostics (e.g. an undeclared INFO key) go to.
     // What m_context is NOT: the record's semantic context. It is a fresh VcfContext built here on every
@@ -162,6 +170,16 @@ public class VcfWriter implements Closeable {
       if (line.contains("\n") || line.contains("\r")) {
         throw new VcfFormatException("Header line contains a line terminator: [[[" + line + "]]]");
       }
+    }
+    // Reported here, and only here: after every rejection above has been passed and immediately before the first
+    // header byte is written. The message is a statement about output that exists, so an attempt that writes
+    // nothing must not make it -- a rejected attempt followed by a corrected retry therefore reports this once in
+    // total, not once per attempt. Diagnostics-mode only, per AGENTS.md's Writer Validation and Round-Trip
+    // Policy: the default write path is performance-sensitive and asked for no diagnostics.
+    if (m_validateBeforeWrite && resolution.fellBack()) {
+      m_warnings.warn("The output declares ##fileformat={}, whose semantics this library does not implement; it " +
+          "was written under VCF {} rules instead, so its validity under the declared version is not guaranteed",
+          declaredFileFormat, resolution.version().getId());
     }
     for (String line : lines) {
       printLine(line);
@@ -1258,14 +1276,16 @@ public class VcfWriter implements Closeable {
      * {@link VcfWriter}/{@link VcfParser}'s own default-derived name (e.g. an in-place parse-then-write).
      * <p>
      * <b>This only captures diagnostics this {@link VcfWriter} generates itself</b> -- e.g. an undeclared INFO/
-     * FORMAT key, a header/sample mismatch, or a version-fallback warning for the {@code ##fileformat} this
-     * writer emits. It does <em>not</em> capture a lazy content warning from the {@code metadata}/{@code
-     * position}/{@code samples} handed to {@link #writeHeader}/{@link #writeLine} (e.g. an out-of-range QUAL, a
-     * duplicate FORMAT key, or a malformed metadata attribute discovered on first access): every model object's
-     * warnings destination is fixed at construction, from its own {@link VcfContext}, and this writer never
-     * re-points it -- see {@link VcfWarnings}'s class Javadoc for the full attribution rule. A caller who needs
-     * such a warning captured here must build {@code metadata}/{@code position}/{@code samples} under a context
-     * that already points at this same destination.
+     * FORMAT key, or a header/sample mismatch. The version-fallback diagnostic for a {@code ##fileformat} this
+     * writer emits but does not implement is captured only under {@link #validateBeforeWrite()}, and only for a
+     * header that actually proceeds to being written: the default write path stays silent about it, and a
+     * rejected {@link #writeHeader} attempt reports nothing at all. It does <em>not</em> capture a lazy content
+     * warning from the {@code metadata}/{@code position}/{@code samples} handed to {@link #writeHeader}/
+     * {@link #writeLine} (e.g. an out-of-range QUAL, a duplicate FORMAT key, or a malformed metadata attribute
+     * discovered on first access): every model object's warnings destination is fixed at construction, from its
+     * own {@link VcfContext}, and this writer never re-points it -- see {@link VcfWarnings}'s class Javadoc for
+     * the full attribution rule. A caller who needs such a warning captured here must build {@code metadata}/
+     * {@code position}/{@code samples} under a context that already points at this same destination.
      */
     public Builder warningsToFile() {
       m_warningsToFile = true;
@@ -1288,14 +1308,16 @@ public class VcfWriter implements Closeable {
      * complete truncation of one side's content.
      * <p>
      * <b>This only captures diagnostics this {@link VcfWriter} generates itself</b> -- e.g. an undeclared INFO/
-     * FORMAT key, a header/sample mismatch, or a version-fallback warning for the {@code ##fileformat} this
-     * writer emits. It does <em>not</em> capture a lazy content warning from the {@code metadata}/{@code
-     * position}/{@code samples} handed to {@link #writeHeader}/{@link #writeLine} (e.g. an out-of-range QUAL, a
-     * duplicate FORMAT key, or a malformed metadata attribute discovered on first access): every model object's
-     * warnings destination is fixed at construction, from its own {@link VcfContext}, and this writer never
-     * re-points it -- see {@link VcfWarnings}'s class Javadoc for the full attribution rule. A caller who needs
-     * such a warning captured here must build {@code metadata}/{@code position}/{@code samples} under a context
-     * that already points at this same destination.
+     * FORMAT key, or a header/sample mismatch. The version-fallback diagnostic for a {@code ##fileformat} this
+     * writer emits but does not implement is captured only under {@link #validateBeforeWrite()}, and only for a
+     * header that actually proceeds to being written: the default write path stays silent about it, and a
+     * rejected {@link #writeHeader} attempt reports nothing at all. It does <em>not</em> capture a lazy content
+     * warning from the {@code metadata}/{@code position}/{@code samples} handed to {@link #writeHeader}/
+     * {@link #writeLine} (e.g. an out-of-range QUAL, a duplicate FORMAT key, or a malformed metadata attribute
+     * discovered on first access): every model object's warnings destination is fixed at construction, from its
+     * own {@link VcfContext}, and this writer never re-points it -- see {@link VcfWarnings}'s class Javadoc for
+     * the full attribution rule. A caller who needs such a warning captured here must build {@code metadata}/
+     * {@code position}/{@code samples} under a context that already points at this same destination.
      */
     public Builder warningsToFile(Path customFile) {
       // customFile is a caller-configuration object, matching the established convention (see toFile(Path)

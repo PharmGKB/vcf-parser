@@ -73,6 +73,10 @@ public enum VcfVersion {
    * Resolution is uniform across strict and lenient contexts: a well-formed declaration for an unimplemented
    * version is not invalid content, so it warns rather than throwing even under
    * {@code VcfContext.strict(...)}. Only a structurally unusable value throws.
+   * <p>
+   * {@code VcfWriter} is the one caller that deliberately does not use this method: on the write side the
+   * fallback is a {@code validateBeforeWrite()} diagnostic rather than an unconditional one, so it resolves
+   * through this class's package-private {@code resolveWithoutWarning} and reports the fallback itself.
    *
    * @throws VcfFormatException if {@code declaredFileFormat} is {@code null} or does not match
    * {@link InternalUtils#FILE_FORMAT_PATTERN} -- a structural violation, matching VcfParser's existing
@@ -83,6 +87,37 @@ public enum VcfVersion {
     // while resolve("VCFv4.9", null) threw, which is worse than failing consistently. VcfWarnings is
     // caller configuration, not VCF content, so it takes a raw NPE per AGENTS.md's Null-Safety Policy.
     Preconditions.checkNotNull(warnings, "warnings must not be null");
+    Resolution resolution = resolveWithoutWarning(declaredFileFormat);
+    if (resolution.fellBack()) {
+      warnings.warn("##fileformat={} declares a version whose semantics this library does not implement; " +
+          "interpreting it as VCF {}", declaredFileFormat, resolution.version().getId());
+    }
+    return resolution.version();
+  }
+
+  /**
+   * The outcome of {@link #resolveWithoutWarning}: the version whose semantics apply, plus whether reaching it
+   * required falling back from a declaration this library does not implement.
+   */
+  record Resolution(VcfVersion version, boolean fellBack) {}
+
+  /**
+   * Resolves a declared {@code ##fileformat} by exactly {@link #resolve}'s rules, but reports a fallback as a
+   * returned fact instead of emitting a warning.
+   * <p>
+   * Exists for {@code VcfWriter}, which cannot use {@link #resolve}: it builds its {@link VcfContext} before it
+   * can act on whether {@code VcfWriter.Builder.validateBeforeWrite()} diagnostics were requested, and the
+   * default write path must stay silent. Every other caller -- {@code VcfParser}, and any direct
+   * {@link VcfContext#lenient}/{@link VcfContext#strict} construction -- still goes through {@link #resolve} and
+   * warns exactly as before.
+   * <p>
+   * Package-private, not public-with-{@code @RestrictedApi}: that annotation is documentation-only here, so
+   * visibility is what actually enforces the restriction.
+   *
+   * @throws VcfFormatException under exactly {@link #resolve}'s own conditions -- {@code declaredFileFormat} is
+   * {@code null} or does not match {@link InternalUtils#FILE_FORMAT_PATTERN}
+   */
+  static Resolution resolveWithoutWarning(@Nullable String declaredFileFormat) {
     if (declaredFileFormat == null) {
       throw new VcfFormatException("##fileformat is null");
     }
@@ -99,14 +134,13 @@ public enum VcfVersion {
     for (VcfVersion v : values()) {
       if (v.m_id.equals(normalizedId)) {
         if (v.isAtLeast(HIGHEST_IMPLEMENTED) && v != HIGHEST_IMPLEMENTED) {
-          return fallback(declaredFileFormat, HIGHEST_IMPLEMENTED, warnings);
+          return new Resolution(HIGHEST_IMPLEMENTED, true);
         }
-        return v;
+        return new Resolution(v, false);
       }
     }
     // Outside the table: either older than LOWEST_SUPPORTED (4.0) or newer than V4_5 (4.6+, 4.10+, ...).
-    return fallback(declaredFileFormat,
-        isBelowFloor(normalizedMinor) ? LOWEST_SUPPORTED : HIGHEST_IMPLEMENTED, warnings);
+    return new Resolution(isBelowFloor(normalizedMinor) ? LOWEST_SUPPORTED : HIGHEST_IMPLEMENTED, true);
   }
 
   /**
@@ -151,11 +185,5 @@ public enum VcfVersion {
       return normalizedMinor.length() < floorMinor.length();
     }
     return normalizedMinor.compareTo(floorMinor) < 0;
-  }
-
-  private static VcfVersion fallback(String declared, VcfVersion target, VcfWarnings warnings) {
-    warnings.warn("##fileformat={} declares a version whose semantics this library does not implement; " +
-        "interpreting it as VCF {}", declared, target.getId());
-    return target;
   }
 }

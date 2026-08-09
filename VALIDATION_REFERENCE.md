@@ -392,12 +392,22 @@ structurally unusable value (not matching `VCFv4.<digits>`) still throws, in bot
 this is a well-formed declaration for an unimplemented version, not invalid content. See
 `VcfVersion.resolve`.
 
-Note that both `VcfParser` and `VcfWriter` build their own `VcfContext`, so this warning is emitted once per
-parse *and* once per write: a parse-then-write round trip of a `VCFv4.4`/`VCFv4.5` file reports it twice. That
-duplication is known and deferred rather than suppressed — whether the emitted output is actually valid under
-the declared version is not answerable until version-gated behavior exists, so the writer has nothing more
-specific to say yet. Pinned by
-`VcfWriterTest.testWriteSideVersionFallbackWarningIsEmittedForAnUnimplementedDeclaration`.
+`VcfParser` and `VcfWriter` each build their own `VcfContext`, but the two sides report this differently. On the
+parse side it is unconditional: `VcfVersion.resolve` warns once per parse, in strict and lenient contexts alike.
+On the write side it is a `validateBeforeWrite()` diagnostic only — the writer resolves through
+`VcfVersion.resolveWithoutWarning`, which returns the fallback as a fact (resolved version plus a "fell back"
+flag) instead of emitting it, so the default write path is silent about it entirely. Under `validateBeforeWrite()`
+the writer emits its own, differently-worded message: the parser's wording ("interpreting it as VCF 4.3") is
+false for a writer, which emits the declaration verbatim rather than interpreting it, so the write-side message
+says instead that the output declares a version this library does not implement and that its validity under that
+version is not guaranteed. It names the version actually applied rather than hardcoding 4.3 — a `VCFv4.0`
+declaration falls *up* to 4.1. It is emitted once per header that is actually written, after every header
+rejection has been passed and immediately before the first header byte, so a rejected `writeHeader` attempt
+followed by a corrected retry reports it once in total, not once per attempt. Pinned by
+`VcfWriterTest.testDefaultWritePathSaysNothingAboutAnUnimplementedDeclaration`,
+`testValidateBeforeWriteReportsAnUnimplementedDeclarationExactlyOnce`,
+`testRejectedHeaderAttemptDoesNotReportTheUnimplementedDeclaration`, and
+`VcfVersionTest.testResolveWithoutWarningReportsEveryFallbackRouteAsAFact`.
 
 An empty ("zero-length") entry in a delimited record field — e.g. `ID=rs1;;rs2`, `ALT=T,`, `FILTER=q10;`,
 `FORMAT=GT:DP:`, a sample value like `0/1:`, or `INFO=AD=1,,2` — is also lenient rather than strict when it can be

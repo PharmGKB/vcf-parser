@@ -34,10 +34,10 @@ public final class VcfContext {
   private final VcfWarnings m_warnings;
   private final boolean m_lenient;
 
-  private VcfContext(String declaredFileFormat, VcfWarnings warnings, boolean lenient) {
+  private VcfContext(String declaredFileFormat, VcfVersion version, VcfWarnings warnings, boolean lenient) {
     Preconditions.checkNotNull(warnings, "warnings must not be null");
     m_declaredFileFormat = declaredFileFormat;
-    m_version = VcfVersion.resolve(declaredFileFormat, warnings);
+    m_version = version;
     m_warnings = warnings;
     m_lenient = lenient;
   }
@@ -48,7 +48,25 @@ public final class VcfContext {
    * @throws VcfFormatException if {@code declaredFileFormat} is null or not a valid VCF 4.x version
    */
   public static VcfContext lenient(String declaredFileFormat, VcfWarnings warnings) {
-    return new VcfContext(declaredFileFormat, warnings, true);
+    return new VcfContext(declaredFileFormat, VcfVersion.resolve(declaredFileFormat, warnings), warnings, true);
+  }
+
+  /**
+   * Internal construction path for {@code VcfWriter}: identical to {@link #lenient}, except that the caller has
+   * already resolved the version through {@code VcfVersion.resolveWithoutWarning} and owns reporting a fallback
+   * itself.
+   * <p>
+   * <b>Skips only the fallback warning</b> {@link VcfVersion#resolve} would emit; nothing about the resulting
+   * context differs. {@code VcfWriter} needs this because it builds its context before it can act on whether
+   * {@code Builder.validateBeforeWrite()} diagnostics were requested -- going through {@link #lenient} would have
+   * already warned on the default write path, which asked for no diagnostics at all.
+   * <p>
+   * Package-private, not public-with-{@code @RestrictedApi}: that annotation is documentation-only here, so
+   * visibility is what actually enforces the restriction.
+   */
+  static VcfContext lenientWithoutFallbackWarning(String declaredFileFormat, VcfVersion resolvedVersion,
+      VcfWarnings warnings) {
+    return new VcfContext(declaredFileFormat, resolvedVersion, warnings, true);
   }
 
   /**
@@ -62,7 +80,8 @@ public final class VcfContext {
    * @throws VcfFormatException if {@code declaredFileFormat} is null or not a valid VCF 4.x version
    */
   public static VcfContext strict(String declaredFileFormat) {
-    return new VcfContext(declaredFileFormat, VcfWarnings.DEFAULT, false);
+    return new VcfContext(declaredFileFormat, VcfVersion.resolve(declaredFileFormat, VcfWarnings.DEFAULT),
+        VcfWarnings.DEFAULT, false);
   }
 
   /** @return the raw {@code ##fileformat} value, for verbatim re-emission on write. */

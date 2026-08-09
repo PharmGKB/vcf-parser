@@ -125,6 +125,50 @@ class VcfVersionTest {
     assertThrows(VcfFormatException.class, () -> VcfVersion.V4_3.isAtLeast(null));
   }
   @Test
+  void testResolveWithoutWarningReportsEveryFallbackRouteAsAFact() {
+    // The writer's resolution path. It takes no VcfWarnings at all, so it cannot emit; what it must get right is
+    // the FACT it returns, on each of resolve's three distinct fallback routes. A version-table-only
+    // implementation would handle VCFv4.5 and silently miss both out-of-table cases, and one that assumed the
+    // fallback target is always HIGHEST_IMPLEMENTED would be wrong at the lower bound: VCFv4.0 falls UP to 4.1.
+    assertEquals(new VcfVersion.Resolution(VcfVersion.V4_1, true),
+        VcfVersion.resolveWithoutWarning("VCFv4.0")); // out of table, below the floor -- falls up
+    assertEquals(new VcfVersion.Resolution(VcfVersion.V4_3, true),
+        VcfVersion.resolveWithoutWarning("VCFv4.5")); // in the table, above HIGHEST_IMPLEMENTED
+    assertEquals(new VcfVersion.Resolution(VcfVersion.V4_3, true),
+        VcfVersion.resolveWithoutWarning("VCFv4.7")); // out of table, above HIGHEST_IMPLEMENTED
+  }
+
+  @Test
+  void testResolveWithoutWarningReportsNoFallbackForAnImplementedVersion() {
+    assertEquals(new VcfVersion.Resolution(VcfVersion.V4_1, false), VcfVersion.resolveWithoutWarning("VCFv4.1"));
+    assertEquals(new VcfVersion.Resolution(VcfVersion.V4_2, false), VcfVersion.resolveWithoutWarning("VCFv4.2"));
+    assertEquals(new VcfVersion.Resolution(VcfVersion.V4_3, false), VcfVersion.resolveWithoutWarning("VCFv4.3"));
+    // 4.01 IS 4.1, so it is not a fallback either -- the leading-zero normalization must run before the flag is set
+    assertEquals(new VcfVersion.Resolution(VcfVersion.V4_1, false), VcfVersion.resolveWithoutWarning("VCFv4.01"));
+  }
+
+  @Test
+  void testResolveWithoutWarningRejectsExactlyWhatResolveRejects() {
+    assertThrows(VcfFormatException.class, () -> VcfVersion.resolveWithoutWarning(null));
+    assertThrows(VcfFormatException.class, () -> VcfVersion.resolveWithoutWarning("banana"));
+    assertThrows(VcfFormatException.class, () -> VcfVersion.resolveWithoutWarning("VCFv3.3"));
+    assertThrows(VcfFormatException.class, () -> VcfVersion.resolveWithoutWarning("VCFv4..2"));
+  }
+
+  @Test
+  void testResolveStillWarnsForEveryFallbackRoute() {
+    // the parser/direct-VcfContext contract is explicitly unchanged by the writer's new path above: resolve()
+    // still emits, unconditionally, on all three routes and stays silent on none of them
+    for (String declared : new String[] {"VCFv4.0", "VCFv4.5", "VCFv4.7"}) {
+      StringWriter sink = new StringWriter();
+      String resolved = resolveCapturingWarnings(declared, sink);
+      assertEquals(VcfVersion.resolveWithoutWarning(declared).version().getId(), resolved);
+      assertThat(sink.toString(), containsString(declared));
+      assertThat(sink.toString(), containsString(resolved));
+    }
+  }
+
+  @Test
   void testCanonicalizeStripsLeadingZerosButKeepsAnUnimplementedVersionsOwnNumber() {
     // identifies the DECLARATION, unlike resolve, which collapses an unimplemented version onto the nearest
     // implemented one -- that difference is the whole reason VcfWriter's cross-version check uses this

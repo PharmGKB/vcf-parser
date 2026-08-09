@@ -3234,30 +3234,149 @@ public class VcfWriterTest {
     }
   }
 
-  @Test
-  public void testWriteSideVersionFallbackWarningIsEmittedForAnUnimplementedDeclaration(@TempDir Path tempDir)
-      throws Exception {
-    // Pinned, not fixed. writeHeader() builds its context with VcfContext.lenient(...), so writing metadata
-    // that declares a version this library does not implement reports the same version-fallback warning the
-    // parser does -- meaning a parse-then-write round trip of a 4.4/4.5 file warns about it twice, once per
-    // side. That is a known, deliberately deferred consequence of giving the writer a context at all: whether
-    // the emitted output is actually valid under the declared version is only answerable once version-gated
-    // behavior exists, so the writer has nothing better to say yet. This test exists so the diagnostic is not
-    // untested and undocumented in the meantime; it is not an assertion that this is the desired end state.
-    Path warningsFile = tempDir.resolve("write-warnings.txt");
-    StringWriter sw = new StringWriter();
-    VcfMetadata metadata = new VcfMetadata.Builder(VcfContext.lenient("VCFv4.5", VcfWarnings.DEFAULT))
+  /**
+   * Builds bare metadata declaring {@code fileFormat} without letting the parse-side fallback warning
+   * {@link VcfContext#lenient} emits reach the shared SLF4J logger -- these declarations are deliberately ones
+   * this library does not implement, and the writer-side counts below must not be confused with, or polluted by,
+   * the model context's own diagnostics.
+   */
+  private static VcfMetadata unimplementedMetadataDeclaring(String fileFormat) {
+    return new VcfMetadata.Builder(VcfContext.lenient(fileFormat, new VcfWarnings(new StringWriter())))
         .setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
         .build();
-    try (VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw))
-        .warningsToFile(warningsFile).build()) {
-      writer.writeHeader(metadata);
+  }
+
+  /**
+   * @return one entry per warning the writer emitted ({@link VcfWarnings#warn} writes each on its own line),
+   * empty for a writer that emitted none. Only meaningful once the writer has been closed -- {@code
+   * warningsToFile} opens a buffered writer, so an earlier read can report zero for a warning still in the buffer.
+   */
+  private static List<String> warningLines(Path warningsFile) throws IOException {
+    return Files.readAllLines(warningsFile);
+  }
+
+  /**
+   * The three declarations that reach each of {@code VcfVersion.resolveWithoutWarning}'s distinct fallback
+   * routes, paired with the version each resolves to. {@code VCFv4.0} is the one that falls <em>up</em>, and is
+   * the reason the diagnostic names the resolved version rather than hardcoding 4.3.
+   */
+  private static final Map<String, String> UNIMPLEMENTED_DECLARATIONS =
+      Map.of("VCFv4.0", "4.1", "VCFv4.5", "4.3", "VCFv4.7", "4.3");
+
+  @Test
+  public void testDefaultWritePathSaysNothingAboutAnUnimplementedDeclaration(@TempDir Path tempDir)
+      throws Exception {
+    // The default write path asked for no diagnostics (AGENTS.md's Writer Validation and Round-Trip Policy), so
+    // writing a declaration this library does not implement must be completely silent -- writeHeader() resolves
+    // the version through VcfVersion.resolveWithoutWarning precisely so the warning VcfVersion.resolve would
+    // emit cannot fire before the mode is known.
+    for (Map.Entry<String, String> declaration : UNIMPLEMENTED_DECLARATIONS.entrySet()) {
+      String declared = declaration.getKey();
+      Path warningsFile = tempDir.resolve("default-" + declared + ".txt");
+      StringWriter sw = new StringWriter();
+      try (VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw))
+          .warningsToFile(warningsFile).build()) {
+        writer.writeHeader(unimplementedMetadataDeclaring(declared));
+      }
+      // the declaration itself still round-trips verbatim -- the fallback governs interpretation, not output
+      assertTrue(sw.toString().startsWith("##fileformat=" + declared + "\n"), sw::toString);
+      assertEquals(List.of(), warningLines(warningsFile), declared + " must produce no default-path warning");
     }
-    // the declaration itself still round-trips verbatim -- the fallback governs interpretation, not output
-    assertTrue(sw.toString().startsWith("##fileformat=VCFv4.5\n"), sw::toString);
-    String warnings = Files.readString(warningsFile);
-    assertThat(warnings, containsString("VCFv4.5"));
-    assertThat(warnings, containsString("4.3"));
+  }
+
+  @Test
+  public void testValidateBeforeWriteReportsAnUnimplementedDeclarationExactlyOnce(@TempDir Path tempDir)
+      throws Exception {
+    // Full-output diagnostics mode is where this belongs, and it must name both the declaration that was emitted
+    // and the version whose rules were actually applied. VCFv4.0 falls UP to 4.1, so a hardcoded "4.3" would be
+    // wrong for it -- that is the case this loop exists to cover.
+    for (Map.Entry<String, String> declaration : UNIMPLEMENTED_DECLARATIONS.entrySet()) {
+      String declared = declaration.getKey();
+      String resolved = declaration.getValue();
+      Path warningsFile = tempDir.resolve("diagnostics-" + declared + ".txt");
+      StringWriter sw = new StringWriter();
+      try (VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw))
+          .validateBeforeWrite().warningsToFile(warningsFile).build()) {
+        writer.writeHeader(unimplementedMetadataDeclaring(declared));
+      }
+      assertTrue(sw.toString().startsWith("##fileformat=" + declared + "\n"), sw::toString);
+      List<String> warnings = warningLines(warningsFile);
+      assertEquals(1, warnings.size(), () -> declared + " warned " + warnings.size() + " times: " + warnings);
+      assertThat(warnings.get(0), containsString(declared));
+      assertThat(warnings.get(0), containsString("VCF " + resolved));
+      // the old wording claimed the writer was "interpreting" the declaration; it emits it verbatim instead
+      assertThat(warnings.get(0), containsString("not guaranteed"));
+    }
+  }
+
+  @Test
+  public void testImplementedDeclarationIsNeverReportedInEitherMode(@TempDir Path tempDir) throws Exception {
+    // the diagnostic is about a fallback, not about writing at all: an implemented declaration resolves to
+    // itself, so neither mode may say anything
+    for (String declared : new String[] {"VCFv4.1", "VCFv4.2", "VCFv4.3"}) {
+      for (boolean validate : new boolean[] {false, true}) {
+        Path warningsFile = tempDir.resolve("implemented-" + declared + "-" + validate + ".txt");
+        VcfWriter.Builder builder = new VcfWriter.Builder().toWriter(new PrintWriter(new StringWriter()))
+            .warningsToFile(warningsFile);
+        if (validate) {
+          builder.validateBeforeWrite();
+        }
+        try (VcfWriter writer = builder.build()) {
+          writer.writeHeader(metadataDeclaring(declared));
+        }
+        assertEquals(List.of(), warningLines(warningsFile),
+            declared + " (validateBeforeWrite=" + validate + ") must not warn");
+      }
+    }
+  }
+
+  @Test
+  public void testRejectedHeaderAttemptDoesNotReportTheUnimplementedDeclaration(@TempDir Path tempDir)
+      throws Exception {
+    // The warn-per-retry half of this fix, stated as counts. The diagnostic is emitted only after every
+    // rejection in writeHeader() has been passed and immediately before the first header byte, so a rejected
+    // attempt (which writes nothing, and therefore has no "output" for the message to be true of) contributes
+    // zero. The corrected retry that actually writes a VCFv4.5 header contributes exactly one, for a total of
+    // one across the two-attempt sequence -- not one per attempt.
+    for (boolean validate : new boolean[] {false, true}) {
+      Path warningsFile = tempDir.resolve("retry-" + validate + ".txt");
+      StringWriter sw = new StringWriter();
+      VcfWriter.Builder builder = new VcfWriter.Builder().toWriter(new PrintWriter(sw))
+          .warningsToFile(warningsFile);
+      if (validate) {
+        builder.validateBeforeWrite();
+      }
+      VcfWriter writer = builder.build();
+
+      // attempt 1: VCFv4.5 metadata carrying a lone "\r" in a property, injected through the same trusted raw
+      // view testWriteHeaderRejectsLoneCarriageReturnInjectedThroughRawView uses. Rejected in both modes, and --
+      // unlike the targetFileFormat cross-version check -- rejected AFTER writeHeader() has built its context and
+      // resolved the version, which is what makes this a real test of where the diagnostic fires. Nothing is
+      // written, so nothing may be reported.
+      VcfContext badContext = VcfContext.lenient("VCFv4.5", new VcfWarnings(new StringWriter()));
+      InfoMetadata badInfo = new InfoMetadata(badContext, "NS", "d", InfoType.Integer, "1", null, null);
+      badInfo.trustedMutableProperties().put("Description", "bad\rvalue");
+      VcfMetadata rejected = new VcfMetadata.Builder(badContext)
+          .setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
+          .addInfo(badInfo)
+          .build();
+      assertThrows(VcfFormatException.class, () -> writer.writeHeader(rejected));
+      assertTrue(writer.isValid());
+      assertEquals("", sw.toString(), "nothing may be emitted by the rejected attempt");
+
+      // attempt 2: corrected, and actually written
+      writer.writeHeader(unimplementedMetadataDeclaring("VCFv4.5"));
+      writer.close();
+      assertTrue(sw.toString().startsWith("##fileformat=VCFv4.5\n"), sw::toString);
+      // The warnings file is only read after close(), never between the two attempts: warningsToFile() opens a
+      // BufferedWriter, so a mid-sequence read could report zero simply because the line was still buffered and
+      // would pass even against the pre-fix warn-per-attempt behavior. The total below is unambiguous instead --
+      // testValidateBeforeWriteReportsAnUnimplementedDeclarationExactlyOnce pins that a single written VCFv4.5
+      // header contributes exactly 1, so a total of 1 here is what proves the rejected attempt contributed 0.
+      List<String> warnings = warningLines(warningsFile);
+      assertEquals(validate ? 1 : 0, warnings.size(),
+          () -> "validateBeforeWrite=" + validate + " produced " + warnings.size() + " warning(s): " + warnings);
+    }
   }
 
   @Test
