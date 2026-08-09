@@ -1489,6 +1489,124 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteGenotypePosteriorRangeCheckIsVersionGated() throws Exception {
+    // GP's [0, 1] range check applies only under VCFv4.3+ (VCFv4.3.tex line 491; see
+    // ReservedFormatProperty.GenotypePosterior's own comment) -- under <=4.2 any Float is a legitimate phred
+    // value, so validateBeforeWrite() must not warn there for the same out-of-range value. writeLine() requires
+    // metadata/position/samples to share one VcfContext (Task 2), and that context is fixed for the lifetime of
+    // one writeHeader()/writeLine() sequence, so this uses two independent writers -- one per version -- sharing
+    // one warning-capturing appender.
+    VcfContext context43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
+
+    FormatMetadata gp42 = new FormatMetadata(LENIENT_CONTEXT, ReservedFormatProperty.GenotypePosterior.getId(), "d",
+        "G", FormatType.Float);
+    VcfMetadata metadata42 = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .addFormat(gp42)
+        .build();
+    VcfPosition position42 = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"),
+        null, null, List.of("GP"), -1);
+    VcfSample sample42 = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GP", "5.0")));
+
+    FormatMetadata gp43 = new FormatMetadata(context43, ReservedFormatProperty.GenotypePosterior.getId(), "d", "G",
+        FormatType.Float);
+    VcfMetadata metadata43 = new VcfMetadata.Builder(context43).setFileFormat("VCFv4.3")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .addFormat(gp43)
+        .build();
+    VcfPosition position43 = context43.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("GP"), -1);
+    VcfSample sample43 = context43.newSample(new LinkedHashMap<>(Map.of("GP", "5.0")));
+
+    StringWriter sw42 = new StringWriter();
+    VcfWriter writer42 = new VcfWriter.Builder().toWriter(new PrintWriter(sw42)).validateBeforeWrite().build();
+    StringWriter sw43 = new StringWriter();
+    VcfWriter writer43 = new VcfWriter.Builder().toWriter(new PrintWriter(sw43)).validateBeforeWrite().build();
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer42.writeHeader(metadata42);
+      writer42.writeLine(metadata42, position42, Collections.singletonList(sample42));
+      assertFalse(appender.anyMessageContains("does not lie in the interval"));
+
+      writer43.writeHeader(metadata43);
+      writer43.writeLine(metadata43, position43, Collections.singletonList(sample43));
+      assertTrue(appender.anyMessageContains("does not lie in the interval"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(sw42.toString().contains("GP\t5.0"));
+    assertTrue(sw43.toString().contains("GP\t5.0"));
+  }
+
+  @Test
+  public void testValidateBeforeWriteGenotypePosteriorMultiValuedWarnsOnceForMiddleElement() throws Exception {
+    // GP is Number=G; on a diploid (GT=0|1), one-ALT-allele record, Number=G expects exactly
+    // combinationsWithRepetition(2, 2) = 3 values, so this correctly-sized 3-value GP list isolates the
+    // range-check assertion from any Number=G cardinality warning (see
+    // VcfSampleTest.testGetPropertyWithPositionAndMetadataGenotypePosteriorMultiValuedWarnsOnceForMiddleElement,
+    // this test's read-path counterpart, for the full cardinality-math citation). The middle element (5.0) is
+    // out of [0, 1]; an implementation that scalar-parsed the whole "0.2,5.0,0.8" value would throw
+    // NumberFormatException, fall through to ordinary list conversion, and silently accept it.
+    VcfContext context43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
+    List<String> columns = Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1");
+    LinkedHashMap<String, String> sampleProperties = new LinkedHashMap<>();
+    sampleProperties.put("GT", "0|1");
+    sampleProperties.put("GP", "0.2,5.0,0.8");
+
+    FormatMetadata gp42 = new FormatMetadata(LENIENT_CONTEXT, ReservedFormatProperty.GenotypePosterior.getId(), "d",
+        "G", FormatType.Float);
+    VcfMetadata metadata42 = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").setColumns(columns)
+        .addFormat(gp42).build();
+    VcfPosition position42 = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"),
+        null, null, List.of("GT", "GP"), -1);
+    VcfSample sample42 = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(sampleProperties));
+
+    FormatMetadata gp43 = new FormatMetadata(context43, ReservedFormatProperty.GenotypePosterior.getId(), "d", "G",
+        FormatType.Float);
+    VcfMetadata metadata43 = new VcfMetadata.Builder(context43).setFileFormat("VCFv4.3").setColumns(columns)
+        .addFormat(gp43).build();
+    VcfPosition position43 = context43.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("GT", "GP"), -1);
+    VcfSample sample43 = context43.newSample(new LinkedHashMap<>(sampleProperties));
+
+    StringWriter sw42 = new StringWriter();
+    VcfWriter writer42 = new VcfWriter.Builder().toWriter(new PrintWriter(sw42)).validateBeforeWrite().build();
+    StringWriter sw43 = new StringWriter();
+    VcfWriter writer43 = new VcfWriter.Builder().toWriter(new PrintWriter(sw43)).validateBeforeWrite().build();
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer42.writeHeader(metadata42);
+      writer42.writeLine(metadata42, position42, Collections.singletonList(sample42));
+      assertFalse(appender.anyMessageContains("does not lie in the interval"));
+      assertFalse(appender.anyMessageContains("value(s), but Number=G requires"));
+
+      writer43.writeHeader(metadata43);
+      writer43.writeLine(metadata43, position43, Collections.singletonList(sample43));
+      assertEquals(1, appender.countMessagesContaining("does not lie in the interval"));
+      assertTrue(appender.anyMessageContains("5.0"));
+      assertFalse(appender.anyMessageContains("value(s), but Number=G requires"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(sw42.toString().contains("GT:GP\t0|1:0.2,5.0,0.8"));
+    assertTrue(sw43.toString().contains("GT:GP\t0|1:0.2,5.0,0.8"));
+  }
+
+  @Test
   public void testValidateBeforeWriteWarnsButPreservesNegativeAcValue() throws Exception {
     // AC must be a non-negative integer, but that constraint isn't expressible through AC's declared
     // Type=Integer (which maps to a 64-bit Long), so it's checked separately (mirroring FT/PS's own treatment

@@ -269,6 +269,13 @@ is a structural failure and still throws -- see the strict section above):
   value that isn't a non-negative 32-bit integer: both constraints go beyond what `FT`'s/`PS`'s declared `Type` can
   express, so they're checked separately, both when a typed value is requested and by
   `VcfWriter.Builder.validateBeforeWrite()`.
+- A reserved `FORMAT/GP` value outside the interval `[0, 1]`, but **only under VCFv4.3 and later** -- VCFv4.3
+  redefined `GP` from VCFv4.2's phred-scaled encoding to a 0-1 probability (VCFv4.3.tex line 491; see
+  `ReservedFormatProperty.GenotypePosterior`'s own comment for the full citation), so no range check applies
+  under VCFv4.2 and earlier, where any `Float` is a legitimate phred value. `GP` is `Number=G` and list-shaped,
+  so each comma-separated element is checked independently, reusing the same unit-interval helper (and its two
+  exemptions, a special `VcfFloat` value and an overlong value) as `INFO/AF` below. Checked both when a typed
+  value is requested and by `VcfWriter.Builder.validateBeforeWrite()`.
 - A reserved `FORMAT/PL`/`GL`/`GP`/`PP` value whose element count doesn't match the `Number=G` cardinality
   implied by the sample's ploidy and the record's ALT allele count. When `GT` is absent, ploidy can't
   otherwise be determined at all, but these four keys specifically default to assumed diploidy rather than

@@ -560,6 +560,89 @@ public class InternalUtilsTest {
   }
 
   @Test
+  public void testCheckReservedFormatConstraintsGenotypePosteriorRangeCheckIsVersionGated() {
+    // GP was redefined from VCFv4.2's phred-scaled encoding to a 0-1 probability by VCFv4.3 (VCFv4.3.tex line
+    // 491, "Genotype posterior probabilities in the range 0 to 1"; see ReservedFormatProperty.GenotypePosterior's
+    // own comment) -- the [0, 1] range check applies only from 4.3 onward. Under <=4.2 any Float is a legitimate
+    // phred value, so the same out-of-range value must not warn there.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      InternalUtils.checkReservedFormatConstraints("GP", "0.5", VcfVersion.V4_3, VcfWarnings.DEFAULT); // valid: no warn
+      InternalUtils.checkReservedFormatConstraints("GP", "5.0", VcfVersion.V4_2, VcfWarnings.DEFAULT); // <=4.2: no check at all
+      assertEquals(0, appender.countMessagesContaining("does not lie in the interval"));
+      InternalUtils.checkReservedFormatConstraints("GP", "5.0", VcfVersion.V4_3, VcfWarnings.DEFAULT); // 4.3+: warns
+      assertEquals(1, appender.countMessagesContaining("does not lie in the interval"));
+      assertTrue(appender.anyMessageContains("FORMAT GP"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testCheckReservedFormatConstraintsGenotypePosteriorChecksEachListElementUnder43() {
+    // per-element, not a scalar parse of the whole value: GP is Number=G and list-shaped, and this method
+    // receives the entire comma-delimited value before any splitting (splitFormatValue runs one line after
+    // this check in both callers, see checkReservedFormatConstraints's own comment). A scalar BigDecimal parse
+    // of "0.2,5.0,0.8" would throw NumberFormatException and be treated as "not a number at all" (skipped, no
+    // warning) -- silently accepting the out-of-range middle element.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      InternalUtils.checkReservedFormatConstraints("GP", "0.2,5.0,0.8", VcfVersion.V4_3, VcfWarnings.DEFAULT);
+      assertEquals(1, appender.countMessagesContaining("does not lie in the interval"));
+      assertTrue(appender.anyMessageContains("5.0"));
+      // the same list is silent under <=4.2, where the range check does not apply at all
+      InternalUtils.checkReservedFormatConstraints("GP", "0.2,5.0,0.8", VcfVersion.V4_2, VcfWarnings.DEFAULT);
+      assertEquals(1, appender.countMessagesContaining("does not lie in the interval"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testCheckReservedFormatConstraintsGenotypePosteriorSkipsSpecialFloatValuesUnder43() {
+    // matches AlleleFrequency's own exemption, inherited via the shared checkUnitInterval helper: NaN/Inf/-Inf
+    // have no meaningful position within [0, 1], so neither warns
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      InternalUtils.checkReservedFormatConstraints("GP", "NaN", VcfVersion.V4_3, VcfWarnings.DEFAULT);
+      InternalUtils.checkReservedFormatConstraints("GP", "INF", VcfVersion.V4_3, VcfWarnings.DEFAULT);
+      InternalUtils.checkReservedFormatConstraints("GP", "-INF", VcfVersion.V4_3, VcfWarnings.DEFAULT);
+      assertEquals(0, appender.countMessagesContaining("does not lie in the interval"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testConvertPropertyGenotypePosteriorPreservesOutOfRangeValueUnder43() {
+    // the typed accessor still returns the parsed VcfFloat even when it violates GP's 4.3+ [0, 1] constraint,
+    // consistent with the "warn and preserve" policy for non-structural sample content; also confirms the
+    // renamed ReservedFormatProperty.GenotypePosterior constant plumbs through convertProperty end to end
+    List<VcfFloat> value = InternalUtils.convertProperty(ReservedFormatProperty.GenotypePosterior, "5.0",
+        VcfVersion.V4_3, VcfWarnings.DEFAULT);
+    assertEquals(1, value.size());
+    assertEquals(0, value.get(0).getValue().compareTo(new java.math.BigDecimal("5.0")));
+  }
+
+  @Test
   public void testCheckReservedInfoConstraintsCigarWarnsOnInvalidGrammarButDoesNotThrow() {
     // CIGAR's grammar (a lone "*", or one or more <length><operation> pairs) isn't expressible through its
     // declared Type=String (which accepts any string unchanged), so it's checked separately; this is

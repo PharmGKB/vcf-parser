@@ -451,6 +451,80 @@ class VcfSampleTest {
   }
 
   @Test
+  void testGetPropertyReservedFormatPropertyGenotypePosteriorRangeCheckIsVersionGated() {
+    // GP's [0, 1] range check applies only under VCFv4.3+ (VCFv4.3.tex line 491; see
+    // ReservedFormatProperty.GenotypePosterior's own comment) -- under <=4.2 any Float is a legitimate phred
+    // value, so the same out-of-range value must not warn there
+    VcfContext context43 = VcfContext.strict("VCFv4.3");
+    VcfSample sample42 = STRICT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GP", "5.0")));
+    VcfSample sample43 = context43.newSample(new LinkedHashMap<>(Map.of("GP", "5.0")));
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      List<VcfFloat> result42 = sample42.getProperty(ReservedFormatProperty.GenotypePosterior);
+      assertEquals(1, result42.size());
+      assertFalse(appender.anyMessageContains("does not lie in the interval"));
+
+      List<VcfFloat> result43 = sample43.getProperty(ReservedFormatProperty.GenotypePosterior);
+      assertEquals(1, result43.size());
+      assertTrue(appender.anyMessageContains("does not lie in the interval"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataGenotypePosteriorMultiValuedWarnsOnceForMiddleElement() {
+    // GP is Number=G; on a diploid (GT=0|1), one-ALT-allele record, Number=G expects exactly
+    // combinationsWithRepetition(2, 2) = 3 values (matching testGetPropertyWithPositionAndMetadataChecksReserved
+    // ListCardinality's own PL math above), so this correctly-sized 3-value GP list isolates the range-check
+    // assertion from any Number=G cardinality warning. The middle element (5.0) is out of [0, 1]; an
+    // implementation that scalar-parsed the whole "0.2,5.0,0.8" value would throw NumberFormatException, fall
+    // through to ordinary list conversion, and silently accept it.
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0|1");
+    map.put("GP", "0.2,5.0,0.8");
+
+    VcfContext context43 = VcfContext.strict("VCFv4.3");
+    VcfSample sample42 = STRICT_CONTEXT.newSample(new LinkedHashMap<>(map));
+    VcfPosition position42 = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
+    VcfMetadata metadata42 = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
+
+    VcfSample sample43 = context43.newSample(new LinkedHashMap<>(map));
+    VcfPosition position43 = context43.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
+    VcfMetadata metadata43 = new VcfMetadata.Builder(context43).setFileFormat("VCFv4.3").build();
+
+    List<VcfFloat> expected = Arrays.asList(VcfFloat.of(new java.math.BigDecimal("0.2")),
+        VcfFloat.of(new java.math.BigDecimal("5.0")), VcfFloat.of(new java.math.BigDecimal("0.8")));
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      Object result42 = sample42.getProperty(position42, metadata42, "GP");
+      assertEquals(expected, result42);
+      assertFalse(appender.anyMessageContains("does not lie in the interval"));
+      // the cardinality is correct (3 values for ploidy 2, 1 ALT allele); a wrong-cardinality warning here would
+      // mask whether the range check itself actually ran
+      assertFalse(appender.anyMessageContains("value(s), but Number=G requires"));
+
+      Object result43 = sample43.getProperty(position43, metadata43, "GP");
+      assertEquals(expected, result43);
+      assertEquals(1, appender.countMessagesContaining("does not lie in the interval"));
+      assertTrue(appender.anyMessageContains("5.0"));
+      assertFalse(appender.anyMessageContains("value(s), but Number=G requires"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   void testGetPropertyWithPositionAndMetadataExemptsGleFromCardinalityCheck() {
     // GLE's Number=G doesn't describe a comma-delimited list -- its commas are internal to its own encoding
     String gle = "0:-75.22,1:-223.42,0/0:-323.03,1/0:-99.29,1/1:-802.53";

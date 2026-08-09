@@ -79,6 +79,17 @@ public class ReservedFormatPropertyTest {
   }
 
   @Test
+  public void testFromIdResolvesRenamedGenotypePosteriorConstant() {
+    // GenotypePosterior was renamed from GenotypePosteriorProbabilitiesPhredScaled: the old name asserted a
+    // VCFv4.2-only interpretation (phred-scaled) that VCFv4.3 changed to a 0-1 probability (VCFv4.3.tex line
+    // 491; see the enum entry's own comment). No compatibility alias was kept.
+    assertEquals(ReservedFormatProperty.GenotypePosterior, ReservedFormatProperty.fromId("GP"));
+    assertEquals("G", ReservedFormatProperty.GenotypePosterior.getExpectedNumber());
+    assertEquals(VcfFloat.class, ReservedFormatProperty.GenotypePosterior.getType());
+    assertTrue(ReservedFormatProperty.GenotypePosterior.isList());
+  }
+
+  @Test
   public void testGetExpectedNumberForGleSpecialCase() {
     // GLE has no formal Number in VCFv4.1.tex or VCFv4.2.tex (both prose-only, "(String)" type given but no
     // Number), and VCFv4.3 removed the key entirely ("Removed unused and ill-defined GLE FORMAT tag"). No spec

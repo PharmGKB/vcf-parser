@@ -212,7 +212,7 @@ public class VcfParserTest {
 
                  case 2:
                    VcfSample sample = sampleData.get(0);
-                   List<VcfFloat> d = sample.getProperty(ReservedFormatProperty.GenotypePosteriorProbabilitiesPhredScaled);
+                   List<VcfFloat> d = sample.getProperty(ReservedFormatProperty.GenotypePosterior);
                    assertNotNull(d);
                    assertEquals(2, d.size());
                    assertEquals(VcfFloat.of(new BigDecimal("0.05")), d.get(0));

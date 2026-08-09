@@ -39,18 +39,29 @@ public enum ReservedFormatProperty implements ReservedProperty {
       String.class, false, "G"),
   PhredScaledGenotypeLikelihoods("PL", "the phred-scaled genotype likelihoods rounded to the closest integer " +
       "(and otherwise defined precisely as the GL field)", Long.class, true, "G"),
-  GenotypePosteriorProbabilitiesPhredScaled("GP", "The phred-scaled genotype posterior probabilities (and otherwise defined " +
-      "precisely as the GL field); intended to store imputed genotype probabilities", VcfFloat.class, true, "G"),
+  // Version-dependent numeric interpretation, unlike every other entry in this enum: phred-scaled under
+  // <=4.2 (VCFv4.2.tex line 227, "the phred-scaled genotype posterior probabilities ... (Floats)") and
+  // 0-1-scaled probabilities under 4.3+ (VCFv4.3.tex line 491, "Genotype posterior probabilities in the
+  // range 0 to 1 ..."; confirmed by VCFv4.3.tex's own changelog, line 2156, "Both CNP and GP use 0 to 1
+  // encoding, which is a change from previous phred-scaled GP"). The constant name is therefore
+  // version-neutral -- unlike PhredScaledGenotypeLikelihoods (PL) and PhredScaledPosteriorProbabilities (PP)
+  // below, GP no longer has one fixed numeric meaning across every version this library targets, so a name
+  // asserting "PhredScaled" would be wrong under 4.3+. InternalUtils.checkReservedFormatConstraints applies
+  // a [0, 1] range check under VcfVersion.isAtLeast(VcfVersion.V4_3); no such check applies under <=4.2,
+  // where any Float is a legitimate phred value.
+  GenotypePosterior("GP", "The genotype posterior probabilities (and otherwise defined precisely as the GL " +
+      "field); phred-scaled under VCFv4.2 and earlier, 0-to-1-scaled probabilities under VCFv4.3 and later. " +
+      "Intended to store imputed genotype probabilities.", VcfFloat.class, true, "G"),
   // Integer/phred-scaled sibling of GP, the same relationship PL has to GL -- VCFv4.3.tex's Reserved genotype
   // keys table (table:reserved-genotypes); not in VCFv4.2, which does not table PP at all.
   // NOT interchangeable with GP above, despite the analogy: VCFv4.3.tex's own changelog (line 2143, "Added PP
   // tag which is the phred-scaled analogue to GP") and line 2156 ("Both CNP and GP use 0 to 1 encoding, which
   // is a change from previous phred-scaled GP") confirm VCFv4.3 redefined GP from 4.2's phred-scaled encoding
-  // to a linear 0-to-1 probability, and introduced PP to take over GP's old phred-scaled role. This library
-  // targets VCFv4.2 semantics, so GenotypePosteriorProbabilitiesPhredScaled above deliberately keeps
-  // VCFv4.2's phred-scaled GP (VcfFloat, per VCFv4.2.tex line 227); this entry is the newer, separate 4.3+
-  // key (Long, Number=G) -- the constant name intentionally avoids reusing GP's own word order (Genotype/
-  // PosteriorProbabilities/PhredScaled) to keep the two from reading as interchangeable at a call site.
+  // to a linear 0-to-1 probability, and introduced PP to take over GP's old phred-scaled role. GP above (see
+  // its own comment) tracks that version-dependent meaning directly rather than fixing on one of the two;
+  // this entry is the newer, separate, always-phred-scaled 4.3+ key (Long, Number=G) -- the constant name
+  // intentionally avoids reusing GP's own word order (Genotype/PosteriorProbabilities/PhredScaled) to keep
+  // the two from reading as interchangeable at a call site.
   PhredScaledPosteriorProbabilities("PP",
       "Phred-scaled genotype posterior probabilities rounded to the closest integer", Long.class, true, "G"),
   GenotypeQualityConditional("GQ", "conditional genotype quality, encoded as a phred quality " +

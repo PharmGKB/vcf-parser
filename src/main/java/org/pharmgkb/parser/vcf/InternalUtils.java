@@ -538,13 +538,22 @@ public class InternalUtils {
   }
 
   /**
-   * Warns if {@code value} violates a constraint that VCFv4.2 places on a reserved FORMAT key beyond its declared
-   * {@code Type} -- constraints that generic {@code Type}-based conversion can't express. Currently:
+   * Warns if {@code value} violates a constraint a target VCF specification version places on a reserved FORMAT
+   * key beyond its declared {@code Type} -- constraints that generic {@code Type}-based conversion can't express.
+   * Currently:
    * <ul>
    *   <li>{@link ReservedFormatProperty#Filter FT} must be {@code PASS}, {@code .}, or a semicolon-separated list of
    *   codes, each containing no whitespace, and {@code PASS}/{@code .} may not be combined with other codes -- the
-   *   same grammar as the FILTER column.</li>
-   *   <li>{@link ReservedFormatProperty#PhaseSet PS} must be a non-negative 32-bit integer.</li>
+   *   same grammar as the FILTER column (both VCFv4.2 constraints, unaffected by {@code version}).</li>
+   *   <li>{@link ReservedFormatProperty#PhaseSet PS} must be a non-negative 32-bit integer (also VCFv4.2).</li>
+   *   <li>Under VCFv4.3+ only, {@link ReservedFormatProperty#GenotypePosterior GP} must lie in the interval
+   *   [0, 1] -- VCFv4.3.tex line 491 redefines GP from VCFv4.2's phred-scaled encoding to a 0-1 probability (see
+   *   {@link ReservedFormatProperty#GenotypePosterior GP}'s own comment for the full citation); under <=4.2, any
+   *   Float is a legitimate phred value, so no range check applies there. {@code GP} is {@code Number=G} and
+   *   list-shaped, so each comma-separated element is checked independently, reusing {@link #checkUnitInterval}
+   *   -- the same helper and the same two exemptions (a special {@link VcfFloat} value, and a value too long to
+   *   be worth {@code BigDecimal}-parsing) already established for {@link ReservedInfoProperty#AlleleFrequency
+   *   AF}; see that method's own Javadoc.</li>
    * </ul>
    *
    * @return the value to use for subsequent type conversion: unchanged, except for FT, whose empty
@@ -558,9 +567,7 @@ public class InternalUtils {
    * @param version the record's resolved VCF version, passed as its own argument -- never a {@link VcfContext} --
    * so there is nothing here to read a version off but the value the caller explicitly supplied. See
    * {@link #convertProperty(ReservedProperty, String, VcfVersion, VcfWarnings)}'s own {@code version} doc for the
-   * {@code isAtLeast} dispatch idiom a future version-gated rule here must use (a planned {@code GP} range check,
-   * since {@link ReservedFormatProperty#GenotypePosteriorProbabilitiesPhredScaled GP} is a
-   * {@code ReservedFormatProperty} and this is the FORMAT-side check). Not yet read by this method.
+   * {@code isAtLeast} dispatch idiom this method's GP branch uses.
    */
   static @Nullable String checkReservedFormatConstraints(String key, @Nullable String value, VcfVersion version,
       VcfWarnings warnings) {
@@ -571,6 +578,16 @@ public class InternalUtils {
       return checkFilterLikeValue(key, value, warnings);
     } else if (key.equals(ReservedFormatProperty.PhaseSet.getId())) {
       checkNonNegative32BitInteger(key, value, warnings);
+    } else if (key.equals(ReservedFormatProperty.GenotypePosterior.getId()) && version.isAtLeast(VcfVersion.V4_3)) {
+      // per-element, not a scalar parse of the whole comma-delimited value: GP is Number=G and list-shaped, but
+      // both callers hand this method the entire value before any splitting of their own -- VcfWriter's
+      // validateFormatValue calls splitFormatValue one line after its own checkReservedFormatConstraints call,
+      // and convertProperty(ReservedProperty, ...) doesn't split at all here, only later, inside the generic
+      // convertProperty(Class<?>, ...) it calls next. A scalar BigDecimal parse of e.g. "0.2,5.0,0.8" would throw
+      // and be treated as "not a number at all" (see checkUnitInterval), silently skipping the whole check.
+      for (String element : value.split(",", -1)) {
+        checkUnitInterval("FORMAT", key, element, warnings);
+      }
     }
     return value;
   }
@@ -677,13 +694,20 @@ public class InternalUtils {
       }
     } else if (key.equals(ReservedInfoProperty.AlleleFrequency.getId())) {
       for (String element : value.split(",", -1)) {
-        checkUnitInterval(key, element, warnings);
+        checkUnitInterval("INFO", key, element, warnings);
       }
     } else if (key.equals(ReservedInfoProperty.Cigar.getId())) {
       for (String element : value.split(",", -1)) {
         checkCigarGrammar(element, warnings);
       }
     }
+    // TODO: SVLEN and CN (INFO's CopyNumberOfSegment) each gain a 4.4+-only reserved-key Number/Type change
+    // not modeled here (VCFv4.4.tex changelog line 2575, "Redefined Number= for SVLEN, ... CN, ... to support
+    // multiple symbolic alleles"); END keeps Number=1 but gains a 4.4+-only meaning change (line 2576,
+    // "Redefined END as the end position of the longest ALT allele"). None of this is reachable while
+    // VcfVersion.HIGHEST_IMPLEMENTED stays V4_3 -- deferred to the version-aware reserved-key tables TODO.md's
+    // "Investigate bumping the target VCF spec to 4.4 or 4.5" entry already tracks as the next structural
+    // change for this method.
   }
 
   private static void checkNonNegativeInteger(String key, String value, VcfWarnings warnings) {
@@ -703,7 +727,11 @@ public class InternalUtils {
     }
   }
 
-  private static void checkUnitInterval(String key, String value, VcfWarnings warnings) {
+  // fieldType is the literal "INFO" or "FORMAT" prefix for the warning message -- not VCF content, just which
+  // of checkReservedInfoConstraints's (AF) or checkReservedFormatConstraints's (GP, under 4.3+) two callers
+  // this is, matching every other field-specific message in this class (e.g. checkNonNegativeInteger's own
+  // hardcoded "INFO", checkNonNegative32BitInteger's own hardcoded "FORMAT")
+  private static void checkUnitInterval(String fieldType, String key, String value, VcfWarnings warnings) {
     if (value.isEmpty() || value.equals(".")) {
       return;
     }
@@ -730,7 +758,7 @@ public class InternalUtils {
       return;
     }
     if (decimal.compareTo(BigDecimal.ZERO) < 0 || decimal.compareTo(BigDecimal.ONE) > 0) {
-      warnings.warn("INFO {} value \"{}\" does not lie in the interval [0, 1]", key, value);
+      warnings.warn(fieldType + " {} value \"{}\" does not lie in the interval [0, 1]", key, value);
     }
   }
 
@@ -788,7 +816,7 @@ public class InternalUtils {
   private static final Set<String> KEYS_ASSUMING_DIPLOIDY_WITHOUT_GT = Set.of(
       ReservedFormatProperty.GenotypeLikelihoods.getId(),
       ReservedFormatProperty.PhredScaledGenotypeLikelihoods.getId(),
-      ReservedFormatProperty.GenotypePosteriorProbabilitiesPhredScaled.getId(),
+      ReservedFormatProperty.GenotypePosterior.getId(),
       ReservedFormatProperty.PhredScaledPosteriorProbabilities.getId());
 
   /**
