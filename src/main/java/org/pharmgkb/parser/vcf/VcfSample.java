@@ -228,6 +228,10 @@ public final class VcfSample {
     return m_properties;
   }
 
+  /**
+   * @return the raw wire text of the value for {@code key}, or {@code null} if not present. This library never
+   * percent-decodes a sample (FORMAT) value; see {@link VcfPercentEncoding} if you need semantic text.
+   */
   public @Nullable String getProperty(String key) {
     if (m_properties != null) {
       return m_properties.get(key);

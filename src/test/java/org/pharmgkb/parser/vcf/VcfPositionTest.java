@@ -1396,4 +1396,46 @@ public class VcfPositionTest {
     assertEquals(List.of("q10", "q10"), copy.getFilters());
   }
 
+  // --- Task 4 / D4 regression tests: see VcfPercentEncodingTest for the codec's own unit tests.
+
+  @Test
+  public void testInfoValueContainingRawSemicolonOrCommaStillRejected() {
+    // pins VcfPosition.checkInfoEntries's existing guard: percent-encoding is an opt-in caller utility, never a
+    // parse/write-time escape mechanism, so a raw structural delimiter in an INFO value is still a hard
+    // rejection, not something that could now be represented "encoded" behind the scenes. Unconditional
+    // (VcfFormatException) regardless of context leniency -- this is a structural violation, not content
+    // leniency -- so both a strict and lenient context are checked here.
+    ListMultimap<String, String> semicolon = ArrayListMultimap.create();
+    semicolon.put("XY", "a;b");
+    assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newPosition("chr1", 1, null, "A", null, null, null, semicolon, null, -1));
+    assertThrows(VcfFormatException.class,
+        () -> LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, null, null, semicolon, null, -1));
+
+    ListMultimap<String, String> comma = ArrayListMultimap.create();
+    comma.put("XY", "a,b");
+    assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newPosition("chr1", 1, null, "A", null, null, null, comma, null, -1));
+    assertThrows(VcfFormatException.class,
+        () -> LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, null, null, comma, null, -1));
+  }
+
+  @Test
+  public void testGetInfoIdenticalUnder42And43ResolvedContexts() {
+    // no getter may return a different value for identical raw input just because the resolved VcfVersion
+    // differs -- there is no version-dependent percent-decoding (or any other transformation) to diverge on
+    ListMultimap<String, String> info42 = ArrayListMultimap.create();
+    info42.put("XY", "a%3Bb%03Ac%41d");
+    VcfPosition pos42 = VcfContext.strict("VCFv4.2").newPosition("chr1", 1, null, "A", null, null, null, info42,
+        null, -1);
+
+    ListMultimap<String, String> info43 = ArrayListMultimap.create();
+    info43.put("XY", "a%3Bb%03Ac%41d");
+    VcfPosition pos43 = VcfContext.strict("VCFv4.3").newPosition("chr1", 1, null, "A", null, null, null, info43,
+        null, -1);
+
+    assertEquals(pos42.getInfo(), pos43.getInfo());
+    assertEquals(pos42.getInfo("XY"), pos43.getInfo("XY"));
+  }
+
 }

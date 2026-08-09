@@ -980,6 +980,9 @@ public final class VcfPosition {
 
   /**
    * Gets all INFO fields for every key.
+   * <p>
+   * Values are raw wire text -- this library never percent-decodes an INFO value; see
+   * {@link VcfPercentEncoding} if you need semantic text.
    */
   public ListMultimap<String, String> getInfo() {
     ListMultimap<String, String> view = m_infoView;
@@ -1258,7 +1261,8 @@ public final class VcfPosition {
 
     /** Sets a parsed INFO multimap, clearing any raw INFO text set via {@link #rawInfo}. Defensively copies
      * {@code info}; see this class's own Javadoc for why. Marks {@code info} dirty for {@link #build()} to
-     * re-validate. */
+     * re-validate. Values are raw wire text -- this library never percent-decodes or percent-encodes an INFO
+     * value; see {@link VcfPercentEncoding} if you need semantic text. */
     public Builder info(@Nullable ListMultimap<String, String> info) {
       seedInfo(info);
       m_rawInfo = null;
@@ -1276,7 +1280,8 @@ public final class VcfPosition {
     /**
      * Sets raw, not-yet-parsed INFO column text, to be parsed lazily on the built position's first
      * {@link #getInfo()} -- clears any parsed value set via {@link #info}. See {@link #rawQuality}'s identical
-     * reasoning for why {@code VcfParser} does not use this method either.
+     * reasoning for why {@code VcfParser} does not use this method either. This text is never percent-decoded;
+     * see {@link VcfPercentEncoding} if you need semantic text.
      */
     public Builder rawInfo(@Nullable String rawInfo) {
       m_rawInfo = rawInfo;

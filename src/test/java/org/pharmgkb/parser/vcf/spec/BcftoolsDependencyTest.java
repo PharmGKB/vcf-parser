@@ -97,6 +97,23 @@ class BcftoolsDependencyTest {
   }
 
   @Test
+  void testPercentEncodingBcftoolsDecodesNothingAnywhere() throws IOException, InterruptedException {
+    // round-trip-critical: VcfPercentEncoding's whole design (Task 4) rests on there being no tool precedent
+    // for automatic percent-decoding -- confirmed here for both a structured metadata attribute value (##INFO's
+    // own Description) and a data-line INFO value, in the same file
+    String vcf = "##fileformat=VCFv4.3\n" +
+        "##INFO=<ID=XY,Number=1,Type=String,Description=\"pct%3Btest\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\tXY=a%3Bb%2Cc%3Ad\n";
+    BcftoolsResult headerResult = runBcftools(vcf, "view", "-h");
+    assertEquals(0, headerResult.exitCode(), headerResult.output());
+    assertTrue(headerResult.output().contains("Description=\"pct%3Btest\""), headerResult.output());
+
+    BcftoolsResult queryResult = runBcftools(vcf, "query", "-f", "%INFO/XY\n");
+    assertEquals("a%3Bb%2Cc%3Ad\n", queryResult.output());
+  }
+
+  @Test
   void testGenericPropertySquareBracketSubListBcftoolsAccepts() throws IOException, InterruptedException {
     // the specific regression guard for the bug Task 1 fixed: the exact hts-specs
     // test/vcf/4.3/passed/passed_meta_meta.vcf fixture content, which a prior over-broad version of

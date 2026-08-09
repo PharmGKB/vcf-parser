@@ -66,10 +66,9 @@ public enum VcfVersion {
    * declared version is used unchanged and nothing is warned.
    * <p>
    * Interpreting a file under a version it did not declare corrupts data silently in both directions -- reading
-   * 4.2 as 4.3 would percent-decode a literal {@code %3A}, disable the GLE colon-splitter (misaligning the whole
-   * sample column) and read {@code GP} as 0-1 rather than phred-scaled; reading 4.4 as 4.5 would apply 4.5's
-   * {@code M[0-9]+} FORMAT reservation to legal 4.4 custom keys. Fallback is therefore a last resort, always
-   * warned.
+   * 4.2 as 4.3 would disable the GLE colon-splitter (misaligning the whole sample column) and read {@code GP}
+   * as 0-1 rather than phred-scaled; reading 4.4 as 4.5 would apply 4.5's {@code M[0-9]+} FORMAT reservation to
+   * legal 4.4 custom keys. Fallback is therefore a last resort, always warned.
    * <p>
    * Resolution is uniform across strict and lenient contexts: a well-formed declaration for an unimplemented
    * version is not invalid content, so it warns rather than throwing even under

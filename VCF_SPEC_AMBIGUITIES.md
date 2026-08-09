@@ -40,6 +40,7 @@ before assuming it generalizes to a similar-looking case.
 | `##contig` extra/unmodeled attributes | Allowed, no warning | ✅ |
 | Generic metadata property with an empty value | Drop (deliberately stricter than bcftools) | ✅ |
 | `##pedigreeDB`/`##assembly` bracket-wrapped values colliding with attribute-list grammar | Reject when empty or no `=` inside the brackets; accept when it contains `=` | ✅ |
+| A literal `%` in a metadata declaration ID | No code change; existing `##ALT`/`##FILTER`/`##SAMPLE` looser-grammar decision stands despite vcf_validator flagging `%` in `##FILTER`/`##SAMPLE` | ✅ |
 | FORMAT declared but zero sample columns | Reject (both tools agree) | ✅ |
 | Empty sample name in `#CHROM` header | Reject (both tools agree) | ✅ |
 | CHROM contiguity / POS ordering within a CHROM block | Warn, don't reject (neither tool rejects it) | ✅ |
@@ -51,6 +52,7 @@ before assuming it generalizes to a similar-looking case.
 | `PASS` combined with other FILTER codes | Warn (lenient), throw (strict/direct construction) | ✅ |
 | FILTER status (`PASSED`/`FAILED`/`NONE`) derivation | Derive purely from list contents, matching bcftools's clear-never-promotes-to-PASS convention | ✅ |
 | Duplicate ID/FILTER entries within one record | Warn, keep both (no dedup) in lenient mode; throw in strict mode | ✅ |
+| Percent-encoding field scope, and the eight-sequence limit | INFO/FORMAT/structured-attribute values only, not ID/FILTER/keys/IDs/ALT; decode only the eight tabled sequences | ✅ |
 | INFO value containing a bare `=` | Warn, don't throw (matches bcftools) | ✅ |
 | Duplicate INFO key within one record | Warn, keep first occurrence (matches bcftools) | ✅ |
 | Negative/out-of-range values for reserved INFO keys `AC`/`AN`/`DP`/`END`/`MQ0`/`NS`/`AF` | Warn (vcf_validator-sourced; bcftools silent) | ✅ |
@@ -191,6 +193,29 @@ since bcftools genuinely accepts and round-trips both. Separately: `##pedigreeDB
 live bcftools acceptance of the bracket-less form — brackets are not this field's own syntax, unlike
 `##ALT`/`##INFO`'s `<ID=...>` structure.
 
+### A literal `%` in a metadata declaration ID (vcf_validator vs. hts-specs)
+
+Task 4's `VcfPercentEncoding` scope investigation (see "Percent-encoding field scope" below) surfaced a
+disagreement worth recording separately, since it's about metadata declaration IDs, not values. hts-specs' own
+`test/vcf/4.3/passed/passed_meta_alt.vcf:9` declares an `##ALT` ID (`complexcustomcontig` followed by a long
+run of non-alphanumeric punctuation, including a literal, un-encoded `%`) and expects it to parse as valid.
+Confirmed live with vcf_validator 0.10.2 that it agrees for `##ALT` specifically (both the fixture and an
+isolated `##ALT` ID containing only `%` validate clean), but rejects the identical bare `%` character when it
+appears in an `##INFO`/`##FILTER` declaration ID instead ("Metadata ID contains a character different from
+alphanumeric, dot, underscore, dash and plus") — a blanket structural-field-ID grammar with no exception for
+`##ALT`. This matches `AGENTS.md`'s general note that vcf_validator is stricter than bcftools on structural
+fields, but here it's inconsistent with itself across declaration types rather than just stricter uniformly,
+and hts-specs has no fixture at all exercising `%` in a `##FILTER`/`##SAMPLE`/`##INFO` declaration ID to
+confirm which side is right for those three.
+
+**Decision:** no code change. This library's already-settled, bcftools-informed rule (see "`##FORMAT`/`##INFO`
+declaration ID grammar is stricter than `##FILTER`/`##SAMPLE`/`##ALT`" above) already allows a bare `%` in a
+`##FILTER`/`##SAMPLE`/`##ALT` ID via `IdMetadata`'s shared, looser whitespace/comma-only check, and rejects one
+in `##FORMAT`/`##INFO` IDs via the stricter tag-name grammar — unchanged by this task. Recorded here so a
+future agent who runs vcf_validator against a `%`-containing `##FILTER`/`##SAMPLE` ID and sees it flagged
+"invalid" doesn't treat that as a fresh finding: vcf_validator's own inconsistency here, unsupported by any
+hts-specs fixture for those three types, is not treated as controlling, per the tie-breaker hierarchy.
+
 ## Data-line / record structure
 
 ### FORMAT declared but zero sample columns
@@ -327,6 +352,48 @@ identical spec clause, identical hts-specs evidence shape, and the identical non
 characteristics that justify warn-and-keep over throw. Implemented in `VcfPosition.checkIds`/`checkFilters`.
 
 ## INFO/FORMAT sample value content
+
+### Percent-encoding field scope, and the eight-sequence limit
+
+Task 4 designed `VcfPercentEncoding`, an opt-in caller utility for the eight percent-encoded sequences
+VCFv4.3.tex's Character Encoding section tables (`VCFv4.3.tex:83,86-95`: `%3A %3B %3D %25 %2C %0D %0A %09`).
+Two questions had to be settled first: which fields it applies to, and whether it should decode *any*
+well-formed `%`-plus-two-hex-digits sequence (general percent-decoding) or only those eight specific byte
+values.
+
+**Field scope (ID/FILTER prohibit vs. INFO/FORMAT permit):** VCFv4.3.tex's own fixed-field grammar notes treat
+these two groups differently. ID's grammar note (line 338: "String, no whitespace or semicolons permitted")
+and FILTER's (line 362, identical wording) both prohibit a literal semicolon outright, with no escape
+mechanism mentioned anywhere in either field's description. INFO's grammar note (line 365), by contrast,
+explicitly carves out percent-encoding as the escape mechanism for its own semicolon/equals-sign/comma
+restriction: "characters with special meaning can be encoded using percent encoding, see Section
+[Character encoding]". The "Changes between VCFv4.2 and VCFv4.3" errata (line 2152) extends the identical
+statement to FORMAT (sample) values ("`;` in INFO, `:` in FORMAT, and `%` in both"). Confirmed live against
+bcftools 1.23.1 as well, for both a data-line INFO value and a structured metadata declaration's own attribute
+value (`##FILTER=<ID=q10,Description="q10;desc%3Btest">`): both round-trip an un-decoded `%3B` unchanged
+through `bcftools view -h`/`query`, consistent with treating percent-encoding as meaningful there but never
+as something bcftools itself acts on.
+
+**Decision:** `VcfPercentEncoding` documents its own scope (INFO values, sample/FORMAT values, and structured
+metadata declaration attribute values) as spec-derived, explicitly excluding ID, FILTER, FORMAT/INFO/
+declaration keys and IDs, and symbolic ALT -- none of which permit a literal delimiter character in the first
+place, so there's nothing for percent-encoding to escape there. The class cannot enforce this itself (it's a
+pure `String` function with no way to know which field it was handed), so this is documentation, not a
+runtime check.
+
+**The eight-sequence limit:** hts-specs' own `test/vcf/4.3/passed/passed_body_info.vcf:63` contains
+`MY3=0.777%03A-0.123%03B0.5%3D-0.987%0A;RSQ=0.4319` as a `passed` (valid) fixture. `%03A` is not `%3A` — it is
+the three literal characters `%`, `0`, `3` followed by an ordinary `A`, since `%3A` in this exact position
+would require the `03` two-character span to be a *disallowed* control character U+0003 (VCFv4.3.tex line 81
+disallows U+0000–U+0008), which the fixture cannot possibly intend. A general percent-decoder recognizing any
+well-formed `%`-plus-two-hex-digits span would misdecode `%03` as that disallowed control character and
+corrupt this exact passing fixture.
+
+**Decision:** `VcfPercentEncoding.decode` recognizes only the eight exact two-hex-digit codes the table lists
+(`3A 3B 3D 25 2C 0D 0A 09`), matched case-insensitively; any other `%`-plus-two-characters span, however
+well-formed as a general percent-encoding, is left as literal text. Confirmed this also matches bcftools
+1.23.1: it percent-decodes nothing at all, anywhere (see `BCFTOOLS_VERSION_DEPENDENCIES.md`'s "Percent-encoding
+is never decoded" entry), so there is no tool precedent for general percent-decoding to defer to either.
 
 ### INFO value containing a bare `=`
 

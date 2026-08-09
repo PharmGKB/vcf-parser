@@ -27,6 +27,18 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
   `#testGenericPropertySquareBracketSubListBcftoolsAccepts`
 - Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "`##pedigreeDB`/`##assembly` bracket collision" entry
 
+### Percent-encoding is never decoded
+- Test: `BcftoolsDependencyTest#testPercentEncodingBcftoolsDecodesNothingAnywhere`
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Percent-encoding field scope, and the eight-sequence limit" entry.
+  "bcftools 1.23.1 percent-decodes nothing, anywhere" is load-bearing for `VcfPercentEncoding`'s whole design
+  (Task 4) -- the model layer never decodes automatically specifically because there is no tool precedent for
+  it and no round-trip need for it. Probed live with:
+  `bcftools view -h pct.vcf` (an `##INFO`/`##FILTER` header containing `%3B` in a `Description` attribute) and
+  `bcftools query -f '%INFO/XY\n' pct.vcf` (a data-line INFO value containing `%3B%2C%3A`) -- both round-trip
+  the percent-encoded text completely unchanged, with no decoding in either the header or the data line. Must
+  be re-checked on every bcftools upgrade: if a future bcftools started decoding these sequences, this
+  library's own choice not to would become a round-trip mismatch against real-world bcftools-produced files.
+
 ## Other bcftools-dependent decisions
 
 (best-effort coverage, not exhaustive)

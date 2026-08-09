@@ -1165,4 +1165,16 @@ class VcfSampleTest {
     VcfFormatException ex = assertThrows(VcfFormatException.class, builder::build);
     assertTrue(ex.getMessage().contains("keys()"), ex::getMessage);
   }
+
+  // --- Task 4 / D4 regression test: see VcfPercentEncodingTest for the codec's own unit tests, and
+  // VcfPositionTest's identically-shaped INFO-side test.
+
+  @Test
+  void testGetPropertyIdenticalUnder42And43ResolvedContexts() {
+    // no getter may return a different value for identical raw input just because the resolved VcfVersion
+    // differs -- there is no version-dependent percent-decoding (or any other transformation) to diverge on
+    VcfSample sample42 = VcfContext.strict("VCFv4.2").newSample(List.of("XZ"), List.of("a%3Bb%03Ac%41d"));
+    VcfSample sample43 = VcfContext.strict("VCFv4.3").newSample(List.of("XZ"), List.of("a%3Bb%03Ac%41d"));
+    assertEquals(sample42.getProperty("XZ"), sample43.getProperty("XZ"));
+  }
 }
