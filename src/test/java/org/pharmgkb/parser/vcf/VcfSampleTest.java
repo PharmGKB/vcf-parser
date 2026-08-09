@@ -616,6 +616,97 @@ class VcfSampleTest {
   }
 
   @Test
+  void testGetPropertyWithPositionAndMetadataRejectsPositionFromDifferentContext() {
+    // The two contexts are deliberately equal in value (both declared "VCFv4.2") and differ only by identity --
+    // matching VcfContextTest.testRecordRejectsComponentsFromDifferentContexts's precedent -- so this fails if
+    // the implementation ever compares VcfVersion values instead of VcfContext references.
+    VcfContext sampleContext = VcfContext.strict("VCFv4.2");
+    VcfContext otherContext = VcfContext.strict("VCFv4.2");
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0/1");
+    map.put("PL", "1,2,3");
+    VcfSample sample = sampleContext.newSample(map);
+    VcfPosition position = otherContext.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
+    VcfMetadata metadata = new VcfMetadata.Builder(sampleContext).setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> sample.getProperty(position, metadata, "PL"));
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataRejectsMetadataFromDifferentContext() {
+    // Same identity-vs-value rationale as the position case above, for the metadata argument.
+    VcfContext sampleContext = VcfContext.strict("VCFv4.2");
+    VcfContext otherContext = VcfContext.strict("VCFv4.2");
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0/1");
+    map.put("PL", "1,2,3");
+    VcfSample sample = sampleContext.newSample(map);
+    VcfPosition position = sampleContext.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
+    VcfMetadata metadata = new VcfMetadata.Builder(otherContext).setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> sample.getProperty(position, metadata, "PL"));
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataRejectsMismatchAcrossDifferentVersions() {
+    // The scenario this task closes: a 4.2 sample read against 4.3 position/metadata was constructible before
+    // this check existed (see AGENTS.md-adjacent task brief's intro) -- must throw now, not silently resolve
+    // ALT/ploidy/FORMAT semantics against the wrong version.
+    VcfContext sampleContext = VcfContext.strict("VCFv4.2");
+    VcfContext otherVersionContext = VcfContext.strict("VCFv4.3");
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0/1");
+    map.put("PL", "1,2,3");
+    VcfSample sample = sampleContext.newSample(map);
+    VcfPosition position = otherVersionContext.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null,
+        null, -1);
+    VcfMetadata metadata = new VcfMetadata.Builder(otherVersionContext).setFileFormat("VCFv4.3").build();
+    assertThrows(VcfFormatException.class, () -> sample.getProperty(position, metadata, "PL"));
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataRejectsMismatchRegardlessOfAbsentValue() {
+    // Pins the exact placement of the context check: it must run before the two ordinary absence exits
+    // (rawValue == null, and rawValue.equals(".")) so a structural mismatch never depends on whether the
+    // requested key happens to have a value. "PL" is absent from this sample -- an implementation that placed
+    // the check after the rawValue == null exit would wrongly return null here instead of throwing.
+    VcfContext sampleContext = VcfContext.strict("VCFv4.2");
+    VcfContext otherContext = VcfContext.strict("VCFv4.2");
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0/1");
+    VcfSample sample = sampleContext.newSample(map);
+    VcfPosition position = otherContext.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
+    VcfMetadata metadata = new VcfMetadata.Builder(sampleContext).setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> sample.getProperty(position, metadata, "PL"));
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataRejectsMismatchRegardlessOfDotValue() {
+    // Same placement pin as above, for the second ordinary absence exit: "PL" is present but "." (the
+    // missing-value sentinel), which getProperty(VcfPosition, VcfMetadata, String) itself treats as absent --
+    // an implementation that placed the context check after that exit would wrongly return null instead of
+    // throwing.
+    VcfContext sampleContext = VcfContext.strict("VCFv4.2");
+    VcfContext otherContext = VcfContext.strict("VCFv4.2");
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0/1");
+    map.put("PL", ".");
+    VcfSample sample = sampleContext.newSample(map);
+    VcfPosition position = otherContext.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
+    VcfMetadata metadata = new VcfMetadata.Builder(sampleContext).setFileFormat("VCFv4.2").build();
+    assertThrows(VcfFormatException.class, () -> sample.getProperty(position, metadata, "PL"));
+  }
+
+  @Test
+  void testGetPropertyReservedFormatPropertyOverloadHasNoSecondContextToMismatch() {
+    // getProperty(ReservedFormatProperty) takes only this sample -- there is no position/metadata argument, so
+    // there is no second VcfContext it could ever mismatch against; it already resolves its version from this
+    // sample's own m_context, unaffected by the new check on the three-object overload above. Named explicitly
+    // because this method is a version-sensitive read entry point that could otherwise become a second,
+    // easily-missed enforcement site later.
+    VcfSample sample = STRICT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
+    assertEquals("0/1", sample.getProperty(ReservedFormatProperty.Genotype));
+  }
+
+  @Test
   void testGetPropertyWithPositionAndMetadataHandlesNonReservedScalarKey() {
     // DS is declared Number=1/Type=Float in metadata but is not a ReservedFormatProperty
     LinkedHashMap<String, String> map = new LinkedHashMap<>();

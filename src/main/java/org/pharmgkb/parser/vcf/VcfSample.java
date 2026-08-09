@@ -282,10 +282,31 @@ public final class VcfSample {
    * @param <T> the type {@code key}'s declared {@code Type} specifies if it (or, for a non-reserved key, its
    * {@code ##FORMAT} declaration's {@code Number}) is not list-shaped; otherwise {@code List<V>} where {@code V}
    * is that type
+   * @throws VcfFormatException if {@code position} or {@code metadata} was built under a different
+   * {@link VcfContext} than this sample, or if the raw value's {@code Type} does not match {@code key}'s declared
+   * type
    */
   public @Nullable <T> T getProperty(VcfPosition position, VcfMetadata metadata, String key) {
     if (key == null || position == null || metadata == null) {
       return null;
+    }
+    // Structural, not this method's null tolerance above -- a different axis (AGENTS.md's Public API
+    // Null-Safety Policy): a read assembled from a position/metadata built under a different VcfContext than
+    // this sample has no unambiguous resolved version or warnings destination, so this throws rather than
+    // returning null. Placed here, before rawValue is even looked up, so the two ordinary absence exits just
+    // below (rawValue == null, and rawValue.equals(".")) never run first -- a structural mismatch must not
+    // depend on whether the requested key happens to have a value. This sample's own context (m_context) is
+    // the pivot, matching m_context.getVersion() below and in getProperty(ReservedFormatProperty) -- both
+    // typed-read overloads resolve version from the sample, never from position or metadata. Message wording
+    // follows VcfContext.newRecord's and VcfWriter.writeLine's (same reference-identity rationale: two
+    // equal-valued contexts still represent two different operations with different warnings sinks).
+    if (position.getContext() != m_context) {
+      throw new VcfFormatException("getProperty() was given a position created under a different VcfContext " +
+          "than this sample; the read would have no unambiguous version or warnings destination");
+    }
+    if (metadata.getContext() != m_context) {
+      throw new VcfFormatException("getProperty() was given metadata created under a different VcfContext " +
+          "than this sample; the read would have no unambiguous version or warnings destination");
     }
     String rawValue = getProperty(key);
     if (rawValue == null) {
