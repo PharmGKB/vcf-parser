@@ -165,12 +165,12 @@ for the first case, but rejects the second (a sample property not declared in FO
 `writeHeader()` may not be called more than once, `writeLine()` may not be called before `writeHeader()`, and every
 `writeLine()` call must be given the same `VcfMetadata` object `writeHeader()` was given -- these three checks are
 enforced unconditionally, in both the default and `validateBeforeWrite()` modes, since each is a cheap, one-time
-check rather than a per-record cost. A stricter check -- that the same `VcfMetadata` object's emitted header text
-hasn't changed since `writeHeader()` was called -- is `validateBeforeWrite()`-only, since detecting it requires
-rebuilding the entire header on every `writeLine()` call, a real per-record cost the default path avoids.
-Freezing the metadata layer removed every public route to that drift (there are no instance mutators and no
-mutable collection getters left); the check remains live and remains tested through the package-private
-`BaseMetadata.trustedMutableProperties()` bypass.
+check rather than a per-record cost. There used to be a stricter fourth check -- that the same `VcfMetadata`
+object's emitted header text hadn't changed since `writeHeader()` was called, comparing a recomputed header
+against a snapshot on every `writeLine()` under `validateBeforeWrite()`. It has been removed: `VcfMetadata` is
+immutable (no instance mutators, and every collection getter, including each declaration's own properties map,
+is an unmodifiable view), so the same object cannot produce different header text than the one already emitted,
+and object identity is now sufficient on its own.
 
 The default writer path is optimized for data written directly after parsing. It preserves parser-normalized values
 and maintains record and sample-column structure without full revalidation. If data has been mutated and a full
@@ -180,7 +180,12 @@ warning. This mode also enforces that every `INFO`/`FORMAT`/`FILTER`/`ALT`/`cont
 `ID` property must still match the key it's stored under in `VcfMetadata`'s maps (an entry's raw `ID` changing to
 a different value, or being removed entirely, without it being reflected in the map key would otherwise make the
 header declare a different (or missing) ID than what records reference by that entry's map key). No public API
-route can produce that divergence any more -- see the note above about the trusted bypass that still can.
+route can produce that divergence any more; the check stays because `validateBeforeWrite()` is the full-output
+diagnostics mode, and is exercised through the package-private `BaseMetadata.trustedMutableProperties()` bypass.
+The same reasoning applies to that mode's null-entry/null-key/null-value metadata checks. The default
+header-building path, by contrast, no longer re-checks metadata for nulls at all -- `VcfMetadata.Builder`
+rejects a null declaration or a null raw-property name/value at insertion, and nothing can mutate one in
+afterward, so those guards were removed as part of the same change.
 
 The writer detects a write failure (disk full, broken pipe, or an encoding failure) and reports it as an
 unchecked `java.io.UncheckedIOException`, but only checks periodically (every 1000 lines) and at

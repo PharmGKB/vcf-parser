@@ -83,7 +83,14 @@ A record accepted by the parser must be writable without losing fields or produc
 ### Public API Null-Safety Policy
 
 The Writer Validation policy above carves basic Java null-safety out of the default write path's "trusts
-already-valid input" exemption for one specific case (a live-mutable value reaching `VcfWriter`'s output).
+already-valid input" exemption. The case that carve-out was written for -- a caller mutating a `null` into a
+model *after* it had been validated, through a live collection view -- no longer exists: the model layer is
+immutable, so the only routes left into `VcfWriter`'s output are construction paths. What survives is
+narrower and specific: the package-private trusted factories listed below skip validation by design, and
+`VcfWriter`'s per-record helpers (`addListOrElse`, `addInfoOrDot`, `addFormatConditionally`) still reject a
+`null` unconditionally on the default path because those factories are real production fast paths. The
+header-building path makes no such check, because no construction path can put a `null` there at all -- see
+`VALIDATION_PHILOSOPHY.md`'s "How the principles interact".
 The same underlying rule applies across this library's whole public API surface, not just that one path: a
 public constructor, static factory, or method whose parameter is typed as a non-`@Nullable` reference (the
 default when no `@Nullable` annotation is present) must not raw-crash with `NullPointerException` when a

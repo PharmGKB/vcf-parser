@@ -980,26 +980,11 @@ public class VcfWriterTest {
     assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
   }
 
-  @Test
-  public void testDefaultWriteRejectsNullRawPropertyKeyInsteadOfWritingLiteralNullText() throws Exception {
-    // without validateBeforeWrite(), buildHeaderLines() never calls validateMetadata(); addPropertyLines() must
-    // guard this itself, since "##" + name + "=" + string would otherwise silently stringify a null name/value
-    // into the literal text "null", fabricating content that was never actually in the property
-    VcfMetadata metadata = trustedMetadataWithRawProperty(null, "value");
-    StringWriter sw = new StringWriter();
-    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-
-    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
-  }
-
-  @Test
-  public void testDefaultWriteRejectsNullRawPropertyValueInsteadOfWritingLiteralNullText() throws Exception {
-    VcfMetadata metadata = trustedMetadataWithRawProperty("foo", null);
-    StringWriter sw = new StringWriter();
-    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-
-    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
-  }
+  // The default-write counterparts of the two tests above (testDefaultWriteRejectsNullRawPropertyKey/
+  // ValueInsteadOfWritingLiteralNullText) were removed along with addPropertyLines()'s own null guards: the
+  // header-building path no longer re-checks metadata for nulls, since VcfMetadata is immutable and
+  // Builder.addRawProperty() rejects a null name/value at insertion. The two validateBeforeWrite() tests above
+  // keep validateMetadata()'s equivalent checks covered.
 
   @Test
   public void testValidateBeforeWriteRejectsNullInfoPropertyValueViaLiveView() throws Exception {
@@ -1017,30 +1002,10 @@ public class VcfWriterTest {
     assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
   }
 
-  @Test
-  public void testDefaultWriteRejectsNullInfoPropertyKeyInsteadOfWritingLiteralNullText() throws Exception {
-    // without validateBeforeWrite(), buildHeaderLines() never calls validateMetadata(); getAllProperties() must
-    // guard this itself, since entry.getKey()/entry.getValue() being null would otherwise silently stringify via
-    // StringBuilder.append(Object) into the literal text "null", fabricating content never actually in the property
-    InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "NS", "d", InfoType.Integer, "1", null, null);
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addInfo(info).build();
-    metadata.getInfo().get("NS").trustedMutableProperties().put(null, "value");
-    StringWriter sw = new StringWriter();
-    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-
-    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
-  }
-
-  @Test
-  public void testDefaultWriteRejectsNullInfoPropertyValueInsteadOfWritingLiteralNullText() throws Exception {
-    InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "NS", "d", InfoType.Integer, "1", null, null);
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addInfo(info).build();
-    metadata.getInfo().get("NS").trustedMutableProperties().put("Description", null);
-    StringWriter sw = new StringWriter();
-    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-
-    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
-  }
+  // The default-write counterparts of the test above (testDefaultWriteRejectsNullInfoPropertyKey/
+  // ValueInsteadOfWritingLiteralNullText) were removed along with getAllProperties()'s own null guards, for the
+  // same reason as the raw-property pair further up: a declaration's properties map is unmodifiable and every
+  // construction path rejects a null key/value, so the header-building path no longer re-checks.
 
   @Test
   public void testValidateBeforeWriteRejectsUnescapedQuoteInMetadataValue() throws Exception {
@@ -1442,16 +1407,19 @@ public class VcfWriterTest {
   }
 
   @Test
-  public void testValidateBeforeWriteRejectsMetadataMutatedAfterHeaderWritten() throws Exception {
-    // "metadata != m_headerMetadata" alone only catches a swapped-in different object; it can't catch the SAME
-    // object's emitted header text changing after writeHeader() already flushed it, which would silently make a
-    // data line inconsistent with the header the reader actually sees.
+  public void testMetadataCannotBeMutatedAfterHeaderWritten() throws Exception {
+    // Replaces testValidateBeforeWriteRejectsMetadataMutatedAfterHeaderWritten and
+    // testWriteLineDoesNotDetectInPlaceMetadataMutationInDefaultMode. Those pinned VcfWriter's header-text
+    // snapshot: writeHeader() recorded the exact header it emitted, and every writeLine() under
+    // validateBeforeWrite() rebuilt the header from the same metadata object and compared, so that a caller who
+    // mutated that object in place (originally metadata.addInfo(...); later, once the instance mutators were
+    // gone, an edit through a live getInfo()/getPropertiesRaw() view) was rejected rather than silently writing
+    // a record inconsistent with the header a reader actually sees.
     //
-    // The mutation used to be metadata.addInfo(...) adding a whole declaration the emitted header never had.
-    // Freezing the metadata layer removed that (and every other) instance mutator, so the drift is produced
-    // here by editing an existing declaration's own properties through the package-private
-    // trustedMutableProperties() bypass instead -- buildHeaderLines() reads those properties on every call, so
-    // the recomputed header text still differs from the snapshot, exercising the same guard on the same object.
+    // VcfMetadata is immutable now, so the same object always produces the same header text and the check was
+    // removed (it cost a full header rebuild per record in diagnostics mode). What is asserted instead is that
+    // every public route that could once have caused the drift now throws UnsupportedOperationException, and
+    // that writing continues normally after the failed attempts.
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "NS", "d", InfoType.Integer, "1", null, null);
@@ -1460,15 +1428,29 @@ public class VcfWriterTest {
         .build();
     writer.writeHeader(metadata);
 
-    metadata.getInfo().get("NS").trustedMutableProperties().put("Description", "\"changed after the header\"");
+    InfoMetadata declared = metadata.getInfo().get("NS");
+    // editing an existing declaration's properties -- including through Map.Entry.setValue, which an
+    // unmodifiableMap must also refuse
+    assertThrows(UnsupportedOperationException.class,
+        () -> declared.getPropertiesRaw().put("Description", "\"changed after the header\""));
+    assertThrows(UnsupportedOperationException.class,
+        () -> declared.getPropertiesRaw().entrySet().iterator().next().setValue("\"changed\""));
+    assertThrows(UnsupportedOperationException.class, () -> declared.getPropertyKeys().remove("Description"));
+    // adding or removing a whole declaration
+    assertThrows(UnsupportedOperationException.class, () -> metadata.getInfo().remove("NS"));
+    assertThrows(UnsupportedOperationException.class, () -> metadata.getInfo().put("AF", info));
+    assertThrows(UnsupportedOperationException.class, () -> metadata.getPedigrees().add(null));
+    // and the generic ##key=value properties the header also carries
+    assertThrows(UnsupportedOperationException.class, () -> metadata.getRawPropertyKeys().remove("reference"));
 
     ListMultimap<String, String> positionInfo = ArrayListMultimap.create();
     positionInfo.put("NS", "1");
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         positionInfo, null, -1);
+    writer.writeLine(metadata, position, Collections.emptyList());
 
-    assertThrows(VcfFormatException.class,
-        () -> writer.writeLine(metadata, position, Collections.emptyList()));
+    assertTrue(sw.toString().contains("Description=\"d\""));
+    assertFalse(sw.toString().contains("changed"));
   }
 
   @Test
@@ -1944,20 +1926,14 @@ public class VcfWriterTest {
   @Test
   public void testValidateBeforeWriteRejectsNullMetadataEntryInsteadOfThrowingNpe() throws Exception {
     // regression test: a null entry in a metadata collection must produce VcfFormatException, not a raw
-    // NullPointerException -- verified for both a Map-based kind (INFO) and the List-based kind (PEDIGREE),
-    // since addMetadataLines() is the single shared implementation for both shapes.
+    // NullPointerException -- verified for both a Map-based kind (INFO, via validateKeyedMetadataEntries) and
+    // the List-based kind (PEDIGREE, via validateMetadata()'s own pedigree loop).
     //
-    // TWO separate guards catch this, and both are exercised here, one per writer mode:
-    //  - default mode: buildHeaderLines() -> addMetadataLines() -> getAllProperties() is the ONLY null check
-    //    that runs at all, since validateMetadata() never runs.
-    //  - validateBeforeWrite() mode: validateMetadata()'s own guards in validateKeyedMetadataEntries() and the
-    //    PEDIGREE loop run first, before buildHeaderLines().
-    // Previously reached by inserting the null into the live backing collection after writeHeader() had already
-    // validated once; the metadata layer is frozen now, so trustedMetadata() (see its Javadoc) is the route.
-    // The consequence is that the null is present from the first writeHeader() rather than appearing between
-    // writeHeader() and writeLine() -- both guards are still covered, but the specific ordering nuance of
-    // writeLine()'s post-header-mutation path (addMetadataLines running before validateMetadata) is no longer
-    // separately reachable.
+    // validateBeforeWrite() only. This used to run in both modes, because buildHeaderLines() ->
+    // addMetadataLines() carried its own null-element guard for the default path; that guard is gone (see
+    // addMetadataLines()'s own comment), so the default path now assumes what VcfMetadata's immutability
+    // guarantees. validateMetadata() keeps its checks, since diagnostics mode must report what it can detect.
+    // Reached through trustedMetadata() (see its Javadoc), the only remaining route to a null element.
     Map<String, InfoMetadata> infoWithNullEntry = new LinkedHashMap<>();
     infoWithNullEntry.put("AF", new InfoMetadata(LENIENT_CONTEXT, "AF", "d", InfoType.Float, "A", null, null));
     infoWithNullEntry.put("BADKEY", null);
@@ -1966,29 +1942,16 @@ public class VcfWriterTest {
     pedigreesWithNullEntry.add(null);
     VcfMetadata badPedigree = trustedMetadata("VCFv4.2", null, pedigreesWithNullEntry, null);
 
-    for (boolean validateBeforeWrite : new boolean[] {false, true}) {
-      StringWriter sw = new StringWriter();
-      VcfWriter.Builder builder = new VcfWriter.Builder().toWriter(new PrintWriter(sw));
-      if (validateBeforeWrite) {
-        builder.validateBeforeWrite();
-      }
-      VcfWriter writer = builder.build();
-      VcfFormatException infoEx =
-          assertThrows(VcfFormatException.class, () -> writer.writeHeader(badInfo));
-      assertTrue(infoEx.getMessage().contains("INFO metadata contains a null entry"),
-          () -> "validateBeforeWrite=" + validateBeforeWrite + ": " + infoEx.getMessage());
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfFormatException infoEx = assertThrows(VcfFormatException.class, () -> writer.writeHeader(badInfo));
+    assertTrue(infoEx.getMessage().contains("INFO metadata contains a null entry"), infoEx::getMessage);
 
-      StringWriter sw2 = new StringWriter();
-      VcfWriter.Builder builder2 = new VcfWriter.Builder().toWriter(new PrintWriter(sw2));
-      if (validateBeforeWrite) {
-        builder2.validateBeforeWrite();
-      }
-      VcfWriter writer2 = builder2.build();
-      VcfFormatException pedigreeEx =
-          assertThrows(VcfFormatException.class, () -> writer2.writeHeader(badPedigree));
-      assertTrue(pedigreeEx.getMessage().contains("PEDIGREE metadata contains a null entry"),
-          () -> "validateBeforeWrite=" + validateBeforeWrite + ": " + pedigreeEx.getMessage());
-    }
+    StringWriter sw2 = new StringWriter();
+    VcfWriter writer2 = new VcfWriter.Builder().toWriter(new PrintWriter(sw2)).validateBeforeWrite().build();
+    VcfFormatException pedigreeEx = assertThrows(VcfFormatException.class, () -> writer2.writeHeader(badPedigree));
+    assertTrue(pedigreeEx.getMessage().contains("PEDIGREE metadata contains a null entry"),
+        pedigreeEx::getMessage);
   }
 
   @Test
@@ -2370,30 +2333,10 @@ public class VcfWriterTest {
     assertTrue(e.getMessage().contains("writeLine() was given different metadata than writeHeader() used"));
   }
 
-  @Test
-  public void testWriteLineDoesNotDetectInPlaceMetadataMutationInDefaultMode() throws Exception {
-    // regression test: unlike the 3 checks above, detecting the SAME VcfMetadata object being mutated in place
-    // after writeHeader() requires rebuilding the entire header text on every writeLine() call -- a real
-    // per-record cost. This specific case is deliberately NOT promoted to the default fast path and remains
-    // validateBeforeWrite()-only; this test pins that boundary so it isn't accidentally regressed later.
-    // see testValidateBeforeWriteRejectsMetadataMutatedAfterHeaderWritten for why the drift is produced
-    // through trustedMutableProperties() rather than a (since-removed) instance mutator
-    StringWriter sw = new StringWriter();
-    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "NS", "d", InfoType.Integer, "1", null, null);
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
-        .addInfo(info)
-        .build();
-    writer.writeHeader(metadata);
-    metadata.getInfo().get("NS").trustedMutableProperties().put("Description", "\"changed after the header\"");
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
-    writer.writeLine(metadata, position, Collections.emptyList());
-    // no exception thrown -- the assertion is that this line completes normally
-    // and the emitted header genuinely does not reflect the post-header mutation, since it happened too late to be
-    // written -- this default-mode path doesn't detect or care
-    assertTrue(sw.toString().contains("Description=\"d\""));
-    assertFalse(sw.toString().contains("changed after the header"));
-  }
+  // testWriteLineDoesNotDetectInPlaceMetadataMutationInDefaultMode used to sit here, pinning the boundary that
+  // in-place metadata-mutation detection was validateBeforeWrite()-only (it cost a full header rebuild per
+  // record). That boundary no longer exists -- the check is gone from both modes because VcfMetadata is
+  // immutable. See testMetadataCannotBeMutatedAfterHeaderWritten, which replaces both tests.
 
   @Test
   public void testWarningsToFileDoesNotCaptureLazyQualityGetterUnderADifferentContext(

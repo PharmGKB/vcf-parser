@@ -158,18 +158,27 @@ condition check is an always-throwing helper class rather than an inline branch.
 
 ## How the principles interact
 
-- Principle 3 gates principle 4's scope. Detecting a post-header metadata mutation requires rebuilding the
-  entire header on every `writeLine()` call -- a real per-record cost the default path can't absorb -- so the
-  check exists only under `validateBeforeWrite()` today (`VcfWriter.m_headerText`, compared each `writeLine()`
-  call). This is a direct case of principle 3 constraining principle 4's scope, not a contradiction between
-  them.
+- Principle 3 gated principle 4's scope, until the thing being guarded stopped being possible. Detecting a
+  post-header metadata mutation required rebuilding the entire header on every `writeLine()` call -- a real
+  per-record cost the default path could not absorb -- so the check lived only under `validateBeforeWrite()`.
+  `VcfMetadata` and its declarations are immutable now, so the same object cannot produce different header
+  text than the one already emitted, and the check has been removed from that mode too. Object identity
+  (`metadata == m_headerMetadata`, unconditional in both modes) is what remains.
 - Basic null-safety is not the same axis as principles 1/2, and is never subject to principle 3's exemption. A
   `null` reaching string-building code doesn't produce a validation question with a "warn and recover" answer
   -- it silently fabricates the literal text `"null"` in output that was never there. This is why several
-  checks that look like hot-path validation are unconditional even on `VcfWriter`'s default path
-  (`addListOrElse`, `addInfoOrDot`, `addFormatConditionally`, and the raw-property-line writer all throw on a
-  null entry regardless of `validateBeforeWrite()`): principle 3 exempts the default path from re-doing
-  *VCF-semantic* validation the parser or an earlier check already performed, not from basic Java null-safety.
+  checks that look like hot-path validation are unconditional even on `VcfWriter`'s default path:
+  `addListOrElse`, `addInfoOrDot` and `addFormatConditionally` all throw on a null entry regardless of
+  `validateBeforeWrite()`, because `VcfContext`'s package-private trusted position factories skip
+  `checkIds`/`checkAltBases`/`checkFilters`/`checkInfoEntries`/`checkFormat` outright and are real production
+  fast paths (`VcfParser`'s per-record splitting and FORMAT cache, `VcfPosition.Builder.build()`). Principle 3
+  exempts the default path from re-doing *VCF-semantic* validation the parser or an earlier check already
+  performed, not from basic Java null-safety.
+  <br>The header-building path is the one place this reasoning stops applying, and it is worth being precise
+  about why: `buildHeaderLines()` and its helpers no longer null-check declarations or properties, because
+  there is no analogous production route that could put a null there. `VcfMetadata.Builder` rejects a null
+  declaration and a null raw-property name/value at insertion, and nothing can mutate one in afterward. That
+  is an absence of any reachable `null`, not an exemption from checking for one.
   This generalizes beyond `VcfWriter` to the whole public API surface: JSpecify's `@Nullable` annotations are
   documentation only in this codebase (no compile-time or runtime enforcement), so a caller can always pass
   `null` regardless of a parameter's declared type -- a public constructor, static factory, or method must

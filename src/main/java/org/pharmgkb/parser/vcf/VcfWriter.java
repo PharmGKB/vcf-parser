@@ -61,15 +61,6 @@ public class VcfWriter implements Closeable {
   private int m_lineNumber;
   private boolean m_headerWritten;
   private @Nullable VcfMetadata m_headerMetadata;
-  // snapshot of the exact header text emitted by writeHeader(), in validateBeforeWrite mode only; lets writeLine()
-  // detect the same metadata object producing different header text after the header was already flushed, which
-  // "metadata != m_headerMetadata" alone can't catch.
-  // STALE as of Task 10 (see task-10-report.md): the original wording named addInfo()/removeInfo() as how that
-  // happens. VcfMetadata is immutable now -- no instance mutators, every collection getter unmodifiable -- so no
-  // public API caller can cause this drift at all. It stays reachable only by editing a declaration's own
-  // properties through the package-private BaseMetadata.trustedMutableProperties() bypass, which is how the two
-  // tests below still cover it. Task 11 owns deciding whether the check can go.
-  private @Nullable String m_headerText;
 
   private boolean m_closed;
   private @Nullable Exception m_invalidatingCause;
@@ -174,17 +165,15 @@ public class VcfWriter implements Closeable {
     checkForWriteError();
     m_headerWritten = true;
     m_headerMetadata = metadata;
-    if (m_validateBeforeWrite) {
-      m_headerText = String.join("\n", lines);
-    }
     sf_logger.debug("Wrote {} lines of header{}", m_lineNumber, (m_file == null ? "" : " to " + m_file));
   }
 
   /**
    * Builds every header line (metadata declarations, then the {@code #CHROM} column line) that {@link #writeHeader}
-   * would emit for {@code metadata}, without writing anything. Used both by {@link #writeHeader} itself and, in
-   * validateBeforeWrite mode, by {@link #writeLine} to detect the header metadata object having been mutated in
-   * place since the header was written (see {@link #m_headerText}).
+   * would emit for {@code metadata}, without writing anything. Called only from {@link #writeHeader}: it used to
+   * also run per {@link #writeLine} call, to recompute the header text and compare it against a snapshot, but
+   * {@link VcfMetadata} is immutable now, so the same object can no longer produce different header text than the
+   * one already emitted.
    */
   private List<String> buildHeaderLines(VcfMetadata metadata) {
     List<String> lines = new ArrayList<>();
@@ -195,10 +184,6 @@ public class VcfWriter implements Closeable {
     // spelling, byte for byte. Reading it off the context would silently rewrite the caller's declaration.
     // Pinned by VcfWriterTest.testWriteHeaderDerivesFileFormatFromTheMetadataNotItsContext. It also keeps a
     // retried writeHeader() honest (see that method's own comment).
-    // STALE as of Task 10 (see task-10-report.md): the original wording justified this by writeLine()'s
-    // header-text snapshot needing to catch a post-header setFileFormat() re-spelling. setFileFormat is gone
-    // and m_fileFormat is final, so that drift is now structurally impossible -- but the "read it off the
-    // metadata, not the context" rule is still load-bearing, for the reason given above.
     lines.add("##fileformat=" + declaredFileFormatFor(metadata));
 
     // metadata, in order from spec
@@ -286,18 +271,11 @@ public class VcfWriter implements Closeable {
       }
     }
     if (m_validateBeforeWrite) {
-      // metadata == m_headerMetadata only proves it's the same object, not that it would still produce the same
-      // header text, so the header actually on disk/in the stream can disagree with what this same object would
-      // now produce. Compare the header text metadata would produce right now against the snapshot taken when it
-      // was actually written.
-      // STALE as of Task 10 (see task-10-report.md): the original wording named addInfo()/removeInfo() as the
-      // way a caller mutates it in place. See m_headerText's own comment for why no public route remains, and
-      // for why this is Task 11's call rather than this comment's.
-      if (!String.join("\n", buildHeaderLines(metadata)).equals(m_headerText)) {
-        throw new VcfFormatException("The metadata object given to writeLine() would now produce a different " +
-            "header than the one writeHeader() already emitted; the already-emitted header no longer matches " +
-            "what this metadata would produce");
-      }
+      // No header-drift re-check here. "metadata == m_headerMetadata" used to prove only object identity, not
+      // that the object would still produce the same header text, so this rebuilt the whole header on every
+      // record and compared it against a snapshot taken in writeHeader(). VcfMetadata is immutable now (no
+      // instance mutators, every collection getter an unmodifiable view, every declaration's properties map
+      // unmodifiable), so the same object always produces the same header text and identity is sufficient.
       position.validate();
       validateMetadata(metadata);
       validateInfo(metadata, position);
@@ -418,18 +396,12 @@ public class VcfWriter implements Closeable {
       return;
     }
     while (formats.hasNext()) {
-      // STALE as of Task 8 (see task-8-report.md): position.getFormat() is no longer a live view -- VcfPosition
-      // is frozen, so this null guard can no longer be reached via any current public API path (checkFormat's own
-      // null-element check already throws unconditionally at construction/build() time, in every context). Left
-      // in place and untouched -- removing this guard is Task 11's job (which also touches this file to remove
-      // the writer's mutation defenses), not this comment fix's.
-      // STALE as of Task 8: getFormat() returns an unmodifiable view, so no public API caller can insert a null
-      // entry. Only the package-private trusted factories can now produce this state. The original reasoning,
-      // unedited:
-      // position.getFormat() is a live view a caller can insert a null entry into directly, bypassing
-      // VcfPosition.validate()'s own checkFormat() null guard, which only runs under validateBeforeWrite(). On the
-      // default path, StringBuilder.append(Object) would otherwise silently stringify a null key into the literal
-      // text "null" instead of a clean rejection.
+      // Kept deliberately. getFormat() is an unmodifiable view over a frozen VcfPosition, so no public API
+      // caller can insert a null entry -- but VcfContext's package-private position factories
+      // (newPositionWithTrustedFormat, newPositionCopyingTrustedFields) skip checkFormat outright, and both are
+      // real production fast paths (VcfParser's per-record FORMAT cache, VcfPosition.Builder.build()), not
+      // test-only bypasses. On the default write path StringBuilder.append(Object) would silently stringify a
+      // null key into the literal text "null" rather than rejecting cleanly, so this stays.
       String key = formats.next();
       if (key == null) {
         throw new VcfFormatException("FORMAT contains a null sub-field name");
@@ -456,15 +428,12 @@ public class VcfWriter implements Closeable {
     // compare against; duplicate IDs across entries must still be checked directly here
     Set<String> pedigreeIds = new HashSet<>();
     for (BaseMetadata pedigree : metadata.getPedigrees()) {
-      // STALE as of Task 10 (see task-10-report.md): getPedigrees() is an unmodifiable view now, so no public
-      // caller can insert a null element; only the package-private VcfMetadata trusted constructor can, which is
-      // how VcfWriterTest still covers this. Task 11 owns removing it. The original reasoning, unedited:
-      // getPedigrees() is a live view, so a caller can insert a null element after writeHeader() has already
-      // started -- same reasoning as validateKeyedMetadataEntries()'s identical guard above. In writeHeader(),
-      // this method runs BEFORE buildHeaderLines()/addMetadataLines(), so this check is what actually catches
-      // it there; in writeLine()'s post-header-mutation check, buildHeaderLines()/addMetadataLines() runs first
-      // instead. Kept anyway so this method stays a correct, self-contained validation pass on its own terms --
-      // not dependent on call-order elsewhere in this class remaining exactly as it is today.
+      // Kept, unlike the null-element guard addMetadataLines() used to carry for this same list. getPedigrees()
+      // is an unmodifiable view and Builder.addPedigree() rejects a null, so no public route reaches this;
+      // VcfMetadata's package-private trusted constructor still can. This method is the full-output diagnostics
+      // pass, whose job is to report everything it can detect about the object it was handed, so it keeps its own
+      // self-contained null check rather than relying on a construction-time invariant holding -- addMetadataLines()
+      // (the default fast path) is where paying for a re-check that can no longer fire is not worth it.
       if (pedigree == null) {
         throw new VcfFormatException("PEDIGREE metadata contains a null entry");
       }
@@ -492,11 +461,10 @@ public class VcfWriter implements Closeable {
       }
     }
     for (String key : metadata.getRawPropertyKeys()) {
-      // STALE as of Task 10 (see task-10-report.md): both are unmodifiable views now, so only the
-      // package-private VcfMetadata trusted constructor can introduce a null key/value. Task 11 owns removing
-      // it. The original reasoning, unedited:
-      // getRawProperties()/getRawValuesOfProperty() are live views (see their Javadoc), so a caller can insert a
-      // null key/value directly, bypassing every check addRawProperty() would otherwise run at insertion time
+      // Kept for the same reason as the PEDIGREE null-entry guard above: both raw-property getters are
+      // unmodifiable views and Builder.addRawProperty() rejects a null key/value, so only VcfMetadata's
+      // package-private trusted constructor can reach this, but this is the diagnostics pass and it reports
+      // everything it can detect about the object it was handed.
       if (key == null) {
         throw new VcfFormatException("Metadata contains a null raw property name");
       }
@@ -509,13 +477,11 @@ public class VcfWriter implements Closeable {
             "where the key/value split falls when re-read");
       }
       if (InternalUtils.isReservedMetadataKey(key)) {
-        // STALE as of Task 10 (see task-10-report.md): getRawProperties() is an unmodifiable view now; only the
-        // package-private VcfMetadata trusted constructor can reach this. Task 11 owns removing it. The original
-        // reasoning, unedited:
-        // getRawProperties() returns the backing multimap directly, so a caller can insert this after
-        // addRawProperty()'s own check has already run once, at insertion time; unlike that check, this one
-        // rejects outright, since a raw "INFO"/"FORMAT"/etc. property would produce output VcfParser cannot
-        // read back as what was written (see VcfParser.parseMetadata's switch)
+        // Only VcfMetadata's package-private trusted constructor can reach this now (getRawProperties() is an
+        // unmodifiable view, and addRawProperty() drops a reserved key at insertion time). Kept, and unlike
+        // addRawProperty()'s warn-and-drop this rejects outright, since a raw "INFO"/"FORMAT"/etc. property
+        // would produce output VcfParser cannot read back as what was written (see VcfParser.parseMetadata's
+        // switch)
         throw new VcfFormatException("Metadata property name \"" + key + "\" collides with a structured " +
             "declaration keyword");
       }
@@ -533,14 +499,9 @@ public class VcfWriter implements Closeable {
           m_warnings.warn("Metadata property \"{}\" has an empty value: {}", key, value);
         }
         if (VcfMetadata.collidesWithAttributeListGrammar(value)) {
-          // unlike the empty-value case above, this rejects outright rather than warning.
-          // STALE as of Task 10 (see task-10-report.md): the original wording said getRawProperties()/
-          // getRawValuesOfProperty() are live views a caller can insert into after addRawProperty()/
-          // addAssembly()/addPedigreeDatabase()'s insertion-time rejection has run. Both getters are
-          // unmodifiable views now, and addAssembly/addPedigreeDatabase no longer exist at all --
-          // Builder.addRawProperty is the single insertion point, and only the package-private VcfMetadata
-          // trusted constructor can bypass it. Task 11 owns removing this. The bcftools grounding below is
-          // unaffected and still current:
+          // unlike the empty-value case above, this rejects outright rather than warning. Builder.addRawProperty
+          // is the single insertion point and already rejects/drops this, so only the package-private VcfMetadata
+          // trusted constructor can bypass it -- kept for the same diagnostics-pass reason as the guards above.
           // Confirmed directly that bcftools 1.23.1 hard-errors ("Could not parse the header line") on a
           // generic property value shaped like this -- see VcfMetadata.collidesWithAttributeListGrammar's own comment --
           // so writing it out would produce output a reference tool cannot read back at all, not merely
@@ -555,13 +516,10 @@ public class VcfWriter implements Closeable {
   }
 
   // mirrors VcfParser's identical post-parse check (same warning text). Called once, from writeHeader() only --
-  // not from validateMetadata() (which also runs per writeLine() call) -- since #CHROM's sample-column list is
-  // fixed forever once VcfMetadata is built (VcfMetadata.Builder.build() copies it into an immutable list with no
-  // supported mutation path), so this can only ever need re-checking if ##SAMPLE itself changes. A caller who
-  // mutates ##SAMPLE (via addSample()/removeSample(), or by mutating the map getSamples() returns directly) after
-  // writeHeader() has already run is already rejected outright by writeLine()'s own header-text-snapshot check
-  // (m_headerText) before this method's caller would ever be reached again -- so checking only here, once, misses
-  // nothing a later writeLine() call could otherwise have caught.
+  // not from validateMetadata() (which also runs per writeLine() call) -- since both sides of the comparison are
+  // fixed forever once VcfMetadata is built: #CHROM's sample-column list is copied into an immutable list, and
+  // ##SAMPLE can no longer change either (VcfMetadata is immutable -- no instance mutators, and getSamples()
+  // returns an unmodifiable view). Re-running this per record could therefore only ever repeat the same result.
   private void checkSampleMetadataMatchesChromColumns(VcfMetadata metadata) {
     if (metadata.getNumSamples() == metadata.getSamples().size()) {
       for (int i = 0; i < metadata.getNumSamples(); i++) {
@@ -585,25 +543,21 @@ public class VcfWriter implements Closeable {
    * actually reference by that entry's map key, and a duplicate-ID check across entries would also be unable to
    * catch a real collision this way (see below).
    * <p>
-   * STALE as of Task 10 (see task-10-report.md): the route described above was {@link VcfMetadata#getInfo()}
-   * and its siblings returning the backing map directly plus {@link BaseMetadata#getPropertiesRaw()} being a
-   * live view. Both are now unmodifiable, so no public API caller can reach this state; only the
-   * package-private {@code BaseMetadata.trustedMutableProperties()} bypass can, which is how the tests below
-   * still cover it. Deciding whether this check can go is Task 11's job, not this comment's.
+   * The route that made that drift possible was {@link VcfMetadata#getInfo()} and its siblings returning the
+   * backing map directly, plus {@link BaseMetadata#getPropertiesRaw()} being a live view. Both are unmodifiable
+   * now, so no public API caller can reach this state; only the package-private
+   * {@code BaseMetadata.trustedMutableProperties()} bypass can, which is how the tests still cover it. These
+   * checks stay because this is {@code validateBeforeWrite()}'s full-output diagnostics pass, which must report
+   * everything it can detect about the object it was handed rather than assume a construction-time invariant.
    */
   private void validateKeyedMetadataEntries(String kind, Map<String, ? extends BaseMetadata> entriesByKey) {
     for (Map.Entry<String, ? extends BaseMetadata> mapEntry : entriesByKey.entrySet()) {
       String mapKey = mapEntry.getKey();
       BaseMetadata entry = mapEntry.getValue();
-      // STALE as of Task 10: the keyed metadata getters return unmodifiable views, so no public API caller can
-      // insert a null value; only the package-private VcfMetadata trusted constructor can. Removing this guard
-      // is Task 11's job. The original reasoning, unedited:
-      // entriesByKey is a live view (see this method's own Javadoc), so a caller can insert a null value after
-      // writeHeader() has already started. In writeHeader(), this method runs BEFORE buildHeaderLines()/
-      // addMetadataLines(), so this check is what actually catches it there; in writeLine()'s
-      // post-header-mutation check, buildHeaderLines()/addMetadataLines() runs first instead. Kept anyway so
-      // validateMetadata() stays a correct, self-contained validation pass on its own terms -- not dependent on
-      // call-order elsewhere in this class remaining exactly as it is today.
+      // The keyed metadata getters are unmodifiable views and Builder's addXxx methods all reject a null, so
+      // only VcfMetadata's package-private trusted constructor can insert one. Kept for the diagnostics-pass
+      // reason in this method's own Javadoc; note that addMetadataLines(), the default fast path, no longer
+      // makes the equivalent check, so this is the only null-entry rejection left.
       if (entry == null) {
         throw new VcfFormatException(kind + " metadata contains a null entry");
       }
@@ -621,10 +575,8 @@ public class VcfWriter implements Closeable {
       // mapKey is never null on any path that goes through Builder's addXxx methods (all reject/drop a
       // null-getId() entry before put). LinkedHashMap tolerates a null KEY, so an INFO map carrying one reaches
       // here with mapKey itself null; guarded explicitly rather than left to a raw NullPointerException at
-      // mapKey.equals(id).
-      // STALE as of Task 10 (see task-10-report.md): the original wording called entriesByKey "the same live,
-      // caller-mutable view this method already guards for a null VALUE". It is an unmodifiable view now, so
-      // only the package-private VcfMetadata trusted constructor can produce a null key. Task 11 owns this.
+      // mapKey.equals(id). Only VcfMetadata's package-private trusted constructor can produce a null key now;
+      // kept for the same reason as the null-VALUE guard above.
       if (mapKey == null) {
         throw new VcfFormatException(kind + " metadata contains a null key");
       }
@@ -642,10 +594,7 @@ public class VcfWriter implements Closeable {
     }
   }
 
-  // STALE as of Task 10 (see task-10-report.md): "live map" no longer holds -- getPropertiesRaw() is an
-  // unmodifiable view. The reasoning below is otherwise unaffected: it is about this method running immediately
-  // after validate() on the same map, not about that map being mutable.
-  // both call sites pass the same live map an entry.validate()/pedigree.validate() call already ran against,
+  // both call sites pass the same map an entry.validate()/pedigree.validate() call already ran against,
   // immediately before this method runs -- BaseMetadata.validate() already calls checkNoLineTerminator(key,
   // value) for every property in that same map, so redoing it here would just repeat that work per property.
   // It also now rejects a null value itself, so a null here is already unreachable -- no separate check needed.
@@ -973,16 +922,13 @@ public class VcfWriter implements Closeable {
 
     while (keys.hasNext()) {
       String key = keys.next();
-      // STALE as of Task 8 (see task-8-report.md): position.getInfo() is no longer a live view -- VcfPosition is
-      // frozen, so this null guard can no longer be reached via any current public API path (checkInfoEntries's
-      // own null-key/null-value checks already throw unconditionally at construction/build() time, in every
-      // context). Left in place and untouched -- removing this guard is Task 11's job, not this comment fix's.
-      // position.getInfo() is a live LinkedListMultimap view that permits null keys/values (see
-      // VcfPosition.checkInfoEntries's identical comment), bypassing VcfPosition.validate()'s own null guard, which
-      // only runs under validateBeforeWrite(). Left unguarded, a null value would reach values.get(0).isEmpty()
-      // below as a raw NullPointerException, and a non-crashing null would otherwise silently stringify via
-      // StringBuilder.append(Object) into the literal text "null" -- neither is the clean VcfFormatException
-      // rejection this project's null-safety policy requires on the default path.
+      // Kept deliberately, for the same reason as addFormatConditionally()'s null-key guard: VcfPosition is
+      // frozen and getInfo() is an unmodifiable view, so no public API caller can reach this, but
+      // VcfContext.newPositionCopyingTrustedFields skips checkInfoEntries outright and is a real production
+      // path (VcfPosition.Builder.build()), not a test-only bypass. Left unguarded, a null value would reach
+      // values.get(0).isEmpty() below as a raw NullPointerException, and a non-crashing null would silently
+      // stringify via StringBuilder.append(Object) into the literal text "null" -- neither is the clean
+      // VcfFormatException rejection this project's null-safety policy requires on the default path.
       if (key == null) {
         throw new VcfFormatException("INFO column contains a null key");
       }
@@ -1105,25 +1051,19 @@ public class VcfWriter implements Closeable {
 
   private void addListOrElse(String fieldName, List<String> list, String delimiter, String missingValue,
       boolean substituteEmptyWithDot, StringBuilder sb) {
-    // STALE as of Task 8 (see task-8-report.md): position.getIds()/getAltBases()/getFilters() are no longer live
-    // views -- VcfPosition is frozen, so the null branch below can no longer be reached via any current public
-    // API path (dropEmptyEntries's/checkAltBases's own null-element checks already throw unconditionally at
-    // construction/build() time, in every context). The empty-entry branch is a different case: it is the ONLY
+    // Both branches below are kept deliberately. position.getIds()/getAltBases()/getFilters() are unmodifiable
+    // views over a frozen VcfPosition, so no public API caller can insert a null or empty entry -- but
+    // VcfContext.newPositionCopyingTrustedFields skips checkIds/checkAltBases/checkFilters outright and is a
+    // real production path (VcfPosition.Builder.build()), not a test-only bypass. On the default path,
+    // StringBuilder.append(Object) would otherwise silently stringify a null entry into the literal text "null"
+    // instead of a clean rejection. The empty-entry branch is load-bearing for a further reason: it is the ONLY
     // place this per-field drop-vs-substitute decision is implemented for the writer (see the "independently
     // implement the SAME per-field decision table" note below) -- VcfPositionTest/InternalUtilsTest only cover
     // InternalUtils's own copy, not this one, so VcfWriterTest's testDefaultWriteDropsEmptyIdEntry/
     // testDefaultWriteDropsAllEmptyIdEntriesRendersMissingValue/testDefaultWriteDropsEmptyFilterEntry/
     // testDefaultWriteSubstitutesEmptyAltEntryWithDot construct the position via the package-private
-    // newPositionCopyingTrustedFields() factory (deliberately bypassing checkIds/checkAltBases/checkFilters,
-    // reachable only because that test class is in this same package) to keep this branch under test. Removing
-    // either branch, or the null-guard-specific tests these superseded, is Task 11's job, not this comment fix's.
-    // STALE as of Task 8: getIds()/getAltBases()/getFilters() return unmodifiable views, so no public API caller
-    // can insert a null or empty entry. The original reasoning, unedited:
-    // list (position.getIds()/getAltBases()/getFilters()) is a live view a caller can insert a null or empty
-    // entry into directly, bypassing VcfPosition.validate()'s own guards (checkIds/checkAltBases/checkFilters),
-    // which only run under validateBeforeWrite(). On the default path, StringBuilder.append(Object) would
-    // otherwise silently stringify a null entry into the literal text "null" instead of a clean rejection, and
-    // an empty entry would silently produce a zero-length VCF field instead of being canonicalized.
+    // newPositionCopyingTrustedFields() factory (deliberately bypassing those checks, reachable only because
+    // that test class is in this same package) to keep this branch under test.
     //
     // The empty-entry canonicalization below (drop for a position-independent list like ID/FILTER, substitute
     // "." for a position-dependent one like ALT -- see EMPTY_FIELD_HANDLING.md) is folded into this method's own
@@ -1160,41 +1100,24 @@ public class VcfWriter implements Closeable {
   }
 
   private void addPropertyLines(List<String> lines, String name, Collection<String> list) {
-    // this is the only call site, from buildHeaderLines(), which runs on every write regardless of
-    // validateBeforeWrite() -- unlike validateMetadata()'s equivalent guards above, this is not dead code on the
-    // default (non-validated) write path: "##" + name + "=" + string silently stringifies a null into the literal
-    // text "null" via Java's string concatenation, corrupting the header with fabricated content that was never
-    // actually in the property, rather than an empty value or a clean rejection
-    if (name == null) {
-      throw new VcfFormatException("Metadata contains a null raw property name");
-    }
     for (String string : list) {
-      if (string == null) {
-        throw new VcfFormatException("Metadata property \"" + name + "\" has a null value");
-      }
       lines.add("##" + name + "=" + string);
     }
   }
 
+  // Neither this method, addPropertyLines() above, nor getAllProperties() below re-checks metadata for nulls
+  // any more. Each used to guard against a caller inserting a null through what were once live views onto
+  // VcfMetadata's declaration collections, its raw-property multimap, and BaseMetadata's own properties map.
+  // All three are unmodifiable views now, and VcfMetadata.Builder rejects a null declaration (requireNonNull in
+  // every addXxx) and a null raw-property name/value (addRawProperty) before either can be stored, so no
+  // construction path this library actually uses can put a null here. Only VcfMetadata's package-private
+  // trusted constructor and BaseMetadata.trustedMutableProperties() can, and neither has a src/main caller that
+  // supplies null content. This is the header-building path, which runs on every write regardless of mode and
+  // is covered by AGENTS.md's "the default writer path is performance-sensitive ... without full
+  // revalidation"; validateMetadata() keeps its equivalent checks, since validateBeforeWrite() is the
+  // full-output diagnostics mode and must report what it can detect rather than assume an invariant.
   private void addMetadataLines(List<String> lines, String name, Collection<? extends BaseMetadata> list) {
     for (BaseMetadata metadata : list) {
-      // STALE as of Task 10 (see task-10-report.md): "list is a live view a caller can insert a null element
-      // into after writeHeader() has already run" no longer holds -- every VcfMetadata collection getter is now
-      // unmodifiable, so only the package-private VcfMetadata trusted constructor can produce a null element,
-      // which is how the tests still cover it. Removing the guard is Task 11's job. The original reasoning,
-      // unedited:
-      // list is a live view of a VcfMetadata collection (see getAllProperties()'s own comment on
-      // metadata.getPropertiesRaw() for the identical live-view concern one level down); a caller can insert a
-      // null element after writeHeader() has already run. This guard fires in two places: on the very first
-      // writeHeader() call in DEFAULT (non-validateBeforeWrite()) mode, where it is the ONLY null check that
-      // runs at all (validateMetadata() never runs in that mode); and in writeLine()'s post-header-mutation
-      // check in validateBeforeWrite() mode, where buildHeaderLines() (and so this method) runs BEFORE
-      // validateMetadata()'s equivalent null checks -- so this guard is not redundant with those there either.
-      // On the first writeHeader() call in validateBeforeWrite() mode, by contrast, validateMetadata() itself
-      // runs first and already rejects a null entry before buildHeaderLines() (and this method) is ever reached.
-      if (metadata == null) {
-        throw new VcfFormatException(name + " metadata contains a null entry");
-      }
       lines.add(getAllProperties(name, metadata));
     }
   }
@@ -1202,32 +1125,13 @@ public class VcfWriter implements Closeable {
   private String getAllProperties(String name, BaseMetadata metadata) {
     StringBuilder sb = new StringBuilder("##");
     sb.append(name).append("=<");
-    // STALE as of Task 10 (see task-10-report.md): metadata.getPropertiesRaw() is no longer a live view -- it is
-    // unmodifiable, so only the package-private BaseMetadata.trustedMutableProperties() bypass can introduce a
-    // null key/value, which is how the tests still cover it. Removing the guard is Task 11's job. The original
-    // reasoning, unedited:
-    // metadata.getPropertiesRaw() is a live view (see its Javadoc), so a caller can insert a null key/value after
-    // this entry's own validate() already ran. Unlike addPropertyLines() below, there's no validateBeforeWrite()
-    // gap to close here -- validateMetadata() already rejects a null key/value for every kind this method
-    // processes, via validateMetadataProperties(), and that check runs before buildHeaderLines() in writeHeader().
-    // This guard covers only the default (non-validateBeforeWrite()) path, where entry.getKey()/entry.getValue()
-    // being null would otherwise silently stringify via StringBuilder.append(Object) into the literal text "null"
-    // (e.g. "##INFO=<ID=X,Description=null>"), fabricating content that was never actually in the property.
     Map<String, String> props = metadata.getPropertiesRaw();
     int i = 0;
     for (Map.Entry<String, String> entry : props.entrySet()) {
       if (i > 0) {
         sb.append(",");
       }
-      String key = entry.getKey();
-      String value = entry.getValue();
-      if (key == null) {
-        throw new VcfFormatException(name + " metadata has a null property name");
-      }
-      if (value == null) {
-        throw new VcfFormatException(name + " metadata property \"" + key + "\" has a null value");
-      }
-      sb.append(key).append("=").append(value);
+      sb.append(entry.getKey()).append("=").append(entry.getValue());
       i++;
     }
     sb.append(">");
