@@ -1525,6 +1525,40 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteRoutesReservedInfoConstraintWarningOnlyToWritersOwnDestination(
+      @org.junit.jupiter.api.io.TempDir Path tempDir) throws IOException {
+    // VCF 4.3 retarget, Phase 5 Task 3: writeLine() now also derives the record's resolved version and threads
+    // it into validateInfo/validateSamples and, from there, into checkReservedInfoConstraints/
+    // checkReservedFormatConstraints -- but the warnings sink those two checks use is still m_warnings, this
+    // writer's own configured sink, exactly as before this task. A refactor that instead read the version and
+    // warnings sink together off the record's own VcfContext (e.g. passing metadata.getContext() itself, or a
+    // pair built from it) would misroute this exact warning to that context's own destination instead. metadata/
+    // position here are built under recordContext, a VcfContext with its own independently observable
+    // StringWriter-backed sink, wholly separate from both this writer's warningsToFile() destination and the
+    // shared SLF4J logger VcfWarnings.DEFAULT would otherwise fall back to, so a misrouted warning cannot hide
+    // behind either of those two coincidentally being the same destination.
+    StringWriter recordSink = new StringWriter();
+    VcfContext recordContext = VcfContext.lenient("VCFv4.2", new VcfWarnings(recordSink));
+    InfoMetadata ac = new InfoMetadata(recordContext, ReservedInfoProperty.AlleleCount.getId(), "d", InfoType.Integer,
+        "A", null, null);
+    VcfMetadata metadata = new VcfMetadata.Builder(recordContext).setFileFormat("VCFv4.2").addInfo(ac).build();
+    ListMultimap<String, String> positionInfo = ArrayListMultimap.create();
+    positionInfo.put("AC", "-1");
+    VcfPosition position = recordContext.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        positionInfo, null, -1);
+
+    Path writerWarningsFile = tempDir.resolve("writer-warnings.log");
+    StringWriter sw = new StringWriter();
+    try (VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite()
+        .warningsToFile(writerWarningsFile).build()) {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, Collections.emptyList());
+    }
+    assertTrue(Files.readString(writerWarningsFile).contains("INFO AC value \"-1\" is a negative number"));
+    assertFalse(recordSink.toString().contains("INFO AC value \"-1\" is a negative number"));
+  }
+
+  @Test
   public void testValidateBeforeWriteWarnsButPreservesInvalidCigarValue() throws Exception {
     // CIGAR's grammar isn't expressible through its declared Type=String (which passes any value through
     // unchanged), so it's checked separately (mirroring FT/PS/AC's own treatment); an invalid value is

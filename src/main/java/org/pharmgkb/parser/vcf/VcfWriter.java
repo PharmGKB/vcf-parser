@@ -299,6 +299,14 @@ public class VcfWriter implements Closeable {
             "the metadata; the record would have no unambiguous version or warnings destination");
       }
     }
+    // The record's own resolved version -- context.getVersion() and position.getContext().getVersion() are
+    // equivalent here, since the identity checks just above already proved position.getContext() == context --
+    // derived once and threaded explicitly into validateInfo/validateSamples and, from there, into the reserved-
+    // key constraint checks. Deliberately NOT m_context.getVersion(): m_context is this writer's own diagnostics
+    // context (rebuilt fresh on every writeHeader(), see that field's own comment above), never guaranteed
+    // reference-identical to the context that actually built metadata/position/samples, so it is not this
+    // record's version even when the two happen to resolve to the same VcfVersion value.
+    VcfVersion recordVersion = context.getVersion();
     if (m_validateBeforeWrite) {
       // No header-drift re-check here. "metadata == m_headerMetadata" used to prove only object identity, not
       // that the object would still produce the same header text, so this rebuilt the whole header on every
@@ -307,8 +315,8 @@ public class VcfWriter implements Closeable {
       // unmodifiable), so the same object always produces the same header text and identity is sufficient.
       position.validate();
       validateMetadata(metadata);
-      validateInfo(metadata, position);
-      validateSamples(metadata, position, samples);
+      validateInfo(metadata, position, recordVersion);
+      validateSamples(metadata, position, samples, recordVersion);
     }
 
     int numSamples = metadata.getNumSamples();
@@ -675,7 +683,7 @@ public class VcfWriter implements Closeable {
     return false;
   }
 
-  private void validateInfo(VcfMetadata metadata, VcfPosition position) {
+  private void validateInfo(VcfMetadata metadata, VcfPosition position, VcfVersion recordVersion) {
     for (String key : position.getInfoKeys()) {
       List<String> values = position.getInfo(key);
       InfoMetadata info = metadata.getInfo().get(key);
@@ -689,16 +697,17 @@ public class VcfWriter implements Closeable {
         ReservedInfoProperty reserved = ReservedInfoProperty.fromId(key);
         if (reserved != null) {
           validateInfoValue(reserved.getExpectedNumber(), reserved.getType(), values, key,
-              position.getAltBases().size());
+              position.getAltBases().size(), recordVersion);
         }
       } else {
         validateInfoValue(info.getNumber(), info.getType() == null ? null : InternalUtils.toJavaType(info.getType()),
-            values, key, position.getAltBases().size());
+            values, key, position.getAltBases().size(), recordVersion);
       }
     }
   }
 
-  private void validateSamples(VcfMetadata metadata, VcfPosition position, List<VcfSample> samples) {
+  private void validateSamples(VcfMetadata metadata, VcfPosition position, List<VcfSample> samples,
+      VcfVersion recordVersion) {
     List<String> formatKeys = position.getFormat();
     for (int sampleIndex = 0; sampleIndex < samples.size(); sampleIndex++) {
       VcfSample sample = samples.get(sampleIndex);
@@ -723,12 +732,12 @@ public class VcfWriter implements Closeable {
           ReservedFormatProperty reserved = ReservedFormatProperty.fromId(key);
           if (reserved != null) {
             validateFormatValue(reserved.getExpectedNumber(), reserved.getType(), value, key, sampleIndex,
-                position.getAltBases().size(), ploidy);
+                position.getAltBases().size(), ploidy, recordVersion);
           }
         } else {
           validateFormatValue(format.getNumber(),
               format.getType() == null ? null : InternalUtils.toJavaType(format.getType()), value, key, sampleIndex,
-              position.getAltBases().size(), ploidy);
+              position.getAltBases().size(), ploidy, recordVersion);
         }
       }
     }
@@ -740,7 +749,7 @@ public class VcfWriter implements Closeable {
   // (see InternalUtils.toJavaType(InfoType)/ReservedInfoProperty.getType()), not the InfoType enum itself, so
   // this one method serves both callers without needing a synthetic InfoMetadata for the reserved-only case.
   private void validateInfoValue(@Nullable String number, @Nullable Class<?> type, List<String> values, String key,
-      int numAltAlleles) {
+      int numAltAlleles, VcfVersion recordVersion) {
     if (type == Boolean.class) {
       if (values.size() != 1 || !values.get(0).isEmpty()) {
         m_warnings.warn("INFO {} has Type=Flag but has a value", key);
@@ -758,7 +767,7 @@ public class VcfWriter implements Closeable {
     // what their declared Type can express (see InternalUtils.checkReservedInfoConstraints's own Javadoc), so
     // this is checked separately, both here (the write/diagnostics path) and via getInfo(ReservedInfoProperty)
     // (the read path, through convertProperty(ReservedProperty, ...)'s dispatch)
-    InternalUtils.checkReservedInfoConstraints(key, String.join(",", values), m_warnings);
+    InternalUtils.checkReservedInfoConstraints(key, String.join(",", values), recordVersion, m_warnings);
     if (values.stream().anyMatch(String::isEmpty)) {
       m_warnings.warn("INFO {} contains an empty value", key);
     }
@@ -791,7 +800,7 @@ public class VcfWriter implements Closeable {
   // enum itself, so this one method serves both callers without needing a synthetic FormatMetadata for the
   // reserved-only case.
   private void validateFormatValue(@Nullable String number, @Nullable Class<?> type, String value, String key,
-      int sampleIndex, int numAltAlleles, @Nullable Integer ploidy) {
+      int sampleIndex, int numAltAlleles, @Nullable Integer ploidy, VcfVersion recordVersion) {
     if (value.equals(".")) {
       return;
     }
@@ -800,7 +809,7 @@ public class VcfWriter implements Closeable {
       // about it twice via checkReservedFormatConstraints's own "empty filter code" check. The returned normalized
       // value is discarded: this writer preserves raw content rather than rewriting it, consistent with how a
       // reserved list-typed FORMAT value's empty entry is also only normalized on read, not on write.
-      InternalUtils.checkReservedFormatConstraints(key, value, m_warnings);
+      InternalUtils.checkReservedFormatConstraints(key, value, recordVersion, m_warnings);
     }
     String[] values = InternalUtils.splitFormatValue(key, value);
     for (String element : values) {

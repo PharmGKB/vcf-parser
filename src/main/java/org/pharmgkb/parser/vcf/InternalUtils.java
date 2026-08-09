@@ -513,17 +513,26 @@ public class InternalUtils {
    *   <li>The Boolean true (for flags)</li>
    *   <li>A List of any of the above types</li>
    * </ul>
+   *
+   * @param version the record's resolved VCF version (see {@link VcfContext#getVersion()}), passed as its own
+   * argument -- never a {@link VcfContext} -- so a caller can never read it off the wrong context (e.g. a
+   * writer's own diagnostics context instead of the record's). Not yet read anywhere in this method: it is
+   * threaded through so a future version-gated reserved-key rule (in this method or in
+   * {@link #checkReservedFormatConstraints}/{@link #checkReservedInfoConstraints}) has it available at the point
+   * it needs it. Any such future check must dispatch via {@code version.isAtLeast(VcfVersion.V4_3)} (see
+   * {@link VcfVersion#isAtLeast}), never a string or ordinal comparison on {@link VcfVersion}.
    */
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
-  public static @Nullable <T> T convertProperty(ReservedProperty key, @Nullable String value, VcfWarnings warnings) {
+  public static @Nullable <T> T convertProperty(ReservedProperty key, @Nullable String value, VcfVersion version,
+      VcfWarnings warnings) {
     // FT/PS are FORMAT-only reserved IDs, and AC/AN/DP/END/MQ0/NS/AF are INFO-only reserved IDs (see each
     // check's own Javadoc) -- a future reserved key on the other side whose ID happens to collide must not get
     // the wrong side's semantics applied
     String normalized = value;
     if (key instanceof ReservedFormatProperty) {
-      normalized = checkReservedFormatConstraints(key.getId(), value, warnings);
+      normalized = checkReservedFormatConstraints(key.getId(), value, version, warnings);
     } else if (key instanceof ReservedInfoProperty) {
-      checkReservedInfoConstraints(key.getId(), value, warnings);
+      checkReservedInfoConstraints(key.getId(), value, version, warnings);
     }
     return convertProperty(key.getType(), normalized, key.isList(), warnings);
   }
@@ -545,8 +554,16 @@ public class InternalUtils {
    * sentinel) rather than an empty string, matching every other "reduces to nothing" case in this library. A
    * caller that only wants the validation side effect (e.g. a writer in diagnostics mode, which preserves raw
    * content rather than rewriting it) may discard the return value.
+   *
+   * @param version the record's resolved VCF version, passed as its own argument -- never a {@link VcfContext} --
+   * so there is nothing here to read a version off but the value the caller explicitly supplied. See
+   * {@link #convertProperty(ReservedProperty, String, VcfVersion, VcfWarnings)}'s own {@code version} doc for the
+   * {@code isAtLeast} dispatch idiom a future version-gated rule here must use (a planned {@code GP} range check,
+   * since {@link ReservedFormatProperty#GenotypePosteriorProbabilitiesPhredScaled GP} is a
+   * {@code ReservedFormatProperty} and this is the FORMAT-side check). Not yet read by this method.
    */
-  static @Nullable String checkReservedFormatConstraints(String key, @Nullable String value, VcfWarnings warnings) {
+  static @Nullable String checkReservedFormatConstraints(String key, @Nullable String value, VcfVersion version,
+      VcfWarnings warnings) {
     if (value == null || value.equals(".")) {
       return value;
     }
@@ -643,8 +660,14 @@ public class InternalUtils {
    * each comma-separated element is checked independently. Unlike {@link #checkReservedFormatConstraints},
    * nothing here needs normalizing -- these are pure range/grammar checks with no equivalent to FT's
    * empty-entry-dropping -- so this returns {@code void} rather than a value for the caller to use.
+   *
+   * @param version the record's resolved VCF version, passed as its own argument -- never a {@link VcfContext} --
+   * so there is nothing here to read a version off but the value the caller explicitly supplied. See
+   * {@link #convertProperty(ReservedProperty, String, VcfVersion, VcfWarnings)}'s own {@code version} doc for the
+   * {@code isAtLeast} dispatch idiom a future version-gated rule here must use. Not yet read by this method.
    */
-  static void checkReservedInfoConstraints(String key, @Nullable String value, VcfWarnings warnings) {
+  static void checkReservedInfoConstraints(String key, @Nullable String value, VcfVersion version,
+      VcfWarnings warnings) {
     if (value == null || value.equals(".")) {
       return;
     }

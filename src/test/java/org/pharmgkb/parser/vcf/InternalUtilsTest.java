@@ -352,14 +352,17 @@ public class InternalUtilsTest {
     // expressible through its declared Type=String, so it's checked separately; this is non-structural sample
     // content, so an invalid value warns rather than throws
     assertEquals("PASS",
-        InternalUtils.checkReservedFormatConstraints("FT", "PASS", VcfWarnings.DEFAULT)); // valid: does not throw
+        InternalUtils.checkReservedFormatConstraints("FT", "PASS", VcfVersion.V4_2, VcfWarnings.DEFAULT)); // valid: does not throw
     assertEquals("q10;q20",
-        InternalUtils.checkReservedFormatConstraints("FT", "q10;q20", VcfWarnings.DEFAULT)); // valid: does not throw
-    assertEquals("q10 q20", InternalUtils.checkReservedFormatConstraints("FT", "q10 q20", VcfWarnings.DEFAULT)); // whitespace in a code: warns
+        InternalUtils.checkReservedFormatConstraints("FT", "q10;q20", VcfVersion.V4_2, VcfWarnings.DEFAULT)); // valid: does not throw
+    assertEquals("q10 q20",
+        InternalUtils.checkReservedFormatConstraints("FT", "q10 q20", VcfVersion.V4_2, VcfWarnings.DEFAULT)); // whitespace in a code: warns
     assertEquals("PASS;q10",
-        InternalUtils.checkReservedFormatConstraints("FT", "PASS;q10", VcfWarnings.DEFAULT)); // PASS + code: warns
-    assertNull(InternalUtils.checkReservedFormatConstraints("FT", null, VcfWarnings.DEFAULT)); // no value set: nothing to check
-    assertEquals(".", InternalUtils.checkReservedFormatConstraints("FT", ".", VcfWarnings.DEFAULT)); // missing value: nothing to check
+        InternalUtils.checkReservedFormatConstraints("FT", "PASS;q10", VcfVersion.V4_2, VcfWarnings.DEFAULT)); // PASS + code: warns
+    assertNull(
+        InternalUtils.checkReservedFormatConstraints("FT", null, VcfVersion.V4_2, VcfWarnings.DEFAULT)); // no value set: nothing to check
+    assertEquals(".",
+        InternalUtils.checkReservedFormatConstraints("FT", ".", VcfVersion.V4_2, VcfWarnings.DEFAULT)); // missing value: nothing to check
   }
 
   @Test
@@ -368,12 +371,12 @@ public class InternalUtilsTest {
     // used for an empty entry in FILTER (FT's grammar is explicitly modeled on FILTER's) and every other
     // position-independent list in this library -- unlike PASS/'.' combined with a genuine other code (see above),
     // which is a real grammar violation and must not be silently rewritten away
-    assertEquals("q10;q20", InternalUtils.checkReservedFormatConstraints("FT", "q10;;q20", VcfWarnings.DEFAULT));
-    assertEquals("q10", InternalUtils.checkReservedFormatConstraints("FT", "q10;", VcfWarnings.DEFAULT));
-    assertEquals("q10", InternalUtils.checkReservedFormatConstraints("FT", ";q10", VcfWarnings.DEFAULT));
+    assertEquals("q10;q20", InternalUtils.checkReservedFormatConstraints("FT", "q10;;q20", VcfVersion.V4_2, VcfWarnings.DEFAULT));
+    assertEquals("q10", InternalUtils.checkReservedFormatConstraints("FT", "q10;", VcfVersion.V4_2, VcfWarnings.DEFAULT));
+    assertEquals("q10", InternalUtils.checkReservedFormatConstraints("FT", ";q10", VcfVersion.V4_2, VcfWarnings.DEFAULT));
     // dropping the empty artifacts must not leave a false "combined with PASS" warning when PASS is the only
     // remaining real content (e.g. a trailing ';' after PASS)
-    assertEquals("PASS", InternalUtils.checkReservedFormatConstraints("FT", "PASS;", VcfWarnings.DEFAULT));
+    assertEquals("PASS", InternalUtils.checkReservedFormatConstraints("FT", "PASS;", VcfVersion.V4_2, VcfWarnings.DEFAULT));
   }
 
   @Test
@@ -391,18 +394,18 @@ public class InternalUtilsTest {
     appender.start();
     root.addAppender(appender);
     try {
-      assertEquals("PASS;PASS", InternalUtils.checkReservedFormatConstraints("FT", "PASS;PASS", VcfWarnings.DEFAULT));
+      assertEquals("PASS;PASS", InternalUtils.checkReservedFormatConstraints("FT", "PASS;PASS", VcfVersion.V4_2, VcfWarnings.DEFAULT));
       assertFalse(appender.anyMessageContains("combines PASS or '.' with other filter codes"));
 
-      assertEquals(".;.", InternalUtils.checkReservedFormatConstraints("FT", ".;.", VcfWarnings.DEFAULT));
+      assertEquals(".;.", InternalUtils.checkReservedFormatConstraints("FT", ".;.", VcfVersion.V4_2, VcfWarnings.DEFAULT));
       assertFalse(appender.anyMessageContains("combines PASS or '.' with other filter codes"));
 
       // PASS and "." are distinct codes, so this must still warn, unlike the two same-code cases above
-      assertEquals("PASS;.", InternalUtils.checkReservedFormatConstraints("FT", "PASS;.", VcfWarnings.DEFAULT));
+      assertEquals("PASS;.", InternalUtils.checkReservedFormatConstraints("FT", "PASS;.", VcfVersion.V4_2, VcfWarnings.DEFAULT));
       assertTrue(appender.anyMessageContains("combines PASS or '.' with other filter codes"));
 
       // sanity check: a genuinely different code alongside PASS/'.' must still warn
-      assertEquals("PASS;q10", InternalUtils.checkReservedFormatConstraints("FT", "PASS;q10", VcfWarnings.DEFAULT));
+      assertEquals("PASS;q10", InternalUtils.checkReservedFormatConstraints("FT", "PASS;q10", VcfVersion.V4_2, VcfWarnings.DEFAULT));
       assertTrue(appender.anyMessageContains("combines PASS or '.' with other filter codes"));
     } finally {
       root.detachAppender(appender);
@@ -417,8 +420,8 @@ public class InternalUtilsTest {
     // value == null || ".".equals(value), so "" silently reached type conversion unchanged, making
     // VcfSample.getProperty(ReservedFormatProperty.Filter) return a non-null empty string instead of null for a
     // sample whose FT content was entirely empty artifacts
-    assertEquals(".", InternalUtils.checkReservedFormatConstraints("FT", ";;", VcfWarnings.DEFAULT));
-    assertEquals(".", InternalUtils.checkReservedFormatConstraints("FT", ";", VcfWarnings.DEFAULT));
+    assertEquals(".", InternalUtils.checkReservedFormatConstraints("FT", ";;", VcfVersion.V4_2, VcfWarnings.DEFAULT));
+    assertEquals(".", InternalUtils.checkReservedFormatConstraints("FT", ";", VcfVersion.V4_2, VcfWarnings.DEFAULT));
   }
 
   @Test
@@ -426,19 +429,19 @@ public class InternalUtilsTest {
     // PS must be a non-negative 32-bit integer, but that constraint isn't expressible through its declared
     // Type=Integer (which maps to a 64-bit Long), so it's checked separately; this is non-structural sample
     // content, so an out-of-range value warns rather than throws
-    InternalUtils.checkReservedFormatConstraints("PS", "0", VcfWarnings.DEFAULT); // valid: does not throw
+    InternalUtils.checkReservedFormatConstraints("PS", "0", VcfVersion.V4_2, VcfWarnings.DEFAULT); // valid: does not throw
     InternalUtils.checkReservedFormatConstraints("PS", String.valueOf(Integer.MAX_VALUE),
-        VcfWarnings.DEFAULT); // valid: does not throw
-    InternalUtils.checkReservedFormatConstraints("PS", "-5", VcfWarnings.DEFAULT); // negative: warns, does not throw
+        VcfVersion.V4_2, VcfWarnings.DEFAULT); // valid: does not throw
+    InternalUtils.checkReservedFormatConstraints("PS", "-5", VcfVersion.V4_2, VcfWarnings.DEFAULT); // negative: warns, does not throw
     InternalUtils.checkReservedFormatConstraints("PS", String.valueOf(Integer.MAX_VALUE + 1L),
-        VcfWarnings.DEFAULT); // out of 32-bit range: warns
+        VcfVersion.V4_2, VcfWarnings.DEFAULT); // out of 32-bit range: warns
   }
 
   @Test
   public void testConvertPropertyPhaseSetPreservesOutOfRangeValue() {
     // the typed accessor still returns the parsed Long even when it violates PS's non-negative-32-bit constraint,
     // consistent with the "warn and preserve" policy for non-structural sample content
-    Long value = InternalUtils.convertProperty(ReservedFormatProperty.PhaseSet, "-5", VcfWarnings.DEFAULT);
+    Long value = InternalUtils.convertProperty(ReservedFormatProperty.PhaseSet, "-5", VcfVersion.V4_2, VcfWarnings.DEFAULT);
     assertEquals(-5L, value);
   }
 
@@ -446,7 +449,7 @@ public class InternalUtilsTest {
   public void testConvertPropertyFilterDropsEmptyCodes() {
     // unlike PS, the typed FT accessor returns a normalized value: an empty semicolon-separated code is dropped,
     // matching the "warn and drop" convention used for FILTER's own empty entries
-    String value = InternalUtils.convertProperty(ReservedFormatProperty.Filter, "q10;;q20", VcfWarnings.DEFAULT);
+    String value = InternalUtils.convertProperty(ReservedFormatProperty.Filter, "q10;;q20", VcfVersion.V4_2, VcfWarnings.DEFAULT);
     assertEquals("q10;q20", value);
   }
 
@@ -455,7 +458,7 @@ public class InternalUtilsTest {
     // end-to-end regression test: convertProperty(ReservedProperty, ...) must return null, matching this
     // library's established null-means-absent contract, not "" -- see
     // testCheckReservedFormatConstraintsFtAllEmptyCodesNormalizesToMissingValueSentinel for the underlying fix
-    String value = InternalUtils.convertProperty(ReservedFormatProperty.Filter, ";;", VcfWarnings.DEFAULT);
+    String value = InternalUtils.convertProperty(ReservedFormatProperty.Filter, ";;", VcfVersion.V4_2, VcfWarnings.DEFAULT);
     assertNull(value);
   }
 
@@ -465,12 +468,12 @@ public class InternalUtilsTest {
     // position that can't be negative -- checked separately, warning rather than throwing (non-structural INFO
     // content)
     for (String key : new String[] { "AC", "AN", "DP", "END", "MQ0", "NS" }) {
-      InternalUtils.checkReservedInfoConstraints(key, "0", VcfWarnings.DEFAULT); // valid: does not throw
-      InternalUtils.checkReservedInfoConstraints(key, "5", VcfWarnings.DEFAULT); // valid: does not throw
-      InternalUtils.checkReservedInfoConstraints(key, "-1", VcfWarnings.DEFAULT); // negative: warns, does not throw
+      InternalUtils.checkReservedInfoConstraints(key, "0", VcfVersion.V4_2, VcfWarnings.DEFAULT); // valid: does not throw
+      InternalUtils.checkReservedInfoConstraints(key, "5", VcfVersion.V4_2, VcfWarnings.DEFAULT); // valid: does not throw
+      InternalUtils.checkReservedInfoConstraints(key, "-1", VcfVersion.V4_2, VcfWarnings.DEFAULT); // negative: warns, does not throw
     }
-    InternalUtils.checkReservedInfoConstraints("AC", null, VcfWarnings.DEFAULT); // no value set: nothing to check
-    InternalUtils.checkReservedInfoConstraints("AC", ".", VcfWarnings.DEFAULT); // missing value: nothing to check
+    InternalUtils.checkReservedInfoConstraints("AC", null, VcfVersion.V4_2, VcfWarnings.DEFAULT); // no value set: nothing to check
+    InternalUtils.checkReservedInfoConstraints("AC", ".", VcfVersion.V4_2, VcfWarnings.DEFAULT); // missing value: nothing to check
   }
 
   @Test
@@ -484,7 +487,7 @@ public class InternalUtilsTest {
     appender.start();
     root.addAppender(appender);
     try {
-      InternalUtils.checkReservedInfoConstraints("AC", "1,-2,3", VcfWarnings.DEFAULT);
+      InternalUtils.checkReservedInfoConstraints("AC", "1,-2,3", VcfVersion.V4_2, VcfWarnings.DEFAULT);
       assertEquals(1, appender.countMessagesContaining("negative number"));
       assertTrue(appender.anyMessageContains("-2"));
     } finally {
@@ -495,14 +498,14 @@ public class InternalUtilsTest {
 
   @Test
   public void testCheckReservedInfoConstraintsAlleleFrequencyWarnsOutsideUnitInterval() {
-    InternalUtils.checkReservedInfoConstraints("AF", "0", VcfWarnings.DEFAULT); // valid: does not throw
-    InternalUtils.checkReservedInfoConstraints("AF", "1", VcfWarnings.DEFAULT); // valid: does not throw
-    InternalUtils.checkReservedInfoConstraints("AF", "0.5", VcfWarnings.DEFAULT); // valid: does not throw
-    InternalUtils.checkReservedInfoConstraints("AF", "-0.01", VcfWarnings.DEFAULT); // below 0: warns, does not throw
-    InternalUtils.checkReservedInfoConstraints("AF", "1.5", VcfWarnings.DEFAULT); // above 1: warns, does not throw
+    InternalUtils.checkReservedInfoConstraints("AF", "0", VcfVersion.V4_2, VcfWarnings.DEFAULT); // valid: does not throw
+    InternalUtils.checkReservedInfoConstraints("AF", "1", VcfVersion.V4_2, VcfWarnings.DEFAULT); // valid: does not throw
+    InternalUtils.checkReservedInfoConstraints("AF", "0.5", VcfVersion.V4_2, VcfWarnings.DEFAULT); // valid: does not throw
+    InternalUtils.checkReservedInfoConstraints("AF", "-0.01", VcfVersion.V4_2, VcfWarnings.DEFAULT); // below 0: warns, does not throw
+    InternalUtils.checkReservedInfoConstraints("AF", "1.5", VcfVersion.V4_2, VcfWarnings.DEFAULT); // above 1: warns, does not throw
     // NaN/Inf have no meaningful position within [0, 1] -- must not warn (or throw)
-    InternalUtils.checkReservedInfoConstraints("AF", "NaN", VcfWarnings.DEFAULT);
-    InternalUtils.checkReservedInfoConstraints("AF", "INF", VcfWarnings.DEFAULT);
+    InternalUtils.checkReservedInfoConstraints("AF", "NaN", VcfVersion.V4_2, VcfWarnings.DEFAULT);
+    InternalUtils.checkReservedInfoConstraints("AF", "INF", VcfVersion.V4_2, VcfWarnings.DEFAULT);
   }
 
   @Test
@@ -515,7 +518,7 @@ public class InternalUtilsTest {
     // rejection at this size; the unfixed code took seconds even at a fraction of this length.
     String pathologicallyLong = "1".repeat(500_000);
     assertTimeoutPreemptively(java.time.Duration.ofSeconds(3), () ->
-        InternalUtils.checkReservedInfoConstraints("AF", pathologicallyLong, VcfWarnings.DEFAULT));
+        InternalUtils.checkReservedInfoConstraints("AF", pathologicallyLong, VcfVersion.V4_2, VcfWarnings.DEFAULT));
   }
 
   @Test
@@ -537,7 +540,7 @@ public class InternalUtilsTest {
     root.addAppender(appender);
     try {
       List<VcfFloat> value = InternalUtils.convertProperty(ReservedInfoProperty.AlleleFrequency, "1.",
-          VcfWarnings.DEFAULT);
+          VcfVersion.V4_2, VcfWarnings.DEFAULT);
       assertEquals(1, appender.countMessagesContaining("does not match the VCF Float grammar"));
       assertEquals(0, appender.countMessagesContaining("does not lie in the interval"));
       assertEquals(1, value.size());
@@ -552,7 +555,7 @@ public class InternalUtilsTest {
   public void testConvertPropertyAlleleCountPreservesNegativeValue() {
     // the typed accessor still returns the parsed value even when it violates AC's non-negative constraint,
     // consistent with the "warn and preserve" policy for non-structural INFO content
-    List<Long> value = InternalUtils.convertProperty(ReservedInfoProperty.AlleleCount, "-5", VcfWarnings.DEFAULT);
+    List<Long> value = InternalUtils.convertProperty(ReservedInfoProperty.AlleleCount, "-5", VcfVersion.V4_2, VcfWarnings.DEFAULT);
     assertEquals(List.of(-5L), value);
   }
 
@@ -561,15 +564,15 @@ public class InternalUtilsTest {
     // CIGAR's grammar (a lone "*", or one or more <length><operation> pairs) isn't expressible through its
     // declared Type=String (which accepts any string unchanged), so it's checked separately; this is
     // non-structural INFO content, so an invalid value warns rather than throws
-    InternalUtils.checkReservedInfoConstraints("CIGAR", "8M2I4M1D3M", VcfWarnings.DEFAULT); // valid: does not throw
+    InternalUtils.checkReservedInfoConstraints("CIGAR", "8M2I4M1D3M", VcfVersion.V4_2, VcfWarnings.DEFAULT); // valid: does not throw
     InternalUtils.checkReservedInfoConstraints("CIGAR", "*",
-        VcfWarnings.DEFAULT); // valid ("unavailable"): does not throw
+        VcfVersion.V4_2, VcfWarnings.DEFAULT); // valid ("unavailable"): does not throw
     InternalUtils.checkReservedInfoConstraints("CIGAR", "123MYCIGAR",
-        VcfWarnings.DEFAULT); // illegal trailing chars: warns
+        VcfVersion.V4_2, VcfWarnings.DEFAULT); // illegal trailing chars: warns
     InternalUtils.checkReservedInfoConstraints("CIGAR", "0.05",
-        VcfWarnings.DEFAULT); // a decimal number, not pairs: warns
-    InternalUtils.checkReservedInfoConstraints("CIGAR", null, VcfWarnings.DEFAULT); // no value set: nothing to check
-    InternalUtils.checkReservedInfoConstraints("CIGAR", ".", VcfWarnings.DEFAULT); // missing value: nothing to check
+        VcfVersion.V4_2, VcfWarnings.DEFAULT); // a decimal number, not pairs: warns
+    InternalUtils.checkReservedInfoConstraints("CIGAR", null, VcfVersion.V4_2, VcfWarnings.DEFAULT); // no value set: nothing to check
+    InternalUtils.checkReservedInfoConstraints("CIGAR", ".", VcfVersion.V4_2, VcfWarnings.DEFAULT); // missing value: nothing to check
   }
 
   @Test
@@ -583,7 +586,7 @@ public class InternalUtilsTest {
     appender.start();
     root.addAppender(appender);
     try {
-      InternalUtils.checkReservedInfoConstraints("CIGAR", "8M,0.05,4M1D", VcfWarnings.DEFAULT);
+      InternalUtils.checkReservedInfoConstraints("CIGAR", "8M,0.05,4M1D", VcfVersion.V4_2, VcfWarnings.DEFAULT);
       assertEquals(1, appender.countMessagesContaining("does not match the expected CIGAR grammar"));
       assertTrue(appender.anyMessageContains("0.05"));
     } finally {
@@ -597,7 +600,7 @@ public class InternalUtilsTest {
     // the typed accessor still returns the raw value even when it violates CIGAR's grammar, consistent with the
     // "warn and preserve" policy for non-structural INFO content -- there's nothing to normalize since CIGAR's
     // declared Type=String passes any value through unchanged
-    List<String> value = InternalUtils.convertProperty(ReservedInfoProperty.Cigar, "123MYCIGAR", VcfWarnings.DEFAULT);
+    List<String> value = InternalUtils.convertProperty(ReservedInfoProperty.Cigar, "123MYCIGAR", VcfVersion.V4_2, VcfWarnings.DEFAULT);
     assertEquals(List.of("123MYCIGAR"), value);
   }
 
@@ -628,7 +631,7 @@ public class InternalUtilsTest {
     appender.start();
     root.addAppender(appender);
     try {
-      InternalUtils.convertProperty(new FakeInfoIdReservedProperty(), "-5", VcfWarnings.DEFAULT);
+      InternalUtils.convertProperty(new FakeInfoIdReservedProperty(), "-5", VcfVersion.V4_2, VcfWarnings.DEFAULT);
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -675,7 +678,7 @@ public class InternalUtilsTest {
     root.addAppender(appender);
     String result;
     try {
-      result = InternalUtils.convertProperty(new FakeFormatIdReservedProperty(), "PASS;other", VcfWarnings.DEFAULT);
+      result = InternalUtils.convertProperty(new FakeFormatIdReservedProperty(), "PASS;other", VcfVersion.V4_2, VcfWarnings.DEFAULT);
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -694,7 +697,7 @@ public class InternalUtilsTest {
     appender.start();
     root.addAppender(appender);
     try {
-      InternalUtils.convertProperty(ReservedFormatProperty.Filter, "PASS;other", VcfWarnings.DEFAULT);
+      InternalUtils.convertProperty(ReservedFormatProperty.Filter, "PASS;other", VcfVersion.V4_2, VcfWarnings.DEFAULT);
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);

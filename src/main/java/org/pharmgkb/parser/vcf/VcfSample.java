@@ -258,7 +258,7 @@ public final class VcfSample {
     if (key == null) {
       return null;
     }
-    return InternalUtils.convertProperty(key, getProperty(key.getId()), m_warnings);
+    return InternalUtils.convertProperty(key, getProperty(key.getId()), m_context.getVersion(), m_warnings);
   }
 
   /**
@@ -364,7 +364,7 @@ public final class VcfSample {
     // always sets a real value, and the non-reserved branch just substituted "." for an absent declaration.
     String valueToConvert = (!isList && pieces.length > 1) ? pieces[0] : rawValue;
     if (reserved != null) {
-      return InternalUtils.convertProperty(reserved, valueToConvert, m_warnings);
+      return InternalUtils.convertProperty(reserved, valueToConvert, m_context.getVersion(), m_warnings);
     }
     FormatType formatType = format.getType();
     Class<?> type = formatType == null ? String.class : InternalUtils.toJavaType(formatType);

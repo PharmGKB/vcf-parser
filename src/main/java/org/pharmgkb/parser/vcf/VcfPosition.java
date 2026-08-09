@@ -1067,7 +1067,7 @@ public final class VcfPosition {
       value = sf_commaJoiner.join(list);
     }
     try {
-      return InternalUtils.convertProperty(key, value, m_warnings);
+      return InternalUtils.convertProperty(key, value, m_context.getVersion(), m_warnings);
     } catch (VcfFormatException ex) {
       if (m_lineNumber >= 0) {
         ex.addMetadata(m_lineNumber, "data");
