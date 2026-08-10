@@ -76,10 +76,10 @@ public enum VcfVersion {
    * <p>
    * {@code VcfWriter} is the one caller that deliberately does not use this method: it builds its
    * {@link VcfContext} before it knows whether the header it is building will actually be written, and this
-   * method warns unconditionally, so calling it here would warn about output that a later rejection (a
-   * cross-version mismatch, a failed validation, a line-terminator check) might still prevent from ever
-   * existing. It resolves through this class's package-private {@code resolveWithoutWarning} instead and
-   * reports the fallback itself, once the header is known to be written.
+   * method warns unconditionally, so calling it here would warn about output that a later rejection (a failed
+   * validation, diagnostics-mode only, or a line-terminator check, which runs in both modes) might still
+   * prevent from ever existing. It resolves through this class's package-private {@code resolveWithoutWarning}
+   * instead and reports the fallback itself, once the header is known to be written.
    *
    * @throws VcfFormatException if {@code declaredFileFormat} is {@code null} or does not match
    * {@link InternalUtils#FILE_FORMAT_PATTERN} -- a structural violation, matching VcfParser's existing
@@ -109,11 +109,12 @@ public enum VcfVersion {
    * returned fact instead of emitting a warning.
    * <p>
    * Exists for {@code VcfWriter}, which cannot use {@link #resolve}: it builds its {@link VcfContext} before
-   * {@code writeHeader}'s later rejections (a cross-version mismatch, a failed validation, a line-terminator
-   * check) have run, and this diagnostic must be deferred until the header is known to actually be written --
-   * calling {@link #resolve} here would warn about output that one of those rejections might still prevent from
-   * ever existing. Every other caller -- {@code VcfParser}, and any direct {@link VcfContext#lenient}/
-   * {@link VcfContext#strict} construction -- still goes through {@link #resolve} and warns exactly as before.
+   * {@code writeHeader}'s later rejections (a failed validation, diagnostics-mode only, and a line-terminator
+   * check, which runs in both modes) have run, and this diagnostic must be deferred until the header is known
+   * to actually be written -- calling {@link #resolve} here would warn about output that one of those
+   * rejections might still prevent from ever existing. Every other caller -- {@code VcfParser}, and any direct
+   * {@link VcfContext#lenient}/{@link VcfContext#strict} construction -- still goes through {@link #resolve}
+   * and warns exactly as before.
    * <p>
    * Package-private, not public-with-{@code @RestrictedApi}: that annotation is documentation-only here, so
    * visibility is what actually enforces the restriction.

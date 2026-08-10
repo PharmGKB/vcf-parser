@@ -141,9 +141,10 @@ public class VcfWriter implements Closeable {
     //
     // Resolved through VcfVersion.resolveWithoutWarning rather than by VcfContext.lenient's own
     // VcfVersion.resolve call: resolve() emits unconditionally, so building the context the ordinary way would
-    // already have warned here, before the rejections below (null/double-header/cross-version, validateMetadata,
-    // the line-terminator preflight) have had a chance to reject this attempt -- a rejected attempt writes
-    // nothing, so a warning already emitted at this point would be a statement about output that doesn't exist.
+    // already have warned here, before the rejections still ahead (validateMetadata, diagnostics-mode only,
+    // and the line-terminator preflight, which runs in both modes) have had a chance to reject this attempt --
+    // a rejected attempt writes nothing, so a warning already emitted at this point would be a statement about
+    // output that doesn't exist.
     // The fallback is carried as a fact instead and reported further down, at the only point where the message
     // is true of anything (see there).
     String declaredFileFormat = declaredFileFormatFor(metadata);
