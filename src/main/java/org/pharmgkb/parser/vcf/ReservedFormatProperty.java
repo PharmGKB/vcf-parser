@@ -149,6 +149,14 @@ public enum ReservedFormatProperty implements ReservedProperty {
   private static final Map<String, ReservedFormatProperty> BY_ID = Arrays.stream(values())
       .collect(Collectors.toUnmodifiableMap(ReservedFormatProperty::getId, Function.identity()));
 
+  /**
+   * The version-unaware form: classifies {@code id} as a reserved FORMAT key if it is reserved under
+   * <em>any</em> version this library targets. Use this when no {@link VcfVersion} is in scope, or when the
+   * caller intentionally wants the version-independent classification. Prefer
+   * {@link #fromId(String, VcfVersion)} whenever a version is available -- it additionally returns
+   * {@code null} for {@link #GenotypeLikelihoodsOfHeterogenousPloidy GLE} at VCFv4.3 and later, since VCFv4.3
+   * removed that key (see that method's own Javadoc for the citation).
+   */
   @Nullable
   public static ReservedFormatProperty fromId(@Nullable String id) {
     return id == null ? null : BY_ID.get(id);

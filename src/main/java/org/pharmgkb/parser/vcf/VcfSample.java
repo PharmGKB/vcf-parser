@@ -431,6 +431,14 @@ public final class VcfSample {
   public @Nullable Genotype getGenotype(VcfPosition position) {
     // matches getProperty(VcfPosition, VcfMetadata, String)'s and VcfPosition.getInfo(ReservedInfoProperty)'s
     // null-tolerant contract: a null lookup key/position means "not present", not a crash
+    //
+    // Deliberately NOT subject to getProperty(VcfPosition, VcfMetadata, String)'s reference-identity check
+    // (VALIDATION_PHILOSOPHY.md's "How the declared version is dispatched" / "One context per operation"):
+    // that check exists because a mismatched context leaves no unambiguous resolved version or warnings
+    // destination to use. Neither applies here -- this method has no version-gated behavior (it only walks
+    // GT's separators and resolves allele indexes against position's REF/ALT list, which is the same at every
+    // version), and it warns exclusively through this sample's own m_warnings, never through position's. So a
+    // foreign-context position is accepted on purpose; do not add the check here to "match" getProperty.
     if (position == null) {
       return null;
     }
