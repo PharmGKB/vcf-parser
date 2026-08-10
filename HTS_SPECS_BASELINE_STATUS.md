@@ -7,6 +7,31 @@ re-verify: run `./gradlew htsSpecsUpdateBaseline`, then `git diff
 src/test/resources/org/pharmgkb/parser/vcf/spec/hts-specs-baseline.tsv` against the fixture list in each row
 below — update both this document and the rows before trusting it again.
 
+## What a green gate does and does not prove
+
+`Baseline.Entry.key()` is `fixturePath + "\t" + checkType` — **and nothing else**. A row matches on identity
+alone, so the gate answers *"does this fixture still diverge on this check?"* and, on its own, never answered
+*"does it diverge in the same way?"*. Neither `category` nor `reason` took part in the comparison.
+
+That let a real behavior change sit unrecorded for six days and roughly twenty commits: `d8024e0`
+(2026-08-04, "narrow generic metadata property bracket-value rejection to what actually breaks bcftools")
+made the writer drop `##AnalysisTitleBrackets=<"FINRISK: …">` from
+`test/vcf/{4.1,4.2}/passed/complexfile_passed_000.vcf`, because a bracket-wrapped value containing no `=` is
+one bcftools cannot parse (see `VCF_SPEC_AMBIGUITIES.md`'s "`##pedigreeDB`/`##assembly` bracket-wrapped values
+colliding with attribute-list grammar"). Dropping it is correct and deliberate. But losing one header line
+shifts every line after it, taking that fixture's round trip from `26 of 75 lines differ` to `57 of 75` — and
+the gate reported `0 new/stale, 0 rows moved` throughout, because the row's identity never changed. The 4.3
+variant was unaffected: its `##AnalysisTitleStructured=<ID=FINRISK,Description="…">` contains an `=`, so it
+survives.
+
+The baseline was resynchronised at that point, so every row's `category` and `reason` reflect current
+behavior again.
+
+**This is a distinct blind spot from the deferred-validation one** documented per-row below (the harness's
+no-op `parseWith` callback never calls a typed getter, so lazily-checked violations read as
+`silently-accepted`). That one is about *what the harness exercises*; this one was about *what the comparison
+compared*.
+
 The same re-verification pass must also check `HtsSpecsConformanceTest`'s `EXPECTED_WARNING_SUBSTRINGS` map
 (`src/test/java/org/pharmgkb/parser/vcf/spec/HtsSpecsConformanceTest.java`):
 
