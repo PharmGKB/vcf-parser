@@ -170,7 +170,7 @@ a sample's raw `GT` string independently, for different purposes: the former cal
 `InternalUtils.getPloidy` to resolve ploidy for a *different* key's `Number=G` cardinality check (or when
 `GT` itself is the key requested), while the latter interprets `GT`'s own allele indices. Both split the
 same raw string on `[|/]` and both react to the same defect -- a leading separator (VCFv4.4 syntax this
-library's VCFv4.2 target doesn't implement, e.g. `"/0"`) producing an empty leading allele token -- from
+library's VCFv4.3 target doesn't implement, e.g. `"/0"`) producing an empty leading allele token -- from
 their own independent code paths: `getPloidy` reports `"{} has invalid GT {}"` when `Integer.parseInt` fails
 on the empty token, and `getGenotype` separately reports `"GT \"{}\" contains an empty allele..."` from its
 own empty-base handling.
@@ -202,6 +202,39 @@ correct checks with no other coupling (`GT`, missing/blank ID) -- coordinating e
 complexity for output that is informative rather than misleading. Revisit any sub-case if a real
 (non-test-harness) caller reports it as genuinely noisy, or if the relevant methods are ever unified onto one
 shared implementation for an unrelated reason that would make deduplication free.
+
+## A quoted-empty or quoted-whitespace-only `ID` escapes the missing/blank-`ID` check
+
+Every missing/blank-`ID` check across all seven structured declaration types (INFO/FORMAT/FILTER/ALT/contig/
+SAMPLE via `IdMetadata.init()`, and PEDIGREE via `VcfMetadata.Builder.addPedigree`, gated on VCFv4.3+) reads
+`getPropertyRaw(ID)` -- the still-quoted string as it appeared in the header line -- not
+`getPropertyUnquoted(ID)`, the only method in this hierarchy that actually strips a surrounding pair of
+quotes. `ID=""` (a quoted, genuinely-empty value) is unaffected by `id.trim().isEmpty()`: the raw two-character
+string `""` is neither `null` nor blank once trimmed (the quote characters aren't whitespace), so it passes
+every check in `IdMetadata.init()` -- no "is blank" warning, no whitespace warning, no comma warning -- and is
+stored verbatim as the literal two-character ID `""`, even though the declaration has no real ID at all. A
+quoted-whitespace value (`ID="   "`) fares only slightly better for the six `IdMetadata`-based types: the raw
+string does contain real space characters between the quotes, so `InternalUtils.containsWhitespace` happens to
+fire and produce a warning -- but the wrong one ("must not contain whitespace" instead of "is blank"), and the
+declaration is still kept under a functionally-empty ID rather than treated as missing. **Not PEDIGREE**,
+though: `VcfMetadata.Builder.addPedigree` has only the `id.trim().isEmpty()` test (no whitespace check at all),
+so a quoted-whitespace `ID="   "` there produces zero warnings -- a fully silent escape, worse than the
+misleading-but-present warning the six keyed types produce. `VCFv4.3.tex` line 121 ("All structured lines
+require an ID which must be unique within their type") makes no exception for a quoted-but-empty value.
+
+This is pre-existing and uniform across all seven types, which is why no earlier task noticed or fixed it
+while working on any one declaration type individually -- each type's own ID check delegates to the exact
+same `IdMetadata.init()`/`addPedigree` logic, so this was never a per-type oversight to catch. It's a real gap
+in "every structured line requires an ID," not the informative-double-warning shape the "Missing or blank
+metadata ID" entry above describes -- there the ID truly is caught, just by two independent checks; here a
+plausible-looking input escapes detection (or is flagged with a misleading message) entirely.
+
+**Decision: won't fix for now.** Fixing it means teaching `IdMetadata.init()`/`addPedigree` to check
+`getPropertyUnquoted(ID)` (or an unquoted-and-trimmed copy of the raw value) instead of the raw string
+directly, which changes behavior across all seven declaration types at once and is a real, deliberate design
+change, not the docs sweep that surfaced it. Flagged here rather than silently left to be rediscovered.
+Revisit by fixing `IdMetadata.init()`/`addPedigree` to test the unquoted value, with regression fixtures for
+both `ID=""` and `ID="   "` across at least one keyed type and PEDIGREE.
 
 ## `BaseMetadata.checkAttributeOrder()` doesn't detect a custom/unrecognized attribute wedged between two canonical ones
 

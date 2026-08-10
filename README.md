@@ -5,12 +5,12 @@
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/org.pharmgkb/vcf-parser/badge.svg)](https://maven-badges.herokuapp.com/maven-central/org.pharmgkb/vcf-parser)
 
 This is a Java 17 streaming parser and writer for [VCF](http://en.wikipedia.org/wiki/Variant_Call_Format),
-requiring no runtime configuration beyond what's shown below. The target specification is VCF 4.2;
+requiring no runtime configuration beyond what's shown below. The target specification is VCF 4.3;
 representable VCF 4.x input from before and after that version is accepted. Each file is interpreted under the
 version its own `##fileformat` declares -- the few reserved keys whose meaning genuinely changed across 4.x are
 read the way that version defines them, and a declared version this library doesn't implement falls back to the
 nearest one it does, with a warning. Where versions merely differ in how much they spell out, or the input is
-ambiguous, VCF 4.2 semantics decide (see `AGENTS.md`'s Spec Ambiguity Decision Hierarchy for how those
+ambiguous, VCF 4.3 semantics decide (see `AGENTS.md`'s Spec Ambiguity Decision Hierarchy for how those
 decisions get made).
 
 It validates record structure strictly but defers validation of non-structural content (INFO, FILTER,

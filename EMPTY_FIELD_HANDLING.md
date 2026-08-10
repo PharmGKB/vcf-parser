@@ -85,7 +85,8 @@ newer-version prose, not vcf_validator's stricter regex reading, for the reasons
 **ALT's `.`-substitution is unconditional across every VCF version this library targets or accepts — it is not
 4.3+ behavior awaiting version dispatch.** The paragraph above states two separate claims that must not be
 conflated into one version-gated rule: *why* an empty entry is substituted rather than dropped (index
-preservation) is grounded entirely in the target spec, `VCFv4.2.tex` line 217's `GT`-indexes-into-`ALT` rule, and
+preservation) is grounded entirely in the target spec, `VCFv4.3.tex` line 493's `GT`-indexes-into-`ALT` rule
+("1 for the first allele listed in ALT, 2 for the second allele list in ALT and so on"), and
 holds regardless of the declared `##fileformat` — a 4.2-declared file's `GT` values index into `ALT` exactly the
 same way a 4.3-declared file's do. *Whether* `.` is a formally sanctioned per-entry ALT token is the only piece
 that differs by version — 4.2 is silent, 4.3+ states it explicitly — but that difference only ratifies a token
