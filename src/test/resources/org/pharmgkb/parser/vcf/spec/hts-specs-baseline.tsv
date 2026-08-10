@@ -128,6 +128,81 @@ test/vcf/4.2/failed/failed_meta_pedigree_001.vcf	parser-throw-or-warn	silently-a
 test/vcf/4.2/failed/failed_meta_pedigreedb_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Non-valid URL
 test/vcf/4.2/failed/failed_meta_sample_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Genomes field missing
 test/vcf/4.2/failed/failed_meta_sample_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Non-description field containing quotes
+test/vcf/4.3/failed/failed_body_chrom_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: contig ID contains a colon
+test/vcf/4.3/failed/failed_body_chrom_004.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: contig ID contains illegal character
+test/vcf/4.3/failed/failed_body_duplicated_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: duplicated variant
+test/vcf/4.3/failed/failed_body_duplicated_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: triplicated variant
+test/vcf/4.3/failed/failed_body_duplicated_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: duplicated variant due to multiallelic
+test/vcf/4.3/failed/failed_body_duplicated_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: duplicated variant due to different context
+test/vcf/4.3/failed/failed_body_format_006.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: FORMAT predefined tag GT has missing alleles
+test/vcf/4.3/failed/failed_body_info_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AA contains a comma 
+test/vcf/4.3/failed/failed_body_info_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AC is a negative number
+test/vcf/4.3/failed/failed_body_info_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AC is a floating point number
+test/vcf/4.3/failed/failed_body_info_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AC is not a number
+test/vcf/4.3/failed/failed_body_info_004.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AF is a negative number
+test/vcf/4.3/failed/failed_body_info_005.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AF is not a number
+test/vcf/4.3/failed/failed_body_info_006.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AN is a negative number
+test/vcf/4.3/failed/failed_body_info_007.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AN is a floating point number
+test/vcf/4.3/failed/failed_body_info_008.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AN is not a number
+test/vcf/4.3/failed/failed_body_info_009.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO BQ is not a number
+test/vcf/4.3/failed/failed_body_info_010.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO CIGAR contains illegal characters
+test/vcf/4.3/failed/failed_body_info_011.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO CIGAR is a number
+test/vcf/4.3/failed/failed_body_info_012.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO DB value is not a flag
+test/vcf/4.3/failed/failed_body_info_013.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO DP is a negative number
+test/vcf/4.3/failed/failed_body_info_014.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO DP is a floating point number
+test/vcf/4.3/failed/failed_body_info_015.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO DP is not a number
+test/vcf/4.3/failed/failed_body_info_016.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO END is a negative number
+test/vcf/4.3/failed/failed_body_info_017.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO END is a floating point number
+test/vcf/4.3/failed/failed_body_info_018.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO END is not a number
+test/vcf/4.3/failed/failed_body_info_019.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO H2 value is not a flag
+test/vcf/4.3/failed/failed_body_info_020.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO H3 value is not a flag
+test/vcf/4.3/failed/failed_body_info_021.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO MQ0 is a negative number
+test/vcf/4.3/failed/failed_body_info_022.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO MQ0 is a floating point number
+test/vcf/4.3/failed/failed_body_info_023.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO NS is a negative number
+test/vcf/4.3/failed/failed_body_info_024.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO NS is a floating point number
+test/vcf/4.3/failed/failed_body_info_025.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO SOMATIC value is not a flag
+test/vcf/4.3/failed/failed_body_info_026.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO VALIDATED value is not a flag
+test/vcf/4.3/failed/failed_body_info_027.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO 1000G value is not a flag
+test/vcf/4.3/failed/failed_body_info_028.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO contains a whitespace
+test/vcf/4.3/failed/failed_body_info_029.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO field does not match Number definition in meta section
+test/vcf/4.3/failed/failed_body_info_030.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO field does not match Number definition in meta section
+test/vcf/4.3/failed/failed_body_info_031.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO field does not match Number definition in meta section
+test/vcf/4.3/failed/failed_body_info_033.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO contains duplicate keys
+test/vcf/4.3/failed/failed_body_info_036.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO AC is a negative number in several lines
+test/vcf/4.3/failed/failed_body_info_integer_overflow.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO integer overflow
+test/vcf/4.3/failed/failed_body_info_integer_reserved.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO integer reserved value
+test/vcf/4.3/failed/failed_body_info_integer_underflow.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: INFO integer overflow
+test/vcf/4.3/failed/failed_body_no_newline_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: no newline at end of file
+test/vcf/4.3/failed/failed_body_no_newline_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: no newline at end of file
+test/vcf/4.3/failed/failed_body_no_newline_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: no newline at end of file
+test/vcf/4.3/failed/failed_body_no_newline_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: no newline at end of file
+test/vcf/4.3/failed/failed_body_no_newline_004.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: no newline at end of file
+test/vcf/4.3/failed/failed_body_qual_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: QUAL is not a number
+test/vcf/4.3/failed/failed_body_qual_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: QUAL is a negative number
+test/vcf/4.3/failed/failed_body_sample_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Sample genotype contains illegal values
+test/vcf/4.3/failed/failed_body_sample_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Sample allele is out of range
+test/vcf/4.3/failed/failed_body_sample_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Sample first field is not a valid genotype
+test/vcf/4.3/failed/failed_body_sample_004.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Sample field does not match Number definition in meta section
+test/vcf/4.3/failed/failed_body_sample_005.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Sample field does not match Number definition in meta section
+test/vcf/4.3/failed/failed_body_sample_006.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Sample field does not match Number definition in meta section
+test/vcf/4.3/failed/failed_body_sample_007.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Sample field does not match Type definition in meta section
+test/vcf/4.3/failed/failed_body_sample_008.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Sample field does not match Type definition in meta section
+test/vcf/4.3/failed/failed_body_sample_009.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Sample field does not match Type definition in meta section
+test/vcf/4.3/failed/failed_body_sample_010.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Sample field does not match Number definition in meta section
+test/vcf/4.3/failed/failed_body_samples_ploidy_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: cardinality in PL does not match the cardinality derived from allele number and GT ploidy
+test/vcf/4.3/failed/failed_body_samples_ploidy_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: cardinality in PL does not match the cardinality derived from allele number and GT ploidy
+test/vcf/4.3/failed/failed_body_samples_ploidy_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: cardinality in PL does not match the cardinality derived from allele number and GT ploidy
+test/vcf/4.3/failed/failed_body_samples_ploidy_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: cardinality in PL does not match the cardinality derived from allele number and GT ploidy
+test/vcf/4.3/failed/failed_meta_assembly_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Meta-data entry is not a key-value pair
+test/vcf/4.3/failed/failed_meta_contig_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: contig ID contains illegal character
+test/vcf/4.3/failed/failed_meta_meta_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect META Number value
+test/vcf/4.3/failed/failed_meta_meta_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect META Type value
+test/vcf/4.3/failed/failed_meta_meta_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: META Values must be surrounded by square brackets
+test/vcf/4.3/failed/failed_meta_meta_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect order of META fields
+test/vcf/4.3/failed/failed_meta_pedigree_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Value with whitespace
+test/vcf/4.3/failed/failed_meta_pedigree_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Value with non-accepted punctuation character
+test/vcf/4.3/failed/failed_meta_pedigree_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: PEDIGREE ID is missing
+test/vcf/4.3/failed/failed_meta_pedigreedb_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Non-valid URL
 test/vcf/4.1/passed/complexfile_passed_000.vcf	writer-bytediff	byte-diff	57 of 75 lines differ, first difference at line 15: "##ALT=<ID=DEL,Description="Deletion">" original, "##INFO=<ID=AA,Number=1,Type=String,Description="Ancestral Allele, ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/pilot_data/technical/reference/ancestral_alignments/README">" written
 test/vcf/4.1/passed/passed_body_qual.vcf	writer-bytediff	byte-diff	5 of 11 lines differ, first difference at line 4: "1	200	rs180734498	C	T	2e+1	PASS	AN=2184;AC=249;AF=0.11	GT:DS:GL	0|0:0.050:-0.13,-0.58,-3.62	0|1:1.000:-2.45,-0.00,-5.00" original, "1	200	rs180734498	C	T	2E+1	PASS	AN=2184;AC=249;AF=0.11	GT:DS:GL	0|0:0.050:-0.13,-0.58,-3.62	0|1:1.000:-2.45,-0.00,-5.00" written
 test/vcf/4.1/passed/passed_meta_contig.vcf	writer-bytediff	byte-diff	9 of 11 lines differ, first difference at line 3: "##contig=<ID=1,length=123456>" original, "##contig=<ID=1AC,length=123456>" written

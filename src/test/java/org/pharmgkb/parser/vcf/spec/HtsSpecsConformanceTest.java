@@ -46,11 +46,12 @@ class HtsSpecsConformanceTest {
   // AGENTS.md ("The library accepts VCF 4.x input from before and after the target version")
   private static final List<String> PASSED_VERSIONS = List.of("4.1", "4.2", "4.3", "4.5");
 
-  // failed/ fixtures are capped at this library's spec target (VCFv4.2): a later version's "failure" can be a rule
-  // that version introduced which VCFv4.2 leaves silent (e.g. VCFv4.3's explicit "duplicate keys are not allowed"
-  // for INFO) -- content this library correctly, silently accepts as genuinely valid under 4.2 semantics, not
-  // merely tolerated. Testing those against "throw or warn" would be a false failure, not a real bug.
-  private static final List<String> FAILED_VERSIONS = List.of("4.1", "4.2");
+  // failed/ fixtures are capped at this library's spec target (VCFv4.3): a later version's "failure" can be a rule
+  // that version introduced which VCFv4.3 leaves silent -- content this library correctly, silently accepts as
+  // genuinely valid under 4.3 semantics, not merely tolerated. Testing those against "throw or warn" would be a
+  // false failure, not a real bug. 4.4/4.5 stay out for exactly that reason; raising this list is a target-version
+  // change, not a test tweak.
+  private static final List<String> FAILED_VERSIONS = List.of("4.1", "4.2", "4.3");
 
   private static final String CAUSE_OF_FAILURE_PREFIX = "##CauseOfFailure=";
 
@@ -87,7 +88,12 @@ class HtsSpecsConformanceTest {
       Map.entry("test/vcf/4.1/failed/failed_body_contiguous_000.vcf", List.of("CHROM 1 is not contiguous")),
       Map.entry("test/vcf/4.1/failed/failed_body_contiguous_001.vcf", List.of("CHROM 2 is not contiguous")),
       Map.entry("test/vcf/4.2/failed/failed_body_contiguous_000.vcf", List.of("CHROM 1 is not contiguous")),
-      Map.entry("test/vcf/4.2/failed/failed_body_contiguous_001.vcf", List.of("CHROM 2 is not contiguous"))
+      Map.entry("test/vcf/4.2/failed/failed_body_contiguous_001.vcf", List.of("CHROM 2 is not contiguous")),
+      Map.entry("test/vcf/4.3/failed/failed_body_unsorted_000.vcf", List.of("out of order")),
+      Map.entry("test/vcf/4.3/failed/failed_body_contiguous_000.vcf", List.of("CHROM 1 is not contiguous")),
+      Map.entry("test/vcf/4.3/failed/failed_body_contiguous_001.vcf", List.of("CHROM 2 is not contiguous")),
+      Map.entry("test/vcf/4.3/failed/failed_body_format_007.vcf",
+          List.of("FORMAT ID \"G%3AS\" does not match the required tag-name grammar"))
   );
 
   // literal, project-relative path to the committed baseline file -- used both to locate it as a classpath

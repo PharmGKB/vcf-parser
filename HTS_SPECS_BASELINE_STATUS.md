@@ -65,6 +65,49 @@ correct, not a violation of the rule above, when the reasoning is specific to on
 provenance or wording (e.g. "why this exact fixture's `##CauseOfFailure=` claim doesn't hold up") rather than a
 general decision this library made that's already documented elsewhere.
 
+## Provenance: 75 entries added by the 2026-08-10 VCF 4.3 target-flip expansion
+
+The target VCF specification moved from 4.2 to 4.3 (this phase's Task 1). `HtsSpecsConformanceTest.java`'s
+`FAILED_VERSIONS` was extended from `List.of("4.1", "4.2")` to `List.of("4.1", "4.2", "4.3")` (this phase's
+Task 2) to match: 4.3's own `failed/` corpus (224 fixtures) is now in scope for the `parser-throw-or-warn`
+check, for the same reason 4.1/4.2 always were -- a fixture failing under the library's *current* target
+version is a real divergence worth tracking, not a false failure. (This also means the "Contig ID asterisk
+fixture" section below, which documented `failed_meta_contig_003.vcf` as out of the automated check's scope,
+is now stale on that specific point -- the fixture has a `hts-specs-baseline.tsv` row as of this expansion.
+Left for a follow-up pass to reconcile, per this section's job being provenance/numbers, not per-fixture
+classification.)
+
+Running `./gradlew htsSpecsUpdateBaseline` against the expanded `FAILED_VERSIONS` mechanically absorbed 75
+new `parser-throw-or-warn` divergences on 4.3 `failed/` fixtures (verified additions-only: `git diff` on
+`hts-specs-baseline.tsv` showed 75 insertions and zero removed/modified lines). None of the 129-row
+2026-08-02 catalog below changed, and neither did the `writer-bytediff`/`writer-semantic` rows discussed in
+"What a green gate does and does not prove" above. As with that fix, this pass's 75 rows are recorded here
+mechanically to keep the gate green; per-cluster triage (bcftools/vcf_validator consultation, permanently
+accepted vs. candidate-for-filing, etc.) is a follow-up task in this same phase, not done here.
+
+The frozen total moved from 617 to **845** (`build/reports/hts-specs-conformance/summary.md`'s `**Total**`
+row, confirmed via a plain `./gradlew htsSpecsTest` run reporting `845/845 checks match baseline, 0
+new/stale, 0 per-version row(s) moved`):
+
+| Version | parser-no-throw | parser-throw-or-warn | parser-warn-content | writer-bytediff | writer-semantic |
+|---|---|---|---|---|---|
+| 4.1 | 25 | 193 | 3 | 25 | 25 |
+| 4.2 | 25 | 190 | 3 | 25 | 25 |
+| 4.3 | 25 | 224 | 4 | 25 | 25 |
+| 4.5 | 1 | -- | -- | 1 | 1 |
+
+4.3's `parser-throw-or-warn` total (224) is every 4.3 `failed/` fixture; of those, 75 are the newly-baselined
+divergences and the rest already throw or warn correctly. 4.3's `parser-warn-content` count of 4 reflects all
+four `EXPECTED_WARNING_SUBSTRINGS` entries now covering 4.3 fixtures (three twins of existing 4.1/4.2 entries
+plus one new entry for `failed_body_format_007.vcf`, which has no twin).
+
+This total is frozen again under the same rule as every prior baseline change in this project (see AGENTS.md
+and "What a green gate does and does not prove" above): `hts-specs-baseline.tsv` is edited going forward only
+to *remove* a row that legitimately stops reproducing, never to re-baseline over a genuine behavior change.
+
+`htsSpecsPinnedSha` is unchanged at `da617203a9527537746e200abda2885bec3a822c` -- this expansion is driven
+entirely by the target-version change, not a pin bump.
+
 ## Provenance: 129 entries added by the 2026-08-02 detection-signal fix
 
 A test-infrastructure bug in `HtsSpecsConformanceTest.assertThrowsOrWarns()` previously caused it to treat two
@@ -78,12 +121,15 @@ table below.
 
 ## `parser-throw-or-warn` entries (10 pre-existing + 129 added 2026-08-02 − 10 of the resulting 139 since fixed and removed = 129 today) — `failed/` fixtures whose invalidity isn't detected
 
-This check only runs `failed/` fixtures from VCF versions 4.1 and 4.2 (`HtsSpecsConformanceTest.java`'s
-`FAILED_VERSIONS = List.of("4.1", "4.2")`) — 4.3's own `failed/` fixtures are never examined at all. This is
-deliberate, not an oversight: a fixture's VCF-4.3-specific "failure" can be a rule 4.3 introduced that VCFv4.2
-(this library's target) leaves silent, so a 4.3 `failed/` fixture parsing without error wouldn't be a real
-divergence under this library's target semantics — there's nothing to gain by testing it. `passed/` fixtures
-(the `writer-*` checks) are unaffected by this and still run across all four available versions (4.1, 4.2,
+As of the 2026-08-10 expansion documented above, this check runs `failed/` fixtures from VCF versions 4.1,
+4.2, and 4.3 (`HtsSpecsConformanceTest.java`'s `FAILED_VERSIONS = List.of("4.1", "4.2", "4.3")`) — capped at
+the library's current spec target, whatever that is. This is deliberate, not an oversight: a fixture's
+"failure" under a version *later* than the target can be a rule that later version introduced which the
+target leaves silent, so such a fixture parsing without error wouldn't be a real divergence under this
+library's target semantics — there's nothing to gain by testing it. The table below still only catalogs the
+129 rows classified before the 2026-08-10 expansion; the 75 rows the expansion added are not yet triaged
+here (see the provenance section above). `passed/` fixtures (the `writer-*` checks) are unaffected by this
+distinction and still run across all four available versions (4.1, 4.2,
 4.3, 4.5).
 
 | Cause | Fixtures | Count | Status | Details |
