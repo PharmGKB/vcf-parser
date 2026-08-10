@@ -50,7 +50,7 @@ class BaselineTest {
   void testBaselinedAndStillDivergedIsAcceptable() throws IOException {
     Baseline baseline = new Baseline(
         baselineWith("test/vcf/4.1/passed/a.vcf\tparser-no-throw\tcat\told-reason"), false);
-    assertTrue(baseline.check("test/vcf/4.1/passed/a.vcf", "parser-no-throw", true, "cat", "boom"));
+    assertTrue(baseline.check("test/vcf/4.1/passed/a.vcf", "parser-no-throw", true, "cat", "old-reason"));
     assertFalse(baseline.hasFindings());
   }
 
@@ -60,6 +60,24 @@ class BaselineTest {
         baselineWith("test/vcf/4.1/passed/a.vcf\tparser-no-throw\tcat\told-reason"), false);
     assertFalse(baseline.check("test/vcf/4.1/passed/a.vcf", "parser-no-throw", false, "", ""));
     assertTrue(baseline.hasFindings());
+  }
+
+  @Test
+  void testBaselinedAndStillDivergingButReasonChangedIsChangedFinding() throws IOException {
+    Baseline baseline = new Baseline(
+        baselineWith("test/vcf/4.1/passed/a.vcf\tparser-no-throw\tcat\told-reason"), false);
+    assertFalse(baseline.check("test/vcf/4.1/passed/a.vcf", "parser-no-throw", true, "cat", "new-reason"));
+    assertTrue(baseline.hasFindings());
+    assertEquals(1, baseline.findingsCount());
+  }
+
+  @Test
+  void testBaselinedAndStillDivergingButCategoryChangedIsChangedFinding() throws IOException {
+    Baseline baseline = new Baseline(
+        baselineWith("test/vcf/4.1/passed/a.vcf\tparser-no-throw\tcat\told-reason"), false);
+    assertFalse(baseline.check("test/vcf/4.1/passed/a.vcf", "parser-no-throw", true, "new-cat", "old-reason"));
+    assertTrue(baseline.hasFindings());
+    assertEquals(1, baseline.findingsCount());
   }
 
   @Test
@@ -89,7 +107,22 @@ class BaselineTest {
     baseline.writeFindings(out);
     List<String> lines = Files.readAllLines(out);
     assertEquals(2, lines.size());
-    assertTrue(lines.get(1).endsWith("\tNEW"));
+    // NEW has no baseline side to show, so the trailing baseline_category/baseline_reason columns are empty.
+    assertTrue(lines.get(1).endsWith("\tNEW\t\t"));
+  }
+
+  @Test
+  void testWriteFindingsForChangedShowsBothOldAndNewValues(@TempDir Path tempDir) throws IOException {
+    Baseline baseline = new Baseline(
+        baselineWith("test/vcf/4.1/passed/a.vcf\tparser-no-throw\told-cat\told-reason"), false);
+    baseline.check("test/vcf/4.1/passed/a.vcf", "parser-no-throw", true, "new-cat", "new-reason");
+    Path out = tempDir.resolve("findings.tsv");
+    baseline.writeFindings(out);
+    List<String> lines = Files.readAllLines(out);
+    assertEquals(2, lines.size());
+    assertEquals(
+        "test/vcf/4.1/passed/a.vcf\tparser-no-throw\tnew-cat\tnew-reason\tCHANGED\told-cat\told-reason",
+        lines.get(1));
   }
 
   @Test

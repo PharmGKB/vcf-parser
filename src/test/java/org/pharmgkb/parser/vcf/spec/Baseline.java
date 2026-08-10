@@ -18,10 +18,14 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Reads the committed hts-specs-baseline.tsv file and, for every (fixture, check type) pair a test run evaluates,
- * decides whether the actual outcome matches expectation: not-baselined-and-didn't-diverge, or
- * baselined-and-still-diverges. Also tallies totals for the version x check-type summary report, and collects
- * every mismatch (NEW or STALE) for the findings report. One instance is shared across a whole
- * {@code HtsSpecsConformanceTest} run, since results accumulate across all four check factories.
+ * decides whether the actual outcome matches expectation: not-baselined-and-didn't-diverge,
+ * baselined-and-still-diverges-the-same-way, or one of three mismatches -- {@code NEW} (diverges now but wasn't
+ * baselined), {@code STALE} (was baselined but no longer diverges), or {@code CHANGED} (still diverges, and is
+ * still baselined, but its {@code category} or {@code reason} no longer matches the baselined row -- i.e. it
+ * diverges for a different reason than the one on record). Also tallies totals for the version x check-type
+ * summary report, and collects every mismatch (NEW, STALE, or CHANGED) for the findings report. One instance is
+ * shared across a whole {@code HtsSpecsConformanceTest} run, since results accumulate across all four check
+ * factories.
  *
  * <p>In update mode (system property {@code htsSpecsUpdateBaseline=true}), {@link #check} never reports a
  * mismatch as unacceptable -- every outcome is accepted, and {@link #writeUpdatedBaseline} rewrites the baseline
@@ -36,7 +40,10 @@ final class Baseline {
     }
   }
 
-  record Finding(Entry entry, String status) {}
+  // For a CHANGED finding, entry() holds the current (category, reason) and baselineCategory/baselineReason hold
+  // the baselined values being superseded, so both sides of the change are visible in one row. Null for NEW and
+  // STALE findings, which have only one side to show.
+  record Finding(Entry entry, String status, @Nullable String baselineCategory, @Nullable String baselineReason) {}
 
   private final Map<String, Entry> m_baseline = new LinkedHashMap<>();
   private final List<Finding> m_findings = new ArrayList<>();
@@ -55,7 +62,10 @@ final class Baseline {
           if (line.isBlank()) {
             continue;
           }
-          String[] parts = line.split("\t", -1);
+          // limit 4, not -1: reason (writer-bytediff's especially) can itself embed literal tab characters from
+          // the diffed VCF line, so a plain split would truncate it at the first embedded tab instead of keeping
+          // it whole in parts[3].
+          String[] parts = line.split("\t", 4);
           Entry entry = new Entry(parts[0], parts[1], parts[2], parts[3]);
           m_baseline.put(entry.key(), entry);
         }
@@ -80,14 +90,17 @@ final class Baseline {
       Entry currentEntry = new Entry(fixturePath, checkType, category, reason);
       m_currentlyDiverging.put(key, currentEntry);
       if (baselineEntry == null) {
-        m_findings.add(new Finding(currentEntry, "NEW"));
+        m_findings.add(new Finding(currentEntry, "NEW", null, null));
+        acceptable = m_updateMode;
+      } else if (!baselineEntry.category().equals(category) || !baselineEntry.reason().equals(reason)) {
+        m_findings.add(new Finding(currentEntry, "CHANGED", baselineEntry.category(), baselineEntry.reason()));
         acceptable = m_updateMode;
       } else {
         acceptable = true;
       }
     } else {
       if (baselineEntry != null) {
-        m_findings.add(new Finding(baselineEntry, "STALE"));
+        m_findings.add(new Finding(baselineEntry, "STALE", null, null));
         acceptable = m_updateMode;
       } else {
         acceptable = true;
@@ -107,10 +120,14 @@ final class Baseline {
 
   void writeFindings(Path findingsFile) throws IOException {
     List<String> lines = new ArrayList<>();
-    lines.add("fixture_path\tcheck_type\tcategory\treason\tstatus");
+    // baseline_category/baseline_reason are populated only for a CHANGED finding, showing the superseded
+    // baselined values alongside entry()'s current ones; empty for NEW/STALE, which have only one side to show.
+    lines.add("fixture_path\tcheck_type\tcategory\treason\tstatus\tbaseline_category\tbaseline_reason");
     for (Finding f : m_findings) {
       lines.add(f.entry().fixturePath() + "\t" + f.entry().checkType() + "\t" + f.entry().category() + "\t" +
-          f.entry().reason() + "\t" + f.status());
+          f.entry().reason() + "\t" + f.status() + "\t" +
+          (f.baselineCategory() == null ? "" : f.baselineCategory()) + "\t" +
+          (f.baselineReason() == null ? "" : f.baselineReason()));
     }
     if (findingsFile.getParent() != null) {
       Files.createDirectories(findingsFile.getParent());
