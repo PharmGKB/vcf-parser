@@ -970,6 +970,83 @@ public class VcfParserTest {
     }
   }
 
+  /**
+   * Parses {@code vcf} (metadata only, no data records needed) and asserts whether the "has no ID" PEDIGREE
+   * diagnostic fired, and that the declaration itself is always still present -- covering all three blank-ID
+   * shapes (absent, empty {@code ID=}, whitespace-only {@code ID="   "}) crossed with both VCFv4.2 and VCFv4.3.
+   * The parser route is not interchangeable with direct construction: header parsing stores an attribute's
+   * value still-quoted (see {@code getPropertyRaw} vs. {@code getPropertiesUnquoted} in {@code BaseMetadata}),
+   * which changes the outcome for the quoted-whitespace shape at 4.3 -- see
+   * {@link #testParserPedigreeQuotedWhitespaceOnlyIdUnder43IsNotDetectedDueToRawQuoting}'s own comment.
+   */
+  private static void assertPedigreeIdShapeThroughParser(String pedigreeLine, String fileFormat,
+      boolean expectNoIdWarning) throws IOException {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    String vcf = "##fileformat=" + fileFormat + "\n" + pedigreeLine + "\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    VcfMetadata metadata;
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((md, record) -> { })
+             .build()) {
+      parser.parseMetadata();
+      metadata = parser.getMetadata();
+      assertEquals(expectNoIdWarning, appender.anyMessageContains("has no ID"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(1, metadata.getPedigrees().size(), "the declaration must be present either way");
+  }
+
+  @Test
+  void testParserPedigreeAbsentIdUnder43Warns() throws IOException {
+    assertPedigreeIdShapeThroughParser("##PEDIGREE=<Original=Something>", "VCFv4.3", true);
+  }
+
+  @Test
+  void testParserPedigreeEmptyIdUnder43Warns() throws IOException {
+    assertPedigreeIdShapeThroughParser("##PEDIGREE=<ID=,Original=Something>", "VCFv4.3", true);
+  }
+
+  /**
+   * FINDING, not a bug this task fixes: on the parser route, a quoted value is stored verbatim (still quoted)
+   * as the raw property -- {@code getPropertyRaw} never unquotes, only {@code getPropertiesUnquoted} does (see
+   * {@code BaseMetadata}). So {@code ID="   "} arrives at {@code addPedigree} as the five-character raw string
+   * {@code "   "} (quotes included), which is not blank after {@code trim()}, so the 4.3 "has no ID" gate --
+   * which reads {@code getPropertyRaw}, exactly like the six keyed types' own {@code IdMetadata.init()} check --
+   * does not fire. This is not new leniency introduced by this task, and not specific to {@code ##PEDIGREE} or
+   * to the whitespace-only shape tested here: the identical gap applies to a quoted <em>empty</em> {@code ID}
+   * ({@code ID=""}) too, and to all seven structured declaration types ({@code ##PEDIGREE} plus the six keyed
+   * ones), since every one of them reads {@code getPropertyRaw(ID)} the same way. Recorded in
+   * DUPLICATE_METADATA_ID_HANDLING.md's "Missing or empty ID" section, not fixed here.
+   */
+  @Test
+  void testParserPedigreeQuotedWhitespaceOnlyIdUnder43IsNotDetectedDueToRawQuoting() throws IOException {
+    assertPedigreeIdShapeThroughParser("##PEDIGREE=<ID=\"   \",Original=Something>", "VCFv4.3", false);
+  }
+
+  @Test
+  void testParserPedigreeAbsentIdUnder42IsSilent() throws IOException {
+    assertPedigreeIdShapeThroughParser("##PEDIGREE=<Original=Something>", "VCFv4.2", false);
+  }
+
+  @Test
+  void testParserPedigreeEmptyIdUnder42IsSilent() throws IOException {
+    assertPedigreeIdShapeThroughParser("##PEDIGREE=<ID=,Original=Something>", "VCFv4.2", false);
+  }
+
+  @Test
+  void testParserPedigreeWhitespaceOnlyIdUnder42IsSilent() throws IOException {
+    assertPedigreeIdShapeThroughParser("##PEDIGREE=<ID=\"   \",Original=Something>", "VCFv4.2", false);
+  }
+
   @Test
   void testThousandGenomesChrYFixtureProducesExactlyThreeKnownWarnings() throws IOException {
     // Real-world regression fixture: the unmodified header (125 metadata lines + #CHROM, 1233 samples) plus 20

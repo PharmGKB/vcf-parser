@@ -941,8 +941,10 @@ public final class VcfMetadata {
      * duplicates an earlier PEDIGREE entry's {@code ID}, warns and keeps the first entry instead of storing
      * {@code md} -- matching the six keyed types' warn-and-keep-first rule. A PEDIGREE entry with no {@code ID}
      * property (VCFv4.2.tex line 152's own grammar, e.g. {@code Name_0=G0-ID,...,Name_N=GN-ID}, has no mandatory
-     * ID attribute) is always added: confirmed bcftools 1.23.1 keeps both of two ID-less duplicate PEDIGREE lines,
-     * since there is no key to dedupe on -- see DUPLICATE_METADATA_ID_HANDLING.md.
+     * ID attribute) is always added under VCFv4.2: confirmed bcftools 1.23.1 keeps both of two ID-less duplicate
+     * PEDIGREE lines, since there is no key to dedupe on -- see DUPLICATE_METADATA_ID_HANDLING.md. Under VCFv4.3+
+     * (VCFv4.3.tex line 121, "All structured lines require an ID"), a missing/blank {@code ID} instead warns (or
+     * throws, under a strict context) but is still kept, since a {@code List} has no key to fail to store against.
      * <p>
      * Dedupes against {@link #m_pedigreeIds}, an incrementally-maintained {@link Set} -- see its own Javadoc
      * for why no staleness signal is needed.
@@ -951,6 +953,20 @@ public final class VcfMetadata {
       requireNonNull(md, "PEDIGREE");
       checkSameContext(md, m_context, "PEDIGREE");
       String id = md.getPropertyRaw("ID");
+      // VCFv4.3.tex line 121, "All structured lines require an ID which must be unique within their type" --
+      // VCFv4.2's own ##PEDIGREE template (VCFv4.2.tex line 152, ##PEDIGREE=<Name_0=G0-ID,...,Name_N=GN-ID>)
+      // has no ID attribute at all, so this is gated on the declared version, not applied everywhere.
+      // Blank counts as absent, matching IdMetadata.init()'s trim()-based test and the six keyed types'
+      // inline check -- but unlike those six, the declaration is KEPT: they drop because a Map has no key
+      // for them ("cannot be stored"), and ##PEDIGREE is List-backed. See DUPLICATE_METADATA_ID_HANDLING.md.
+      // Checked BEFORE the duplicate branch, and deliberately not added to m_pedigreeIds, so two blank-ID
+      // declarations each report their own missing ID instead of colliding as a spurious Duplicate ID "".
+      if ((id == null || id.trim().isEmpty()) && m_context.getVersion().isAtLeast(VcfVersion.V4_3)) {
+        warnOrThrow(m_context, "PEDIGREE metadata declaration has no ID, which VCF {} requires; keeping it: {}",
+            m_context.getVersion().getId(), md.getPropertiesRaw());
+        m_pedigree.add(md);
+        return this;
+      }
       // Set.add reports whether the ID was new, so this is one lookup rather than a contains-then-add pair. On
       // the duplicate branch the set is unchanged (add returned false because the ID was already there), so it
       // stays consistent with m_pedigree whether warnOrThrow warns or throws.

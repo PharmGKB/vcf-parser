@@ -6,10 +6,13 @@ import java.util.Map;
 /**
  * This class represents a single VCF PEDIGREE metadata line.
  * <p>
- * VCFv4.2.tex line 152: {@code ##PEDIGREE=<Name_0=ID,...,Name_N=ID>} -- unlike {@code ##INFO}/{@code ##FORMAT}/
- * {@code ##contig}, this declaration has no fixed schema (no mandatory {@code ID}, no {@code Description}), so
- * this class has no typed constructor mirroring a fixed field set -- only the raw properties map is exposed,
- * via the inherited {@link BaseMetadata} accessors.
+ * VCFv4.2.tex line 152: {@code ##PEDIGREE=<Name_0=G0-ID,Name_1=G1-ID,...,Name_N=GN-ID>} -- unlike {@code ##INFO}/{@code ##FORMAT}/
+ * {@code ##contig}, VCFv4.2's own grammar for this declaration has no fixed schema (no mandatory {@code ID}, no
+ * {@code Description}), so this class has no typed constructor mirroring a fixed field set -- only the raw
+ * properties map is exposed, via the inherited {@link BaseMetadata} accessors. VCFv4.3+ (VCFv4.3.tex line 121,
+ * "All structured lines require an ID") does make {@code ID} mandatory, enforced by
+ * {@code VcfMetadata.Builder.addPedigree} rather than here -- see that method's Javadoc and
+ * DUPLICATE_METADATA_ID_HANDLING.md.
  * <p>
  * This class's properties are immutable after construction, and more strictly so than the rest of the
  * hierarchy. Every {@link BaseMetadata} subclass is immutable through this library's <em>public</em> API (see

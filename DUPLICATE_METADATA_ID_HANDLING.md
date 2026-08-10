@@ -89,6 +89,35 @@ on it from then on. Since the metadata layer was frozen there is no public route
 through the package-private `BaseMetadata.trustedMutableProperties()` bypass, which is what keeps
 `VcfWriter`'s equivalent write-time check tested. See `VALIDATION_REFERENCE.md`'s equivalent bullet.
 
+`##PEDIGREE` is a seventh, differently-shaped case, not covered by the "never stored, for all six keyed types"
+rule above: under VCFv4.3+ (VCFv4.3.tex line 121, "All structured lines require an ID which must be unique
+within their type"), both `VcfMetadata.Builder.addPedigree` (construction) and `VcfWriter.validateMetadata()`'s
+PEDIGREE loop (`validateBeforeWrite()`) warn (or, construction-side only, throw under a strict context) on an
+absent/empty/whitespace-only `ID`, but **keep** the declaration rather than dropping it. The six keyed types
+drop because they're `Map`-backed and a blank `ID` leaves nothing to key the entry on ("cannot be stored");
+`##PEDIGREE` is `List`-backed, so that reason doesn't apply -- there's no map slot to fail to claim. In both
+places the missing-ID check is checked *before* the duplicate-ID branch, and a blank `ID` is deliberately never
+added to the respective dedupe set (`m_pedigreeIds` at construction, the write-time `pedigreeIds` local at
+write time), so two blank-ID `##PEDIGREE` declarations each independently warn "has no ID" rather than the
+second colliding with the first as a spurious `Duplicate ID ""` -- on either route. At construction this also
+produces only one warning, not the two-warning pattern described above for the six keyed types:
+`PedigreeMetadata` extends `BaseMetadata` directly (`PedigreeMetadata.java:39`), not `IdMetadata`, so there is
+no `IdMetadata.init()` precursor check to fire first. Under VCFv4.2, `##PEDIGREE` is unaffected on both routes:
+its own grammar (VCFv4.2.tex line 152) has no `ID` attribute at all, so the version gate never activates and
+the declaration is added/kept unconditionally, exactly as before this rule existed.
+
+On the parser route specifically, a **quoted** blank `ID` -- either whitespace-only (`##PEDIGREE=<ID="   ",...>`)
+or empty (`##PEDIGREE=<ID="",...>`) -- does **not** trigger the "has no ID" warning at 4.3, even though the
+equivalent unquoted cases (`ID=`, `ID=   `) do. The blank check reads `getPropertyRaw("ID")`, which returns the
+value still quoted -- unquoting only happens via `getPropertiesUnquoted()` -- so `ID="   "` arrives as the
+five-character raw string `"   "` (quotes included) and `ID=""` arrives as the two-character raw string `""`,
+neither of which is blank after `trim()`. **This is not specific to `##PEDIGREE`, or to this task**: every one
+of the six keyed types' own `IdMetadata.init()` missing-ID check reads `getPropertyRaw(ID)` identically, so the
+same quoted-empty/quoted-whitespace gap applies to all seven structured declaration types (`##PEDIGREE` plus
+the six keyed ones) -- it was simply not previously observable through a version-gated check the way this one
+is. Recorded here as a known gap, not fixed by this task: fixing it would mean changing what every declaration
+type's missing-ID check reads, a change with a blast radius well beyond `##PEDIGREE`.
+
 ### Missing ID is spec-grounded
 
 VCFv4.3.tex line 121 (unchanged in VCFv4.4/VCFv4.5): "All structured lines require an ID which must be unique
@@ -156,9 +185,14 @@ surfaces any complaint about a dropped duplicate's content either.
   `replaceXxx` counterpart described below -- routing that through `addXxx` hits `warnIfDuplicate()` above,
   which discards the edit (warn-and-keep-first) instead of applying it.
 - `VcfMetadata.Builder.addPedigree()` — warns and keeps the first entry when a duplicate literal `ID` property
-  is found; always adds when no `ID` property is present.
-- `VcfWriter.validateMetadata()`'s PEDIGREE loop — the same check, but warn-only (never drops), since it runs
-  post-construction on content the caller already holds a reference to.
+  is found; adds unconditionally when no `ID` property is present, **below VCFv4.3**. At VCFv4.3+, an absent
+  or blank `ID` instead warns "has no ID" (or throws, under a strict context) but is still kept -- see this
+  file's "Missing or empty ID" section's seventh-type paragraph, added by the VCF 4.3-target phase's Task 4.
+- `VcfWriter.validateMetadata()`'s PEDIGREE loop — the same duplicate-ID check, but warn-only (never drops),
+  since it runs post-construction on content the caller already holds a reference to. Also mirrors
+  `addPedigree()`'s missing/blank-`ID` gate at VCFv4.3+ (same seventh-type paragraph as above): a blank `ID`
+  warns and is kept, and is skipped before this method's own duplicate-ID dedupe set to avoid the same
+  spurious-collision failure mode.
 - `IdMetadata`'s shared `IdMetadata(VcfContext, String label, String id)` constructor -- used by every
   typed, named-parameter constructor across `IdDescriptionMetadata`/`InfoMetadata`/`FormatMetadata`/
   `ContigMetadata` (every declaration constructor is package-private; `VcfMetadata.Builder`'s raw-value
@@ -242,5 +276,14 @@ So the rule generalizes: bcftools dedupes by `ID` wherever that key is present, 
 tag name — not six special cases plus an unrelated PEDIGREE rule, but one rule (dedupe on `ID` when present) that
 the six keyed types happen to always trigger (their grammar makes `ID` mandatory) and PEDIGREE only sometimes
 triggers (its grammar makes `ID` optional). `VcfMetadata.Builder.addPedigree()` and `VcfWriter`'s
-post-construction check both implement this: warn and keep first when `ID` is present and duplicated; always
-add when `ID` is absent.
+post-construction check both implement this **below VCFv4.3**: warn and keep first when `ID` is present and
+duplicated; add unconditionally when `ID` is absent.
+
+**This bcftools-matched empty-`ID=` row no longer holds at VCFv4.3+.** The table above (and the "empty `ID=`"
+row specifically) reflects bcftools 1.23.1's own behavior, which this library matched prior to the VCF
+4.3-target phase's Task 4. VCFv4.3.tex line 121 ("All structured lines require an ID") now requires an `ID`
+that a fully-optional-grammar reading of PEDIGREE could otherwise skip, so at 4.3+ this library deliberately
+diverges from bcftools here per `AGENTS.md`'s decision hierarchy (spec text governs where it isn't silent):
+two `##PEDIGREE` lines each with an empty `ID=` are now both **kept**, each independently warning "has no ID"
+rather than the second being dropped as a duplicate -- see the "Missing or empty ID" section's seventh-type
+paragraph above for the current, version-split rule on both the construction and write-time routes.

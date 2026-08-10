@@ -4,6 +4,7 @@ import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
@@ -937,6 +938,224 @@ public class VcfMetadataTest {
         .addPedigree(new PedigreeMetadata(LENIENT_CONTEXT, idProps))
         .build();
     assertEquals(2, metadata.getPedigrees().size());
+  }
+
+  /**
+   * VCFv4.3 requires an ID on every structured line, so a 4.3 ##PEDIGREE without one is diagnosed --
+   * for an absent ID, an empty ID=, and a whitespace-only ID alike. Unlike the six keyed declaration
+   * types, the declaration is KEPT: ##PEDIGREE is List-backed, so the "cannot be stored" reason those
+   * types drop for does not apply. See DUPLICATE_METADATA_ID_HANDLING.md's "Missing or empty ID".
+   */
+  @Test
+  public void testAddPedigreeWarnsAndKeepsAbsentIdUnder43() {
+    Map<String, String> props = new java.util.LinkedHashMap<>();
+    props.put("Original", "G0-ID");
+    assertBlankPedigreeIdWarnsAndIsKeptUnder43(props);
+  }
+
+  @Test
+  public void testAddPedigreeWarnsAndKeepsEmptyIdUnder43() {
+    Map<String, String> props = new java.util.LinkedHashMap<>();
+    props.put("ID", "");
+    props.put("Original", "G0-ID");
+    assertBlankPedigreeIdWarnsAndIsKeptUnder43(props);
+  }
+
+  @Test
+  public void testAddPedigreeWarnsAndKeepsWhitespaceOnlyIdUnder43() {
+    Map<String, String> props = new java.util.LinkedHashMap<>();
+    props.put("ID", "   ");
+    props.put("Original", "G0-ID");
+    assertBlankPedigreeIdWarnsAndIsKeptUnder43(props);
+  }
+
+  private static void assertBlankPedigreeIdWarnsAndIsKeptUnder43(Map<String, String> props) {
+    VcfContext lenient43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder(lenient43).setFileFormat("VCFv4.3")
+          .addPedigree(new PedigreeMetadata(lenient43, props))
+          .build();
+      assertTrue(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(1, metadata.getPedigrees().size(), "the declaration must be kept, not dropped");
+    assertTrue(appender.anyMessageContains("has no ID"));
+  }
+
+  /** A strict 4.3 context rejects rather than warns, matching every other missing-ID declaration. */
+  @Test
+  public void testAddPedigreeThrowsOnBlankIdUnderStrict43() {
+    VcfContext strict43 = VcfContext.strict("VCFv4.3");
+    Map<String, String> props = new java.util.LinkedHashMap<>();
+    props.put("ID", "");
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(strict43).setFileFormat("VCFv4.3");
+    assertThrows(VcfFormatException.class,
+        () -> builder.addPedigree(new PedigreeMetadata(strict43, props)));
+  }
+
+  /**
+   * A blank ID must never enter the dedupe set at 4.3: two blank-ID declarations are two missing-ID
+   * defects, not a collision. Asserting the absence of the duplicate wording is the point -- before the
+   * ordering fix, the second line reported Duplicate ID "" INSTEAD of the diagnostic that matters.
+   */
+  @Test
+  public void testTwoBlankIdPedigreesUnder43WarnTwiceAndNeverReportDuplicate() {
+    VcfContext lenient43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
+    Map<String, String> props1 = new java.util.LinkedHashMap<>();
+    props1.put("ID", "");
+    Map<String, String> props2 = new java.util.LinkedHashMap<>();
+    props2.put("ID", "");
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder(lenient43).setFileFormat("VCFv4.3")
+          .addPedigree(new PedigreeMetadata(lenient43, props1))
+          .addPedigree(new PedigreeMetadata(lenient43, props2))
+          .build();
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(2, metadata.getPedigrees().size());
+    assertEquals(2, appender.countMessagesContaining("has no ID"));
+    assertFalse(appender.anyMessageContains("Duplicate ID"));
+  }
+
+  /**
+   * A declared version this library does not implement resolves to 4.3, so the 4.3 rule must apply to it.
+   * This is the case that proves the gate reads the RESOLVED version off the context rather than comparing
+   * the raw ##fileformat string: every other test here would still pass if someone rewrote the guard as an
+   * exact-4.3 check. VcfVersion.resolveWithoutWarning maps anything at or above HIGHEST_IMPLEMENTED down to
+   * V4_3, so VCFv4.4 gets V4_3 semantics plus a one-time fallback warning.
+   */
+  @Test
+  public void testAddPedigreeBlankIdUnderFallbackTo43IsDiagnosed() {
+    // built BEFORE the appender is attached: VcfContext.lenient() emits the fallback warning during
+    // construction, and capturing it here would blur which diagnostic this test is actually asserting
+    VcfContext lenient44 = VcfContext.lenient("VCFv4.4", VcfWarnings.DEFAULT);
+    Map<String, String> props = new java.util.LinkedHashMap<>();
+    props.put("ID", "");
+    props.put("Original", "G0-ID");
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder(lenient44).setFileFormat("VCFv4.4")
+          .addPedigree(new PedigreeMetadata(lenient44, props))
+          .build();
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(appender.anyMessageContains("has no ID"),
+        "a VCFv4.4 declaration resolves to 4.3, so the 4.3 PEDIGREE ID rule must apply to it");
+    assertEquals(1, metadata.getPedigrees().size());
+  }
+
+  /** The 4.2 arm is unchanged: VCFv4.2's ##PEDIGREE template has no ID attribute at all. */
+  @Test
+  public void testAddPedigreeBlankIdUnder42IsSilentAndStillDedupes() {
+    Map<String, String> props1 = new java.util.LinkedHashMap<>();
+    props1.put("ID", "");
+    Map<String, String> props2 = new java.util.LinkedHashMap<>();
+    props2.put("ID", "");
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addPedigree(new PedigreeMetadata(LENIENT_CONTEXT, props1))
+          .addPedigree(new PedigreeMetadata(LENIENT_CONTEXT, props2))
+          .build();
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    // pre-existing 4.2 behavior: the empty string IS a dedupe key, so the second is a duplicate
+    assertEquals(1, metadata.getPedigrees().size());
+    assertTrue(appender.anyMessageContains("Duplicate ID"));
+    assertFalse(appender.anyMessageContains("has no ID"));
+  }
+
+  /** 4.2 regression, absent-ID shape: extends the existing empty-ID-only coverage above to all three shapes. */
+  @Test
+  public void testAddPedigreeAbsentIdUnder42IsSilentAndStillDedupes() {
+    Map<String, String> props1 = new java.util.LinkedHashMap<>();
+    props1.put("Original", "G0-ID");
+    Map<String, String> props2 = new java.util.LinkedHashMap<>();
+    props2.put("Original", "G0-ID");
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addPedigree(new PedigreeMetadata(LENIENT_CONTEXT, props1))
+          .addPedigree(new PedigreeMetadata(LENIENT_CONTEXT, props2))
+          .build();
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    // no ID property at all means no dedupe key -- both are kept, matching testAddPedigreeKeepsBothWhenIdAbsent
+    assertEquals(2, metadata.getPedigrees().size());
+    assertFalse(appender.anyMessageContains("has no ID"));
+  }
+
+  /** 4.2 regression, whitespace-only-ID shape: extends the existing empty-ID-only coverage above to all three shapes. */
+  @Test
+  public void testAddPedigreeWhitespaceOnlyIdUnder42IsSilentAndStillDedupes() {
+    Map<String, String> props1 = new java.util.LinkedHashMap<>();
+    props1.put("ID", "   ");
+    Map<String, String> props2 = new java.util.LinkedHashMap<>();
+    props2.put("ID", "   ");
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addPedigree(new PedigreeMetadata(LENIENT_CONTEXT, props1))
+          .addPedigree(new PedigreeMetadata(LENIENT_CONTEXT, props2))
+          .build();
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    // pre-existing 4.2 behavior: "   " IS a dedupe key at 4.2 (no blank-ID special-casing pre-4.3), so the
+    // second is a duplicate -- same shape as the empty-ID case above, just with a whitespace-only ID literal
+    assertEquals(1, metadata.getPedigrees().size());
+    assertTrue(appender.anyMessageContains("Duplicate ID"));
+    assertFalse(appender.anyMessageContains("has no ID"));
   }
 
   @Test

@@ -142,7 +142,11 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   declaration instead (matching bcftools; see
   [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md)), routed to that context's
   `VcfWarnings`. `VcfParser`'s own internal use always builds a lenient context, so parsing a file's behavior
-  is unchanged by any of this.
+  is unchanged by any of this. `##PEDIGREE`'s own missing-ID rule differs from the six keyed types just
+  described in one respect -- see [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md)'s
+  seventh-type paragraph in "Missing or empty ID": under VCFv4.3+ a strict context throws exactly like the six
+  keyed types, but a lenient one keeps the declaration rather than dropping it, since `##PEDIGREE` is
+  `List`-backed and has no map slot to fail to claim.
 - `VcfMetadata.Builder.replaceAlt()` / `replaceInfo()` / `replaceFormat()` / `replaceFilter()` / `replaceContig()`
   / `replaceSample()` throw `VcfFormatException` for an `ID` with no existing declaration to replace -- in both
   a lenient and a strict context, unlike every other rule on this page. This is deliberate, not an oversight: a
@@ -268,6 +272,13 @@ is a structural failure and still throws -- see the strict section above):
   See [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md) for the full per-type
   bcftools/vcf_validator comparison and the empty-vs-missing rationale, including the distinct already-stored
   case (an object whose `ID` is live-mutated to blank after being stored is not retroactively removed).
+  `##PEDIGREE` is a seventh, differently-shaped case gated on VCFv4.3+ specifically (VCFv4.2's own `##PEDIGREE`
+  grammar has no `ID` attribute at all, so this never fires under 4.2): a missing/empty/whitespace-only `ID`
+  warns but the declaration is **kept**, not dropped, and `VcfWriter.validateMetadata()` re-checks the same
+  condition at write time under `validateBeforeWrite()`. See
+  [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md)'s seventh-type paragraph for why
+  (`List`-backed, so nothing is "cannot be stored" for) and for a parser-route quoting caveat specific to the
+  whitespace-only shape.
 - A missing or invalid `Number`, `Type`, or `Description`; an unquoted `Description`; or `Type=Flag` with a `Number`
   other than `0`. An unparseable `Type` leaves the metadata's type `null`. A non-reserved `##FORMAT` declaration
   missing `Number` is treated as list-shaped -- see `VCF_SPEC_AMBIGUITIES.md`'s "Undeclared `##FORMAT` `Number`

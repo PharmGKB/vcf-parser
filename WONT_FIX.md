@@ -227,13 +227,26 @@ finds either tool treats an interleaved extra attribute as invalid.
 
 ## `PedigreeMetadata` duplicate-ID dedup treats a present-but-blank `ID` the same as a real ID
 
-`VcfMetadata.addPedigree`/`VcfMetadata.Builder.addPedigree` and
-`VcfWriter.validateMetadata()`'s PEDIGREE loop gate their duplicate-ID dedup on `id != null` only, with no
-blank-string check -- unlike the six keyed types (INFO/FORMAT/FILTER/ALT/contig/SAMPLE), whose own `addXxx`
-methods explicitly drop a declaration with a missing OR blank `ID` before ever reaching the duplicate check
-(`DUPLICATE_METADATA_ID_HANDLING.md`'s "Missing or empty ID" section). This looked, on first read, like an
-inconsistency: two `##PEDIGREE=<ID=,...>` lines each declaring a literal empty `ID=` collide on that empty
-string and the second is silently dropped, where the six-keyed-type convention would keep both.
+**Scoped to VCFv4.2 only as of the VCF 4.3-target phase's Task 4.** Task 4 gave `##PEDIGREE` its own,
+version-gated missing/blank-`ID` rule at VCFv4.3+ (VCFv4.3.tex line 121, "All structured lines require an
+ID"), on **both** routes described below -- `VcfMetadata.Builder.addPedigree` at construction, and
+`VcfWriter.validateMetadata()`'s PEDIGREE loop at write time: under a 4.3+ context, a blank `ID` is now caught
+*before* the duplicate-ID branch each describes, warns "has no ID", and is deliberately never added to the
+respective dedupe set (`m_pedigreeIds` / the write-time `pedigreeIds`) -- so two blank-ID `##PEDIGREE`
+declarations under 4.3+ each warn independently rather than the second colliding with the first as a spurious
+`Duplicate ID ""` the way this entry documents. The reasoning and "won't fix" decision below are unchanged and
+still current for VCFv4.2, where `##PEDIGREE` has no `ID` attribute in its own grammar at all and this task's
+version gate never activates -- see `DUPLICATE_METADATA_ID_HANDLING.md`'s "Missing or empty ID" section's
+seventh-type paragraph for the current, version-split rule.
+
+`VcfMetadata.addPedigree`/`VcfMetadata.Builder.addPedigree` and `VcfWriter.validateMetadata()`'s PEDIGREE loop
+gate their duplicate-ID dedup on `id != null` only, with no blank-string check, **below VCFv4.3** (see the
+scoping paragraph just above for the 4.3+ behavior) -- unlike the six keyed types (INFO/FORMAT/FILTER/ALT/
+contig/SAMPLE), whose own `addXxx` methods explicitly drop a declaration with a missing OR blank `ID` before
+ever reaching the duplicate check (`DUPLICATE_METADATA_ID_HANDLING.md`'s "Missing or empty ID" section). This
+looked, on first read, like an inconsistency: two `##PEDIGREE=<ID=,...>` lines each declaring a literal empty
+`ID=` collide on that empty string and the second is silently dropped, where the six-keyed-type convention
+would keep both.
 
 It isn't an inconsistency once bcftools is actually consulted. `DUPLICATE_METADATA_ID_HANDLING.md`'s own
 "Empty/whitespace ID is a deliberate stricter-than-bcftools choice" section already establishes that the

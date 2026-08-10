@@ -201,7 +201,6 @@ test/vcf/4.3/failed/failed_meta_meta_002.vcf	parser-throw-or-warn	silently-accep
 test/vcf/4.3/failed/failed_meta_meta_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect order of META fields
 test/vcf/4.3/failed/failed_meta_pedigree_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Value with whitespace
 test/vcf/4.3/failed/failed_meta_pedigree_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Value with non-accepted punctuation character
-test/vcf/4.3/failed/failed_meta_pedigree_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: PEDIGREE ID is missing
 test/vcf/4.3/failed/failed_meta_pedigreedb_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Non-valid URL
 test/vcf/4.1/passed/complexfile_passed_000.vcf	writer-bytediff	byte-diff	57 of 75 lines differ, first difference at line 15: "##ALT=<ID=DEL,Description="Deletion">" original, "##INFO=<ID=AA,Number=1,Type=String,Description="Ancestral Allele, ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/pilot_data/technical/reference/ancestral_alignments/README">" written
 test/vcf/4.1/passed/passed_body_qual.vcf	writer-bytediff	byte-diff	5 of 11 lines differ, first difference at line 4: "1	200	rs180734498	C	T	2e+1	PASS	AN=2184;AC=249;AF=0.11	GT:DS:GL	0|0:0.050:-0.13,-0.58,-3.62	0|1:1.000:-2.45,-0.00,-5.00" original, "1	200	rs180734498	C	T	2E+1	PASS	AN=2184;AC=249;AF=0.11	GT:DS:GL	0|0:0.050:-0.13,-0.58,-3.62	0|1:1.000:-2.45,-0.00,-5.00" written

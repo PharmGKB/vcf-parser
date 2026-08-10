@@ -1490,6 +1490,137 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteWarnsOnBlankPedigreeIdUnder43ButDefaultPathIsSilent() throws Exception {
+    // Same rule VcfMetadata.Builder.addPedigree enforces at construction (see
+    // VcfMetadataTest.testAddPedigreeWarnsAndKeepsAbsentIdUnder43), re-checked here because validateBeforeWrite()
+    // is the full-output diagnostics pass and must report what it can detect about the object it was handed.
+    //
+    // Built with NO appender attached: under a lenient 4.3 context, VcfMetadata.Builder.addPedigree() itself
+    // already warns "has no ID" at construction time. Capturing that construction warning here would satisfy
+    // the diagnostics-mode assertion below even if writeHeader()/validateMetadata() emitted nothing, and would
+    // simultaneously break the default-path "silent" assertion for the wrong reason -- so each write mode gets
+    // its own appender window, attached only around the writeHeader() call under test, never around construction.
+    VcfContext lenient43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
+    Map<String, String> props = new LinkedHashMap<>();
+    props.put("Original", "G0-ID");
+    VcfMetadata metadata = new VcfMetadata.Builder(lenient43).setFileFormat("VCFv4.3")
+        .addPedigree(new PedigreeMetadata(lenient43, props))
+        .build();
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+
+    StringWriter diagnosticsSw = new StringWriter();
+    VcfWriter diagnosticsWriter = new VcfWriter.Builder().toWriter(new PrintWriter(diagnosticsSw))
+        .validateBeforeWrite().build();
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender diagnosticsAppender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    diagnosticsAppender.start();
+    root.addAppender(diagnosticsAppender);
+    try {
+      diagnosticsWriter.writeHeader(metadata);
+      assertTrue(diagnosticsAppender.anyMessageContains("has no ID"));
+    } finally {
+      root.detachAppender(diagnosticsAppender);
+      diagnosticsAppender.stop();
+    }
+
+    StringWriter defaultSw = new StringWriter();
+    VcfWriter defaultWriter = new VcfWriter.Builder().toWriter(new PrintWriter(defaultSw)).build();
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender defaultAppender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    defaultAppender.start();
+    root.addAppender(defaultAppender);
+    try {
+      defaultWriter.writeHeader(metadata);
+      assertFalse(defaultAppender.anyMessageContains("has no ID"));
+    } finally {
+      root.detachAppender(defaultAppender);
+      defaultAppender.stop();
+    }
+
+    assertTrue(diagnosticsSw.toString().contains("##PEDIGREE"));
+    assertTrue(defaultSw.toString().contains("##PEDIGREE"));
+  }
+
+  /**
+   * Two blank-ID PEDIGREE declarations at 4.3+ must each independently warn "has no ID" and never collide as a
+   * spurious "Duplicate ID \"\"" -- validateMetadata()'s blank-ID check must {@code continue} before reaching
+   * {@code pedigreeIds.add(id)}, mirroring VcfMetadata.Builder.addPedigree's own early return (see
+   * VcfMetadataTest.testTwoBlankIdPedigreesUnder43WarnTwiceAndNeverReportDuplicate for the construction-side
+   * equivalent). Built with NO appender attached, for the same reason as the single-blank-ID test above.
+   */
+  @Test
+  public void testValidateBeforeWriteWarnsTwiceOnTwoBlankPedigreeIdsUnder43AndNeverReportsDuplicate()
+      throws Exception {
+    VcfContext lenient43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
+    Map<String, String> props1 = new LinkedHashMap<>();
+    props1.put("ID", "");
+    Map<String, String> props2 = new LinkedHashMap<>();
+    props2.put("ID", "");
+    VcfMetadata metadata = new VcfMetadata.Builder(lenient43).setFileFormat("VCFv4.3")
+        .addPedigree(new PedigreeMetadata(lenient43, props1))
+        .addPedigree(new PedigreeMetadata(lenient43, props2))
+        .build();
+
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      assertEquals(2, appender.countMessagesContaining("has no ID"));
+      assertFalse(appender.anyMessageContains("Duplicate ID"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  /**
+   * The 4.2 arm is unchanged: two ##PEDIGREE declarations sharing a literal empty ID="" still collide as a
+   * duplicate at write time, exactly as WONT_FIX.md's "PedigreeMetadata duplicate-ID dedup treats a
+   * present-but-blank ID the same as a real ID" entry documents for VCFv4.2 -- confirming the 4.3+ fix above
+   * did not touch this pre-existing, bcftools-matched behavior. Built via {@code trustedMetadata()}, not
+   * {@code Builder.addPedigree()} twice: under 4.2, the Builder's own construction-time duplicate check
+   * would already drop the second blank-ID entry (see VcfMetadataTest.testAddPedigreeBlankIdUnder42IsSilentAndStillDedupes),
+   * leaving nothing for this write-time check to find -- exactly the same reason
+   * testValidateBeforeWriteWarnsOnDuplicatePedigreeIdIntroducedAfterConstruction above uses it.
+   */
+  @Test
+  public void testValidateBeforeWriteStillReportsDuplicateForTwoBlankPedigreeIdsUnder42() throws Exception {
+    Map<String, String> props1 = new LinkedHashMap<>();
+    props1.put("ID", "");
+    Map<String, String> props2 = new LinkedHashMap<>();
+    props2.put("ID", "");
+    VcfMetadata metadata = trustedMetadata("VCFv4.2", null,
+        List.of(new PedigreeMetadata(LENIENT_CONTEXT, props1),
+            new PedigreeMetadata(LENIENT_CONTEXT, props2)),
+        null);
+
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      assertTrue(appender.anyMessageContains("Duplicate ID"));
+      assertFalse(appender.anyMessageContains("has no ID"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testValidateBeforeWriteHandlesOversizedNumberAsDiagnostic() throws Exception {
     // an oversized/unparseable Number can't be constructed via the typed constructor (it throws immediately on
     // a bad reserved cardinality), so this builds the same raw properties the typed constructor would have

@@ -161,10 +161,10 @@ fixture as new.** The 75 rows the 2026-08-10 expansion added (see the provenance
 in a follow-up pass keyed on `##CauseOfFailure=` text plus fixture content, not filename: 59 of them are the
 same defect as an existing 4.1/4.2 row already in the table below, just replicated onto a (frequently
 renumbered) 4.3 fixture, and are folded into that row's `Fixtures`/`Count` columns rather than getting a row
-of their own. The other 16 are recorded as their own new rows immediately after the table: 13 are triaged
-here (`INFO` 32-bit integer range, no trailing newline, `##META`, and `INFO` duplicate keys); the remaining
-3 are explicitly left to a later task in this phase (`##PEDIGREE` missing `ID` — Task 4; the contig-asterisk
-pair — Task 5) rather than pre-judged here.
+of their own. The other 16 are recorded as their own new rows immediately after the table: 14 are triaged
+here (`INFO` 32-bit integer range, no trailing newline, `##META`, `INFO` duplicate keys, and -- since landed --
+`##PEDIGREE` missing `ID`, fixed by this phase's Task 4); the remaining 2 are explicitly left to a later task in
+this phase (the contig-asterisk pair — Task 5) rather than pre-judged here.
 
 | Cause | Fixtures | Count | Status | Details |
 |---|---|---|---|---|
@@ -195,8 +195,10 @@ pair — Task 5) rather than pre-judged here.
 ## New 4.3-only `parser-throw-or-warn` clusters added by the 2026-08-10 expansion
 
 The 16 fixtures below have no 4.1/4.2 sibling with the same `##CauseOfFailure=` and fixture content, so they
-are not folded into the table above. Three are triaged here; the remaining two clusters (three fixtures) are
-explicitly deferred to a later task in this same phase rather than pre-judged.
+are not folded into the table above. Three are triaged here; the `##PEDIGREE` missing-`ID` cluster was
+deferred at the time this section was written but is fixed as of this phase's Task 4 (see that row below); the
+remaining cluster (the contig-asterisk pair, two fixtures) is explicitly deferred to a later task in this same
+phase (Task 5) rather than pre-judged.
 
 | Cause | Fixtures | Count | Status | Details |
 |---|---|---|---|---|
@@ -204,7 +206,7 @@ explicitly deferred to a later task in this same phase rather than pre-judged.
 | INFO reserved/non-reserved Integer value outside the 32-bit signed range | `failed_body_info_integer_overflow.vcf` (`INT=2147483648`), `_underflow.vcf` (`INT=-2147483649`, `##CauseOfFailure=INFO integer overflow` — mislabeled, the value is actually below the minimum), `_reserved.vcf` (eight records using each of the eight reserved sentinel values `-2147483648`..`-2147483641`) | 3 | Deferred | `VALIDATION_REFERENCE.md`'s "Integer is 32-bit signed" scope note already documents this gap generally: typed access converts an Integer-typed value via `Long.parseLong`/returns a Java `long`, so no non-`PS` Integer value is range-checked against VCFv4.3.tex line 100/103's 32-bit bound. Narrowing every Integer-typed accessor's return type to enforce this would be a breaking public-API change, the same category of deferred work as the version-aware reserved-key tables. |
 | No newline at end of file | `failed_body_no_newline_000.vcf` through `_004.vcf` | 5 | Deferred, structural | `VcfParser` reads records via `BufferedReader.readLine()` (`VcfParser.java:110`, `:137`, `:274`), which by contract strips the line terminator from its return value and returns non-`null` for a final unterminated line exactly the same as a terminated one — the parser has no way to distinguish "last line ended without a newline" from "last line ended with one" using this API. Detecting it would require switching to a lower-level read primitive purely to observe an artifact this library doesn't otherwise care about. |
 | `##META` semantic violations (bad `Number`/`Type` value, `Values` not bracket-wrapped, fields out of order) | `failed_meta_meta_000.vcf` (bad `Number`), `_001.vcf` (bad `Type`), `_002.vcf` (unbracketed `Values`), `_003.vcf` (field order) | 4 | Deferred | No `##META` model exists in this library; a `##META=<...>` line survives parsing as a generic bracket-wrapped attribute-list value (accepted because it contains an `=`, per `VCF_SPEC_AMBIGUITIES.md`'s "`##pedigreeDB`/`##assembly` bracket-wrapped values..." entry, `VCF_SPEC_AMBIGUITIES.md:190`), with none of its sub-fields individually validated. A structured `##META` type with its own `Number`/`Type`/`Values` grammar checks would be a new feature, not a bug fix. |
-| `##PEDIGREE` missing `ID` | `failed_meta_pedigree_003.vcf` | 1 | **Fixed in this phase's Task 4** | Task 4 implements the `##PEDIGREE`-requires-an-`ID` rule at VCF 4.3+; that task's landing removes this fixture's row from the baseline rather than leaving it recorded as deferred here. |
+| `##PEDIGREE` missing `ID` | `failed_meta_pedigree_003.vcf` | 1 | **Fixed by this phase's Task 4** | Task 4 implemented the `##PEDIGREE`-requires-an-`ID` rule at VCF 4.3+ (`VcfMetadata.Builder.addPedigree`, gated on `VcfVersion.isAtLeast(VcfVersion.V4_3)`); landing it removed this fixture's row from `hts-specs-baseline.tsv` rather than leaving it recorded as a known divergence. Confirmed via `./gradlew htsSpecsUpdateBaseline` producing a diff of exactly this one row removed, and a subsequent clean `./gradlew htsSpecsTest` reporting `845/845 checks match baseline, 0 new/stale, 0 per-version row(s) moved` -- the check total is unchanged because it counts every fixture's check regardless of whether it matches a recorded divergence or the spec-conformant default; only the divergence entry disappeared. |
 | `contig`/CHROM ID contains an asterisk in a non-leading position | `failed_body_chrom_004.vcf` (CHROM `chr*1`), `failed_meta_contig_003.vcf` (`##contig=<ID=1.*,...>`) | 2 | **Pending Task 5 adjudication** | Both share the same claimed defect already discussed in this document's "Contig ID asterisk fixture" section below (a non-leading `*`, which the VCFv4.3.tex errata says is legal). Task 5 adjudicates the ruling against bcftools directly; left unprejudged here per that task's brief. |
 
 ## Negative QUAL fixtures: why permanently accepted

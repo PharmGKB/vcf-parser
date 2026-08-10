@@ -491,6 +491,19 @@ public class VcfWriter implements Closeable {
       Map<String, String> properties = pedigree.getPropertiesRaw();
       validateMetadataProperties("PEDIGREE", properties);
       String id = properties.get("ID");
+      if ((id == null || id.trim().isEmpty())
+          && metadata.getContext().getVersion().isAtLeast(VcfVersion.V4_3)) {
+        // Same rule VcfMetadata.Builder.addPedigree enforces at construction, re-checked here because this is
+        // the full-output diagnostics pass and must report what it can detect about the object it was handed.
+        // Warns without removing, matching the duplicate-ID check just below: this runs post-construction and
+        // must not silently drop content the caller already holds a reference to. Mirrors addPedigree's own
+        // early return: a blank ID must never reach pedigreeIds.add(id) below, or two blank-ID declarations
+        // would collide as a spurious Duplicate ID "" instead of each independently reporting their own
+        // missing ID -- exactly the outcome the construction-side check exists to prevent.
+        m_warnings.warn("PEDIGREE metadata declaration has no ID, which VCF {} requires",
+            metadata.getContext().getVersion().getId());
+        continue;
+      }
       if (id != null && !pedigreeIds.add(id)) {
         // unlike VcfMetadata.Builder.addPedigree() (which warns and drops a duplicate ID at construction time),
         // this check runs post-construction and must not silently remove content the caller already holds a
