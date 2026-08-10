@@ -122,9 +122,8 @@ between versions with both readings valid. Today that is exactly two rules: `FOR
 VCFv4.2 and earlier per VCFv4.2.tex line 227, a 0-1 probability from VCFv4.3 per VCFv4.3.tex line 491) and
 `FORMAT/GLE` (a reserved key at VCFv4.1.tex line 208/VCFv4.2.tex line 225, removed by VCFv4.3 per VCFv4.3.tex
 line 2168). Where a later version merely *clarifies* something VCFv4.2 left unsaid, the later rule is adopted
-at every version instead, with no branch at all -- see `VALIDATION_REFERENCE.md`'s "Rules adopted from a later
-VCF version, unconditionally" for that list, and its lenient section for the two gated rules' exact per-version
-behavior.
+at every version instead, with no branch at all -- see `VALIDATION_REFERENCE.md`'s "Rules applied at every
+declared version" for that list, and its lenient section for the two gated rules' exact per-version behavior.
 
 ## Where this applies
 

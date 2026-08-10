@@ -1516,7 +1516,7 @@ public class VcfPositionTest {
     // VCFv4.5.tex line 431) relaxes VCFv4.2.tex line 186's blanket "no whitespace, semicolons, or equals-signs
     // permitted". This library adopts that relaxation unconditionally rather than gating it on the declared
     // version -- STRICT_CONTEXT and LENIENT_CONTEXT are both VCFv4.2 contexts, so both must accept it. See
-    // VALIDATION_REFERENCE.md's "Rules adopted from a later VCF version, unconditionally".
+    // VALIDATION_REFERENCE.md's "Rules applied at every declared version".
     for (VcfContext context : List.of(STRICT_CONTEXT, LENIENT_CONTEXT)) {
       ListMultimap<String, String> info = ArrayListMultimap.create();
       info.put("AA", "a b");
