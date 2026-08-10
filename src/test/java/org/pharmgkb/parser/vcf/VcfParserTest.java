@@ -1146,7 +1146,7 @@ public class VcfParserTest {
       // this fixture declares VCFv4.4, which this library does not implement, so it now also reports the
       // version fallback exactly once -- the one new diagnostic the file-scoped VcfContext introduces
       assertEquals(1, actual.stream()
-              .filter(m -> m.startsWith("##fileformat=VCFv4.4 declares a version") && m.contains("VCF 4.3"))
+              .filter(m -> m.startsWith("Reading ##fileformat=VCFv4.4 as VCF 4.3") && m.contains("does not implement"))
               .count(),
           actual::toString);
       assertEquals(1,

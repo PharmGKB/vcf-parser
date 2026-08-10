@@ -68,17 +68,18 @@ public enum VcfVersion {
    * Interpreting a file under a version it did not declare corrupts data silently in both directions -- reading
    * 4.2 as 4.3 would disable the GLE colon-splitter (misaligning the whole sample column) and read {@code GP}
    * as 0-1 rather than phred-scaled; reading 4.4 as 4.5 would apply 4.5's {@code M[0-9]+} FORMAT reservation to
-   * legal 4.4 custom keys. Fallback is therefore a last resort, and this method always warns about it. (It is
-   * not warned about unconditionally library-wide: {@code VcfWriter} reports it only under
-   * {@code Builder.validateBeforeWrite()} -- see the last paragraph below.)
+   * legal 4.4 custom keys. Fallback is therefore a last resort, and this method always warns about it.
    * <p>
    * Resolution is uniform across strict and lenient contexts: a well-formed declaration for an unimplemented
    * version is not invalid content, so it warns rather than throwing even under
    * {@code VcfContext.strict(...)}. Only a structurally unusable value throws.
    * <p>
-   * {@code VcfWriter} is the one caller that deliberately does not use this method: on the write side the
-   * fallback is a {@code validateBeforeWrite()} diagnostic rather than an unconditional one, so it resolves
-   * through this class's package-private {@code resolveWithoutWarning} and reports the fallback itself.
+   * {@code VcfWriter} is the one caller that deliberately does not use this method: it builds its
+   * {@link VcfContext} before it knows whether the header it is building will actually be written, and this
+   * method warns unconditionally, so calling it here would warn about output that a later rejection (a
+   * cross-version mismatch, a failed validation, a line-terminator check) might still prevent from ever
+   * existing. It resolves through this class's package-private {@code resolveWithoutWarning} instead and
+   * reports the fallback itself, once the header is known to be written.
    *
    * @throws VcfFormatException if {@code declaredFileFormat} is {@code null} or does not match
    * {@link InternalUtils#FILE_FORMAT_PATTERN} -- a structural violation, matching VcfParser's existing
@@ -91,8 +92,8 @@ public enum VcfVersion {
     Preconditions.checkNotNull(warnings, "warnings must not be null");
     Resolution resolution = resolveWithoutWarning(declaredFileFormat);
     if (resolution.fellBack()) {
-      warnings.warn("##fileformat={} declares a version whose semantics this library does not implement; " +
-          "interpreting it as VCF {}", declaredFileFormat, resolution.version().getId());
+      warnings.warn("Reading ##fileformat={} as VCF {} -- this library does not implement {} semantics",
+          declaredFileFormat, resolution.version().getId(), declaredFileFormat);
     }
     return resolution.version();
   }
@@ -107,11 +108,12 @@ public enum VcfVersion {
    * Resolves a declared {@code ##fileformat} by exactly {@link #resolve}'s rules, but reports a fallback as a
    * returned fact instead of emitting a warning.
    * <p>
-   * Exists for {@code VcfWriter}, which cannot use {@link #resolve}: it builds its {@link VcfContext} before it
-   * can act on whether {@code VcfWriter.Builder.validateBeforeWrite()} diagnostics were requested, and the
-   * default write path must stay silent. Every other caller -- {@code VcfParser}, and any direct
-   * {@link VcfContext#lenient}/{@link VcfContext#strict} construction -- still goes through {@link #resolve} and
-   * warns exactly as before.
+   * Exists for {@code VcfWriter}, which cannot use {@link #resolve}: it builds its {@link VcfContext} before
+   * {@code writeHeader}'s later rejections (a cross-version mismatch, a failed validation, a line-terminator
+   * check) have run, and this diagnostic must be deferred until the header is known to actually be written --
+   * calling {@link #resolve} here would warn about output that one of those rejections might still prevent from
+   * ever existing. Every other caller -- {@code VcfParser}, and any direct {@link VcfContext#lenient}/
+   * {@link VcfContext#strict} construction -- still goes through {@link #resolve} and warns exactly as before.
    * <p>
    * Package-private, not public-with-{@code @RestrictedApi}: that annotation is documentation-only here, so
    * visibility is what actually enforces the restriction.

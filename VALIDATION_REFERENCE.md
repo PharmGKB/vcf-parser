@@ -411,20 +411,27 @@ structurally unusable value (not matching `VCFv4.<digits>`) still throws, in bot
 this is a well-formed declaration for an unimplemented version, not invalid content. See
 `VcfVersion.resolve`.
 
-`VcfParser` and `VcfWriter` each build their own `VcfContext`, but the two sides report this differently. On the
-parse side it is unconditional: `VcfVersion.resolve` warns once per parse, in strict and lenient contexts alike.
-On the write side it is a `validateBeforeWrite()` diagnostic only — the writer resolves through
-`VcfVersion.resolveWithoutWarning`, which returns the fallback as a fact (resolved version plus a "fell back"
-flag) instead of emitting it, so the default write path is silent about it entirely. Under `validateBeforeWrite()`
-the writer emits its own, differently-worded message: the parser's wording ("interpreting it as VCF 4.3") is
+`VcfParser` and `VcfWriter` each build their own `VcfContext`, but the two sides report this differently, and
+both are unconditional — neither is gated on `validateBeforeWrite()`. On the parse side it is straightforward:
+`VcfVersion.resolve` warns once per parse, in strict and lenient contexts alike. On the write side, `writeHeader`
+resolves through `VcfVersion.resolveWithoutWarning`, which returns the fallback as a fact (resolved version plus
+a "fell back" flag) instead of emitting it, and reports it itself later, in both write modes — deferred that way
+because the context is built before `writeHeader`'s own later rejections (a cross-version mismatch, a failed
+validation, a line-terminator check) run, and warning at context-construction time would report on output one of
+those rejections might still prevent from ever existing. The writer emits its own, differently-worded message:
+the parser's wording ("Reading ##fileformat={} as VCF {} -- this library does not implement {} semantics") is
 false for a writer, which emits the declaration verbatim rather than interpreting it, so the write-side message
-says instead that the output declares a version this library does not implement and that its validity under that
-version is not guaranteed. It names the version actually applied rather than hardcoding 4.3 — a `VCFv4.0`
-declaration falls *up* to 4.1. It is emitted once per header that is actually written, after every header
-rejection has been passed and immediately before the first header byte, so a rejected `writeHeader` attempt
-followed by a corrected retry reports it once in total, not once per attempt. Pinned by
-`VcfWriterTest.testDefaultWritePathSaysNothingAboutAnUnimplementedDeclaration`,
-`testValidateBeforeWriteReportsAnUnimplementedDeclarationExactlyOnce`,
+says instead ("Writing ##fileformat={} verbatim, but its content was accepted and normalized under VCF {}
+rules; validity under the declared version is not guaranteed") that the output's content was accepted and
+normalized under the resolved version's rules and that its validity under the declared version is not
+guaranteed. It names the version actually applied rather than hardcoding 4.3 — a `VCFv4.0` declaration falls
+*up* to 4.1. It is emitted once per
+header that is actually written, after every header rejection has been passed and immediately before the first
+header byte, so a rejected `writeHeader` attempt followed by a corrected retry reports it once in total, not once
+per attempt (this also means a plain parse-then-write round trip of a file declaring an unimplemented version
+logs two lines total — one from the parse side, one from the write side — which is intended, not a duplicate: the
+two messages describe different facts, about different data flow directions). Pinned by
+`VcfWriterTest.testReportsAnUnimplementedDeclarationExactlyOnce`,
 `testRejectedHeaderAttemptDoesNotReportTheUnimplementedDeclaration`, and
 `VcfVersionTest.testResolveWithoutWarningReportsEveryFallbackRouteAsAFact`.
 

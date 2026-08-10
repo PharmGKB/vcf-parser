@@ -57,9 +57,10 @@ public final class VcfContext {
    * itself.
    * <p>
    * <b>Skips only the fallback warning</b> {@link VcfVersion#resolve} would emit; nothing about the resulting
-   * context differs. {@code VcfWriter} needs this because it builds its context before it can act on whether
-   * {@code Builder.validateBeforeWrite()} diagnostics were requested -- going through {@link #lenient} would have
-   * already warned on the default write path, which asked for no diagnostics at all.
+   * context differs. {@code VcfWriter} needs this because it builds its context before {@code writeHeader}'s
+   * later rejections (a cross-version mismatch, a failed validation, a line-terminator check) have run --
+   * going through {@link #lenient} here would warn about output one of those rejections might still prevent
+   * from ever existing, so the diagnostic must be deferred until the header is known to actually be written.
    * <p>
    * Package-private, not public-with-{@code @RestrictedApi}: that annotation is documentation-only here, so
    * visibility is what actually enforces the restriction.
