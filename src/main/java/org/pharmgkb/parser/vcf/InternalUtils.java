@@ -848,6 +848,12 @@ public class InternalUtils {
   }
 
   /**
+   * @param number the {@code Number} actually in force for {@code key} at the call site -- either a
+   * {@code ##FORMAT} declaration's own stated {@code Number}, or (when there is no declaration) the reserved
+   * key's own version-resolved canonical {@code Number} ({@link ReservedFormatProperty#getExpectedNumber
+   * (VcfVersion)}). Only {@code CNL}'s branch below consults it; {@code null} is tolerated (an undeclared
+   * {@code Number} attribute) and simply never matches {@code "G"}, correctly falling through to the ordinary
+   * check, which itself no-ops on a {@code null}/{@code "."} {@code number} (see {@code getExpectedCardinality}).
    * @return whether {@code key}'s formal {@code Number=G} does not describe the standard ploidy-derived
    * genotype-ordering list that {@code getExpectedCardinality}'s {@code "G"} branch computes an expected count
    * for, so that generic {@code Number=G} value-cardinality check specifically (not {@code Number}/{@code Type}
@@ -864,24 +870,29 @@ public class InternalUtils {
    *   prose ({@link ReservedFormatProperty#CopyNumberPosteriorProbabilities}/
    *   {@link ReservedFormatProperty#CopyNumberLikelihood}'s own comments) mean "one value per potential copy
    *   number" -- a dimension nothing in a VCF record states, unlike ploidy + ALT allele count, which
-   *   genotype-ordering {@code "G"} is defined from. {@code CNP}'s exemption is <b>not version-gated</b>: it is
-   *   reserved with {@code Number=G} at every version this library interprets. {@code CNL}'s exemption
-   *   <b>is</b> version-gated, but the opposite way from {@code GLE}'s: {@code CNL} is only {@code Number=G}
-   *   from VCFv4.3 on (VCFv4.2.tex:308 declares it {@code Number=.}; VCFv4.3.tex:678, the target, redeclares it
-   *   {@code Number=G} -- see {@link ReservedFormatProperty#CopyNumberLikelihood}'s own comment), so the
-   *   exemption applies only at {@code >=4.3}; below that its {@code Number} is {@code .}, which the generic
-   *   check already skips for that reason alone, without needing this exemption at all.</li>
+   *   genotype-ordering {@code "G"} is defined from. {@code CNP}'s exemption is <b>not version-gated and not
+   *   {@code number}-gated</b>: it is reserved with {@code Number=G} at every version this library interprets,
+   *   and (unlike {@code CNL}) a caller-declared override of that {@code Number} doesn't change what a CNP
+   *   value structurally means, so the exemption applies to the key outright. {@code CNL}'s exemption
+   *   <b>is</b> gated on {@code number} actually being {@code "G"}, in addition to the {@code >=4.3} version
+   *   gate: {@code CNL} is only reserved with {@code Number=G} from VCFv4.3 on (VCFv4.2.tex:308 declares it
+   *   {@code Number=.}; VCFv4.3.tex:678, the target, redeclares it {@code Number=G} -- see
+   *   {@link ReservedFormatProperty#CopyNumberLikelihood}'s own comment), but a {@code ##FORMAT} declaration is
+   *   free to override that with a different, concrete {@code Number} (e.g. {@code Number=4}) -- in which case
+   *   the value has a real, checkable expected cardinality again and the ordinary check must run against it.
+   *   Below {@code >=4.3}, {@code CNL}'s canonical {@code Number} is {@code .}, which the generic check already
+   *   skips for that reason alone, without needing this exemption at all.</li>
    * </ul>
    */
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
-  public static boolean isExemptFromGenotypeOrderingCardinalityCheck(String key, VcfVersion version) {
+  public static boolean isExemptFromGenotypeOrderingCardinalityCheck(String key, VcfVersion version,
+      @Nullable String number) {
     if (!version.isAtLeast(VcfVersion.V4_3) &&
         key.equals(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy.getId())) {
       return true;
     }
-    if (version.isAtLeast(VcfVersion.V4_3) &&
-        key.equals(ReservedFormatProperty.CopyNumberLikelihood.getId())) {
-      return true;
+    if (key.equals(ReservedFormatProperty.CopyNumberLikelihood.getId())) {
+      return version.isAtLeast(VcfVersion.V4_3) && "G".equals(number);
     }
     return key.equals(ReservedFormatProperty.CopyNumberPosteriorProbabilities.getId());
   }

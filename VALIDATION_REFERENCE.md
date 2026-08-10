@@ -388,10 +388,16 @@ is a structural failure and still throws -- see the strict section above):
   version -- see `VCF_SPEC_AMBIGUITIES.md`'s "`CNP`'s `Number=G` vs. `GT`/`GL`/`PL`/`GP`/`PP`'s `Number=G`"
   entry. All three rationales are unrelated to each other, and two of the three exemptions are version-gated,
   in opposite directions: `GLE`'s applies under VCFv4.2 and earlier only, since VCFv4.3 removed the key; `CNL`'s
-  applies under VCFv4.3 and later only, since that is the version its own expected `Number` becomes `G` at all
+  applies under VCFv4.3 and later, since that is the version its own expected `Number` becomes `G` at all
   (VCFv4.2.tex line 308 declares it `Number=.`; VCFv4.3.tex line 678, the target, redeclares it `Number=G` --
-  see `ReservedFormatProperty.CopyNumberLikelihood`'s own comment); `CNP`, reserved with `Number=G` at every
-  version this library interprets, is not version-gated at all. Also, any `FORMAT` key's value whose element
+  see `ReservedFormatProperty.CopyNumberLikelihood`'s own comment) -- **and only while the `Number` actually in
+  force (a `##FORMAT` declaration's own stated `Number`, or the reserved canonical fallback) genuinely resolves
+  to `G`**: a declaration that overrides `CNL` to a concrete count (e.g. `Number=4`) states a real, checkable
+  cardinality, so `InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck` takes that resolved `Number` as
+  a parameter and stops exempting the key in that case; `CNP`, reserved with `Number=G` at every version this
+  library interprets, is exempted unconditionally -- not version-gated, and not gated on the resolved `Number`
+  either, since a caller-declared override doesn't change what a `CNP` value structurally means. Also, any
+  `FORMAT` key's value whose element
   count doesn't match its declared
   `Number`, or whose value doesn't match its declared `Type` (a non-reserved key needs an explicit `##FORMAT`
   declaration for either check to run; a reserved key's own canonical `Number`/`Type` apply even with no

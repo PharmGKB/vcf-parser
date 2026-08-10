@@ -856,7 +856,7 @@ public class VcfWriter implements Closeable {
         m_warnings.warn("FORMAT {} for sample #{} contains an empty value", key, sampleIndex);
       }
     }
-    if (!InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck(key, recordVersion)) {
+    if (!InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck(key, recordVersion, number)) {
       // Under VCFv4.2 and earlier, GLE's conventional Number=G does not describe a comma-delimited value list the
       // way it does for every other FORMAT key -- GLE's commas are part of its own internal genotype:likelihood
       // encoding (see ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy), so values.length is always
@@ -866,7 +866,10 @@ public class VcfWriter implements Closeable {
       // value IS a genuine comma-delimited list, but its own Number=G means "per potential copy number," not
       // the ploidy-derived genotype ordering this combinatorial count assumes -- see
       // InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck and
-      // ReservedFormatProperty.CopyNumberPosteriorProbabilities' own comment. GL/PL/GP/PP's own spec-stated
+      // ReservedFormatProperty.CopyNumberPosteriorProbabilities' own comment. CNL shares that same "per potential
+      // copy number" reasoning only while its Number actually resolves to G (>=4.3 and no overriding declaration);
+      // a ##FORMAT=<ID=CNL,Number=4,...> declaration states a real, checkable cardinality, so isExemptFrom...
+      // passes the resolved number through and stops exempting it in that case. GL/PL/GP/PP's own spec-stated
       // "diploidy is assumed" default when GT is absent -- see
       // InternalUtils.resolvePloidyForCardinalityCheck's own comment for the full citation -- is applied per
       // key here rather than once for the whole sample, since ploidy is computed once per sample (in

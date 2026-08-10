@@ -90,9 +90,11 @@ public class ReservedFormatPropertyTest {
     // InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck.
     assertEquals("G", ReservedFormatProperty.CopyNumberPosteriorProbabilities.getExpectedNumber());
     // and, unlike GLE's exemption, CNP's is not version-gated: CNP is reserved at every version this library
-    // interprets, so the exemption holds under 4.2 and 4.3 alike
-    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_2));
-    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_3));
+    // interprets, so the exemption holds under 4.2 and 4.3 alike. It's also not gated on the resolved Number
+    // (unlike CNL's, since this fix) -- CNP's "per potential copy number" reasoning doesn't depend on a
+    // declaration actually stating "G".
+    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_2, "G"));
+    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_3, "G"));
     assertEquals(VcfFloat.class, ReservedFormatProperty.CopyNumberPosteriorProbabilities.getType());
     assertTrue(ReservedFormatProperty.CopyNumberPosteriorProbabilities.isList());
   }
@@ -117,9 +119,15 @@ public class ReservedFormatPropertyTest {
     assertEquals(".", ReservedFormatProperty.CopyNumberLikelihood.getExpectedNumber(VcfVersion.V4_2));
     // the generic Number=G ploidy-derived cardinality check doesn't apply to CNL's own "per potential copy
     // number" G (see the enum entry's own comment) -- exempted only from the version CNL's Number actually
-    // becomes "G"; below that its Number is "." and the check already skips it for that reason alone
-    assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNL", VcfVersion.V4_2));
-    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNL", VcfVersion.V4_3));
+    // becomes "G", AND only when the Number actually in force (a declaration's own stated Number, or this
+    // reserved canonical fallback) genuinely resolves to "G"; below 4.3 its canonical Number is "." and the
+    // check already skips it for that reason alone
+    assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNL", VcfVersion.V4_2, "."));
+    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNL", VcfVersion.V4_3, "G"));
+    // a ##FORMAT=<ID=CNL,...> declaration overriding the canonical Number=G to a concrete count (e.g. Number=4)
+    // states a real, checkable cardinality -- see VcfWriterTest's validateBeforeWrite() regression coverage for
+    // the end-to-end case this guards
+    assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNL", VcfVersion.V4_3, "4"));
   }
 
   @Test

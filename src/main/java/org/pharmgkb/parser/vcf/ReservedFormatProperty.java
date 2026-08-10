@@ -115,9 +115,12 @@ public enum ReservedFormatProperty implements ReservedProperty {
   // Number=G-cardinality-check exemption set alongside GLE, in both VcfSample.getProperty(VcfPosition,
   // VcfMetadata, String) and VcfWriter.validateFormatValue -- see
   // InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck. CNP's exemption is unconditional (reserved with
-  // Number=G at every version this library interprets); CNL's is gated to >=4.3, the same version its Number
-  // actually becomes "G" -- below that its Number is "." and the generic cardinality check already skips it
-  // for that reason alone, without needing this exemption at all.
+  // Number=G at every version this library interprets, regardless of what a declaration states); CNL's is
+  // gated both to >=4.3, the same version its canonical Number becomes "G" (below that its Number is "." and
+  // the generic cardinality check already skips it for that reason alone, without needing this exemption at
+  // all), AND to the Number actually in force genuinely being "G" -- a ##FORMAT declaration overriding CNL to
+  // a concrete count (e.g. Number=4) states a real, checkable cardinality, so the exemption does not apply to
+  // that case even at >=4.3.
   CopyNumberPosteriorProbabilities("CNP", "Copy number posterior probabilities", VcfFloat.class, true, "G"),
   PhredScoreForNovelty("NQ", "Phred style probability score that the variant is novel", Long.class, false, "1"),
   HaplotypeId("HAP", "Unique haplotype identifier", Long.class, false, "1"),

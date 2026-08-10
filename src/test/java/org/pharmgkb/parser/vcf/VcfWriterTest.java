@@ -1137,6 +1137,48 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteWarnsAboutCnlCardinalityWhenDeclarationOverridesNumber() throws Exception {
+    // regression test (see InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck's own comment): CNL's
+    // genotype-ordering-cardinality exemption applies only while the Number actually in force genuinely is "G".
+    // A ##FORMAT=<ID=CNL,Number=4,...> declaration states a real, checkable cardinality instead, so a five-value
+    // CNL sample must still be reported as violating its own declared Number=4 -- the exemption must not
+    // suppress the ordinary check just because the key is CNL.
+    // Lenient, not strict: a declaration overriding a reserved key's canonical Number is exactly the
+    // "warn and keep" case, and a strict context throws at FormatMetadata construction ("FORMAT CNL has
+    // Number '4' but the reserved definition expects 'G'") before the writer is ever reached. The appender
+    // is attached only after the metadata is built, so that construction-time warning is not captured here.
+    VcfContext context43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder(context43).setFileFormat("VCFv4.3")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .addFormat(new FormatMetadata(context43, "GT", "Genotype", "1", FormatType.String))
+        .addFormat(new FormatMetadata(context43, "CNL", "Copy number genotype likelihood", "4", FormatType.Float))
+        .build();
+    VcfPosition position = context43.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("GT", "CNL"), -1);
+    LinkedHashMap<String, String> sampleProps = new LinkedHashMap<>();
+    sampleProps.put("GT", "0/1");
+    sampleProps.put("CNL", "-0.1,-0.2,-0.3,-0.2,-0.2");
+    VcfSample sample = context43.newSample(sampleProps);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, Collections.singletonList(sample));
+      assertTrue(appender.anyMessageContains("Number=4 requires"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testValidateBeforeWriteDoesNotDoubleWarnAboutEmptyFormatValue() throws Exception {
     // regression test: validateFormatValue()'s own per-element type-conversion loop previously called
     // InternalUtils.convertProperty() for every element including empty ones, which (since convertProperty now

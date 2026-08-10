@@ -398,7 +398,7 @@ public final class VcfSample {
       isList = !number.equals("0") && !number.equals("1");
     }
     String[] pieces = InternalUtils.splitFormatValue(key, rawValue, version);
-    if (!InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck(key, version)) {
+    if (!InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck(key, version, number)) {
       Integer ploidy = InternalUtils.getPloidy(position, getProperty("GT"), "FORMAT " + key, m_warnings);
       // GL/PL/GP/PP's own spec-stated "diploidy is assumed" default when GT is absent -- see
       // InternalUtils.resolvePloidyForCardinalityCheck's own comment for the full citation

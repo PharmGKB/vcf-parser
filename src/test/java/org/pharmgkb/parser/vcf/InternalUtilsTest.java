@@ -990,12 +990,29 @@ public class InternalUtilsTest {
   public void testIsExemptFromGenotypeOrderingCardinalityCheckGatesGleButNotCnp() {
     // GLE's exemption exists only because its value isn't comma-delimited at all, which is only true while GLE
     // is the reserved 4.1/4.2 key; CNP's exemption has an unrelated rationale ("one value per potential copy
-    // number") and is reserved at every version, so it must NOT move with the version.
-    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("GLE", VcfVersion.V4_2));
-    assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("GLE", VcfVersion.V4_3));
-    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_2));
-    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_3));
-    assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("PL", VcfVersion.V4_2));
+    // number") and is reserved at every version -- and unconditionally, regardless of the declared Number --
+    // so neither moves with the version, and CNP's must not move with a declared-Number override either.
+    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("GLE", VcfVersion.V4_2, "G"));
+    assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("GLE", VcfVersion.V4_3, "G"));
+    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_2, "G"));
+    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_3, "G"));
+    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_3, "4"));
+    assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("PL", VcfVersion.V4_2, "G"));
+  }
+
+  @Test
+  public void testIsExemptFromGenotypeOrderingCardinalityCheckGatesCnlOnResolvedNumber() {
+    // CNL's exemption is doubly gated: the >=4.3 version gate (below that its canonical Number is "." and the
+    // generic check already skips it without this exemption) AND, from this regression fix on, whether the
+    // Number actually in force -- a ##FORMAT declaration's own stated Number, or the reserved canonical fallback
+    // -- genuinely is "G". A declaration overriding CNL to a concrete Number (e.g. Number=4) states a real,
+    // checkable cardinality, so the exemption must not suppress that check.
+    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNL", VcfVersion.V4_3, "G"));
+    assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNL", VcfVersion.V4_3, "4"));
+    assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNL", VcfVersion.V4_3, null));
+    // below 4.3, CNL's canonical Number is "." regardless of what's passed in here -- not exempt via this
+    // predicate either way, since the version gate alone already excludes it
+    assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNL", VcfVersion.V4_2, "G"));
   }
 
   @Test
