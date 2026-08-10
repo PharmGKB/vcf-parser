@@ -225,6 +225,82 @@ public class FormatMetadataTest {
   }
 
   @Test
+  public void testPpReservedNumberTypeMismatchWarnsAndPreservesUnder42EvenThoughV42DoesNotTablePp() {
+    // Characterization test, not a fix: PP is reserved (Number=G, Type=Integer, i.e. Long.class) only as of
+    // VCFv4.3.tex's Reserved genotype keys table (table:reserved-genotypes, line 475: "PP & G & Integer &
+    // Phred-scaled genotype posterior probabilities rounded to the closest integer"); VCFv4.2.tex does not
+    // table -- or mention at all -- PP. But ReservedFormatProperty.fromId(String, VcfVersion) gates key
+    // REMOVAL only (GLE, dropped by VCFv4.3 -- see that method's own Javadoc), not key INTRODUCTION, so a
+    // VCFv4.2 ##FORMAT=<ID=PP,...> is still checked against PP's 4.3 reserved definition. That asymmetry is
+    // pre-existing and deliberately deferred to the per-version reserved-key table project tracked by
+    // TODO.md's "Investigate bumping the target VCF spec to 4.4 or 4.5" entry. This test pins the current,
+    // asymmetric behavior; it does not endorse it.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    FormatMetadata md;
+    try {
+      md = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=PP", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
+      assertTrue(appender.anyMessageContains("has Number '1' but the reserved definition expects 'G'"));
+      assertTrue(appender.anyMessageContains("has Type 'String' but the reserved definition expects 'Long'"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    // the mismatch check only warns; it never substitutes the reserved definition's Number/Type in for the
+    // caller's own declared values
+    assertEquals("1", md.getNumber());
+    assertEquals(FormatType.String, md.getType());
+    // a strict VCFv4.2 context throws instead of warning, exactly as it would for any other reserved-key
+    // mismatch (see testTypedConstructorRejectsReservedNumberMismatch above)
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> new FormatMetadata(STRICT_CONTEXT, "PP", "d", "1", FormatType.String));
+    assertTrue(ex.getMessage().contains("reserved definition expects"));
+  }
+
+  @Test
+  public void testCnpReservedNumberTypeMismatchWarnsAndPreservesUnder42EvenThoughV42DoesNotTableCnp() {
+    // Same asymmetry as testPpReservedNumberTypeMismatchWarnsAndPreservesUnder42EvenThoughV42DoesNotTablePp
+    // above, for CNP: reserved as of VCFv4.3.tex's "FORMAT keys used for structural variants" section
+    // (sv-format-keys, line 679: "##FORMAT=<ID=CNP,Number=G,Type=Float,Description=\"Copy number posterior
+    // probabilities\">"). VCFv4.2.tex does not mention CNP at all.
+    // ReservedFormatProperty.fromId(String, VcfVersion) gates key REMOVAL only (GLE) and not key
+    // INTRODUCTION -- see its own Javadoc and TODO.md's "Investigate bumping the target VCF spec to 4.4 or
+    // 4.5" entry for the deferred per-version reserved-key table this belongs to -- so a VCFv4.2
+    // ##FORMAT=<ID=CNP,...> is still checked against CNP's 4.3 reserved definition. This test pins the
+    // current, asymmetric behavior; it does not endorse it.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    FormatMetadata md;
+    try {
+      md = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=CNP", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
+      assertTrue(appender.anyMessageContains("has Number '1' but the reserved definition expects 'G'"));
+      assertTrue(appender.anyMessageContains("has Type 'String' but the reserved definition expects 'VcfFloat'"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    // the mismatch check only warns; it never substitutes the reserved definition's Number/Type in for the
+    // caller's own declared values
+    assertEquals("1", md.getNumber());
+    assertEquals(FormatType.String, md.getType());
+    // a strict VCFv4.2 context throws instead of warning, exactly as it would for any other reserved-key
+    // mismatch (see testTypedConstructorRejectsReservedNumberMismatch above)
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> new FormatMetadata(STRICT_CONTEXT, "CNP", "d", "1", FormatType.String));
+    assertTrue(ex.getMessage().contains("reserved definition expects"));
+  }
+
+  @Test
   public void testNonReservedKeyIsNotChecked() {
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
