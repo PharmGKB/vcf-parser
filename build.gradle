@@ -182,6 +182,42 @@ tasks.register('htsSpecsTest', Test) {
     includeTags 'hts-specs'
   }
   systemProperty 'htsSpecsDir', htsSpecsCheckoutDir.get().asFile.absolutePath
+
+  // This task used to say nothing at all on success, which made a pass indistinguishable from a task that
+  // never ran -- and BUILD SUCCESSFUL was routinely misread as evidence the conformance gate had held.
+  //
+  // Echo the numbers the report actually contains, read back out of summary.md, rather than a bare "OK":
+  // a success line carrying no evidence is worse than silence, because it invites exactly the inference it
+  // is meant to prevent. summary.md remains authoritative -- it is what this reads -- and is still the place
+  // to go for the per-version breakdown.
+  //
+  // Absence of this line never means "passed quietly". doLast does not run when the task fails (failure is
+  // already loud and points at findings.tsv), nor when the task is UP-TO-DATE, in which case nothing was
+  // executed and there is no fresh result to report.
+  doLast {
+    def reportsDir = layout.buildDirectory.dir('reports/hts-specs-conformance').get()
+    def summaryFile = reportsDir.file('summary.md').asFile
+    def findingsFile = reportsDir.file('findings.tsv').asFile
+    if (!summaryFile.exists()) {
+      logger.warn("hts-specs conformance: tests passed but ${summaryFile} is missing -- cannot report the counts")
+      return
+    }
+    def lines = summaryFile.readLines()
+    def total = lines.find { it.startsWith('| **Total**') }
+    def matcher = total =~ /\*\*(\d+)\*\*\s*\|\s*\*\*(\d+)\*\*\s*\|\s*\*\*(\d+)\*\*/
+    if (!matcher.find()) {
+      logger.warn("hts-specs conformance: tests passed but could not parse the total row in ${summaryFile}")
+      return
+    }
+    // Per-version rows are "| <version> | <check> | <total> | <matches> | <new/stale> |". The suite fails on a
+    // non-zero new/stale count, so this is expected to be empty -- reported anyway so the line is self-checking
+    // rather than asserting a conclusion the reader has to take on trust.
+    def movedRows = lines.findAll { it.startsWith('| 4.') && !(it =~ /\|\s*0\s*\|\s*$/) }
+    def findingsLines = findingsFile.exists() ? findingsFile.readLines().size() : -1
+    logger.lifecycle("hts-specs conformance: ${matcher.group(2)}/${matcher.group(1)} checks match baseline, " +
+        "${matcher.group(3)} new/stale, ${movedRows.size()} per-version row(s) moved, " +
+        "findings.tsv ${findingsLines} line(s) (header only when clean). Full report: ${summaryFile}")
+  }
 }
 
 tasks.register('htsSpecsUpdateBaseline', Test) {
@@ -200,6 +236,29 @@ tasks.register('bcftoolsDependencyTest', Test) {
   classpath = sourceSets.test.runtimeClasspath
   useJUnitPlatform {
     includeTags 'bcftools-dependency'
+  }
+
+  // Silent on success for the same reason htsSpecsTest was, but this task writes no conformance report, so
+  // the useful signal is simply how many bcftools-informed decisions were re-verified against the installed
+  // binary. Counted from the JUnit XML the run itself produced, matching htsSpecsTest's read-the-artifact
+  // approach -- and deliberately NOT via afterSuite/addTestListener, which Gradle 9 deprecates for removal.
+  // Same doLast semantics: no line on failure (already loud) and none when UP-TO-DATE (nothing executed).
+  def junitXmlDir = reports.junitXml.outputLocation
+  doLast {
+    def xmlFiles = junitXmlDir.get().asFile.listFiles({ f -> f.name.startsWith('TEST-') && f.name.endsWith('.xml') } as FileFilter)
+    if (xmlFiles == null || xmlFiles.length == 0) {
+      logger.warn('bcftools dependency check: tests passed but no JUnit XML was found -- cannot report the count')
+      return
+    }
+    int tests = 0
+    int skipped = 0
+    xmlFiles.each { f ->
+      def suite = new groovy.xml.XmlSlurper().parse(f)
+      tests += (suite.@tests.text() ?: '0') as int
+      skipped += (suite.@skipped.text() ?: '0') as int
+    }
+    logger.lifecycle("bcftools dependency check: ${tests - skipped} decision(s) re-verified against the " +
+        "installed bcftools (indexed in BCFTOOLS_VERSION_DEPENDENCIES.md)")
   }
 }
 
