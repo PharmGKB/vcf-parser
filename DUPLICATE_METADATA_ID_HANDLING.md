@@ -106,17 +106,35 @@ no `IdMetadata.init()` precursor check to fire first. Under VCFv4.2, `##PEDIGREE
 its own grammar (VCFv4.2.tex line 152) has no `ID` attribute at all, so the version gate never activates and
 the declaration is added/kept unconditionally, exactly as before this rule existed.
 
-On the parser route specifically, a **quoted** blank `ID` -- either whitespace-only (`##PEDIGREE=<ID="   ",...>`)
-or empty (`##PEDIGREE=<ID="",...>`) -- does **not** trigger the "has no ID" warning at 4.3, even though the
-equivalent unquoted cases (`ID=`, `ID=   `) do. The blank check reads `getPropertyRaw("ID")`, which returns the
-value still quoted -- unquoting only happens via `getPropertiesUnquoted()` -- so `ID="   "` arrives as the
-five-character raw string `"   "` (quotes included) and `ID=""` arrives as the two-character raw string `""`,
-neither of which is blank after `trim()`. **This is not specific to `##PEDIGREE`, or to this task**: every one
-of the six keyed types' own `IdMetadata.init()` missing-ID check reads `getPropertyRaw(ID)` identically, so the
-same quoted-empty/quoted-whitespace gap applies to all seven structured declaration types (`##PEDIGREE` plus
-the six keyed ones) -- it was simply not previously observable through a version-gated check the way this one
-is. Recorded here as a known gap, not fixed by this task: fixing it would mean changing what every declaration
-type's missing-ID check reads, a change with a blast radius well beyond `##PEDIGREE`.
+### Quoting is not part of the identity
+
+Every missing/blank-`ID` check described above compares the unquoted form before comparing or storing it, per
+AGENTS.md's "Unquoting before internal use" policy: `IdMetadata.init()`, the six keyed types'
+`addXxx`/`replaceXxx` blank check and dedupe key, `VcfMetadata.Builder.addPedigree`, and
+`VcfWriter.validateMetadata()`'s PEDIGREE loop all read `getPropertyUnquoted(ID)`, never `getPropertyRaw(ID)`.
+The typed `IdMetadata(VcfContext, String, String)` constructor reaches the identical outcome by a different
+route: it validates a caller-supplied `String id` parameter, not yet a stored property (nothing is put into
+the properties map until validation passes), so it calls `InternalUtils.unquote(id)` directly rather than
+`getPropertyUnquoted` -- there is no property to read yet. Two consequences follow directly:
+
+- A **quoted** blank `ID` -- either whitespace-only (`##PEDIGREE=<ID="   ",...>` / `##FILTER=<ID="   ",...>`)
+  or empty (`ID=""`) -- is detected identically to its unquoted equivalent (`ID=`, `ID=   `), for all seven
+  structured declaration types. Before this was fixed, every one of these checks read `getPropertyRaw(ID)`
+  instead: a quoted blank `ID` arrived as a non-blank raw string (the quote characters survive trimming) and
+  escaped detection entirely for `##PEDIGREE` (whose own blank check has no whitespace fallback), or was
+  misdiagnosed as "must not contain whitespace" instead of "is blank" for the six keyed types (see the retired
+  `WONT_FIX.md` entry this section replaces).
+- `ID="A"` and `ID=A` are **the same ID** for dedup purposes: quoting is an encoding, not part of the
+  identifier. A declaration whose `ID` is quoted now collides with an earlier (or later) declaration of the
+  same unquoted `ID`, for all seven types -- the six keyed types' map storage key is itself the unquoted `ID`
+  (so `getInfo()`/`getAlts()`/etc. are reachable by the plain, unquoted key even when the sole declaration used
+  a quoted one), and `##PEDIGREE`'s `m_pedigreeIds`/write-time `pedigreeIds` dedupe sets store the unquoted form
+  too.
+
+The six keyed types' own public getters (`getId()`, `FormatMetadata.getNumber()`, `InfoMetadata.getNumber()`,
+`ContigMetadata.getAssembly()`/`getTaxonomy()`/`getMd5()`/`getUrl()`) are unaffected by any of this: they keep
+returning the raw, possibly still-quoted value, since they present data to a consumer rather than compare it
+internally.
 
 ### Missing ID is spec-grounded
 
@@ -184,8 +202,9 @@ surfaces any complaint about a dropped duplicate's content either.
   `Builder` has no way to drop one. To overwrite an existing declaration under the same `ID` instead, use the
   `replaceXxx` counterpart described below -- routing that through `addXxx` hits `warnIfDuplicate()` above,
   which discards the edit (warn-and-keep-first) instead of applying it.
-- `VcfMetadata.Builder.addPedigree()` — warns and keeps the first entry when a duplicate literal `ID` property
-  is found; adds unconditionally when no `ID` property is present, **below VCFv4.3**. At VCFv4.3+, an absent
+- `VcfMetadata.Builder.addPedigree()` — warns and keeps the first entry when a duplicate `ID` property is found
+  (compared unquoted -- see this file's "Quoting is not part of the identity" section); adds unconditionally
+  when no `ID` property is present, **below VCFv4.3**. At VCFv4.3+, an absent
   or blank `ID` instead warns "has no ID" (or throws, under a strict context) but is still kept -- see this
   file's "Missing or empty ID" section's seventh-type paragraph, added by the VCF 4.3-target phase's Task 4.
 - `VcfWriter.validateMetadata()`'s PEDIGREE loop — the same duplicate-ID check, but warn-only (never drops),

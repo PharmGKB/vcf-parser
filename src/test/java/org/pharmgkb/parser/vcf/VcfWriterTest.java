@@ -1423,6 +1423,64 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteDoesNotFalselyReportMismatchForUnmutatedQuotedId() throws Exception {
+    // regression test for validateKeyedMetadataEntries()'s own fix: the map's storage key is now each entry's
+    // unquoted ID (see VcfMetadata.Builder.addFilter's comment), so the mismatch check below must compare
+    // against the entry's unquoted ID too. Before this fix it compared the map key against the still-quoted
+    // raw ID property, so an entry whose sole ID was quoted from construction (ID="q10", never mutated) would
+    // falsely report as diverged from its own map key even though nothing had drifted.
+    IdDescriptionMetadata filter = new IdDescriptionMetadata(LENIENT_CONTEXT, "FILTER",
+        InternalUtils.extractProperties(new String[]{"ID=\"q10\"", "Description=\"d\""}, VcfWarnings.DEFAULT));
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addFilter(filter).build();
+    assertEquals("q10", metadata.getFilters().keySet().iterator().next(), "the map key itself must be unquoted");
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+
+    writer.writeHeader(metadata);
+    // the thing most likely to break from keying on the unquoted ID: the writer must still emit the
+    // declaration's own raw (quoted) ID property verbatim, not the unquoted map key -- getPropertiesRaw() is
+    // untouched by this fix, only the map's storage key changed
+    assertTrue(sw.toString().contains("##FILTER=<ID=\"q10\",Description=\"d\">"),
+        "expected the raw, still-quoted ID property verbatim in the written header: " + sw);
+  }
+
+  @Test
+  public void testWriteThenReparseRoundTripsQuotedFilterId() throws Exception {
+    // full parse -> write -> parse round trip for a quoted keyed-type ID (AGENTS.md's Tests section asks for
+    // this on a parser-to-writer change): the quoting must survive verbatim through a write, and re-parsing
+    // that output must reach the identical state -- same raw (quoted) ID via getId(), same unquoted map key.
+    String vcf = "##fileformat=VCFv4.2\n##FILTER=<ID=\"q10\",Description=\"d\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\t.\tA\tT\t.\t.\t.\n";
+    VcfMetadata parsed;
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder().fromReader(reader).parseWith((md, record) -> { }).build()) {
+      parser.parse();
+      parsed = parser.getMetadata();
+    }
+    assertEquals("q10", parsed.getFilters().keySet().iterator().next());
+    assertEquals("\"q10\"", parsed.getFilters().get("q10").getId());
+
+    StringWriter sw = new StringWriter();
+    try (VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build()) {
+      writer.writeHeader(parsed);
+    }
+    assertTrue(sw.toString().contains("##FILTER=<ID=\"q10\",Description=\"d\">"),
+        "expected the quoted ID to survive the write verbatim: " + sw);
+
+    String rewritten = sw.toString() + "chr1\t1\t.\tA\tT\t.\t.\t.\n";
+    VcfMetadata reparsed;
+    try (BufferedReader reader = new BufferedReader(new StringReader(rewritten));
+         VcfParser parser = new VcfParser.Builder().fromReader(reader).parseWith((md, record) -> { }).build()) {
+      parser.parse();
+      reparsed = parser.getMetadata();
+    }
+    assertEquals("q10", reparsed.getFilters().keySet().iterator().next());
+    assertEquals("\"q10\"", reparsed.getFilters().get("q10").getId());
+  }
+
+  @Test
   public void testValidateBeforeWriteWarnsOnAltMutatedToInvalidExtraNumber() throws Exception {
     // getAlts() returns the backing map directly; mutating an already-valid entry's raw Number property after
     // construction bypasses addAlt()'s own validation (which only runs once, at add time), so
@@ -1622,6 +1680,39 @@ public class VcfWriterTest {
 
     assertTrue(diagnosticsSw.toString().contains("##PEDIGREE"));
     assertTrue(defaultSw.toString().contains("##PEDIGREE"));
+  }
+
+  @Test
+  public void testValidateBeforeWriteWarnsOnQuotedWhitespaceOnlyPedigreeIdUnder43() throws Exception {
+    // regression test for the retired WONT_FIX.md entry, write-time side: validateMetadata()'s own PEDIGREE
+    // loop mirrors VcfMetadata.Builder.addPedigree's blank check (see that method's comment) and must unquote
+    // the raw ID property before comparing, the same as the construction-side check does. Same "no appender
+    // around construction" structure as testValidateBeforeWriteWarnsOnBlankPedigreeIdUnder43ButDefaultPathIsSilent
+    // above, since addPedigree() itself already warns "has no ID" for this quoted-whitespace ID at construction.
+    VcfContext lenient43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
+    Map<String, String> props = new LinkedHashMap<>();
+    props.put("ID", "\"   \"");
+    VcfMetadata metadata = new VcfMetadata.Builder(lenient43).setFileFormat("VCFv4.3")
+        .addPedigree(new PedigreeMetadata(lenient43, props))
+        .build();
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    StringWriter diagnosticsSw = new StringWriter();
+    VcfWriter diagnosticsWriter = new VcfWriter.Builder().toWriter(new PrintWriter(diagnosticsSw))
+        .validateBeforeWrite().build();
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender diagnosticsAppender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    diagnosticsAppender.start();
+    root.addAppender(diagnosticsAppender);
+    try {
+      diagnosticsWriter.writeHeader(metadata);
+      assertTrue(diagnosticsAppender.anyMessageContains("has no ID"));
+    } finally {
+      root.detachAppender(diagnosticsAppender);
+      diagnosticsAppender.stop();
+    }
+    assertTrue(diagnosticsSw.toString().contains("##PEDIGREE"));
   }
 
   /**

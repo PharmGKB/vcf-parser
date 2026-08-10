@@ -974,10 +974,10 @@ public class VcfParserTest {
    * Parses {@code vcf} (metadata only, no data records needed) and asserts whether the "has no ID" PEDIGREE
    * diagnostic fired, and that the declaration itself is always still present -- covering all three blank-ID
    * shapes (absent, empty {@code ID=}, whitespace-only {@code ID="   "}) crossed with both VCFv4.2 and VCFv4.3.
-   * The parser route is not interchangeable with direct construction: header parsing stores an attribute's
-   * value still-quoted (see {@code getPropertyRaw} vs. {@code getPropertiesUnquoted} in {@code BaseMetadata}),
-   * which changes the outcome for the quoted-whitespace shape at 4.3 -- see
-   * {@link #testParserPedigreeQuotedWhitespaceOnlyIdUnder43IsNotDetectedDueToRawQuoting}'s own comment.
+   * The blank-ID check unquotes before comparing (see {@code VcfMetadata.Builder.addPedigree}'s own comment and
+   * AGENTS.md's "Unquoting before internal use" policy), so a quoted-whitespace/quoted-empty {@code ID} is
+   * detected as blank exactly like its unquoted equivalent -- see
+   * {@link #testParserPedigreeQuotedWhitespaceOnlyIdUnder43Warns}.
    */
   private static void assertPedigreeIdShapeThroughParser(String pedigreeLine, String fileFormat,
       boolean expectNoIdWarning) throws IOException {
@@ -1016,20 +1016,22 @@ public class VcfParserTest {
   }
 
   /**
-   * FINDING, not a bug this task fixes: on the parser route, a quoted value is stored verbatim (still quoted)
-   * as the raw property -- {@code getPropertyRaw} never unquotes, only {@code getPropertiesUnquoted} does (see
-   * {@code BaseMetadata}). So {@code ID="   "} arrives at {@code addPedigree} as the five-character raw string
-   * {@code "   "} (quotes included), which is not blank after {@code trim()}, so the 4.3 "has no ID" gate --
-   * which reads {@code getPropertyRaw}, exactly like the six keyed types' own {@code IdMetadata.init()} check --
-   * does not fire. This is not new leniency introduced by this task, and not specific to {@code ##PEDIGREE} or
-   * to the whitespace-only shape tested here: the identical gap applies to a quoted <em>empty</em> {@code ID}
-   * ({@code ID=""}) too, and to all seven structured declaration types ({@code ##PEDIGREE} plus the six keyed
-   * ones), since every one of them reads {@code getPropertyRaw(ID)} the same way. Recorded in
-   * DUPLICATE_METADATA_ID_HANDLING.md's "Missing or empty ID" section, not fixed here.
+   * Regression test: the 4.3 "has no ID" gate reads {@code getPropertyUnquoted(ID)}, not {@code
+   * getPropertyRaw(ID)} -- see {@code VcfMetadata.Builder.addPedigree}'s own comment -- so a quoted-whitespace
+   * {@code ID} ({@code ID="   "}) is caught as blank exactly like its unquoted equivalent
+   * ({@link #testParserPedigreeWhitespaceOnlyIdUnder42IsSilent}'s 4.2 counterpart stays silent, since 4.2 has no
+   * such gate). This previously escaped detection entirely (see the retired WONT_FIX.md entry and
+   * DUPLICATE_METADATA_ID_HANDLING.md's "Missing or empty ID" section); the identical fix applies to a quoted
+   * <em>empty</em> {@code ID} ({@code ID=""}) and to all seven structured declaration types.
    */
   @Test
-  void testParserPedigreeQuotedWhitespaceOnlyIdUnder43IsNotDetectedDueToRawQuoting() throws IOException {
-    assertPedigreeIdShapeThroughParser("##PEDIGREE=<ID=\"   \",Original=Something>", "VCFv4.3", false);
+  void testParserPedigreeQuotedWhitespaceOnlyIdUnder43Warns() throws IOException {
+    assertPedigreeIdShapeThroughParser("##PEDIGREE=<ID=\"   \",Original=Something>", "VCFv4.3", true);
+  }
+
+  @Test
+  void testParserPedigreeQuotedEmptyIdUnder43Warns() throws IOException {
+    assertPedigreeIdShapeThroughParser("##PEDIGREE=<ID=\"\",Original=Something>", "VCFv4.3", true);
   }
 
   @Test

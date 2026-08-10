@@ -319,12 +319,16 @@ is a structural failure and still throws -- see the strict section above):
   `##PEDIGREE` is a seventh, differently-shaped case gated on VCFv4.3+ specifically (VCFv4.2's own `##PEDIGREE`
   grammar has no `ID` attribute at all, so this never fires under 4.2): a missing/empty/whitespace-only `ID`
   warns but the declaration is **kept**, not dropped, and `VcfWriter.validateMetadata()` re-checks the same
-  condition at write time under `validateBeforeWrite()`. See
+  condition at write time under `validateBeforeWrite()`. Every one of these checks compares the `ID` unquoted
+  (see AGENTS.md's "Unquoting before internal use" policy), so a quoted-empty (`ID=""`) or quoted-whitespace
+  (`ID="   "`) value is caught identically to its unquoted equivalent. See
   [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md)'s seventh-type paragraph for why
-  (`List`-backed, so nothing is "cannot be stored" for) and for a parser-route quoting caveat specific to the
-  whitespace-only shape.
+  (`List`-backed, so nothing is "cannot be stored" for).
 - A missing or invalid `Number`, `Type`, or `Description`; an unquoted `Description`; or `Type=Flag` with a `Number`
-  other than `0`. An unparseable `Type` leaves the metadata's type `null`. A non-reserved `##FORMAT` declaration
+  other than `0`. `Number`/`Type` validity is checked unquoted (a quoted `Number="1"` is treated the same as
+  `Number=1`); the `Description` quoting check itself is deliberately the exception -- see AGENTS.md's
+  "Unquoting before internal use" policy for why. An unparseable `Type` leaves the metadata's type `null`. A
+  non-reserved `##FORMAT` declaration
   missing `Number` is treated as list-shaped -- see `VCF_SPEC_AMBIGUITIES.md`'s "Undeclared `##FORMAT` `Number`
   attribute" entry for the bcftools-matched rationale.
 - An `##INFO`/`##FORMAT` `ID` that doesn't match the required tag-name grammar (the same grammar the strict

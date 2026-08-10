@@ -757,6 +757,91 @@ public class VcfMetadataTest {
   }
 
   @Test
+  public void testAddFilterQuotedIdDedupesAgainstUnquotedId() {
+    // dedup semantics change this task introduces: ID="q10" and ID=q10 are the same ID -- quoting is an
+    // encoding, not part of the identifier -- so the second declaration below must be reported as a duplicate
+    // of the first, and the map must be reachable by the plain (unquoted) key either way.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addFilter(new IdDescriptionMetadata(LENIENT_CONTEXT, "FILTER",
+              InternalUtils.extractProperties(new String[]{"ID=\"q10\"", "Description=\"First\""},
+                  VcfWarnings.DEFAULT)))
+          .addFilter(new IdDescriptionMetadata(LENIENT_CONTEXT, "FILTER", "q10", "Second"))
+          .build();
+      assertTrue(appender.anyMessageContains("Duplicate ID"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(1, metadata.getFilters().size());
+    assertEquals("First", metadata.getFilters().get("q10").getDescription());
+  }
+
+  @Test
+  public void testAddFilterDropsQuotedBlankId() {
+    // regression test for the retired WONT_FIX.md entry: a quoted-empty (ID="") or quoted-whitespace
+    // (ID="   ") FILTER ID was previously retained in metadata (and would have been re-emitted by the default
+    // writer) because the raw two-/five-character string is never blank once trimmed. Both must now be dropped,
+    // exactly like their unquoted equivalents (ID=, ID=   ).
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addFilter(new IdDescriptionMetadata(LENIENT_CONTEXT, "FILTER",
+              InternalUtils.extractProperties(new String[]{"ID=\"\"", "Description=\"d\""}, VcfWarnings.DEFAULT)))
+          .addFilter(new IdDescriptionMetadata(LENIENT_CONTEXT, "FILTER",
+              InternalUtils.extractProperties(new String[]{"ID=\"   \"", "Description=\"d\""},
+                  VcfWarnings.DEFAULT)))
+          .build();
+      assertTrue(appender.anyMessageContains("has no ID and cannot be stored"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(0, metadata.getFilters().size());
+  }
+
+  @Test
+  public void testAddFilterViaTypedOverloadDropsQuotedWhitespaceIdWithoutMisleadingWhitespaceWarning() {
+    // regression test: addFilter(String, String) -- the public, raw-value overload, not the Map-based one
+    // above -- constructs IdDescriptionMetadata via the typed (label, id, description) constructor, which
+    // used to test its id parameter raw. A literal quoted-whitespace string passed there (as if a caller had
+    // copied a raw header value verbatim) fired "must not contain whitespace" from that constructor, one step
+    // before addFilter's own blank check correctly dropped the declaration as blank. Both must now agree: only
+    // "has no ID and cannot be stored" fires, never the misleading whitespace warning.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addFilter("\"   \"", "d")
+          .build();
+      assertTrue(appender.anyMessageContains("has no ID and cannot be stored"));
+      assertFalse(appender.anyMessageContains("must not contain whitespace"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(0, metadata.getFilters().size());
+  }
+
+  @Test
   public void testAddContigWarnsAndKeepsFirstOnDuplicateId() {
     // reproduces test/vcf/{4.1,4.2}/passed/passed_meta_contig.vcf's repeated ##contig ID=1 declaration
     ch.qos.logback.classic.Logger root =
@@ -828,6 +913,85 @@ public class VcfMetadataTest {
     }
     assertEquals(1, metadata.getPedigrees().size());
     assertEquals("Dad", metadata.getPedigrees().get(0).getPropertiesRaw().get("Father"));
+  }
+
+  @Test
+  public void testAddPedigreeQuotedIdDedupesAgainstUnquotedId() {
+    // same dedup semantics change as testAddFilterQuotedIdDedupesAgainstUnquotedId, for the List-backed
+    // ##PEDIGREE dedup set: ID="Child" and ID=Child are the same ID.
+    java.util.Map<String, String> quotedProps = new java.util.LinkedHashMap<>();
+    quotedProps.put("ID", "\"Child\"");
+    quotedProps.put("Father", "Dad");
+    java.util.Map<String, String> unquotedProps = new java.util.LinkedHashMap<>();
+    unquotedProps.put("ID", "Child");
+    unquotedProps.put("Mother", "Mom");
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addPedigree(new PedigreeMetadata(LENIENT_CONTEXT, quotedProps))
+          .addPedigree(new PedigreeMetadata(LENIENT_CONTEXT, unquotedProps))
+          .build();
+      assertTrue(appender.anyMessageContains("Duplicate ID"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(1, metadata.getPedigrees().size());
+    assertEquals("Dad", metadata.getPedigrees().get(0).getPropertiesRaw().get("Father"));
+  }
+
+  @Test
+  public void testAddPedigreeQuotedBlankIdUnder43WarnsAndIsKept() {
+    // regression test for the retired WONT_FIX.md entry: under VCFv4.3, a quoted-empty (ID="") or
+    // quoted-whitespace (ID="   ") PEDIGREE ID previously produced zero warnings at all -- addPedigree's own
+    // blank check had no whitespace check to even partially catch it, unlike the six keyed types -- so this was
+    // the fully silent escape the WONT_FIX.md entry called out. Both must now warn "has no ID", exactly like
+    // the unquoted shapes, and (matching ##PEDIGREE's own kept-not-dropped rule) both must still be kept.
+    java.util.Map<String, String> emptyProps = new java.util.LinkedHashMap<>();
+    emptyProps.put("ID", "\"\"");
+    java.util.Map<String, String> whitespaceProps = new java.util.LinkedHashMap<>();
+    whitespaceProps.put("ID", "\"   \"");
+    VcfContext lenient43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder(lenient43).setFileFormat("VCFv4.3")
+          .addPedigree(new PedigreeMetadata(lenient43, emptyProps))
+          .addPedigree(new PedigreeMetadata(lenient43, whitespaceProps))
+          .build();
+      assertEquals(2, appender.countMessagesContaining("has no ID"));
+      assertFalse(appender.anyMessageContains("Duplicate ID"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(2, metadata.getPedigrees().size());
+  }
+
+  /** Strict-context counterpart of testAddPedigreeQuotedBlankIdUnder43WarnsAndIsKept. */
+  @Test
+  public void testAddPedigreeThrowsOnQuotedBlankIdUnderStrict43() {
+    VcfContext strict43 = VcfContext.strict("VCFv4.3");
+    Map<String, String> emptyProps = new java.util.LinkedHashMap<>();
+    emptyProps.put("ID", "\"\"");
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(strict43).setFileFormat("VCFv4.3");
+    assertThrows(VcfFormatException.class,
+        () -> builder.addPedigree(new PedigreeMetadata(strict43, emptyProps)));
+    Map<String, String> whitespaceProps = new java.util.LinkedHashMap<>();
+    whitespaceProps.put("ID", "\"   \"");
+    assertThrows(VcfFormatException.class,
+        () -> builder.addPedigree(new PedigreeMetadata(strict43, whitespaceProps)));
   }
 
   @Test

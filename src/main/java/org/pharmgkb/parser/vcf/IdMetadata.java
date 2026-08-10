@@ -24,9 +24,19 @@ public abstract sealed class IdMetadata extends BaseMetadata permits IdDescripti
    */
   IdMetadata(VcfContext context, String label, @Nullable String id) {
     super(context, label, new LinkedHashMap<>());
+    // Checked unquoted, not raw -- same reason as every other comparison/validation site in this hierarchy;
+    // see AGENTS.md's "Unquoting before internal use" policy. Unlike init() below, there is no stored property
+    // to read yet at this point (putPropertyRaw only runs once validation passes, at the bottom of this
+    // constructor), so this unquotes the constructor parameter directly via InternalUtils.unquote rather than
+    // getPropertyUnquoted. id itself is still stored and returned by getId() unmodified -- unquoting here
+    // changes only what is tested, not what is stored: a caller passing id="\"   \"" (e.g. via
+    // VcfMetadata.Builder.addFilter(String, String)) previously got the misleading "must not contain
+    // whitespace" from the raw quote/space characters here, one step before addFilter's own blank check
+    // correctly dropped it as blank; both checks now agree.
+    String unquotedId = id == null ? null : InternalUtils.unquote(id);
     // VCFv4.3.tex line 121: "All structured lines require an ID..." -- VCFv4.2 doesn't use the word "required" but
     // its own templates for all six keyed types show ID unconditionally first; see DUPLICATE_METADATA_ID_HANDLING.md
-    if (id == null || id.trim().isEmpty()) {
+    if (unquotedId == null || unquotedId.trim().isEmpty()) {
       warnOrThrow("ID is required and must not be blank");
       // nothing usable to store: putPropertyRaw would itself reject a null, and a blank ID leaves this
       // declaration keyed on nothing. init() reports the same condition for the Map-based shape.
@@ -34,14 +44,14 @@ public abstract sealed class IdMetadata extends BaseMetadata permits IdDescripti
     }
     // see init()'s own comment (cited from VCFv4.2.tex/VCFv4.3.tex line 105/200 and the hts-specs fixtures named
     // there) for why an ID may not contain whitespace
-    if (InternalUtils.containsWhitespace(id)) {
-      warnOrThrow("{} metadata ID \"{}\" must not contain whitespace", label, id);
+    if (InternalUtils.containsWhitespace(unquotedId)) {
+      warnOrThrow("{} metadata ID \"{}\" must not contain whitespace", label, unquotedId);
     }
     // same reasoning as the whitespace check above -- see init()'s own comment (cited from every
     // ##INFO/##FILTER/##FORMAT/##ALT/##contig/##SAMPLE worked example's shared comma-delimited attribute-list
     // grammar) for why this applies uniformly, including to ALT, with no exception.
-    if (id.contains(",")) {
-      warnOrThrow("{} metadata ID \"{}\" must not contain a comma", label, id);
+    if (unquotedId.contains(",")) {
+      warnOrThrow("{} metadata ID \"{}\" must not contain a comma", label, unquotedId);
     }
     putPropertyRaw(ID, id);
   }
@@ -63,7 +73,13 @@ public abstract sealed class IdMetadata extends BaseMetadata permits IdDescripti
   }
 
   private void init() {
-    String id = getPropertyRaw(ID);
+    // getPropertyUnquoted, not getPropertyRaw: this is a comparison/validation use (blank- and
+    // whitespace-checking the ID's actual content), not a value handed back to a consumer, so it must see
+    // the value with any surrounding quote pair already stripped -- see AGENTS.md's "Unquoting before
+    // internal use" policy and VALIDATION_PHILOSOPHY.md's "How the principles interact." Without this, a
+    // quoted-empty ID (ID="") or quoted-whitespace ID (ID="   ") kept its literal quote/space characters,
+    // which are never blank once trimmed, and escaped every check below -- see the retired WONT_FIX.md entry.
+    String id = getPropertyUnquoted(ID);
     warnIfMissing(ID, id);
     // warnIfMissing only tests for null; a present-but-blank ID (id.equals("")) previously got no diagnostic at
     // all here -- containsWhitespace(id) below doesn't fire either, since an empty string has no characters to
@@ -106,7 +122,12 @@ public abstract sealed class IdMetadata extends BaseMetadata permits IdDescripti
   }
 
   /**
-   * @return Null only when incorrectly constructed without one
+   * @return Null only when incorrectly constructed without one. This is the raw property value, exactly as
+   * declared -- still quoted if the declaration used {@code ID="foo"} rather than {@code ID=foo}. It is
+   * <strong>not</strong> necessarily the same string this declaration is keyed under in
+   * {@link VcfMetadata#getAlts()} and its siblings, which key by the <em>unquoted</em> form: for a declaration
+   * written {@code ID="foo"}, this method returns {@code "\"foo\""} while the map key is {@code "foo"}. See
+   * AGENTS.md's "Unquoting before internal use" policy.
    */
   @Nullable
   public final String getId() {

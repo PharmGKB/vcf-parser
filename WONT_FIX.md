@@ -203,7 +203,36 @@ complexity for output that is informative rather than misleading. Revisit any su
 (non-test-harness) caller reports it as genuinely noisy, or if the relevant methods are ever unified onto one
 shared implementation for an unrelated reason that would make deduplication free.
 
-## A quoted-empty or quoted-whitespace-only `ID` escapes the missing/blank-`ID` check
+## RESOLVED: A quoted-empty or quoted-whitespace-only `ID` escaped the missing/blank-`ID` check
+
+**Closed by teaching every comparison/validation site that reads or receives a metadata ID to unquote it
+first** -- see AGENTS.md's "Unquoting before internal use" policy and VALIDATION_PHILOSOPHY.md's "How the
+principles interact." `IdMetadata.init()`, `VcfMetadata.Builder`'s six keyed-type `addXxx`/`replaceXxx` methods
+(blank check, dedupe key, and the map's own storage key), `VcfMetadata.Builder.addPedigree`, and
+`VcfWriter.validateMetadata()`'s PEDIGREE loop all now read `getPropertyUnquoted(ID)` rather than
+`getPropertyRaw(ID)`. The typed `IdMetadata(VcfContext, String, String)` constructor's own blank/whitespace/
+comma checks reach the same outcome a different way: they validate a caller-supplied `id` parameter that
+isn't yet a stored property, so they call `InternalUtils.unquote(id)` directly instead -- this also closes a
+diagnostic wart, not just the missing-ID gap: `VcfMetadata.Builder.addFilter("\"   \"", "d")` (the typed,
+raw-value overload) used to warn "must not contain whitespace" from this constructor's own raw check before
+`addFilter`'s later blank check correctly dropped it; both now agree it is blank. `ID=""` and `ID="   "` are
+caught as blank identically to their unquoted equivalents, for all seven structured declaration types, and
+`ID="A"` now dedupes against `ID=A` (a deliberate semantic change: quoting is an encoding, not part of the
+identifier -- see `DUPLICATE_METADATA_ID_HANDLING.md`'s "Quoting is not part of the identity" section). The six
+raw-returning public getters (`IdMetadata.getId()` and friends) are unchanged and still present the raw value;
+only the internal comparison/storage points changed -- `VcfMetadata.getAlts()` and its siblings now document
+that their map key is the unquoted `ID`, which can differ from `getId()`'s own raw return. Regression
+fixtures: `IdDescriptionMetadataTest`'s
+`testQuotedEmptyIdWarnsAsBlank`/`testQuotedWhitespaceOnlyIdWarnsAsBlank`/
+`testMapConstructorThrowsOnQuotedBlankIdUnderStrict`, `VcfMetadataTest`'s
+`testAddFilterQuotedIdDedupesAgainstUnquotedId`/`testAddFilterDropsQuotedBlankId`/
+`testAddPedigreeQuotedIdDedupesAgainstUnquotedId`/`testAddPedigreeQuotedBlankIdUnder43WarnsAndIsKept`/
+`testAddPedigreeThrowsOnQuotedBlankIdUnderStrict43`, `VcfWriterTest`'s
+`testValidateBeforeWriteDoesNotFalselyReportMismatchForUnmutatedQuotedId`/
+`testValidateBeforeWriteWarnsOnQuotedWhitespaceOnlyPedigreeIdUnder43`, and `VcfParserTest`'s
+`testParserPedigreeQuotedWhitespaceOnlyIdUnder43Warns`/`testParserPedigreeQuotedEmptyIdUnder43Warns`.
+
+Original finding, unedited:
 
 Every missing/blank-`ID` check across all seven structured declaration types (INFO/FORMAT/FILTER/ALT/contig/
 SAMPLE via `IdMetadata.init()`, and PEDIGREE via `VcfMetadata.Builder.addPedigree`, gated on VCFv4.3+) reads
@@ -376,7 +405,8 @@ list slot's occupant via low-level `List` API misuse with no existing analog any
 
 `VcfMetadata`'s/`Builder`'s six keyed types (INFO/FORMAT/FILTER/ALT/contig/SAMPLE) dedupe via
 `warnIfDuplicate(Map<String, XxxMetadata>, id, ...)`, an O(1) `HashMap.containsKey(id)` check keyed by
-`md.getId()` captured at add time. `IdMetadata.getId()` reads live from the object's own mutable raw-properties
+`md.getId()`'s unquoted form (see `DUPLICATE_METADATA_ID_HANDLING.md`'s "Quoting is not part of the identity"
+section), captured at add time. `IdMetadata.getId()` itself reads live from the object's own mutable raw-properties
 map, and every `BaseMetadata` subclass exposes `putPropertyRaw`/`putAndQuoteProperty` plus a live
 `getPropertiesRaw()` map as a real, tested, load-bearing mutation path --
 `VcfWriterTest.testHeaderContentRejectionAllowsCorrectedRetry` calls

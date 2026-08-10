@@ -96,9 +96,15 @@ public final class InfoMetadata extends IdDescriptionMetadata {
 
   private void init() {
     m_type = null;
-    String number = getPropertyRaw(NUMBER);
+    // getPropertyUnquoted, not getPropertyRaw, for Number/Type/ID below: every use here is a comparison or
+    // validation (NUMBER_PATTERN, InfoType.valueOf, the tag-name grammar, the ReservedInfoProperty lookup), not
+    // a value handed back to a consumer -- see AGENTS.md's "Unquoting before internal use" policy. Without
+    // this, a quoted Number/Type/ID (e.g. Number="1") kept its literal quote characters and either failed a
+    // check it should have passed, or (for ID) silently skipped the ReservedInfoProperty comparison entirely
+    // because the quoted string never matched a reserved key's exact name.
+    String number = getPropertyUnquoted(NUMBER);
     checkNumberProperty(number);
-    String type = getPropertyRaw(TYPE);
+    String type = getPropertyUnquoted(TYPE);
     warnIfMissing(TYPE, type);
     if (type != null) {
       try {
@@ -110,13 +116,15 @@ public final class InfoMetadata extends IdDescriptionMetadata {
     if (m_type == InfoType.Flag && number != null && !"0".equals(number)) {
       warnOrThrow("{} {} has Type=Flag but Number is '{}' (should be 0)", getLabel(), getId(), number);
     }
+    // getPropertyRaw here is deliberate, not an oversight -- see IdDescriptionMetadata.init()'s identical
+    // Description check for why: this inspects the raw quoting itself, not content that must be unquoted first.
     for (String optional : new String[] { SOURCE, VERSION }) {
       String value = getPropertyRaw(optional);
       if (value != null && (!value.startsWith("\"") || !value.endsWith("\""))) {
         warnOrThrow("{} metadata property \"{}\" should be quoted but was: {}", getLabel(), optional, value);
       }
     }
-    String id = getId();
+    String id = getPropertyUnquoted(ID);
     if (id != null && !id.isEmpty()) {
       // strip commas/whitespace before checking: IdMetadata's own init() (which already ran, before this method,
       // during construction) already warned about either separately -- stripping them first means this check only
@@ -164,7 +172,10 @@ public final class InfoMetadata extends IdDescriptionMetadata {
    */
   @Nullable
   public SpecialVcfNumber getReservedNumber() {
-    return SpecialVcfNumber.fromId(getPropertyRaw(NUMBER));
+    // getPropertyUnquoted, not getPropertyRaw: fromId() is an exact-match comparison against a fixed set
+    // ("A"/"G"/"R"/"."), not a value handed back verbatim -- unlike getNumber() just above, which is deliberately
+    // still raw. See AGENTS.md's "Unquoting before internal use" policy.
+    return SpecialVcfNumber.fromId(getPropertyUnquoted(NUMBER));
   }
 
   /**

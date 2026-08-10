@@ -194,9 +194,12 @@ public final class VcfMetadata {
   }
 
   /**
-   * @return An unmodifiable view of the ALT declarations, keyed by ID. A mutation attempt on the returned map
-   * throws {@link UnsupportedOperationException} -- use {@link #toBuilder()} to produce a changed
-   * {@code VcfMetadata}.
+   * @return An unmodifiable view of the ALT declarations, keyed by each declaration's <em>unquoted</em>
+   * {@code ID} -- which may differ from that same declaration's own {@link IdMetadata#getId()} (still the raw,
+   * possibly quoted value): a declaration written {@code ID="X"} is keyed {@code "X"} here, even though
+   * {@code getId()} on that same entry returns the raw {@code "\"X\""}. See AGENTS.md's "Unquoting before
+   * internal use" policy. A mutation attempt on the returned map throws {@link UnsupportedOperationException}
+   * -- use {@link #toBuilder()} to produce a changed {@code VcfMetadata}.
    */
   public Map<String, IdDescriptionMetadata> getAlts() {
     if (m_altView == null) {
@@ -227,7 +230,7 @@ public final class VcfMetadata {
 
 
   /**
-   * @return An unmodifiable view of the INFO declarations, keyed by ID. See {@link #getAlts()}.
+   * @return An unmodifiable view of the INFO declarations, keyed by each declaration's unquoted ID. See {@link #getAlts()}.
    */
   public Map<String, InfoMetadata> getInfo() {
     if (m_infoView == null) {
@@ -237,7 +240,7 @@ public final class VcfMetadata {
   }
 
   /**
-   * @return An unmodifiable view of the FILTER declarations, keyed by ID. See {@link #getAlts()}.
+   * @return An unmodifiable view of the FILTER declarations, keyed by each declaration's unquoted ID. See {@link #getAlts()}.
    */
   public Map<String, IdDescriptionMetadata> getFilters() {
     if (m_filterView == null) {
@@ -247,7 +250,7 @@ public final class VcfMetadata {
   }
 
   /**
-   * @return An unmodifiable view of the FORMAT declarations, keyed by ID. See {@link #getAlts()}.
+   * @return An unmodifiable view of the FORMAT declarations, keyed by each declaration's unquoted ID. See {@link #getAlts()}.
    */
   public Map<String, FormatMetadata> getFormats() {
     if (m_formatView == null) {
@@ -257,7 +260,7 @@ public final class VcfMetadata {
   }
 
   /**
-   * @return An unmodifiable view of the contig declarations, keyed by ID. See {@link #getAlts()}.
+   * @return An unmodifiable view of the contig declarations, keyed by each declaration's unquoted ID. See {@link #getAlts()}.
    */
   public Map<String, ContigMetadata> getContigs() {
     if (m_contigView == null) {
@@ -277,7 +280,7 @@ public final class VcfMetadata {
   }
 
   /**
-   * @return An unmodifiable view of the SAMPLE declarations, keyed by ID. See {@link #getAlts()}.
+   * @return An unmodifiable view of the SAMPLE declarations, keyed by each declaration's unquoted ID. See {@link #getAlts()}.
    */
   public Map<String, IdDescriptionMetadata> getSamples() {
     if (m_sampleView == null) {
@@ -326,7 +329,12 @@ public final class VcfMetadata {
    */
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static void validateAlt(IdDescriptionMetadata value, VcfContext context) {
-    String id = value.getId();
+    // getPropertyUnquoted, not getId(): every use of id/number/type below is a comparison or validation
+    // (angle-bracket/colon scanning, AltStructuralVariant parsing, NUMBER_PATTERN, InfoType.valueOf), not a
+    // value handed back to a consumer -- see AGENTS.md's "Unquoting before internal use" policy. A quoted ID
+    // (e.g. ID="DEL:ME") otherwise failed AltStructuralVariant parsing purely because of its own surrounding
+    // quote characters, and a quoted Number/Type failed NUMBER_PATTERN/InfoType.valueOf the same way.
+    String id = value.getPropertyUnquoted(IdMetadata.ID);
     if (id != null) {
       // whitespace and commas are already checked generically by IdMetadata.init() for every ID-based metadata
       // type, including this one (a colonless ID with a comma is caught there, not here); angle brackets are
@@ -355,11 +363,11 @@ public final class VcfMetadata {
     // Number/Type are unrecognized extras, but test/vcf/4.2/failed/failed_meta_alt_001.vcf and
     // .../failed_meta_alt_002.vcf (##CauseOfFailure=Incorrect ALT Number/Type value) establish that, once
     // declared, they're still expected to be syntactically valid VCF Number/Type tokens.
-    String number = value.getPropertyRaw(InfoMetadata.NUMBER);
+    String number = value.getPropertyUnquoted(InfoMetadata.NUMBER);
     if (number != null && !InternalUtils.NUMBER_PATTERN.matcher(number).matches()) {
       warnOrThrow(context, "ALT {} has Number '{}' but it is not a valid VCF number", id, number);
     }
-    String type = value.getPropertyRaw(InfoMetadata.TYPE);
+    String type = value.getPropertyUnquoted(InfoMetadata.TYPE);
     if (type != null) {
       try {
         InfoType.valueOf(type);
@@ -817,17 +825,24 @@ public final class VcfMetadata {
     private Builder addAlt(IdDescriptionMetadata md, boolean validateContent) {
       requireNonNull(md, "ALT");
       checkSameContext(md, m_context, "ALT");
-      if (md.getId() == null || md.getId().trim().isEmpty()) {
+      // getPropertyUnquoted(ID), not getId(): the blank check, the duplicate check, and the map storage key
+      // itself are all comparisons/internal use, not a value handed back to a consumer -- see AGENTS.md's
+      // "Unquoting before internal use" policy. getId() itself is unchanged and keeps returning the raw
+      // (possibly still-quoted) value. Without this, a quoted-empty (ID="") or quoted-whitespace (ID="   ") ID
+      // was neither blank nor a match for an existing unquoted key, and ID="A" never deduped against ID=A --
+      // see the retired WONT_FIX.md entry and DUPLICATE_METADATA_ID_HANDLING.md's "Missing or empty ID" section.
+      String id = md.getPropertyUnquoted(IdMetadata.ID);
+      if (id == null || id.trim().isEmpty()) {
         warnOrThrow(m_context, "ALT metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
       }
-      if (warnIfDuplicate(m_alt, md.getId(), "ALT", m_context)) {
+      if (warnIfDuplicate(m_alt, id, "ALT", m_context)) {
         return this;
       }
       if (validateContent) {
         validateAlt(md, m_context);
       }
-      m_alt.put(md.getId(), md);
+      m_alt.put(id, md);
       return this;
     }
 
@@ -841,14 +856,16 @@ public final class VcfMetadata {
     Builder addInfo(InfoMetadata md) {
       requireNonNull(md, "INFO");
       checkSameContext(md, m_context, "INFO");
-      if (md.getId() == null || md.getId().trim().isEmpty()) {
+      // getPropertyUnquoted(ID), not getId() -- see addAlt(IdDescriptionMetadata, boolean)'s identical comment.
+      String id = md.getPropertyUnquoted(IdMetadata.ID);
+      if (id == null || id.trim().isEmpty()) {
         warnOrThrow(m_context, "INFO metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
       }
-      if (warnIfDuplicate(m_info, md.getId(), "INFO", m_context)) {
+      if (warnIfDuplicate(m_info, id, "INFO", m_context)) {
         return this;
       }
-      m_info.put(md.getId(), md);
+      m_info.put(id, md);
       return this;
     }
 
@@ -862,14 +879,16 @@ public final class VcfMetadata {
     Builder addFilter(IdDescriptionMetadata md) {
       requireNonNull(md, "FILTER");
       checkSameContext(md, m_context, "FILTER");
-      if (md.getId() == null || md.getId().trim().isEmpty()) {
+      // getPropertyUnquoted(ID), not getId() -- see addAlt(IdDescriptionMetadata, boolean)'s identical comment.
+      String id = md.getPropertyUnquoted(IdMetadata.ID);
+      if (id == null || id.trim().isEmpty()) {
         warnOrThrow(m_context, "FILTER metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
       }
-      if (warnIfDuplicate(m_filter, md.getId(), "FILTER", m_context)) {
+      if (warnIfDuplicate(m_filter, id, "FILTER", m_context)) {
         return this;
       }
-      m_filter.put(md.getId(), md);
+      m_filter.put(id, md);
       return this;
     }
 
@@ -883,14 +902,16 @@ public final class VcfMetadata {
     Builder addFormat(FormatMetadata md) {
       requireNonNull(md, "FORMAT");
       checkSameContext(md, m_context, "FORMAT");
-      if (md.getId() == null || md.getId().trim().isEmpty()) {
+      // getPropertyUnquoted(ID), not getId() -- see addAlt(IdDescriptionMetadata, boolean)'s identical comment.
+      String id = md.getPropertyUnquoted(IdMetadata.ID);
+      if (id == null || id.trim().isEmpty()) {
         warnOrThrow(m_context, "FORMAT metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
       }
-      if (warnIfDuplicate(m_format, md.getId(), "FORMAT", m_context)) {
+      if (warnIfDuplicate(m_format, id, "FORMAT", m_context)) {
         return this;
       }
-      m_format.put(md.getId(), md);
+      m_format.put(id, md);
       return this;
     }
 
@@ -904,14 +925,16 @@ public final class VcfMetadata {
     Builder addContig(ContigMetadata md) {
       requireNonNull(md, "CONTIG");
       checkSameContext(md, m_context, "CONTIG");
-      if (md.getId() == null || md.getId().trim().isEmpty()) {
+      // getPropertyUnquoted(ID), not getId() -- see addAlt(IdDescriptionMetadata, boolean)'s identical comment.
+      String id = md.getPropertyUnquoted(IdMetadata.ID);
+      if (id == null || id.trim().isEmpty()) {
         warnOrThrow(m_context, "CONTIG metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
       }
-      if (warnIfDuplicate(m_contig, md.getId(), "CONTIG", m_context)) {
+      if (warnIfDuplicate(m_contig, id, "CONTIG", m_context)) {
         return this;
       }
-      m_contig.put(md.getId(), md);
+      m_contig.put(id, md);
       return this;
     }
 
@@ -925,23 +948,27 @@ public final class VcfMetadata {
     Builder addSample(IdDescriptionMetadata md) {
       requireNonNull(md, "SAMPLE");
       checkSameContext(md, m_context, "SAMPLE");
-      if (md.getId() == null || md.getId().trim().isEmpty()) {
+      // getPropertyUnquoted(ID), not getId() -- see addAlt(IdDescriptionMetadata, boolean)'s identical comment.
+      String id = md.getPropertyUnquoted(IdMetadata.ID);
+      if (id == null || id.trim().isEmpty()) {
         warnOrThrow(m_context, "SAMPLE metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
         return this;
       }
-      if (warnIfDuplicate(m_sample, md.getId(), "SAMPLE", m_context)) {
+      if (warnIfDuplicate(m_sample, id, "SAMPLE", m_context)) {
         return this;
       }
-      m_sample.put(md.getId(), md);
+      m_sample.put(id, md);
       return this;
     }
 
     /**
-     * Adds {@code md} to the list of PEDIGREE metadata. If {@code md} declares a literal {@code ID} property that
-     * duplicates an earlier PEDIGREE entry's {@code ID}, warns and keeps the first entry instead of storing
-     * {@code md} -- matching the six keyed types' warn-and-keep-first rule. A PEDIGREE entry with no {@code ID}
-     * property (VCFv4.2.tex line 152's own grammar, e.g. {@code Name_0=G0-ID,...,Name_N=GN-ID}, has no mandatory
-     * ID attribute) is always added under VCFv4.2: confirmed bcftools 1.23.1 keeps both of two ID-less duplicate
+     * Adds {@code md} to the list of PEDIGREE metadata. If {@code md} declares an {@code ID} property that
+     * duplicates an earlier PEDIGREE entry's {@code ID} once both are unquoted ({@code ID="A"} duplicates
+     * {@code ID=A} -- quoting is an encoding, not part of the identifier), warns and keeps the first entry
+     * instead of storing {@code md} -- matching the six keyed types' warn-and-keep-first rule. A PEDIGREE entry
+     * with no {@code ID} property (VCFv4.2.tex line 152's own grammar, e.g.
+     * {@code Name_0=G0-ID,...,Name_N=GN-ID}, has no mandatory ID attribute) is always added under VCFv4.2:
+     * confirmed bcftools 1.23.1 keeps both of two ID-less duplicate
      * PEDIGREE lines, since there is no key to dedupe on -- see DUPLICATE_METADATA_ID_HANDLING.md. Under VCFv4.3+
      * (VCFv4.3.tex line 121, "All structured lines require an ID"), a missing/blank {@code ID} instead warns (or
      * throws, under a strict context) but is still kept, since a {@code List} has no key to fail to store against.
@@ -952,7 +979,12 @@ public final class VcfMetadata {
     Builder addPedigree(PedigreeMetadata md) {
       requireNonNull(md, "PEDIGREE");
       checkSameContext(md, m_context, "PEDIGREE");
-      String id = md.getPropertyRaw("ID");
+      // getPropertyUnquoted, not getPropertyRaw: the blank check and the dedupe set below are both
+      // comparisons/internal use, not a value handed back to a consumer -- see AGENTS.md's "Unquoting before
+      // internal use" policy. Without this, a quoted-empty (ID="") or quoted-whitespace (ID="   ") ID was
+      // never blank once trimmed (its literal quote/space characters survived), and ID="A" never deduped
+      // against ID=A -- see the retired WONT_FIX.md entry and DUPLICATE_METADATA_ID_HANDLING.md.
+      String id = md.getPropertyUnquoted("ID");
       // VCFv4.3.tex line 121, "All structured lines require an ID which must be unique within their type" --
       // VCFv4.2's own ##PEDIGREE template (VCFv4.2.tex line 152, ##PEDIGREE=<Name_0=G0-ID,...,Name_N=GN-ID>)
       // has no ID attribute at all, so this is gated on the declared version, not applied everywhere.
@@ -990,8 +1022,9 @@ public final class VcfMetadata {
      * would leave the transformed {@code VcfMetadata} silently unchanged. Adding a new declaration is
      * {@code addXxx}'s job.
      * <p>
-     * {@code id} may be {@code null} ({@link IdMetadata#getId()} returns {@code null} only for a declaration
-     * built from a blank/missing ID under a lenient context) -- reported with its own, more specific message
+     * {@code id} may be {@code null} (the unquoted {@code ID}, per this class's {@code addXxx}/{@code replaceXxx}
+     * convention -- see {@link #addAlt(IdDescriptionMetadata, boolean)}'s comment -- is {@code null} only for a
+     * declaration built from a blank/missing ID under a lenient context) -- reported with its own, more specific message
      * rather than falling through to {@code map.containsKey(null)} (which would just report absence, since a
      * blank/missing ID is never stored under {@code addXxx}'s own rule -- see each {@code addXxx} method's "has
      * no ID and cannot be stored" branch above -- so the map can never hold a {@code null} key to match against).
@@ -1007,7 +1040,9 @@ public final class VcfMetadata {
     }
 
     /**
-     * Replaces the existing ALT declaration under {@code md.getId()}, throwing via
+     * Replaces the existing ALT declaration under {@code md}'s unquoted {@code ID} (the map's own storage key --
+     * see {@code addAlt(IdDescriptionMetadata, boolean)}'s comment; {@code md.getId()} itself is unchanged and
+     * still returns the raw value), throwing via
      * {@link #requirePresentForReplace} if none is stored. Content is validated (via {@link #validateAlt})
      * completely before the single map mutation, and {@link #warnIfDuplicate} is never consulted -- so a
      * rejected replacement (e.g. an invalid Number/Type extra) leaves the existing declaration installed and this
@@ -1018,74 +1053,87 @@ public final class VcfMetadata {
     private Builder replaceAlt(IdDescriptionMetadata md) {
       requireNonNull(md, "ALT");
       checkSameContext(md, m_context, "ALT");
-      requirePresentForReplace(m_alt, md.getId(), "ALT");
+      // getPropertyUnquoted(ID), not getId() -- see addAlt(IdDescriptionMetadata, boolean)'s comment; the map is
+      // keyed by the unquoted ID, so a lookup/store here must match.
+      String id = md.getPropertyUnquoted(IdMetadata.ID);
+      requirePresentForReplace(m_alt, id, "ALT");
       validateAlt(md, m_context);
-      m_alt.put(md.getId(), md);
+      m_alt.put(id, md);
       return this;
     }
 
     /**
-     * Replaces the existing INFO declaration under {@code md.getId()}, throwing via
+     * Replaces the existing INFO declaration under {@code md}'s unquoted {@code ID}, throwing via
      * {@link #requirePresentForReplace} if none is stored. See {@link #replaceAlt(IdDescriptionMetadata)} for the
      * shared reasoning; INFO has no equivalent post-construction content check to run before the map mutation.
      */
     private Builder replaceInfo(InfoMetadata md) {
       requireNonNull(md, "INFO");
       checkSameContext(md, m_context, "INFO");
-      requirePresentForReplace(m_info, md.getId(), "INFO");
-      m_info.put(md.getId(), md);
+      // getPropertyUnquoted(ID), not getId() -- see replaceAlt(IdDescriptionMetadata)'s comment.
+      String id = md.getPropertyUnquoted(IdMetadata.ID);
+      requirePresentForReplace(m_info, id, "INFO");
+      m_info.put(id, md);
       return this;
     }
 
     /**
-     * Replaces the existing FILTER declaration under {@code md.getId()}, throwing via
+     * Replaces the existing FILTER declaration under {@code md}'s unquoted {@code ID}, throwing via
      * {@link #requirePresentForReplace} if none is stored. See {@link #replaceAlt(IdDescriptionMetadata)} for the
      * shared reasoning; FILTER has no equivalent post-construction content check to run before the map mutation.
      */
     private Builder replaceFilter(IdDescriptionMetadata md) {
       requireNonNull(md, "FILTER");
       checkSameContext(md, m_context, "FILTER");
-      requirePresentForReplace(m_filter, md.getId(), "FILTER");
-      m_filter.put(md.getId(), md);
+      // getPropertyUnquoted(ID), not getId() -- see replaceAlt(IdDescriptionMetadata)'s comment.
+      String id = md.getPropertyUnquoted(IdMetadata.ID);
+      requirePresentForReplace(m_filter, id, "FILTER");
+      m_filter.put(id, md);
       return this;
     }
 
     /**
-     * Replaces the existing FORMAT declaration under {@code md.getId()}, throwing via
+     * Replaces the existing FORMAT declaration under {@code md}'s unquoted {@code ID}, throwing via
      * {@link #requirePresentForReplace} if none is stored. See {@link #replaceAlt(IdDescriptionMetadata)} for the
      * shared reasoning; FORMAT has no equivalent post-construction content check to run before the map mutation.
      */
     private Builder replaceFormat(FormatMetadata md) {
       requireNonNull(md, "FORMAT");
       checkSameContext(md, m_context, "FORMAT");
-      requirePresentForReplace(m_format, md.getId(), "FORMAT");
-      m_format.put(md.getId(), md);
+      // getPropertyUnquoted(ID), not getId() -- see replaceAlt(IdDescriptionMetadata)'s comment.
+      String id = md.getPropertyUnquoted(IdMetadata.ID);
+      requirePresentForReplace(m_format, id, "FORMAT");
+      m_format.put(id, md);
       return this;
     }
 
     /**
-     * Replaces the existing CONTIG declaration under {@code md.getId()}, throwing via
+     * Replaces the existing CONTIG declaration under {@code md}'s unquoted {@code ID}, throwing via
      * {@link #requirePresentForReplace} if none is stored. See {@link #replaceAlt(IdDescriptionMetadata)} for the
      * shared reasoning; CONTIG has no equivalent post-construction content check to run before the map mutation.
      */
     private Builder replaceContig(ContigMetadata md) {
       requireNonNull(md, "CONTIG");
       checkSameContext(md, m_context, "CONTIG");
-      requirePresentForReplace(m_contig, md.getId(), "CONTIG");
-      m_contig.put(md.getId(), md);
+      // getPropertyUnquoted(ID), not getId() -- see replaceAlt(IdDescriptionMetadata)'s comment.
+      String id = md.getPropertyUnquoted(IdMetadata.ID);
+      requirePresentForReplace(m_contig, id, "CONTIG");
+      m_contig.put(id, md);
       return this;
     }
 
     /**
-     * Replaces the existing SAMPLE declaration under {@code md.getId()}, throwing via
+     * Replaces the existing SAMPLE declaration under {@code md}'s unquoted {@code ID}, throwing via
      * {@link #requirePresentForReplace} if none is stored. See {@link #replaceAlt(IdDescriptionMetadata)} for the
      * shared reasoning; SAMPLE has no equivalent post-construction content check to run before the map mutation.
      */
     private Builder replaceSample(IdDescriptionMetadata md) {
       requireNonNull(md, "SAMPLE");
       checkSameContext(md, m_context, "SAMPLE");
-      requirePresentForReplace(m_sample, md.getId(), "SAMPLE");
-      m_sample.put(md.getId(), md);
+      // getPropertyUnquoted(ID), not getId() -- see replaceAlt(IdDescriptionMetadata)'s comment.
+      String id = md.getPropertyUnquoted(IdMetadata.ID);
+      requirePresentForReplace(m_sample, id, "SAMPLE");
+      m_sample.put(id, md);
       return this;
     }
 

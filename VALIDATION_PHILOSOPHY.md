@@ -251,6 +251,31 @@ declared version" for that list, and its lenient section for the four gated rule
   `null` regardless of a parameter's declared type -- a public constructor, static factory, or method must
   defend against that itself rather than relying on the annotation. `AGENTS.md`'s Public API Null-Safety
   Policy states the concrete per-shape rules this produces.
+- **Unquoting before internal use is a third axis, distinct from both principles 1/2 and from null-safety
+  above.** A `BaseMetadata` property's value may be wrapped in a quoted-string encoding (`ID="foo"`); `getPropertyUnquoted`
+  is the only accessor that strips it, `getPropertyRaw` never does. Every comparison or validation this
+  library performs against a property's value -- is it blank, does it match a grammar, does it equal a
+  reserved key's expected value, is it the same identifier as some other declaration's -- must read the
+  unquoted form, because quoting is an encoding artifact of the header syntax, not part of what the value
+  *means*. A check that instead reads the raw form sees the literal quote characters as part of the content:
+  a quoted-empty `ID=""` is a non-blank two-character raw string, and `ID="A"`/`ID=A` compare as different
+  raw strings despite being the same identifier. This is exactly analogous to principle 1/2's dispatch --
+  *how* a value is validated must not depend on an accident of encoding -- but it is orthogonal to the
+  strict-vs-lenient axis those principles govern: unquoting-before-comparison applies identically whether the
+  eventual outcome is `warnOrThrow`'s warn or its throw. It is also orthogonal to null-safety: a `null`
+  property is `null` either way (`getPropertyUnquoted` returns `null` without calling `InternalUtils.unquote`
+  when the underlying raw value is absent), so switching a comparison site from raw to unquoted never changes
+  whether `null` is possible, only what a *present* value looks like once compared. This does not change what
+  is *presented* to a consumer -- every public getter that returns a property's value keeps returning
+  whatever form it always has (raw for `IdMetadata.getId()`/`FormatMetadata.getNumber()`/
+  `InfoMetadata.getNumber()`/`ContigMetadata.getAssembly()`/`getTaxonomy()`/`getMd5()`/`getUrl()`; unquoted for
+  `IdDescriptionMetadata.getDescription()`/`InfoMetadata.getSource()`/`getVersion()`/`ContigMetadata.getSpecies()`/
+  `getLength()`) -- `getPropertyUnquoted()` itself remains the caller's own opt-in for their own comparisons,
+  the same way it always was. One check is the deliberate exception, not an oversight: a check that inspects
+  the raw quoting itself (`IdDescriptionMetadata.init()`'s and `InfoMetadata.init()`'s "should be quoted but
+  was" checks on `Description`/`Source`/`Version`) must keep reading the raw form, since unquoting first would
+  make the thing being checked for -- the presence of the quote characters -- disappear before the check ever
+  ran.
 - A class or method's `@RestrictedApi`/`@hidden` disclaimer (e.g. `InternalUtils`, `VcfMetadata.validateAlt`,
   `VcfFloat.parse(String, VcfWarnings)`) is the identical kind of documentation-only signal: no ErrorProne
   plugin is configured in this codebase, so nothing enforces it at compile time or runtime either. It is a

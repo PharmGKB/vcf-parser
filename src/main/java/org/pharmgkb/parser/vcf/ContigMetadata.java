@@ -54,10 +54,14 @@ public final class ContigMetadata extends IdMetadata {
     // parsed Long, never a malformed string) -- no equivalent check added for it; a null length is legitimately
     // absent per VCFv4.2.tex line 138, not malformed.
     if (url != null) {
+      // Checked unquoted -- see IdMetadata's typed constructor's identical comment for why (there is no
+      // stored property to read yet, so this unquotes the constructor parameter directly via
+      // InternalUtils.unquote rather than getPropertyUnquoted; url itself is still stored raw above).
+      String unquotedUrl = InternalUtils.unquote(url);
       try {
-        URI.create(url).toURL();
+        URI.create(unquotedUrl).toURL();
       } catch (IllegalArgumentException | MalformedURLException e) {
-        warnOrThrow("{} URL {} is malformed: {}", getLabel(), url, e.getMessage());
+        warnOrThrow("{} URL {} is malformed: {}", getLabel(), unquotedUrl, e.getMessage());
       }
     }
     // VCFv4.3.tex (the target) states this fuller character-set grammar for ##contig IDs, beyond IdMetadata's
@@ -76,13 +80,17 @@ public final class ContigMetadata extends IdMetadata {
     // id can also be null or empty here under a lenient context (IdMetadata's own super(...) call warns rather
     // than throwing for either) -- guard rather than letting id.charAt(0) raw-crash.
     if (id != null && !id.isEmpty()) {
-      char first = id.charAt(0);
-      if (first == '*' || first == '=') {
-        warnOrThrow("{} ID \"{}\" must not start with '{}'", getLabel(), id, first);
-      }
-      Matcher matcher = InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN.matcher(id);
-      if (matcher.find()) {
-        warnOrThrow("{} ID \"{}\" contains the invalid character '{}'", getLabel(), id, matcher.group());
+      // Checked unquoted, same reasoning as the URL check just above.
+      String unquotedId = InternalUtils.unquote(id);
+      if (!unquotedId.isEmpty()) {
+        char first = unquotedId.charAt(0);
+        if (first == '*' || first == '=') {
+          warnOrThrow("{} ID \"{}\" must not start with '{}'", getLabel(), unquotedId, first);
+        }
+        Matcher matcher = InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN.matcher(unquotedId);
+        if (matcher.find()) {
+          warnOrThrow("{} ID \"{}\" contains the invalid character '{}'", getLabel(), unquotedId, matcher.group());
+        }
       }
     }
   }
@@ -162,7 +170,11 @@ public final class ContigMetadata extends IdMetadata {
     // defines a formal grammar for the url value in ##assembly=url / ##pedigreeDB=URL" -- the same is true of
     // ##contig's url tag, so this check is a library-level well-formedness convenience with no spec mandate,
     // unlike the ID/length checks above.
-    String url = getPropertyRaw(URL);
+    // getPropertyUnquoted, not getPropertyRaw: this is well-formedness validation (URI.create/toURL), not a
+    // value handed back to a consumer -- see getUrl()'s own Javadoc (still raw, unchanged) and AGENTS.md's
+    // "Unquoting before internal use" policy. A quoted URL (e.g. URL="http://example.com") otherwise failed
+    // this check purely because of its own surrounding quote characters.
+    String url = getPropertyUnquoted(URL);
     if (url != null) {
       try {
         URI.create(url).toURL();
@@ -170,7 +182,9 @@ public final class ContigMetadata extends IdMetadata {
         warnOrThrow("{} URL {} is malformed: {}", getLabel(), url, e.getMessage());
       }
     }
-    String id = getId();
+    // getPropertyUnquoted, not getId(): the character-set/first-character checks below are validation, not
+    // presentation -- see this method's own URL comment just above.
+    String id = getPropertyUnquoted(ID);
     if (id != null && !id.isEmpty()) {
       char first = id.charAt(0);
       if (first == '*' || first == '=') {

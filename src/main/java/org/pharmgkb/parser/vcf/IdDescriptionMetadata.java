@@ -62,6 +62,10 @@ public sealed class IdDescriptionMetadata extends IdMetadata permits InfoMetadat
   }
 
   private void init() {
+    // getPropertyRaw is correct here, deliberately not getPropertyUnquoted: this check inspects the raw
+    // quoting itself (are the surrounding quote characters actually present), not the ID-style "unquote before
+    // comparing content" case AGENTS.md's "Unquoting before internal use" policy covers -- unquoting first
+    // would make startsWith/endsWith("\"") trivially false for every validly-quoted value.
     String description = getPropertyRaw(DESCRIPTION);
     warnIfMissing(DESCRIPTION, description);
     if (description != null && (!description.startsWith("\"") || !description.endsWith("\""))) {

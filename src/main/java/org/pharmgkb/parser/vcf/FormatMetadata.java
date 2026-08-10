@@ -82,9 +82,12 @@ public final class FormatMetadata extends IdDescriptionMetadata {
 
   private void init() {
     m_type = null;
-    String number = getPropertyRaw(NUMBER);
+    // getPropertyUnquoted, not getPropertyRaw, for Number/Type/ID below -- see InfoMetadata.init()'s identical
+    // comment (this class's own Number/Type/ID validation mirrors it exactly) and AGENTS.md's "Unquoting
+    // before internal use" policy.
+    String number = getPropertyUnquoted(NUMBER);
     checkNumberProperty(number);
-    String type = getPropertyRaw(TYPE);
+    String type = getPropertyUnquoted(TYPE);
     warnIfMissing(TYPE, type);
     if (type != null) {
       try {
@@ -93,7 +96,7 @@ public final class FormatMetadata extends IdDescriptionMetadata {
         warnOrThrow("{} {} '{}' is not a valid {} type", getLabel(), TYPE, type, getLabel());
       }
     }
-    String id = getId();
+    String id = getPropertyUnquoted(ID);
     if (id != null && !id.isEmpty()) {
       // strip commas/whitespace before checking: IdMetadata's own init() (which already ran, before this method,
       // during construction) already warned about either separately -- stripping them first means this check only
@@ -144,7 +147,8 @@ public final class FormatMetadata extends IdDescriptionMetadata {
    */
   @Nullable
   public SpecialVcfNumber getReservedNumber() {
-    return SpecialVcfNumber.fromId(getPropertyRaw(NUMBER));
+    // getPropertyUnquoted, not getPropertyRaw -- see InfoMetadata.getReservedNumber()'s identical comment.
+    return SpecialVcfNumber.fromId(getPropertyUnquoted(NUMBER));
   }
 
   /**

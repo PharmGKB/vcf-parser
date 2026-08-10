@@ -98,6 +98,28 @@ public class IdDescriptionMetadataTest {
   }
 
   @Test
+  public void testTypedConstructorRejectsQuotedBlankId() {
+    // regression test: the typed (label, id, description) constructor now unquotes id before checking, same
+    // as the Map-based path -- a caller passing the literal quoted-whitespace/quoted-empty string (e.g. via
+    // VcfMetadata.Builder.addFilter(String, String)) must be rejected as blank, not accepted as a two-/
+    // five-character non-blank raw ID.
+    assertThrows(VcfFormatException.class, () -> new IdDescriptionMetadata(STRICT_CONTEXT, "TEST", "\"\"", "d"));
+    assertThrows(VcfFormatException.class, () -> new IdDescriptionMetadata(STRICT_CONTEXT, "TEST", "\"   \"", "d"));
+  }
+
+  @Test
+  public void testTypedConstructorWarnsBlankNotWhitespaceForQuotedBlankId() {
+    // regression test: before the typed constructor unquoted its id parameter, a quoted-whitespace id here
+    // warned "must not contain whitespace" (misleading -- the real space characters between the quotes fired
+    // containsWhitespace on the raw string) instead of "is blank". Both quoted-blank shapes must now warn
+    // "must not be blank" and never "must not contain whitespace".
+    StringWriter sink = new StringWriter();
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(sink)), "TEST", "\"   \"", "d");
+    assertTrue(sink.toString().contains("must not be blank"));
+    assertFalse(sink.toString().contains("must not contain whitespace"));
+  }
+
+  @Test
   public void testBlankIdWarns() {
     // regression test: a present-but-blank ID (ID="") was previously silently accepted for this class (shared
     // by ##ALT, ##FILTER, and ##SAMPLE) -- warnIfMissing only tests for null, and the whitespace check below it
@@ -126,6 +148,50 @@ public class IdDescriptionMetadataTest {
     new IdDescriptionMetadata(lenientContext(new VcfWarnings(sink)), "TEST", map);
     assertTrue(sink.toString().contains("metadata ID is blank"));
     assertFalse(sink.toString().contains("must not contain whitespace"));
+  }
+
+  @Test
+  public void testQuotedEmptyIdWarnsAsBlank() {
+    // regression test for the retired WONT_FIX.md entry: a quoted-empty ID (ID="") arrives at init() as the
+    // raw two-character string "\"\"" -- getPropertyRaw(ID).trim().isEmpty() is false for that literal string
+    // (the quote characters aren't whitespace), so it previously escaped every check below with no diagnostic
+    // at all. init() now reads getPropertyUnquoted(ID), which strips the quotes first, same as testBlankIdWarns'
+    // unquoted equivalent above.
+    Map<String, String> props = InternalUtils.extractProperties(
+        new String[] {"ID=\"\"", "Description=\"d\""}, VcfWarnings.DEFAULT);
+    StringWriter sink = new StringWriter();
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(sink)), "FILTER", props);
+    assertTrue(sink.toString().contains("metadata ID is blank"));
+    assertFalse(sink.toString().contains("must not contain whitespace"));
+  }
+
+  @Test
+  public void testQuotedWhitespaceOnlyIdWarnsAsBlank() {
+    // regression test for the retired WONT_FIX.md entry: a quoted-whitespace ID (ID="   ") arrives at init() as
+    // the raw five-character string "\"   \"" (quotes included) -- its real space characters make
+    // containsWhitespace(id) fire on the raw string, so this previously warned "must not contain whitespace"
+    // (the wrong diagnostic) instead of "is blank". init() now reads getPropertyUnquoted(ID) first, so the
+    // quotes are stripped before either check runs, same as testWhitespaceOnlyIdWarnsAsBlankNotAsContainingWhitespace's
+    // unquoted equivalent above.
+    Map<String, String> props = InternalUtils.extractProperties(
+        new String[] {"ID=\"   \"", "Description=\"d\""}, VcfWarnings.DEFAULT);
+    StringWriter sink = new StringWriter();
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(sink)), "FILTER", props);
+    assertTrue(sink.toString().contains("metadata ID is blank"));
+    assertFalse(sink.toString().contains("must not contain whitespace"));
+  }
+
+  @Test
+  public void testMapConstructorThrowsOnQuotedBlankIdUnderStrict() {
+    // strict-context counterpart of testQuotedEmptyIdWarnsAsBlank/testQuotedWhitespaceOnlyIdWarnsAsBlank: the
+    // same still-quoted raw content must throw under a strict VcfContext, not just warn
+    Map<String, String> emptyProps = InternalUtils.extractProperties(
+        new String[] {"ID=\"\"", "Description=\"d\""}, VcfWarnings.DEFAULT);
+    assertThrows(VcfFormatException.class, () -> new IdDescriptionMetadata(STRICT_CONTEXT, "FILTER", emptyProps));
+    Map<String, String> whitespaceProps = InternalUtils.extractProperties(
+        new String[] {"ID=\"   \"", "Description=\"d\""}, VcfWarnings.DEFAULT);
+    assertThrows(VcfFormatException.class,
+        () -> new IdDescriptionMetadata(STRICT_CONTEXT, "FILTER", whitespaceProps));
   }
 
   @Test

@@ -490,7 +490,10 @@ public class VcfWriter implements Closeable {
       pedigree.validate();
       Map<String, String> properties = pedigree.getPropertiesRaw();
       validateMetadataProperties("PEDIGREE", properties);
-      String id = properties.get("ID");
+      // getPropertyUnquoted, not properties.get("ID") (raw): this is the write-time mirror of
+      // VcfMetadata.Builder.addPedigree's own blank-ID/dedupe check, so it must unquote first for the same
+      // reason -- see that method's comment and AGENTS.md's "Unquoting before internal use" policy.
+      String id = pedigree.getPropertyUnquoted("ID");
       if ((id == null || id.trim().isEmpty())
           && metadata.getContext().getVersion().isAtLeast(VcfVersion.V4_3)) {
         // Same rule VcfMetadata.Builder.addPedigree enforces at construction, re-checked here because this is
@@ -599,12 +602,14 @@ public class VcfWriter implements Closeable {
 
   /**
    * Validates every entry of a metadata map (INFO/FORMAT/FILTER/ALT/contig/SAMPLE), including that each entry's own
-   * {@code ID} property still matches the map key it's stored under. That invariant normally holds automatically
-   * (these maps are keyed by {@code getId()} when built), but a declaration's own raw {@code ID} property could
-   * historically be changed to a different value, or removed entirely, without it being reflected in the map
-   * key. Left undetected, the header would then declare a different (or missing) ID than what data lines
-   * actually reference by that entry's map key, and a duplicate-ID check across entries would also be unable to
-   * catch a real collision this way (see below).
+   * {@code ID} property, unquoted, still matches the map key it's stored under. That invariant normally holds
+   * automatically (these maps are keyed by each entry's unquoted {@code ID} -- see
+   * {@code VcfMetadata.Builder#addAlt(IdDescriptionMetadata, boolean)}'s own comment -- not by {@code getId()},
+   * which keeps returning the raw, possibly still-quoted value; see AGENTS.md's "Unquoting before internal use"
+   * policy), but a declaration's own raw {@code ID} property could historically be changed to a different value,
+   * or removed entirely, without it being reflected in the map key. Left undetected, the header would then
+   * declare a different (or missing) ID than what data lines actually reference by that entry's map key, and a
+   * duplicate-ID check across entries would also be unable to catch a real collision this way (see below).
    * <p>
    * The route that made that drift possible was {@link VcfMetadata#getInfo()} and its siblings returning the
    * backing map directly, plus {@link BaseMetadata#getPropertiesRaw()} being a live view. Both are unmodifiable
@@ -632,7 +637,11 @@ public class VcfWriter implements Closeable {
       }
       Map<String, String> properties = entry.getPropertiesRaw();
       validateMetadataProperties(kind, properties);
-      String id = properties.get("ID");
+      // getPropertyUnquoted, not properties.get("ID") (raw): the map key this is compared against below is
+      // itself the unquoted ID (see this method's own Javadoc), so a quoted-but-otherwise-unchanged ID (e.g.
+      // ID="A" stored under key "A") must not be reported as drifted just because it still contains its own
+      // original quote characters. See AGENTS.md's "Unquoting before internal use" policy.
+      String id = entry.getPropertyUnquoted("ID");
       // duplicate IDs across different entries can't occur once every entry's ID is confirmed to match its own
       // (necessarily unique) map key, so no separate "duplicate ID" check is needed here
       // mapKey is never null on any path that goes through Builder's addXxx methods (all reject/drop a
