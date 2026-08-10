@@ -377,9 +377,9 @@ public final class VcfPosition {
       if (InternalUtils.containsWhitespace(id) || id.contains(";")) {
         throw new VcfFormatException("ID \"" + id + "\" contains whitespace or semicolons");
       }
-      // VCFv4.2.tex line 181 has no duplicate-value clause for ID ("String, no whitespace or semicolons
-      // permitted"); VCFv4.3.tex line 338 adds "duplicate values not allowed" verbatim, used here as
-      // VCFv4.2-silent clarifying guidance -- matching hts-specs' own test/vcf/4.3/failed/failed_body_id_003.vcf
+      // VCFv4.3.tex line 338 (the target) states directly "String, no whitespace or semicolons permitted,
+      // duplicate values not allowed."; VCFv4.2.tex line 181 has no duplicate-value clause for ID, predating
+      // this rule rather than conflicting with it -- matching hts-specs' own test/vcf/4.3/failed/failed_body_id_003.vcf
       // (##CauseOfFailure=ID contains duplicate values in a single line, literal "ID=rs180734498;rs180734498").
       // Confirmed directly that both bcftools 1.23.1 and vcf_validator 0.10.2 silently accept a duplicate ID.
       // Warn rather than reject: ID is stored/emitted as an ordinary List (m_ids), never looked up by key or
@@ -506,9 +506,9 @@ public final class VcfPosition {
         // above): unlike PASS, `.` has no legitimate combined-with-another-code use documented anywhere.
         throw new VcfFormatException("FILTER contains '.' (missing value) along with other filters!");
       }
-      // VCFv4.2.tex line 185 has no duplicate-value clause for FILTER ("String, no whitespace or semicolons
-      // permitted"); VCFv4.3.tex line 362 adds "duplicate values not allowed" verbatim, used here as
-      // VCFv4.2-silent clarifying guidance -- matching hts-specs' own
+      // VCFv4.3.tex line 362 (the target) states directly "String, no whitespace or semicolons permitted,
+      // duplicate values not allowed."; VCFv4.2.tex line 185 has no duplicate-value clause for FILTER, predating
+      // this rule rather than conflicting with it -- matching hts-specs' own
       // test/vcf/4.3/failed/failed_body_filter_004.vcf (##CauseOfFailure=FILTER contains duplicate values,
       // literal "hp23;hp23"). Confirmed directly that both bcftools 1.23.1 and vcf_validator 0.10.2 silently
       // accept a duplicate FILTER code. Warn rather than reject: FILTER is stored/emitted as an ordinary List

@@ -63,14 +63,15 @@ ALT is a position-dependent list because `GT` genotype values index into it posi
 every subsequent allele's index down by one, silently misdirecting any `GT` value referencing a position after the
 dropped entry to the wrong allele — a real correctness bug, not just a cosmetic list-length difference. Substituting
 `.` instead, matching bcftools exactly, preserves every index. This also required removing a separate, pre-existing
-rule that rejected `.` combined with a real allele: `VCFv4.2.tex` (the target spec) only states that `.` replaces
-the *entire* ALT field "if there are no alternative alleles" (line 183), and is silent on `.` as one entry among
-several; `VCFv4.3.tex` line 350 lists a MISSING value `.` (no variant) as one of several options for "these
-alleles" (the same comma-separated list, worded slightly differently than the newer versions), and `VCFv4.4.tex`
-line 367 / `VCFv4.5.tex` line 416 state this more explicitly: "Each allele in this list must be one of: ... the
-MISSING value `.` (no variant); ..." — `.` is a formally sanctioned per-entry ALT token in every VCF version from
-4.3 onward. Confirmed bcftools 1.23.1 has no equivalent exclusivity rule either, accepting `T,.,C` with zero
-warning whether the `.` is substituted or literal, and with genotype indices before, at, and after the dot all
+rule that rejected `.` combined with a real allele: `VCFv4.3.tex` (the target) line 350 already lists a MISSING
+value `.` (no variant) as one of several options for "these alleles" (the same comma-separated list);
+`VCFv4.2.tex` predates this and only states that `.` replaces the *entire* ALT field "if there are no alternative
+alleles" (line 183), silent on `.` as one entry among several. `VCFv4.4.tex` line 367 / `VCFv4.5.tex` line 416
+restate the identical rule more explicitly, without changing its meaning: "Each allele in this list must be one
+of: ... the MISSING value `.` (no variant); ..." — `.` has been a formally sanctioned per-entry ALT token since
+VCFv4.3 (the target), not something borrowed from a later version. Confirmed bcftools 1.23.1 has no equivalent
+exclusivity rule either, accepting `T,.,C` with zero warning whether the `.` is substituted or literal, and
+with genotype indices before, at, and after the dot all
 resolving correctly.
 
 This reading is contested by tooling, worth stating plainly rather than omitting: vcf_validator 0.10.2 itself

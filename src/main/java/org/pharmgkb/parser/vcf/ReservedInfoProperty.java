@@ -13,9 +13,9 @@ import org.jspecify.annotations.Nullable;
  */
 public enum ReservedInfoProperty implements ReservedProperty {
 
-  // standard -- VCFv4.2 only describes these in prose with no formal Number/Type table; VCFv4.3's Reserved INFO
-  // Keys table (table:reserved-info) is used as clarifying guidance for expectedNumber, per AGENTS.md (VCFv4.2 is
-  // silent here, not in conflict)
+  // standard -- expectedNumber is sourced directly from VCFv4.3's Reserved INFO Keys table (table:reserved-info),
+  // the target's own table; VCFv4.2 only describes these in prose with no formal Number/Type table of its own,
+  // which predates the table rather than conflicting with it
 
   AncestralAllele("AA", "Ancestral allele", String.class, false, "1"),
   AlleleCount("AC", "Allele count in genotypes, for each ALT allele, in the same order as listed",
@@ -49,7 +49,8 @@ public enum ReservedInfoProperty implements ReservedProperty {
   ThousandGenomes("1000G", "Is a member of 1000 genomes", Boolean.class, false, "0"),
 
   // imprecise structural variants -- these ARE declared natively with an explicit ##INFO=<...> example in
-  // VCFv4.2.tex itself, so no VCFv4.3 clarification is needed; expectedNumber is taken directly from that example
+  // VCFv4.3.tex (the target) itself, unchanged from VCFv4.2.tex; expectedNumber is taken directly from that
+  // example
 
   Imprecise("IMPRECISE", "Imprecise structural variation", Boolean.class, false, "0"),
   Novel("NOVEL", "Indicates a novel structural variation", Boolean.class, false, "0"),
@@ -72,7 +73,7 @@ public enum ReservedInfoProperty implements ReservedProperty {
   BreakpointId("BKPTID", "ID of the assembled alternate allele in the assembly file", String.class, true, "."),
 
   // precise structural variants -- same sourcing note as the imprecise-SV group above: declared natively in
-  // VCFv4.2.tex, no VCFv4.3 clarification needed
+  // VCFv4.3.tex (the target), unchanged from VCFv4.2.tex
 
   MobileElementInfo("MEINFO", "Mobile element info of the form NAME,START,END,POLARITY", String.class, true,
       "4"), // fixed count of 4 (NAME,START,END,POLARITY), not a variable-list code

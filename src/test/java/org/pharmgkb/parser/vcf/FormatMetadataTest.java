@@ -301,6 +301,54 @@ public class FormatMetadataTest {
   }
 
   @Test
+  public void testCnlReservedNumberIsVersionAware() {
+    // CNL is the one reserved key whose expected Number genuinely differs by version: VCFv4.2.tex:308 declares
+    // "##FORMAT=<ID=CNL,Number=.,Type=Float,...>"; VCFv4.3.tex:678 (the target) redeclares it
+    // "##FORMAT=<ID=CNL,Number=G,Type=Float,...>". A declaration correct for one version is therefore incorrect
+    // for the other, in both directions.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      // 4.2: Number=. is correct, Number=G is not
+      new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=CNL", "Number=.", "Type=Float", "Description=\"d\""}, VcfWarnings.DEFAULT));
+      assertFalse(appender.hasWarnOrHigher());
+      new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=CNL", "Number=G", "Type=Float", "Description=\"d\""}, VcfWarnings.DEFAULT));
+      assertTrue(appender.anyMessageContains("has Number 'G' but the reserved definition expects '.'"));
+      long warnsUnder42 = appender.countMessagesContaining("but the reserved definition expects");
+
+      // 4.3 (the target): Number=G is correct, Number=. is not
+      VcfContext lenient43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
+      new FormatMetadata(lenient43, InternalUtils.extractProperties(
+          new String[]{"ID=CNL", "Number=G", "Type=Float", "Description=\"d\""}, VcfWarnings.DEFAULT));
+      assertEquals(warnsUnder42, appender.countMessagesContaining("but the reserved definition expects"));
+      new FormatMetadata(lenient43, InternalUtils.extractProperties(
+          new String[]{"ID=CNL", "Number=.", "Type=Float", "Description=\"d\""}, VcfWarnings.DEFAULT));
+      assertTrue(appender.anyMessageContains("has Number '.' but the reserved definition expects 'G'"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    // strict contexts throw instead of warning, in both directions
+    assertThrows(VcfFormatException.class,
+        () -> new FormatMetadata(STRICT_CONTEXT, "CNL", "d", "G", FormatType.Float));
+    VcfContext strict43 = VcfContext.strict("VCFv4.3");
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> new FormatMetadata(strict43, "CNL", "d", ".", FormatType.Float));
+    assertTrue(ex.getMessage().contains("reserved definition expects"));
+    // a correctly-declared CNL is accepted outright by each version's own strict context
+    FormatMetadata md42 = new FormatMetadata(STRICT_CONTEXT, "CNL", "d", ".", FormatType.Float);
+    assertEquals(".", md42.getNumber());
+    FormatMetadata md43 = new FormatMetadata(strict43, "CNL", "d", "G", FormatType.Float);
+    assertEquals("G", md43.getNumber());
+  }
+
+  @Test
   public void testNonReservedKeyIsNotChecked() {
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);

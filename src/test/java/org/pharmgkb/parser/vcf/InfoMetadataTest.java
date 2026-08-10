@@ -167,8 +167,8 @@ public class InfoMetadataTest {
 
   @Test
   public void testCorrectlyDeclaredStructuralVariantKeyDoesNotWarn() {
-    // END is declared natively in VCFv4.2.tex itself (Number=1, Type=Integer) -- exercises the "no 4.3
-    // clarification needed" sourcing path, not just the "standard" 4.3-table path
+    // END is declared natively in VCFv4.3.tex (the target) itself (Number=1, Type=Integer), unchanged from
+    // VCFv4.2.tex -- exercises the structural-variant sourcing path, not just the "standard" 4.3-table path
     StringWriter sink = new StringWriter();
     VcfWarnings warnings = new VcfWarnings(sink);
     new InfoMetadata(lenientContext(warnings), InternalUtils.extractProperties(

@@ -68,8 +68,9 @@ public class VcfFloatTest {
 
   @Test
   public void testParseSpecialValuesCaseInsensitiveAndSigned() {
-    // VCFv4.2 doesn't define Float's grammar; VCFv4.5 clarifies it accepts NAN/INF/INFINITY (case-insensitive,
-    // optionally signed) in addition to a normal decimal number
+    // VCFv4.3.tex (the target) states it accepts NAN/INF/INFINITY (case-insensitive, optionally signed) in
+    // addition to a normal decimal number; VCFv4.2 doesn't define Float's grammar at all -- see VcfFloat's own
+    // Javadoc for the citation
     for (String nan : new String[] { "NaN", "nan", "NAN" }) {
       VcfFloat value = VcfFloat.parse(nan);
       assertTrue(value.isSpecial());

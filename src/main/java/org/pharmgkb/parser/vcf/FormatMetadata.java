@@ -58,11 +58,14 @@ public final class FormatMetadata extends IdDescriptionMetadata {
     // version-aware: GLE stops being a reserved key at VCFv4.3 (VCFv4.3.tex line 2168, "Removed unused and
     // ill-defined GLE FORMAT tag"), so a 4.3+ ##FORMAT=<ID=GLE,...> is validated only against its own declared
     // Number/Type, like any custom key -- never against this library's 4.1/4.2 canonical values
-    ReservedFormatProperty reserved = ReservedFormatProperty.fromId(id, getContext().getVersion());
+    VcfVersion version = getContext().getVersion();
+    ReservedFormatProperty reserved = ReservedFormatProperty.fromId(id, version);
     if (reserved != null) {
-      if (!reserved.getExpectedNumber().equals(number)) {
+      // version-aware: CNL is the one reserved key whose expected Number differs by version (VCFv4.2.tex:308
+      // "Number=.", VCFv4.3.tex:678 "Number=G") -- see that constant's own comment for the citations
+      if (!reserved.getExpectedNumber(version).equals(number)) {
         warnOrThrow("FORMAT {} has Number '{}' but the reserved definition expects '{}'", id, number,
-            reserved.getExpectedNumber());
+            reserved.getExpectedNumber(version));
       }
       if (type != null && !InternalUtils.toJavaType(type).equals(reserved.getType())) {
         warnOrThrow("FORMAT {} has Type '{}' but the reserved definition expects '{}'", id, type,
@@ -104,11 +107,12 @@ public final class FormatMetadata extends IdDescriptionMetadata {
       }
     }
     // version-aware; see the attribute constructor's identical call above for the citation
-    ReservedFormatProperty reserved = ReservedFormatProperty.fromId(id, getContext().getVersion());
+    VcfVersion version = getContext().getVersion();
+    ReservedFormatProperty reserved = ReservedFormatProperty.fromId(id, version);
     if (reserved != null) {
-      if (number != null && !reserved.getExpectedNumber().equals(number)) {
+      if (number != null && !reserved.getExpectedNumber(version).equals(number)) {
         warnOrThrow("{} {} has Number '{}' but the reserved definition expects '{}'", getLabel(), getId(),
-            number, reserved.getExpectedNumber());
+            number, reserved.getExpectedNumber(version));
       }
       if (m_type != null && !InternalUtils.toJavaType(m_type).equals(reserved.getType())) {
         warnOrThrow("{} {} has Type '{}' but the reserved definition expects '{}'", getLabel(), getId(),

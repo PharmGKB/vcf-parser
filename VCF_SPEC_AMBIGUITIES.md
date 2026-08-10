@@ -347,10 +347,12 @@ bcftools's clear-never-promotes-to-PASS convention. Implemented in `VcfPosition`
 
 ### Duplicate ID/FILTER entries within one record
 
-VCFv4.2.tex (target) is silent on duplicate values for both fields: ID (line 181) and FILTER (line 185) are
-each described only as "(String, no whitespace or semicolons permitted)". VCFv4.3.tex adds the identical
-clause to both: "duplicate values not allowed" (ID: line 338; FILTER: line 362), used here as VCFv4.2-silent
-clarifying guidance. hts-specs' own `failed/` suite documents both exact cases:
+VCFv4.3.tex (target) states directly, for both fields, "duplicate values not allowed" (ID: line 338; FILTER:
+line 362) -- plain conformance to the target, not guidance borrowed from a later version. This rule is applied
+uniformly, including to VCFv4.1/4.2 files: VCFv4.2.tex is silent on duplicate values for both fields, describing
+ID (line 181) and FILTER (line 185) each only as "(String, no whitespace or semicolons permitted)", which
+predates the target's rule rather than conflicting with it. hts-specs' own `failed/` suite documents both exact
+cases:
 `test/vcf/4.3/failed/failed_body_id_003.vcf` (`##CauseOfFailure=ID contains duplicate values in a single
 line`) and `test/vcf/4.3/failed/failed_body_filter_004.vcf` (`##CauseOfFailure=FILTER contains duplicate
 values`, literal `hp23;hp23`). Confirmed directly that both bcftools 1.23.1 and vcf_validator 0.10.2 silently
@@ -527,11 +529,20 @@ no real tool disagreement to arbitrate in the first place, and the `"."` substit
 
 **Decision:** keep `CNP`'s declared `Number="G"` (so a genuinely wrong declared `Number` is still caught), and
 instead generalize the pre-existing `GLE`-only value-*cardinality*-check exemption
-(`InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck`) to also cover `CNP`. The two exemptions have
-been version-split since: `GLE`'s applies only under VCFv4.2 and earlier (VCFv4.3 removed the key), while
-`CNP`'s — whose rationale is this entry's, not `GLE`'s — is unconditional. The lesson generalizes:
-bcftools's silence on a specific check is not evidence it endorses either side of a disagreement — verify
-what the tool actually validates before treating its behavior as decisive.
+(`InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck`) to also cover `CNP`. `GLE`'s exemption applies
+only under VCFv4.2 and earlier (VCFv4.3 removed the key), while `CNP`'s — whose rationale is this entry's, not
+`GLE`'s — is unconditional. The lesson generalizes: bcftools's silence on a specific check is not evidence it
+endorses either side of a disagreement — verify what the tool actually validates before treating its behavior
+as decisive.
+
+**Update:** `CNL` was later found to have the same "per potential copy number" `Number=G` rationale as `CNP`,
+once its own expected `Number` is made version-aware: VCFv4.2.tex line 308 declares it `Number=.`, while
+VCFv4.3.tex line 678 (the target) redeclares it `Number=G` -- a real drift a prior pass had mischaracterized as
+"unchanged" (see `ReservedFormatProperty.CopyNumberLikelihood`'s own comment for the full citation and
+`FormatMetadataTest.testCnlReservedNumberIsVersionAware` for the regression coverage). `CNL` was added to the
+same exemption set, gated the opposite way from `GLE`: it applies only under VCFv4.3 and later, since that is
+the one version range where `CNL`'s own expected `Number` is actually `G` -- below that, its `Number` is `.`,
+which the generic check already skips for that reason alone.
 
 ### `rsidsOnly()` discard semantics
 

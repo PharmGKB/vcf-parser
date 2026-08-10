@@ -737,6 +737,38 @@ class VcfSampleTest {
   }
 
   @Test
+  void testGetPropertyWithPositionAndMetadataExemptsCnlFromCardinalityCheckAtV43() {
+    // same shape as testGetPropertyWithPositionAndMetadataExemptsCnpFromCardinalityCheck above, for CNL: its
+    // Number=G means "one value per potential copy number" only from VCFv4.3 on (VCFv4.2.tex:308 declares it
+    // Number=.; VCFv4.3.tex:678 redeclares it Number=G -- see ReservedFormatProperty.CopyNumberLikelihood's
+    // own comment), so the exemption from the ploidy-derived Number=G cardinality formula must fire under a
+    // 4.3 context. GT=0|1 (ploidy 2), 1 ALT allele would make the formula expect 3 values, but a real CNL for
+    // 5 possible copy-number states legitimately has 5; must not warn.
+    VcfContext context43 = VcfContext.strict("VCFv4.3");
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0|1");
+    map.put("CNL", "-0.1,-0.2,-0.3,-0.2,-0.2");
+    VcfSample sample = context43.newSample(map);
+    VcfPosition position = context43.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
+    VcfMetadata metadata = new VcfMetadata.Builder(context43).setFileFormat("VCFv4.3").build();
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertEquals(java.util.Arrays.asList(
+          VcfFloat.of(new java.math.BigDecimal("-0.1")), VcfFloat.of(new java.math.BigDecimal("-0.2")),
+          VcfFloat.of(new java.math.BigDecimal("-0.3")), VcfFloat.of(new java.math.BigDecimal("-0.2")),
+          VcfFloat.of(new java.math.BigDecimal("-0.2"))), sample.getProperty(position, metadata, "CNL"));
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   void testGetPropertyWithPositionAndMetadataSkipsCardinalityCheckWhenPloidyUnknown() {
     // a non-reserved Number=G field has no spec-stated ploidy default the way GL/PL/GP/PP do (see the dedicated
     // PL test below) -- GT absent -> ploidy can't be determined -> skip rather than guess

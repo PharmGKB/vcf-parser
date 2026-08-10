@@ -360,7 +360,9 @@ public final class VcfSample {
       // Number/Type: this method still ignores the declaration and uses the canonical value, while the writer's
       // validateBeforeWrite() validates against what was actually declared, so the two can warn in opposite
       // directions for that specific (declared-but-non-canonical) case.
-      number = reserved.getExpectedNumber();
+      // version-aware: CNL is the one reserved key whose expected Number differs by version -- see its own
+      // comment in ReservedFormatProperty for the citations
+      number = reserved.getExpectedNumber(version);
       isList = reserved.isList();
     } else {
       format = metadata.getFormats().get(key);

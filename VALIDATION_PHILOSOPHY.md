@@ -118,12 +118,16 @@ is `VCFv4.2`), and a bare ordinal comparison silently changes meaning if a versi
 enum. `isAtLeast` also rejects a `null` argument with `VcfFormatException` rather than answering it.
 
 **Gate only a genuine change of meaning.** A version branch is reserved for a rule whose meaning differs
-between versions with both readings valid. Today that is exactly two rules: `FORMAT/GP` (phred-scaled under
-VCFv4.2 and earlier per VCFv4.2.tex line 227, a 0-1 probability from VCFv4.3 per VCFv4.3.tex line 491) and
+between versions with both readings valid. Today that is three rules: `FORMAT/GP` (phred-scaled under
+VCFv4.2 and earlier per VCFv4.2.tex line 227, a 0-1 probability from VCFv4.3 per VCFv4.3.tex line 491),
 `FORMAT/GLE` (a reserved key at VCFv4.1.tex line 208/VCFv4.2.tex line 225, removed by VCFv4.3 per VCFv4.3.tex
-line 2168). Where a later version merely *clarifies* something VCFv4.2 left unsaid, the later rule is adopted
-at every version instead, with no branch at all -- see `VALIDATION_REFERENCE.md`'s "Rules applied at every
-declared version" for that list, and its lenient section for the two gated rules' exact per-version behavior.
+line 2168), and `FORMAT/CNL`'s expected `Number` (`.` at VCFv4.2.tex line 308 and earlier, `G` from
+VCFv4.3.tex line 678 -- see `ReservedFormatProperty.CopyNumberLikelihood`'s own comment). Where the target VCF
+specification (VCFv4.3) states a rule directly, the rule is simply adopted at every version, including the
+4.1/4.2 input that predates it; only where the target itself is silent does a version later than the target
+supply clarifying guidance instead -- either way there is no branch at all -- see `VALIDATION_REFERENCE.md`'s
+"Rules applied at every declared version" for that list, and its lenient section for the three gated rules'
+exact per-version behavior.
 
 ## Where this applies
 
@@ -138,9 +142,9 @@ declared version" for that list, and its lenient section for the two gated rules
   `putAndQuoteProperty` always quotes whatever it's given. The Map-based constructor's shared `init()` still
   warns for all of these, including the two that are unreachable from the typed side.
 - **`ContigMetadata`**: the typed constructor reports a malformed `URL`, an ID starting with `*`/`=`, and an
-  ID containing a character `InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN` flags (VCFv4.2-silent, VCFv4.3.tex's
-  own "Changes to VCFv4.3" errata used as clarifying guidance -- see that pattern's own comment and
-  `VCF_SPEC_AMBIGUITIES.md`'s "##contig ID character set" entry). A malformed `length` is similarly
+  ID containing a character `InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN` flags (stated directly by
+  VCFv4.3.tex's own "Changes to VCFv4.3" errata, the target; VCFv4.2.tex predates it -- see that pattern's
+  own comment and `VCF_SPEC_AMBIGUITIES.md`'s "##contig ID character set" entry). A malformed `length` is similarly
   unreachable via this path -- the parameter is `@Nullable Long`, already parsed by the time it arrives, so
   only `null` (legitimately absent per VCFv4.2.tex line 138) or an already-valid value can be passed. `assembly`
   has no format constraint to check in either constructor.

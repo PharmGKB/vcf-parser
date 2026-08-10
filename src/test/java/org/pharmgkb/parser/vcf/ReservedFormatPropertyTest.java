@@ -3,7 +3,9 @@ package org.pharmgkb.parser.vcf;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ReservedFormatPropertyTest {
@@ -97,11 +99,41 @@ public class ReservedFormatPropertyTest {
 
   @Test
   public void testGetExpectedNumberForFixedCountAndStructuralVariantKeys() {
-    // HQ: fixed count of 2, declared natively in VCFv4.2.tex (no VCFv4.3 clarification needed)
+    // HQ: fixed count of 2, declared natively in VCFv4.3.tex (the target), unchanged from VCFv4.2.tex
     assertEquals("2", ReservedFormatProperty.HaplotypeQualities.getExpectedNumber());
-    // structural variant genotype keys are also declared natively in VCFv4.2.tex
+    // CN is also declared natively in VCFv4.3.tex (the target), unchanged from VCFv4.2.tex; CNL is not -- see
+    // testGetExpectedNumberForCopyNumberLikelihoodIsVersionAware below
     assertEquals("1", ReservedFormatProperty.CopyNumber.getExpectedNumber());
-    assertEquals(".", ReservedFormatProperty.CopyNumberLikelihood.getExpectedNumber());
+  }
+
+  @Test
+  public void testGetExpectedNumberForCopyNumberLikelihoodIsVersionAware() {
+    // VCFv4.2.tex:308: "##FORMAT=<ID=CNL,Number=.,Type=Float,...>"; VCFv4.3.tex:678 (the target) redeclares it
+    // "##FORMAT=<ID=CNL,Number=G,Type=Float,...>" -- the only reserved-key Number/Type drift between the two
+    // spec versions in either direction. The version-independent getExpectedNumber() returns the target's own
+    // value ("G"); the version-aware overload additionally reports the pre-4.3 value.
+    assertEquals("G", ReservedFormatProperty.CopyNumberLikelihood.getExpectedNumber());
+    assertEquals("G", ReservedFormatProperty.CopyNumberLikelihood.getExpectedNumber(VcfVersion.V4_3));
+    assertEquals(".", ReservedFormatProperty.CopyNumberLikelihood.getExpectedNumber(VcfVersion.V4_2));
+    // the generic Number=G ploidy-derived cardinality check doesn't apply to CNL's own "per potential copy
+    // number" G (see the enum entry's own comment) -- exempted only from the version CNL's Number actually
+    // becomes "G"; below that its Number is "." and the check already skips it for that reason alone
+    assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNL", VcfVersion.V4_2));
+    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNL", VcfVersion.V4_3));
+  }
+
+  @Test
+  public void testGetExpectedNumberWithNullVersionRejectsUniformlyAcrossConstants() {
+    // version is typed non-@Nullable, but nothing enforces that at compile time; a null must be rejected with
+    // VcfFormatException (matching VcfVersion.isAtLeast's own null contract) for every constant alike -- not
+    // just CopyNumberLikelihood, the one constant whose override actually dereferences version. The null check
+    // runs before that constant's own dispatch, so a plain reserved key (e.g. GT, never CNL-gated at all) must
+    // reject a null exactly the same way CNL does, rather than silently falling through to
+    // getExpectedNumber()'s version-independent value the way ReservedProperty's own default method would if
+    // this override skipped the check.
+    assertThrows(VcfFormatException.class, () -> ReservedFormatProperty.Genotype.getExpectedNumber(null));
+    assertThrows(VcfFormatException.class,
+        () -> ReservedFormatProperty.CopyNumberLikelihood.getExpectedNumber(null));
   }
 
   @Test

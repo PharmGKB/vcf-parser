@@ -1098,6 +1098,45 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteDoesNotWarnAboutCnlCardinalityAtV43() throws Exception {
+    // same shape as testValidateBeforeWriteDoesNotWarnAboutCnpCardinality above, for CNL: its declared
+    // Number=G is only correct from VCFv4.3 on (VCFv4.2.tex:308 declares it Number=.; VCFv4.3.tex:678
+    // redeclares it Number=G -- see ReservedFormatProperty.CopyNumberLikelihood's own comment), and its
+    // "potential copy number" G is exempt from the ploidy-derived Number=G cardinality formula the same way
+    // CNP's is -- but only from VCFv4.3 on, the one range where CNL's Number is actually G (see
+    // InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck)
+    VcfContext context43 = VcfContext.strict("VCFv4.3");
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder(context43).setFileFormat("VCFv4.3")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .addFormat(new FormatMetadata(context43, "GT", "Genotype", "1", FormatType.String))
+        .addFormat(new FormatMetadata(context43, "CNL", "Copy number genotype likelihood", "G", FormatType.Float))
+        .build();
+    VcfPosition position = context43.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("GT", "CNL"), -1);
+    LinkedHashMap<String, String> sampleProps = new LinkedHashMap<>();
+    sampleProps.put("GT", "0/1");
+    sampleProps.put("CNL", "-0.1,-0.2,-0.3,-0.2,-0.2");
+    VcfSample sample = context43.newSample(sampleProps);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, Collections.singletonList(sample));
+      assertFalse(appender.anyMessageContains("Number=G requires"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testValidateBeforeWriteDoesNotDoubleWarnAboutEmptyFormatValue() throws Exception {
     // regression test: validateFormatValue()'s own per-element type-conversion loop previously called
     // InternalUtils.convertProperty() for every element including empty ones, which (since convertProperty now

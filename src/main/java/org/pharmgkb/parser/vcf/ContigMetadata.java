@@ -60,10 +60,10 @@ public final class ContigMetadata extends IdMetadata {
         warnOrThrow("{} URL {} is malformed: {}", getLabel(), url, e.getMessage());
       }
     }
-    // VCFv4.2.tex doesn't table a character-set grammar for ##contig IDs beyond IdMetadata's own shared
-    // whitespace/comma checks above; this fuller grammar is VCFv4.2-silent clarifying guidance from
-    // VCFv4.3.tex's own "Changes to VCFv4.3" errata (~line 2129-2144, unchanged in 4.4/4.5), which states the
-    // rule for "VCF contig names" specifically -- confirmed by direct bcftools 1.23.1 testing that this does
+    // VCFv4.3.tex (the target) states this fuller character-set grammar for ##contig IDs, beyond IdMetadata's
+    // own shared whitespace/comma checks above, in its own "Changes to VCFv4.3" errata (~line 2129-2144,
+    // unchanged in 4.4/4.5), which states the rule for "VCF contig names" specifically; VCFv4.2.tex predates
+    // this grammar rather than conflicting with it -- confirmed by direct bcftools 1.23.1 testing that this does
     // NOT extend to INFO/FORMAT tag names, which bcftools validates under a different, stricter rule (see
     // VCF_SPEC_AMBIGUITIES.md's "##contig ID character set" entry). InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN itself has 13 characters,
     // including a comma, so its coverage overlaps IdMetadata's own dedicated comma check above. Under a strict

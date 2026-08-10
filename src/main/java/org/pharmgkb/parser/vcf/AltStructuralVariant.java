@@ -46,13 +46,13 @@ public class AltStructuralVariant {
       throw new VcfFormatException("Structural variant code must not be empty");
     }
     if (InternalUtils.containsWhitespace(string) || string.chars().anyMatch(c -> c == '<' || c == '>' || c == ',')) {
-      // VCFv4.2.tex line 105: "ID values are case sensitive strings and may not contain whitespace or angle
-      // brackets." VCFv4.2 is silent on commas specifically; VCFv4.3.tex line 200 (unchanged through
-      // VCFv4.4.tex:209/VCFv4.5.tex:258) clarifies the same sentence to "...must not contain whitespace,
-      // commas or angle brackets" -- used here as VCFv4.2-silent clarifying guidance per AGENTS.md. hts-specs'
+      // VCFv4.3.tex line 200 (the target, unchanged through VCFv4.4.tex:209/VCFv4.5.tex:258) states directly:
+      // "ID values are case sensitive strings and must not contain whitespace, commas or angle brackets."
+      // VCFv4.2.tex line 105 states the same sentence without the comma ("...may not contain whitespace or
+      // angle brackets"), predating the comma rule rather than conflicting with it. hts-specs'
       // own test/vcf/4.2/failed/failed_meta_alt_007.vcf (and an identical test/vcf/4.3 counterpart) declares
       // ID=DEL:A,B with ##CauseOfFailure=The ALT ID contains a comma, confirming this is rejected under the
-      // target 4.2 spec too, not just a 4.3+-only rule.
+      // VCFv4.2 spec too, not just a 4.3+-only rule.
       throw new VcfFormatException("Structural variant code \"" + string + "\" must not contain whitespace, " +
           "commas, or angle brackets");
     }
@@ -64,10 +64,10 @@ public class AltStructuralVariant {
 
     for (int level = 0; level < components.length; level++) {
       if (components[level].isEmpty()) {
-        // VCFv4.2 does not table this; VCFv4.3.tex line 39 ("Zero length fields are not allowed, a dot ('.')
-        // must be used instead") gives the general rule this component-level check applies, used as
-        // VCFv4.2-silent clarifying guidance per AGENTS.md -- consistent with EMPTY_FIELD_HANDLING.md's citation
-        // of the identical rule for generic metadata properties.
+        // VCFv4.3.tex line 39 (the target) states directly "Zero length fields are not allowed, a dot ('.')
+        // must be used instead" -- the general rule this component-level check applies. VCFv4.2.tex does not
+        // table this rule at all, predating it rather than conflicting with it -- consistent with
+        // EMPTY_FIELD_HANDLING.md's citation of the identical rule for generic metadata properties.
         throw new VcfFormatException("Structural variant code \"" + string + "\" has an empty component at level " +
             level);
       }

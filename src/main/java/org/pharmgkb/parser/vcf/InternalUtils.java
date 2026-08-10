@@ -136,12 +136,13 @@ public class InternalUtils {
     }
     return true;
   }
-  // VCFv4.2 (this project's target spec) does not table a formal FORMAT-key grammar -- it only describes the
-  // FORMAT field informally as a "colon-separated alphanumeric String" (VCFv4.2.tex, Genotype fields
-  // subsection). VCFv4.3.tex gives this exact regex verbatim, unchanged in VCFv4.4/4.5: "colon-separated FORMAT
-  // keys matching the regular expression ^[A-Za-z_][0-9A-Za-z_.]*$, duplicate keys are not allowed"
-  // (VCFv4.3.tex:429; repeated in the VCFv4.2->4.3 changelog at VCFv4.3.tex:2150, which states the identical rule
-  // for "INFO and FORMAT tag names" together). Used both for a data-line FORMAT key (VcfPosition.java) and for a
+  // VCFv4.3.tex (this project's target spec) gives this exact regex verbatim, unchanged in VCFv4.4/4.5:
+  // "colon-separated FORMAT keys matching the regular expression ^[A-Za-z_][0-9A-Za-z_.]*$, duplicate keys are
+  // not allowed" (VCFv4.3.tex:429; repeated in the VCFv4.2->4.3 changelog at VCFv4.3.tex:2150, which states the
+  // identical rule for "INFO and FORMAT tag names" together). VCFv4.2 does not table a formal FORMAT-key
+  // grammar -- it only describes the FORMAT field informally as a "colon-separated alphanumeric String"
+  // (VCFv4.2.tex, Genotype fields subsection), predating the target's regex rather than conflicting with it.
+  // Used both for a data-line FORMAT key (VcfPosition.java) and for a
   // ##FORMAT declaration's own ID (FormatMetadata.java) -- confirmed via direct bcftools 1.23.1 testing that
   // bcftools enforces this same stricter grammar for ##FORMAT declaration IDs specifically (an asterisk anywhere
   // but the first character triggers "Invalid tag name"), unlike ##FILTER/##SAMPLE/##ALT declaration IDs, which
@@ -154,8 +155,9 @@ public class InternalUtils {
   // ^([A-Za-z_][0-9A-Za-z_.]*|1000G)$, please note that ``1000G'' is allowed as a special legacy value." The
   // VCFv4.2->4.3 changelog (VCFv4.3.tex:2150) states the rule for "INFO and FORMAT tag names" together with no
   // 1000G exception mentioned, but the more specific body text -- confirmed live via bcftools 1.23.1, which
-  // silently accepts ##INFO=<ID=1000G,...> -- governs over the changelog's more general summary. VCFv4.2 is
-  // silent on INFO tag-name grammar; used here as VCFv4.2-silent clarifying guidance per AGENTS.md. Confirmed
+  // silently accepts ##INFO=<ID=1000G,...> -- governs over the changelog's more general summary. This is simply
+  // the VCFv4.3.tex target's own stated rule, applied uniformly including to VCFv4.1/4.2 input: those versions
+  // are silent on INFO tag-name grammar, predating the rule rather than conflicting with it. Confirmed
   // via direct bcftools 1.23.1 testing that ##INFO declaration IDs are held to this stricter grammar (an
   // asterisk anywhere but the first character triggers "Invalid tag name"), unlike ##FILTER/##SAMPLE/##ALT
   // declaration IDs -- see VCF_SPEC_AMBIGUITIES.md's "##FORMAT/##INFO declaration ID grammar is stricter than
@@ -167,14 +169,15 @@ public class InternalUtils {
   // VCF 4.x only; also rejects malformed versions like VCFv4..2
   public static final Pattern FILE_FORMAT_PATTERN = Pattern.compile("VCFv4\\.\\d+");
 
-  // VCFv4.2.tex line 179 only states "no whitespace permitted" for CHROM, and doesn't mention ##contig IDs'
-  // character set at all; this fuller grammar is VCFv4.2-silent clarifying guidance from VCFv4.3.tex's own
-  // "Changes to VCFv4.3" errata (the subsection at VCFv4.3.tex lines 2129-2144; the load-bearing sentences are
-  // 2136 -- "The set of characters allowed in VCF contig names is now the same as that allowed in SAM reference
-  // sequence names" -- and 2137-2138, which list exactly the characters below; carried verbatim into
-  // VCFv4.4.tex line 2599 and VCFv4.5.tex line 2781, and restated in the body text at VCFv4.3.tex lines
-  // 258-259, VCFv4.4.tex line 272 and VCFv4.5.tex line 321). Applied at every version this library reads, not
-  // gated on the declared ##fileformat, precisely because VCFv4.2 is silent rather than in conflict. Used by
+  // VCFv4.3.tex (the target) states this fuller character-set grammar directly, in its own "Changes to VCFv4.3"
+  // errata (the subsection at VCFv4.3.tex lines 2129-2144; the load-bearing sentences are 2136 -- "The set of
+  // characters allowed in VCF contig names is now the same as that allowed in SAM reference sequence names" --
+  // and 2137-2138, which list exactly the characters below; carried verbatim into VCFv4.4.tex line 2599 and
+  // VCFv4.5.tex line 2781, and restated in the body text at VCFv4.3.tex lines 258-259, VCFv4.4.tex line 272 and
+  // VCFv4.5.tex line 321). VCFv4.2.tex line 179 only states "no whitespace permitted" for CHROM and doesn't
+  // mention ##contig IDs' character set at all -- it predates this grammar rather than conflicting with it.
+  // Applied at every version this library reads, not gated on the declared ##fileformat, since this is the
+  // target's own rule for "VCF contig names", not a version-dependent one. Used by
   // both VcfPosition.checkChromosome (CHROM values) and
   // ContigMetadata (##contig IDs) -- both are "VCF contig names" per that same errata text, which is why this
   // constant isn't named after either specific call site. Colon is deliberately NOT in this set -- the same
@@ -704,16 +707,17 @@ public class InternalUtils {
   // vcf_validator 0.10.2 rejects a negative value for each of these ("value must be a non-negative integer
   // number"; confirmed directly against test/vcf/4.2/failed/failed_body_info_001.vcf (AC), _006.vcf (AN),
   // _013.vcf (DP), _016.vcf (END), _021.vcf (MQ0), _023.vcf (NS)); bcftools 1.23.1 is silent on all six (it never
-  // validates reserved-key semantics, only structural presence). VCFv4.2.tex doesn't table this constraint
-  // itself, but each key's own reserved-key description implies a count/depth/position can't be negative.
+  // validates reserved-key semantics, only structural presence). Neither VCFv4.2.tex nor the VCFv4.3.tex target
+  // tables this constraint directly, but each key's own reserved-key description implies a count/depth/position
+  // can't be negative.
   private static final Set<String> NON_NEGATIVE_INTEGER_INFO_KEYS = Set.of(
       ReservedInfoProperty.AlleleCount.getId(), ReservedInfoProperty.AlleleNumber.getId(),
       ReservedInfoProperty.Depth.getId(), ReservedInfoProperty.End.getId(),
       ReservedInfoProperty.MappingQualityZeroCount.getId(), ReservedInfoProperty.NumberOfSamples.getId());
 
   /**
-   * Warns if {@code value} violates a constraint that VCFv4.2 places on a reserved INFO key beyond its declared
-   * {@code Type} -- constraints that generic {@code Type}-based conversion can't express. Currently:
+   * Warns if {@code value} violates a constraint that a reserved INFO key's own description implies beyond its
+   * declared {@code Type} -- constraints that generic {@code Type}-based conversion can't express. Currently:
    * <ul>
    *   <li>{@link ReservedInfoProperty#AlleleCount AC}, {@link ReservedInfoProperty#AlleleNumber AN},
    *   {@link ReservedInfoProperty#Depth DP}, {@link ReservedInfoProperty#End END},
@@ -849,17 +853,24 @@ public class InternalUtils {
    * for, so that generic {@code Number=G} value-cardinality check specifically (not {@code Number}/{@code Type}
    * checks generally) must be skipped.
    * <p>
-   * Two keys qualify, for unrelated reasons, and only one of them is version-dependent:
+   * Three keys qualify, for two unrelated reasons, and two of the three are version-dependent (in opposite
+   * directions):
    * <ul>
    *   <li>{@code GLE}, whose value isn't comma-delimited the normal way at all (see
    *   {@link #splitFormatValue}) -- but only under VCFv4.2 and earlier, since VCFv4.3 removed the key
    *   (VCFv4.3.tex line 2168) and a 4.3+ key named {@code GLE} is an ordinary custom key that gets the ordinary
    *   check against whatever {@code Number} its own {@code ##FORMAT} declaration states.</li>
-   *   <li>{@code CNP}, whose value IS a genuine comma-delimited list, but per its own spec prose
-   *   ({@link ReservedFormatProperty#CopyNumberPosteriorProbabilities}'s own comment) means "one value per
-   *   potential copy number" -- a dimension nothing in a VCF record states, unlike ploidy + ALT allele count,
-   *   which genotype-ordering {@code "G"} is defined from. <b>Not version-gated</b>: {@code CNP} is reserved at
-   *   every version this library interprets, and its exemption has nothing to do with {@code GLE}'s.</li>
+   *   <li>{@code CNP} and {@code CNL}, whose values ARE genuine comma-delimited lists, but per their own spec
+   *   prose ({@link ReservedFormatProperty#CopyNumberPosteriorProbabilities}/
+   *   {@link ReservedFormatProperty#CopyNumberLikelihood}'s own comments) mean "one value per potential copy
+   *   number" -- a dimension nothing in a VCF record states, unlike ploidy + ALT allele count, which
+   *   genotype-ordering {@code "G"} is defined from. {@code CNP}'s exemption is <b>not version-gated</b>: it is
+   *   reserved with {@code Number=G} at every version this library interprets. {@code CNL}'s exemption
+   *   <b>is</b> version-gated, but the opposite way from {@code GLE}'s: {@code CNL} is only {@code Number=G}
+   *   from VCFv4.3 on (VCFv4.2.tex:308 declares it {@code Number=.}; VCFv4.3.tex:678, the target, redeclares it
+   *   {@code Number=G} -- see {@link ReservedFormatProperty#CopyNumberLikelihood}'s own comment), so the
+   *   exemption applies only at {@code >=4.3}; below that its {@code Number} is {@code .}, which the generic
+   *   check already skips for that reason alone, without needing this exemption at all.</li>
    * </ul>
    */
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
@@ -868,20 +879,30 @@ public class InternalUtils {
         key.equals(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy.getId())) {
       return true;
     }
+    if (version.isAtLeast(VcfVersion.V4_3) &&
+        key.equals(ReservedFormatProperty.CopyNumberLikelihood.getId())) {
+      return true;
+    }
     return key.equals(ReservedFormatProperty.CopyNumberPosteriorProbabilities.getId());
   }
 
-  // GL's own spec definition (VCFv4.2.tex line 224: "In presence of the GT field the same ploidy is expected
-  // and the canonical order is used; without GT field, diploidy is assumed" -- restated without the "canonical
-  // order" clause, but otherwise unchanged, at VCFv4.3.tex line 505/4.4.tex line 531/4.5.tex line 630) states an
-  // explicit ploidy default for the one case getPloidy() otherwise can't resolve at all (GT absent). PL is
-  // "otherwise defined precisely as the GL field" and GP "otherwise defined precisely as the GL field" (both
-  // VCFv4.2.tex lines 226/227 -- the target spec itself states the inheritance directly for these two, no 4.3+
-  // clarification needed). PP has no VCFv4.2.tex declaration at all; VCFv4.3.tex line 563 ("defined in the same
-  // way as the GP field") is used as clarifying guidance per AGENTS.md for this one key only. All four inherit
-  // GL's own diploidy-assumed rule transitively, not just the one key the spec states it for directly. No other
-  // Number=G field, reserved or not, has any such spec-stated default, so this default is scoped to exactly
-  // these four keys rather than generalized to getExpectedCardinality's "G" branch itself.
+  // GL's own spec definition (VCFv4.3.tex line 505 -- the target -- "In presence of the GT field the same ploidy
+  // is expected; without GT field, diploidy is assumed", a shorter restatement (dropping the "canonical order"
+  // clause) of VCFv4.2.tex line 224's identical-in-substance "In presence of the GT field the same ploidy is
+  // expected and the canonical order is used; without GT field, diploidy is assumed"; carried unchanged again at
+  // VCFv4.4.tex line 531/VCFv4.5.tex line 630) states an explicit ploidy default for the one case getPloidy()
+  // otherwise can't resolve at all (GT absent). PL is "otherwise defined in the same way as the GL field"
+  // (VCFv4.3.tex line 562, target) and GP is "using the same ordering as the GL field" (VCFv4.3.tex line 491,
+  // target -- narrower wording than VCFv4.2.tex line 227's "otherwise defined precisely as the GL field", but
+  // still enough to carry GL's ploidy-dependent ordering, which is exactly what the diploidy default governs) --
+  // the target spec itself states the inheritance directly for both, no clarification from a later version
+  // needed. PP is likewise declared directly in the VCFv4.3.tex target (line 563: "and otherwise defined in the
+  // same way as the GP field"); VCFv4.2.tex has no PP entry at all (PP was introduced by VCFv4.3), but that gap
+  // is in a version the target has already superseded, not a gap the target itself needs a later version's
+  // guidance to fill. All four inherit GL's own diploidy-assumed rule transitively, not just the one key the
+  // spec states it for directly. No other Number=G field, reserved or not, has any such spec-stated default, so
+  // this default is scoped to exactly these four keys rather than generalized to getExpectedCardinality's "G"
+  // branch itself.
   private static final Set<String> KEYS_ASSUMING_DIPLOIDY_WITHOUT_GT = Set.of(
       ReservedFormatProperty.GenotypeLikelihoods.getId(),
       ReservedFormatProperty.PhredScaledGenotypeLikelihoods.getId(),
@@ -1140,7 +1161,8 @@ public class InternalUtils {
 
     } else if (clas == VcfFloat.class) {
       // unlike plain BigDecimal, this also accepts NAN/INF/INFINITY (case-insensitive, optionally signed), which
-      // VCFv4.2 leaves undefined but VCFv4.5 clarifies are valid Float literals
+      // VCFv4.3.tex (the target) states are valid Float literals; VCFv4.2 leaves Float's grammar undefined
+      // entirely -- see VcfFloat's own Javadoc for the citation and why VCFv4.3, not a later version, is cited
       return VcfFloat.parse(value, warnings);
     } else if (clas == Long.class) {
       try {

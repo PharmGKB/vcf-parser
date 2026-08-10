@@ -219,8 +219,9 @@ public class VcfPositionTest {
 
   @Test
   public void testGetInfoFloatAcceptsSpecialValues() {
-    // VCFv4.2 doesn't define Float's grammar at all; VCFv4.5 clarifies it accepts NAN/INF/INFINITY (case-insensitive,
-    // optionally signed) in addition to a normal decimal number -- a plain BigDecimal can't represent these at all
+    // VCFv4.3.tex (the target) states it accepts NAN/INF/INFINITY (case-insensitive, optionally signed) in
+    // addition to a normal decimal number; VCFv4.2 doesn't define Float's grammar at all -- see VcfFloat's own
+    // Javadoc for the citation. A plain BigDecimal can't represent these special values at all
     VcfPosition nan = newPosition().toBuilder().rawInfo("MQ=NaN").build();
     assertEquals(VcfFloat.ofSpecial(VcfFloat.Special.NAN), nan.getInfo(ReservedInfoProperty.MappingQuality));
 
@@ -611,10 +612,10 @@ public class VcfPositionTest {
 
   @Test
   public void testInvalidCharactersRejectedAnywhereInChromosome() {
-    // VCFv4.2.tex line 179 only states "no whitespace permitted" for CHROM; this fuller grammar is VCFv4.2-silent
-    // clarifying guidance from VCFv4.3.tex's own "changes since previous version" appendix (~line 2135-2141,
-    // unchanged in 4.4/4.5): VCF contig names must match SAM reference-sequence-name rules. These 13 characters
-    // are invalid anywhere in an unwrapped CHROM value.
+    // VCFv4.3.tex (the target) states this fuller grammar directly in its own "changes since previous version"
+    // appendix (~line 2135-2141, unchanged in 4.4/4.5): VCF contig names must match SAM reference-sequence-name
+    // rules. VCFv4.2.tex line 179 only states "no whitespace permitted" for CHROM, predating this rule rather
+    // than conflicting with it. These 13 characters are invalid anywhere in an unwrapped CHROM value.
     char[] invalidChars = { '\\', ',', '"', '`', '\'', '(', ')', '{', '}', '[', ']', '<', '>' };
     for (char c : invalidChars) {
       String chrom = "chr" + c + "1";

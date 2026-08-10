@@ -768,8 +768,10 @@ public class VcfWriter implements Closeable {
           // no reserved-canonical fallback at all, matching getProperty(VcfPosition, VcfMetadata, String)
           ReservedFormatProperty reserved = ReservedFormatProperty.fromId(key, recordVersion);
           if (reserved != null) {
-            validateFormatValue(reserved.getExpectedNumber(), reserved.getType(), value, key, sampleIndex,
-                position.getAltBases().size(), ploidy, recordVersion);
+            // version-aware: CNL is the one reserved key whose expected Number differs by version -- see its
+            // own comment in ReservedFormatProperty for the citations
+            validateFormatValue(reserved.getExpectedNumber(recordVersion), reserved.getType(), value, key,
+                sampleIndex, position.getAltBases().size(), ploidy, recordVersion);
           }
         } else {
           validateFormatValue(format.getNumber(),

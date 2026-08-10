@@ -86,23 +86,38 @@ public enum ReservedFormatProperty implements ReservedProperty {
   // qualifier -- a single value
   MappingQuality("MQ", "RMS mapping quality, similar to the version in the INFO field.", Long.class, false, "1"),
 
-  // structural variants -- declared natively in VCFv4.2.tex itself, no VCFv4.3 clarification needed (except
-  // CNP; see its own comment below)
+  // structural variants -- CN and CNQ are declared natively in VCFv4.3.tex (the target) itself
+  // (##FORMAT=<ID=CN/CNQ,...>, lines 676-677), unchanged from VCFv4.2.tex. CNL is the one reserved key whose
+  // expected Number genuinely differs between the two: VCFv4.2.tex:308 declares
+  // "##FORMAT=<ID=CNL,Number=.,Type=Float,...>", while VCFv4.3.tex:678 (the target) redeclares it
+  // "##FORMAT=<ID=CNL,Number=G,Type=Float,...>" -- confirmed this is the only reserved-key Number/Type drift
+  // between VCFv4.2.tex and VCFv4.3.tex in either direction (CNP and ALLELEID are 4.3 additions, not drifts).
+  // getExpectedNumber() below therefore returns m_expectedNumber's target value ("G") unconditionally, and
+  // getExpectedNumber(VcfVersion) is overridden with a single named one-off for CNL, the same shape as
+  // fromId(String, VcfVersion)'s existing GLE special case immediately below in this file -- NOT a general
+  // per-version reserved-key table (that is TODO.md's separate, deferred "Investigate bumping the target VCF
+  // spec to 4.4 or 4.5" project, which also covers unrelated 4.4/4.5 drift like SVLEN/CN). GLE's own mechanism
+  // (fromId returning null at 4.3+) does not transfer here: CNL still exists as a reserved key at every version,
+  // only its expected Number changes.
 
   CopyNumber("CN", "Copy number genotype for imprecise events", Long.class, false, "1"),
   CopyNumberGenotypeQuality("CNQ", "Copy number genotype quality for imprecise events", VcfFloat.class, false, "1"),
-  CopyNumberLikelihood("CNL", "Copy number genotype likelihood for imprecise events", VcfFloat.class, true, "."),
+  // expectedNumber is "G", the VCFv4.3.tex target's value -- getExpectedNumber(VcfVersion) below overrides this
+  // to "." under <4.3, per VCFv4.2.tex:308 (see the comment above this group for both citations)
+  CopyNumberLikelihood("CNL", "Copy number genotype likelihood for imprecise events", VcfFloat.class, true, "G"),
   // has no VCFv4.2 declaration at all (introduced by VCFv4.3, "FORMAT keys used for structural variants",
-  // sv-format-keys, unchanged through 4.5), unlike CNL directly above, so "G" (the literal, only spec value)
-  // is kept here rather than following CNL's own VCFv4.2-native "." -- correctly rejecting/warning about a
-  // declared Number that isn't "G" still matters (see FormatMetadata's reserved-Number check). But CNL/CNP's
-  // own prose ("a list of ... likelihoods/probabilities for each potential copy number, starting from zero")
-  // means their "G" is not the standard ploidy-derived genotype-ordering list GT/GL/PL/GP/PP's "G" is -- it's
-  // an application-defined dimension nothing in a VCF record actually states, so there is no correct expected
-  // *value*-cardinality to check a sample's CNP value against. CNP (not CNL, whose own "." already disables
-  // this check) is therefore added to InternalUtils's generic-Number=G-cardinality-check exemption set
-  // alongside GLE, in both VcfSample.getProperty(VcfPosition, VcfMetadata, String) and
-  // VcfWriter.validateFormatValue -- see InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck.
+  // sv-format-keys, unchanged through 4.5) -- so "G" (the literal, only spec value) is a plain constant here,
+  // unlike CNL directly above, whose "G" only applies from 4.3 on. CNL/CNP's own prose ("a list of ...
+  // likelihoods/probabilities for each potential copy number, starting from zero") means their "G" is not the
+  // standard ploidy-derived genotype-ordering list GT/GL/PL/GP/PP's "G" is -- it's an application-defined
+  // dimension nothing in a VCF record actually states, so there is no correct expected *value*-cardinality to
+  // check a sample's CNL/CNP value against. Both keys are therefore added to InternalUtils's generic
+  // Number=G-cardinality-check exemption set alongside GLE, in both VcfSample.getProperty(VcfPosition,
+  // VcfMetadata, String) and VcfWriter.validateFormatValue -- see
+  // InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck. CNP's exemption is unconditional (reserved with
+  // Number=G at every version this library interprets); CNL's is gated to >=4.3, the same version its Number
+  // actually becomes "G" -- below that its Number is "." and the generic cardinality check already skips it
+  // for that reason alone, without needing this exemption at all.
   CopyNumberPosteriorProbabilities("CNP", "Copy number posterior probabilities", VcfFloat.class, true, "G"),
   PhredScoreForNovelty("NQ", "Phred style probability score that the variant is novel", Long.class, false, "1"),
   HaplotypeId("HAP", "Unique haplotype identifier", Long.class, false, "1"),
@@ -143,6 +158,26 @@ public enum ReservedFormatProperty implements ReservedProperty {
   }
 
   public String getExpectedNumber() {
+    return m_expectedNumber;
+  }
+
+  /**
+   * Named one-off override for {@link #CopyNumberLikelihood CNL}, the only reserved FORMAT key whose expected
+   * {@code Number} genuinely differs between VCFv4.2.tex and the VCFv4.3.tex target -- see that constant's own
+   * comment for the citations. Every other key falls through to the version-independent
+   * {@link #getExpectedNumber()}.
+   * @throws VcfFormatException if {@code version} is {@code null} -- checked first, before the {@code CNL}
+   * dispatch, so a {@code null} behaves identically for every constant rather than only for {@code CNL} (the
+   * one constant that would otherwise dereference it)
+   */
+  @Override
+  public String getExpectedNumber(@Nullable VcfVersion version) {
+    if (version == null) {
+      throw new VcfFormatException("getExpectedNumber was called with a null version");
+    }
+    if (this == CopyNumberLikelihood && !version.isAtLeast(VcfVersion.V4_3)) {
+      return ".";
+    }
     return m_expectedNumber;
   }
 

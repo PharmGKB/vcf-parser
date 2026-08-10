@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ReservedInfoPropertyTest {
@@ -60,10 +61,18 @@ public class ReservedInfoPropertyTest {
 
   @Test
   public void testGetExpectedNumberForStructuralVariantKeys() {
-    // these are declared natively in VCFv4.2.tex itself (no need for VCFv4.3 clarification)
+    // these are declared natively in VCFv4.3.tex (the target) itself, unchanged from VCFv4.2.tex
     assertEquals("0", ReservedInfoProperty.Imprecise.getExpectedNumber());
     assertEquals("1", ReservedInfoProperty.End.getExpectedNumber());
     assertEquals(".", ReservedInfoProperty.StructuralVariantLength.getExpectedNumber());
     assertEquals(".", ReservedInfoProperty.HomologyLength.getExpectedNumber());
+  }
+
+  @Test
+  public void testGetExpectedNumberWithNullVersionRejectsViaInterfaceDefault() {
+    // ReservedInfoProperty never overrides getExpectedNumber(VcfVersion) -- it inherits ReservedProperty's own
+    // default, which is where the null check lives so it applies uniformly to every implementor, not just
+    // ReservedFormatProperty's CNL override (see ReservedFormatPropertyTest's own version of this test)
+    assertThrows(VcfFormatException.class, () -> ReservedInfoProperty.AlleleCount.getExpectedNumber(null));
   }
 }

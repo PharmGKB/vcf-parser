@@ -384,12 +384,15 @@ is a structural failure and still throws -- see the strict section above):
   otherwise be determined at all, but these four keys specifically default to assumed diploidy rather than
   skipping the check, since their own spec definition states that default explicitly -- no other `Number=G`
   field, reserved or not, has any such spec-stated default, so this is scoped to exactly these four keys.
-  `GLE`/`CNP` are separately exempted from this check entirely despite declaring `Number=G` themselves -- see
-  `VCF_SPEC_AMBIGUITIES.md`'s "`CNP`'s `Number=G` vs. `GT`/`GL`/`PL`/`GP`/`PP`'s `Number=G`" entry (`CNL` is
-  unaffected by this exemption since its own declared `Number` is `.`, not `G`, under this library's VCFv4.2
-  target). The two exemptions have unrelated rationales and only `GLE`'s is version-gated: it applies under
-  VCFv4.2 and earlier only, since VCFv4.3 removed the key, while `CNP` is reserved at every version this library
-  interprets. Also, any `FORMAT` key's value whose element count doesn't match its declared
+  `GLE`/`CNP`/`CNL` are separately exempted from this check entirely despite each having `Number=G` under some
+  version -- see `VCF_SPEC_AMBIGUITIES.md`'s "`CNP`'s `Number=G` vs. `GT`/`GL`/`PL`/`GP`/`PP`'s `Number=G`"
+  entry. All three rationales are unrelated to each other, and two of the three exemptions are version-gated,
+  in opposite directions: `GLE`'s applies under VCFv4.2 and earlier only, since VCFv4.3 removed the key; `CNL`'s
+  applies under VCFv4.3 and later only, since that is the version its own expected `Number` becomes `G` at all
+  (VCFv4.2.tex line 308 declares it `Number=.`; VCFv4.3.tex line 678, the target, redeclares it `Number=G` --
+  see `ReservedFormatProperty.CopyNumberLikelihood`'s own comment); `CNP`, reserved with `Number=G` at every
+  version this library interprets, is not version-gated at all. Also, any `FORMAT` key's value whose element
+  count doesn't match its declared
   `Number`, or whose value doesn't match its declared `Type` (a non-reserved key needs an explicit `##FORMAT`
   declaration for either check to run; a reserved key's own canonical `Number`/`Type` apply even with no
   declaration at all): both cardinality checks (the reserved `Number=G` check above and this declared-`Number`
@@ -508,9 +511,10 @@ when the corresponding metadata was malformed.
 Reserved `Float`-typed `INFO`/`FORMAT` properties (e.g. `INFO`'s `AF`/`MQ`, `FORMAT`'s `GL`/`GP` -- note that a
 key reused on both sides isn't always the same `Type` on each; `FORMAT`'s own `MQ`, for example, is `Long`,
 not `Float`) are converted to
-[`VcfFloat`](src/main/java/org/pharmgkb/parser/vcf/VcfFloat.java), not a plain `BigDecimal`: VCFv4.2 doesn't
-define `Float`'s literal grammar, and VCFv4.5 clarifies it accepts `NAN`/`INF`/`INFINITY` (case-insensitive,
-optionally signed) in addition to a normal decimal number — values a plain `BigDecimal` cannot represent at all.
+[`VcfFloat`](src/main/java/org/pharmgkb/parser/vcf/VcfFloat.java), not a plain `BigDecimal`: `VCFv4.3.tex` (the
+target) states it accepts `NAN`/`INF`/`INFINITY` (case-insensitive, optionally signed) in addition to a normal
+decimal number -- special values a plain `BigDecimal` cannot represent at all. `VCFv4.2` doesn't define
+`Float`'s literal grammar at all.
 
 A `FORMAT` value of `.` (with one or more samples present) means no per-sample format fields at all for that
 record; each sample is read as having zero properties, and any raw sample-column content there is ignored (with a
@@ -522,9 +526,9 @@ bcftools-confirmed rationale.
 This library targets VCFv4.3. The eight rules indexed below are all target-spec rules that this library
 applies to *every* declared `##fileformat`, including `VCFv4.1` and `VCFv4.2` files that predate the rule --
 none of them is version-gated. A version branch is reserved instead for a rule whose *meaning* genuinely
-differs between versions and where both readings are valid (`GP`, `GLE`) -- see the entries for those above,
-and `VALIDATION_PHILOSOPHY.md`'s "How the declared version is dispatched" for the mechanism. Each rule is now
-tabled with the rest of its subject matter rather than gathered here as a separate citation appendix:
+differs between versions and where both readings are valid (`GP`, `GLE`, `CNL`) -- see the entries for those
+above, and `VALIDATION_PHILOSOPHY.md`'s "How the declared version is dispatched" for the mechanism. Each rule
+is now tabled with the rest of its subject matter rather than gathered here as a separate citation appendix:
 
 - INFO/FORMAT tag-name grammar -- see the `##INFO`/`##FORMAT` `ID` bullet in "Direct/programmatic construction"
   above.
