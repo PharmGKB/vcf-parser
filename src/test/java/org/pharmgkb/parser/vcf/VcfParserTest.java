@@ -1096,7 +1096,7 @@ public class VcfParserTest {
     // (https://github.com/samtools/htslib/blob/develop/test/vcf44_1.vcf), a deliberately adversarial fixture
     // htslib itself uses to test VCFv4.4's new leading-phase-marker GT syntax -- a genotype may now start with
     // an explicit '/' or '|' before its first allele (e.g. "/0", "|1/0") to state phasing relative to a
-    // previous record/phase set, a feature this library's VCFv4.2 target predates and does not implement.
+    // previous record/phase set, a feature this library's VCFv4.3 target predates and does not implement.
     //
     // This library's GT-splitting (InternalUtils.getPloidy, reached via VcfSample.getProperty(VcfPosition,
     // VcfMetadata, String)'s ploidy-for-cardinality-check resolution) has no special case for a leading

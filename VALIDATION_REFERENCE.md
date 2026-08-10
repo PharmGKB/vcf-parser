@@ -467,11 +467,10 @@ above, and `VALIDATION_PHILOSOPHY.md`'s "How the declared version is dispatched"
 in this section is version-gated**; a rule here behaves identically for a `VCFv4.1`, `VCFv4.2`, and `VCFv4.3`
 file.
 
-One entry below — spaces in INFO values — is *not* a VCFv4.2 silence but a direct conflict with it, and is
-here anyway under the single named exception `AGENTS.md`'s Project Overview states just after "Do not let
-newer-version rules override target VCF specification semantics for a conflict" -- an exception scoped to that
-one rule, and expected to disappear when the target version moves to 4.3. It is the only such entry; every
-other one below is a genuine silence.
+One entry below -- spaces in INFO values -- was historically a direct conflict with VCFv4.2 rather than a
+VCFv4.2 silence, and was adopted unconditionally under a named exception in `AGENTS.md`. At a VCFv4.3
+target it is plain conformance and the exception has been deleted; the entry stays because the rule is
+still applied at every declared version, including VCFv4.1 and VCFv4.2 files that predate it.
 
 Each entry names the later version's rule, the target version's silence, and where the rule is applied. Line
 numbers are against the `.tex` sources in the [hts-specs](https://github.com/samtools/hts-specs) repository.

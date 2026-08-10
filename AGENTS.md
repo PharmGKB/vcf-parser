@@ -3,15 +3,13 @@
 This repository is a Java 17 library for high-performance, streaming parsing and writing of VCF 4.x data.
 It prioritizes preserving and usefully exposing VCF data rather than rejecting every specification violation during initial parsing.  
 
-Target VCF specification: 4.2
+Target VCF specification: 4.3
 
 The library accepts VCF 4.x input from before and after the target version where it can be represented by this library. A file is interpreted under the version its own `##fileformat` declares: where a rule's *meaning* genuinely differs across 4.x and both readings are valid, the declared version decides, not the target version -- today that is `FORMAT/GP` and `FORMAT/GLE`, and see `VALIDATION_PHILOSOPHY.md`'s "How the declared version is dispatched" for the mechanism and the `isAtLeast` discipline it must use. A declared version this library does not implement falls back to the nearest one it does. Where versions do not differ in meaning, or an input is ambiguous, behavior is interpreted according to target VCF specification semantics. Features that cannot be represented safely under those semantics may be warned about, normalized, or rejected according to the parser and writer policies below.
 
 The goal is maximum practical compliance with the target VCF specification while preserving and usefully exposing recoverable VCF 4.x data.  "Strict" in this project means structural correctness and transparent diagnostics, not eager rejection of every semantic VCF violation.
 
 When newer 4.x VCF specifications clarify an ambiguity not resolved by the target VCF specification, use them as guidance. Do not let newer-version rules override target VCF specification semantics for a conflict.
-
-One narrow exception, expected to be transitional: VCFv4.3 allows a space in an INFO value (`VCFv4.3.tex` line 366, "Space characters are allowed in values") where VCFv4.2 forbids all whitespace (`VCFv4.2.tex` line 186, "no whitespace, semicolons, or equals-signs permitted"). This library adopts the 4.3 rule unconditionally rather than version-gating it -- a space is not a delimiter and is not meaning-bearing in any version's grammar, so no already-valid input's interpretation changes, and the acceptance is symmetric between read and write. See `VALIDATION_REFERENCE.md`'s "Rules adopted from a later VCF version, unconditionally", whose own preamble is otherwise about target-version *silence*. Delete this paragraph in the same commit that changes the target line above to 4.3: at a 4.3 target, accepting a space in an INFO value is plain conformance rather than an exception to anything -- the behavior does not change, only the justification for it does. A conflict that changes what an already-valid value **means** -- `GP`, `GLE` -- is not this case and must be version-gated.
 
 Minimum supported bcftools version: 1.18.
 
@@ -50,6 +48,8 @@ A rename (a class, method, or other identifier that appears by name in prose, no
 ### Spec Citation Discipline
 
 When code behavior is guided by a specific spec passage (a table, a sentence, a worked example) rather than being self-evident from the VCF column/record structure, cite it in a code comment specific enough that a future agent can find the exact passage without re-deriving it: name the spec file (e.g. `VCFv4.3.tex`), and the section/table/example it comes from or a short verbatim quote -- not just "per the VCF spec" or a bare version number. **If you cite a line number, include a short verbatim quote alongside it, always.** A line number is pinned to whatever `htsSpecsPinnedSha` was current when it was written and silently rots when that pin moves, whereas a quote stays checkable forever and makes an off-by-one obvious on sight. Print the surrounding lines with real line numbers and read them before writing any citation, rather than copying one from a plan, a review report, or another comment -- a phase of this project spent a full fix round on two citations that were each off by one, both inherited that way. When the target VCF specification is silent and a later version is used as clarifying guidance (per the Decision Hierarchy above), say so explicitly in the comment (e.g. "VCFv4.2 does not table this; VCFv4.3's Reserved Genotype Keys table gives Number=G") so the reasoning survives independently of whichever agent wrote it. The same specificity requirement applies when hts-specs' conformance suite is the source of a decision: name the fixture path (e.g. `test/vcf/4.2/failed/failed_meta_alt_001.vcf`) and quote or summarize its `##CauseOfFailure=` line -- not just "per hts-specs" or "the conformance suite requires it".
+
+A citation naming `VCFv4.2.tex` for a rule VCFv4.3 did not change remains valid and must not be mechanically re-pointed: a citation is a pointer to evidence, and VCFv4.2.tex genuinely states what it quotes. Re-point or dual-cite only when the surrounding reasoning is target-relative -- an argument from VCFv4.2's *silence*, or from VCFv4.2 being the target -- because that argument, not the quote, is what a target change falsifies.
 
 
 ### Parser Validation Policy
