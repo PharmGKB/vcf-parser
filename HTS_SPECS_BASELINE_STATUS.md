@@ -146,7 +146,7 @@ keep the build green, then all 129 were individually triaged (bcftools 1.23.1 / 
 directly, cross-referenced against this project's own established policy docs) and are catalogued in the
 table below.
 
-## `parser-throw-or-warn` entries (10 pre-existing + 129 added 2026-08-02 − 10 of the resulting 139 since fixed and removed = 129 today) — `failed/` fixtures whose invalidity isn't detected
+## `parser-throw-or-warn` entries (10 pre-existing + 129 added 2026-08-02 − 10 of the resulting 139 since fixed and removed = 129 for 4.1/4.2 as of that pass; the 2026-08-10 expansion folded 59 more 4.3 fixture instances into these same rows, bringing the table's `Count` column to 188 today) — `failed/` fixtures whose invalidity isn't detected
 
 As of the 2026-08-10 expansion documented above, this check runs `failed/` fixtures from VCF versions 4.1,
 4.2, and 4.3 (`HtsSpecsConformanceTest.java`'s `FAILED_VERSIONS = List.of("4.1", "4.2", "4.3")`) — capped at
@@ -161,7 +161,7 @@ fixture as new.** The 75 rows the 2026-08-10 expansion added (see the provenance
 in a follow-up pass keyed on `##CauseOfFailure=` text plus fixture content, not filename: 59 of them are the
 same defect as an existing 4.1/4.2 row already in the table below, just replicated onto a (frequently
 renumbered) 4.3 fixture, and are folded into that row's `Fixtures`/`Count` columns rather than getting a row
-of their own. The other 16 are recorded as their own new rows immediately after the table: 14 are triaged
+of their own. The other 16 are recorded as their own new rows immediately after the table: all 16 are triaged
 here (`INFO` 32-bit integer range, no trailing newline, `##META`, `INFO` duplicate keys, and -- since landed --
 `##PEDIGREE` missing `ID`, fixed by this phase's Task 4, and the contig-asterisk pair, ruled on by this phase's
 Task 5).
@@ -195,7 +195,7 @@ Task 5).
 ## New 4.3-only `parser-throw-or-warn` clusters added by the 2026-08-10 expansion
 
 The 16 fixtures below have no 4.1/4.2 sibling with the same `##CauseOfFailure=` and fixture content, so they
-are not folded into the table above. Three are triaged here; the `##PEDIGREE` missing-`ID` cluster was
+are not folded into the table above. Four are triaged here; the `##PEDIGREE` missing-`ID` cluster was
 deferred at the time this section was written but is fixed as of this phase's Task 4 (see that row below); the
 remaining cluster (the contig-asterisk pair, two fixtures) was ruled on by this phase's Task 5 (permanently
 accepted, per bcftools).

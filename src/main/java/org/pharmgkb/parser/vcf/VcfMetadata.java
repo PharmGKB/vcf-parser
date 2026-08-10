@@ -741,7 +741,7 @@ public final class VcfMetadata {
      * leniency keeps coming from the context rather than the overload shape. Unlike addXxx, replaceXxx requires a
      * declaration already stored under the same ID -- see requirePresentForReplace's own comment below for why a
      * missing target throws unconditionally, in both a lenient and a strict context. There is no replacePedigree:
-     * PEDIGREE is List-backed with an optional ID (DUPLICATE_METADATA_ID_HANDLING.md's "##PEDIGREE: a conditional
+     * PEDIGREE is List-backed, not Map-backed (DUPLICATE_METADATA_ID_HANDLING.md's "##PEDIGREE: a conditional
      * case"), so it has no Map to replace a single entry into.
      */
 

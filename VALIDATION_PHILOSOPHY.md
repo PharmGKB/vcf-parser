@@ -118,16 +118,20 @@ is `VCFv4.2`), and a bare ordinal comparison silently changes meaning if a versi
 enum. `isAtLeast` also rejects a `null` argument with `VcfFormatException` rather than answering it.
 
 **Gate only a genuine change of meaning.** A version branch is reserved for a rule whose meaning differs
-between versions with both readings valid. Today that is three rules: `FORMAT/GP` (phred-scaled under
-VCFv4.2 and earlier per VCFv4.2.tex line 227, a 0-1 probability from VCFv4.3 per VCFv4.3.tex line 491),
-`FORMAT/GLE` (a reserved key at VCFv4.1.tex line 208/VCFv4.2.tex line 225, removed by VCFv4.3 per VCFv4.3.tex
-line 2168), and `FORMAT/CNL`'s expected `Number` (`.` at VCFv4.2.tex line 308 and earlier, `G` from
-VCFv4.3.tex line 678 -- see `ReservedFormatProperty.CopyNumberLikelihood`'s own comment). Where the target VCF
-specification (VCFv4.3) states a rule directly, the rule is simply adopted at every version, including the
-4.1/4.2 input that predates it; only where the target itself is silent does a version later than the target
-supply clarifying guidance instead -- either way there is no branch at all -- see `VALIDATION_REFERENCE.md`'s
-"Rules applied at every declared version" for that list, and its lenient section for the three gated rules'
-exact per-version behavior.
+between versions with both readings valid. Today that is four rules -- three of that shape, plus one
+differently-shaped fourth: `FORMAT/GP` (phred-scaled under VCFv4.2 and earlier per VCFv4.2.tex line 227, a
+0-1 probability from VCFv4.3 per VCFv4.3.tex line 491), `FORMAT/GLE` (a reserved key at VCFv4.1.tex line
+208/VCFv4.2.tex line 225, removed by VCFv4.3 per VCFv4.3.tex line 2168), `FORMAT/CNL`'s expected `Number` (`.`
+at VCFv4.2.tex line 308 and earlier, `G` from VCFv4.3.tex line 678 -- see
+`ReservedFormatProperty.CopyNumberLikelihood`'s own comment), and, differently shaped because it is a
+required-field rule on a declaration rather than a value- or `Number`-meaning change, `##PEDIGREE` requiring an
+`ID` at VCFv4.3+ (VCFv4.2's own `##PEDIGREE` grammar has no `ID` attribute at all, so the rule cannot even be
+asked under 4.2 -- enforced at `VcfMetadata.Builder.addPedigree` and re-checked at write time by
+`VcfWriter.validateMetadata()` under `validateBeforeWrite()`). Where the target VCF specification (VCFv4.3)
+states a rule directly, the rule is simply adopted at every version, including the 4.1/4.2 input that predates
+it; only where the target itself is silent does a version later than the target supply clarifying guidance
+instead -- either way there is no branch at all -- see `VALIDATION_REFERENCE.md`'s "Rules applied at every
+declared version" for that list, and its lenient section for the four gated rules' exact per-version behavior.
 
 ## Where this applies
 

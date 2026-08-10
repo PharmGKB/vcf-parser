@@ -2596,8 +2596,8 @@ public class VcfParserTest {
   }
 
   /**
-   * The declared {@code ##fileformat} values every rule in VALIDATION_REFERENCE.md's "Rules adopted from a
-   * later VCF version, unconditionally" section must behave identically under. Each of the tests below asserts
+   * The declared {@code ##fileformat} values every rule in VALIDATION_REFERENCE.md's "Rules applied at every
+   * declared version" section must behave identically under. Each of the tests below asserts
    * one such rule fires the same way at all three, so a future change that gates one of them on the declared
    * version fails here rather than silently diverging.
    */

@@ -84,9 +84,9 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   conversion when a typed value is requested.
 - A key or value set through `BaseMetadata`'s, `VcfSample`'s, or `VcfMetadata`'s mutators (e.g. a `Description`, a
   sample's `GT` value, or an `##assembly` line) containing a line terminator. VCFv4.3.tex line 81 ("non-printable
-  characters U+0000--U+0008, U+000B--U+000C, U+000E--U+001F are disallowed") and line 82 (line separators must
-  be CR+LF or LF and are allowed only at end of line) -- verbatim at VCFv4.4.tex lines 81/82 and VCFv4.5.tex
-  lines 79/80 -- state this generally; VCFv4.2 is silent. Applied via `InternalUtils.checkNoLineTerminator`
+  characters U+0000--U+0008, U+000B--U+000C, U+000E--U+001F are disallowed") and line 82 ("Line separators must
+  be CR+LF or LF and they are allowed only as line separators at end of line") -- verbatim at VCFv4.4.tex lines
+  81/82 and VCFv4.5.tex lines 79/80 -- state this generally; VCFv4.2 is silent. Applied via `InternalUtils.checkNoLineTerminator`
   (metadata keys and values), `VcfSample.checkNoStructuralDelimiter` (a tab or line terminator in a sample key
   or value), and `VcfPosition.checkInfoEntries`'s value-side check (tab, LF, CR, vertical tab, or form feed in
   an INFO value). See "Rules applied at every declared version" below for the known gap in this check's range.
@@ -526,9 +526,12 @@ bcftools-confirmed rationale.
 This library targets VCFv4.3. The eight rules indexed below are all target-spec rules that this library
 applies to *every* declared `##fileformat`, including `VCFv4.1` and `VCFv4.2` files that predate the rule --
 none of them is version-gated. A version branch is reserved instead for a rule whose *meaning* genuinely
-differs between versions and where both readings are valid (`GP`, `GLE`, `CNL`) -- see the entries for those
-above, and `VALIDATION_PHILOSOPHY.md`'s "How the declared version is dispatched" for the mechanism. Each rule
-is now tabled with the rest of its subject matter rather than gathered here as a separate citation appendix:
+differs between versions and where both readings are valid (`GP`, `GLE`, `CNL`), plus one differently-shaped
+case -- `##PEDIGREE` requiring an `ID` at VCFv4.3+, a required-field rule on a declaration rather than a
+value- or `Number`-meaning change (see its own entry in the lenient section above) -- see the entries for
+those above, and `VALIDATION_PHILOSOPHY.md`'s "How the declared version is dispatched" for the mechanism.
+Each rule is now tabled with the rest of its subject matter rather than gathered here as a separate citation
+appendix:
 
 - INFO/FORMAT tag-name grammar -- see the `##INFO`/`##FORMAT` `ID` bullet in "Direct/programmatic construction"
   above.
