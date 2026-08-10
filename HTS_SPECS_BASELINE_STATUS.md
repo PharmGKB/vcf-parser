@@ -163,8 +163,8 @@ same defect as an existing 4.1/4.2 row already in the table below, just replicat
 renumbered) 4.3 fixture, and are folded into that row's `Fixtures`/`Count` columns rather than getting a row
 of their own. The other 16 are recorded as their own new rows immediately after the table: 14 are triaged
 here (`INFO` 32-bit integer range, no trailing newline, `##META`, `INFO` duplicate keys, and -- since landed --
-`##PEDIGREE` missing `ID`, fixed by this phase's Task 4); the remaining 2 are explicitly left to a later task in
-this phase (the contig-asterisk pair — Task 5) rather than pre-judged here.
+`##PEDIGREE` missing `ID`, fixed by this phase's Task 4, and the contig-asterisk pair, ruled on by this phase's
+Task 5).
 
 | Cause | Fixtures | Count | Status | Details |
 |---|---|---|---|---|
@@ -197,8 +197,8 @@ this phase (the contig-asterisk pair — Task 5) rather than pre-judged here.
 The 16 fixtures below have no 4.1/4.2 sibling with the same `##CauseOfFailure=` and fixture content, so they
 are not folded into the table above. Three are triaged here; the `##PEDIGREE` missing-`ID` cluster was
 deferred at the time this section was written but is fixed as of this phase's Task 4 (see that row below); the
-remaining cluster (the contig-asterisk pair, two fixtures) is explicitly deferred to a later task in this same
-phase (Task 5) rather than pre-judged.
+remaining cluster (the contig-asterisk pair, two fixtures) was ruled on by this phase's Task 5 (permanently
+accepted, per bcftools).
 
 | Cause | Fixtures | Count | Status | Details |
 |---|---|---|---|---|
@@ -207,7 +207,7 @@ phase (Task 5) rather than pre-judged.
 | No newline at end of file | `failed_body_no_newline_000.vcf` through `_004.vcf` | 5 | Deferred, structural | `VcfParser` reads records via `BufferedReader.readLine()` (`VcfParser.java:110`, `:137`, `:274`), which by contract strips the line terminator from its return value and returns non-`null` for a final unterminated line exactly the same as a terminated one — the parser has no way to distinguish "last line ended without a newline" from "last line ended with one" using this API. Detecting it would require switching to a lower-level read primitive purely to observe an artifact this library doesn't otherwise care about. |
 | `##META` semantic violations (bad `Number`/`Type` value, `Values` not bracket-wrapped, fields out of order) | `failed_meta_meta_000.vcf` (bad `Number`), `_001.vcf` (bad `Type`), `_002.vcf` (unbracketed `Values`), `_003.vcf` (field order) | 4 | Deferred | No `##META` model exists in this library; a `##META=<...>` line survives parsing as a generic bracket-wrapped attribute-list value (accepted because it contains an `=`, per `VCF_SPEC_AMBIGUITIES.md`'s "`##pedigreeDB`/`##assembly` bracket-wrapped values..." entry, `VCF_SPEC_AMBIGUITIES.md:190`), with none of its sub-fields individually validated. A structured `##META` type with its own `Number`/`Type`/`Values` grammar checks would be a new feature, not a bug fix. |
 | `##PEDIGREE` missing `ID` | `failed_meta_pedigree_003.vcf` | 1 | **Fixed by this phase's Task 4** | Task 4 implemented the `##PEDIGREE`-requires-an-`ID` rule at VCF 4.3+ (`VcfMetadata.Builder.addPedigree`, gated on `VcfVersion.isAtLeast(VcfVersion.V4_3)`); landing it removed this fixture's row from `hts-specs-baseline.tsv` rather than leaving it recorded as a known divergence. Confirmed via `./gradlew htsSpecsUpdateBaseline` producing a diff of exactly this one row removed, and a subsequent clean `./gradlew htsSpecsTest` reporting `845/845 checks match baseline, 0 new/stale, 0 per-version row(s) moved` -- the check total is unchanged because it counts every fixture's check regardless of whether it matches a recorded divergence or the spec-conformant default; only the divergence entry disappeared. |
-| `contig`/CHROM ID contains an asterisk in a non-leading position | `failed_body_chrom_004.vcf` (CHROM `chr*1`), `failed_meta_contig_003.vcf` (`##contig=<ID=1.*,...>`) | 2 | **Pending Task 5 adjudication** | Both share the same claimed defect already discussed in this document's "Contig ID asterisk fixture" section below (a non-leading `*`, which the VCFv4.3.tex errata says is legal). Task 5 adjudicates the ruling against bcftools directly; left unprejudged here per that task's brief. |
+| `contig`/CHROM ID contains an asterisk in a non-leading position | `failed_body_chrom_004.vcf` (CHROM `chr*1`), `failed_meta_contig_003.vcf` (`##contig=<ID=1.*,...>`) | 2 | Permanently accepted | Both share the same claimed defect discussed in this document's "Contig ID asterisk fixture" section below (a non-leading `*`, which the VCFv4.3.tex errata says is legal). Task 5 adjudicated the ruling directly against bcftools: bcftools 1.23.1 accepts both non-leading-asterisk forms silently, only warning (not rejecting) on a *leading* `*`. See `VCF_SPEC_AMBIGUITIES.md`'s "Contig ID with a non-leading asterisk" entry for the full reasoning and the pinning `BcftoolsDependencyTest` methods. |
 
 ## Negative QUAL fixtures: why permanently accepted
 
@@ -320,8 +320,7 @@ counterpart. That's no longer true: the 2026-08-10 target-flip expansion extende
 `4.3`, and the fixture now has an ordinary `hts-specs-baseline.tsv` row (`parser-throw-or-warn`,
 `silently-accepted`), alongside a sibling with the identical defect on CHROM instead of `##contig`,
 `failed_body_chrom_004.vcf` (`chr*1`). Both are listed in the "New 4.3-only `parser-throw-or-warn` clusters"
-table above as pending this phase's Task 5, which adjudicates the ruling directly against bcftools rather than
-having it pre-judged here.
+table above, ruled on by this phase's Task 5 (permanently accepted).
 
 `test/vcf/4.3/failed/failed_meta_contig_003.vcf` declares `##contig=<ID=1.*,length=123456>` with
 `##CauseOfFailure=contig ID contains illegal character`. Its claimed defect is stale, per the same
@@ -334,7 +333,12 @@ that exact string is invalid. Confirmed with direct `bcftools 1.23.1` testing th
 contig ID with `*` in a non-leading position silently, and only warns when `*` (or `=`) is the leading
 character -- matching the amended rule, not the fixture's claim.
 
-This analysis is documented here so a future reader who greps for "contig"/"asterisk" finds the reasoning,
-but the formal baseline-table ruling (Status/Details) is left to Task 5, per the scope correction above. Both
-this fixture and the CHROM-colon fixture above were introduced in the same 2021 hts-specs commit (`7aeed5b`);
-a combined upstream-filing draft covering both already exists locally but has not yet been filed.
+**Ruling (Task 5):** bcftools is the tie-breaker per `AGENTS.md`, and it sides with the spec's own errata, not
+the fixture's `##CauseOfFailure=`. Both `failed_meta_contig_003.vcf` and `failed_body_chrom_004.vcf` are
+permanently accepted as stale-defect fixtures. Pinned by two required `BcftoolsDependencyTest` methods:
+`testContigIdWithNonLeadingAsteriskBcftoolsAccepts` (both the `##contig=<ID=1.*>` and `CHROM=chr*1` shapes,
+accepted silently) and `testContigIdWithLeadingAsteriskBcftoolsWarnsButPreserves` (the control: a *leading*
+asterisk still warns and is not accepted, it is merely preserved). Full reasoning and the bcftools output
+quoted verbatim live in `VCF_SPEC_AMBIGUITIES.md`'s "Contig ID with a non-leading asterisk" entry. Both this
+fixture and the CHROM-colon fixture above were introduced in the same 2021 hts-specs commit (`7aeed5b`); a
+combined upstream-filing draft covering both already exists locally but has not yet been filed.

@@ -37,6 +37,7 @@ before assuming it generalizes to a similar-looking case.
 | `##FORMAT`/`##INFO` ID grammar vs. `##FILTER`/`##SAMPLE`/`##ALT` | Stricter grammar for FORMAT/INFO only | ✅ |
 | `"1000G"` legacy INFO tag-name exception | Allowed (matches bcftools) | ✅ |
 | `##contig` ID character set | SAM reference-name rules; does not extend to INFO/FORMAT tag names | ✅ |
+| Contig ID with a non-leading asterisk (hts-specs' `failed/` fixtures vs. VCFv4.3 errata) | Accept (matches bcftools; matches this library's existing implementation) | ✅ |
 | `##contig` extra/unmodeled attributes | Allowed, no warning | ✅ |
 | Generic metadata property with an empty value | Drop (deliberately stricter than bcftools) | ✅ |
 | `##pedigreeDB`/`##assembly` bracket-wrapped values colliding with attribute-list grammar | Reject when empty or no `=` inside the brackets; accept when it contains `=` | ✅ |
@@ -154,6 +155,26 @@ VCFv4.3.tex's own "Changes to VCFv4.3" errata (~line 2129-2144) extends SAM refe
 character-set check (`InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN`); `##INFO`/`##FORMAT` IDs use a
 different, unrelated pattern. Colon is deliberately excluded from the invalid set — the same errata text
 confirms disallowing it was itself a mistake ("this was unnecessary").
+
+### Contig ID with a non-leading asterisk (hts-specs' `failed/` fixtures vs. VCFv4.3 errata)
+
+VCFv4.3.tex's own "Changes to VCFv4.3" errata (lines 2136-2138, confirmed verbatim) states: "The characters
+`\,"`'(){}` are now invalid in VCF contig names, while `*` is now valid when not the first character. (The
+characters `[]<>` and initial `*`/`=` were already invalid and remain so.)" Both hts-specs'
+`test/vcf/4.3/failed/failed_body_chrom_004.vcf` (`CHROM`=`chr*1`) and `failed_meta_contig_003.vcf`
+(`##contig=<ID=1.*,length=123456>`) carry `##CauseOfFailure=contig ID contains illegal character` — disagreeing
+with the spec's own prose for a non-leading `*` (via vcf_validator 0.10.2, the tool hts-specs itself uses to
+generate this corpus).
+
+**Decision:** bcftools is the tie-breaker per `AGENTS.md`. bcftools 1.23.1 accepts the non-leading-asterisk
+forms silently — no warning on either `##contig=<ID=1.*>` or a `CHROM` of `chr*1`. For a **leading** asterisk
+it emits `[W::bcf_hrec_check] Invalid contig name: "*chr"` but still exits 0 and preserves the declaration: it
+warns rather than rejecting, so preservation there is not acceptance. This matches this library's own existing
+implementation (`VcfPosition.checkChromosome`/`ContigMetadata`, which already permit `*` except as the first
+character) — no production code change was required, only recording the ruling. Pinned by
+`BcftoolsDependencyTest#testContigIdWithNonLeadingAsteriskBcftoolsAccepts` and
+`#testContigIdWithLeadingAsteriskBcftoolsWarnsButPreserves`. See `HTS_SPECS_BASELINE_STATUS.md`'s "Contig ID
+asterisk fixture" section for the two baseline rows this resolves.
 
 ### `##contig` extra/unmodeled attributes
 

@@ -39,6 +39,17 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
   be re-checked on every bcftools upgrade: if a future bcftools started decoding these sequences, this
   library's own choice not to would become a round-trip mismatch against real-world bcftools-produced files.
 
+### Contig ID with a non-leading asterisk
+- Test: `BcftoolsDependencyTest#testContigIdWithNonLeadingAsteriskBcftoolsAccepts`,
+  `#testContigIdWithLeadingAsteriskBcftoolsWarnsButPreserves`
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Contig ID with a non-leading asterisk (hts-specs' `failed/` fixtures
+  vs. VCFv4.3 errata)" entry. This library already accepts a non-leading `*` in a contig name and the default
+  writer emits it verbatim, so if a future bcftools started rejecting the form, this library's output would
+  stop being readable by a real consumer -- round-trip-critical by this document's own definition. bcftools
+  1.23.1 accepts `##contig=<ID=1.*,length=123456>` and a `CHROM` of `chr*1` silently (no warning); it warns
+  (`[W::bcf_hrec_check] Invalid contig name: "*chr"`) but still exits 0 and preserves the declaration for a
+  **leading** asterisk, which is the boundary the control test pins.
+
 ## Other bcftools-dependent decisions
 
 (best-effort coverage, not exhaustive)

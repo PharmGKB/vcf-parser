@@ -513,5 +513,48 @@ class BcftoolsDependencyTest {
     assertTrue(result.output().contains("A\tT,.,C\t"), result.output());
   }
 
+  @Test
+  void testContigIdWithNonLeadingAsteriskBcftoolsAccepts() throws IOException, InterruptedException {
+    // round-trip-critical: this library accepts a non-leading '*' in a contig name and the default writer
+    // emits it, so if bcftools ever rejects the form, our output stops being readable by a real consumer.
+    // VCFv4.3's own errata says '*' is valid when not first. hts-specs' failed_body_chrom_004.vcf and
+    // failed_meta_contig_003.vcf disagree via vcf_validator. bcftools is the tie-breaker per AGENTS.md.
+    // NOTE: every invocation below exits 0, including the "invalid" one -- assert on OUTPUT, never exitCode.
+    String headerProbe = "##fileformat=VCFv4.3\n##contig=<ID=1.*,length=123456>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    BcftoolsResult header = runBcftools(headerProbe, "view", "-h");
+    assertTrue(header.output().contains("##contig=<ID=1.*"),
+        "Expected bcftools to retain a non-leading-asterisk contig ID, got: " + header.output());
+    // preservation alone is not acceptance: bcftools could start warning while still echoing the header,
+    // and this decision rests on SILENT acceptance. Verified live -- this invocation emits nothing to stderr.
+    assertFalse(header.output().contains("Invalid contig name"),
+        "Expected no invalid-contig-name warning for a non-leading asterisk, got: " + header.output());
+
+    // body-consuming probe: 'view' WITHOUT -h, or the CHROM rule is never exercised. The contig is declared
+    // so the record does not trip an unrelated "Contig 'chr*1' is not defined in the header" warning.
+    String bodyProbe = "##fileformat=VCFv4.3\n##contig=<ID=chr*1,length=123456>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr*1\t100\t.\tC\tT\t.\t.\t.\n";
+    BcftoolsResult body = runBcftools(bodyProbe, "view");
+    assertTrue(body.output().contains("chr*1\t100"),
+        "Expected bcftools to emit the chr*1 record, got: " + body.output());
+    assertFalse(body.output().contains("Invalid contig name"),
+        "Expected no invalid-contig-name warning for a non-leading asterisk, got: " + body.output());
+  }
+
+  @Test
+  void testContigIdWithLeadingAsteriskBcftoolsWarnsButPreserves() throws IOException, InterruptedException {
+    // the control that pins the boundary the decision above rests on. This is NOT a rejection assertion:
+    // bcftools 1.23.1 warns via bcf_hrec_check and still exits 0 with the content preserved. The warning is
+    // a HEADER check, so 'view -h' is enough to observe it.
+    String vcf = "##fileformat=VCFv4.3\n##contig=<ID=*chr,length=123456>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n*chr\t100\t.\tC\tT\t.\t.\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertTrue(result.output().contains("Invalid contig name: \"*chr\""),
+        "Expected a leading-asterisk warning, got: " + result.output());
+    assertTrue(result.output().contains("##contig=<ID=*chr"),
+        "bcftools warns but preserves the declaration; if it now drops it, this decision needs re-checking: "
+            + result.output());
+  }
+
   private record BcftoolsResult(int exitCode, String output) {}
 }
