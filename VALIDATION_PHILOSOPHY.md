@@ -265,17 +265,39 @@ declared version" for that list, and its lenient section for the four gated rule
   eventual outcome is `warnOrThrow`'s warn or its throw. It is also orthogonal to null-safety: a `null`
   property is `null` either way (`getPropertyUnquoted` returns `null` without calling `InternalUtils.unquote`
   when the underlying raw value is absent), so switching a comparison site from raw to unquoted never changes
-  whether `null` is possible, only what a *present* value looks like once compared. This does not change what
-  is *presented* to a consumer -- every public getter that returns a property's value keeps returning
-  whatever form it always has (raw for `IdMetadata.getId()`/`FormatMetadata.getNumber()`/
-  `InfoMetadata.getNumber()`/`ContigMetadata.getAssembly()`/`getTaxonomy()`/`getMd5()`/`getUrl()`; unquoted for
-  `IdDescriptionMetadata.getDescription()`/`InfoMetadata.getSource()`/`getVersion()`/`ContigMetadata.getSpecies()`/
-  `getLength()`) -- `getPropertyUnquoted()` itself remains the caller's own opt-in for their own comparisons,
-  the same way it always was. One check is the deliberate exception, not an oversight: a check that inspects
-  the raw quoting itself (`IdDescriptionMetadata.init()`'s and `InfoMetadata.init()`'s "should be quoted but
-  was" checks on `Description`/`Source`/`Version`) must keep reading the raw form, since unquoting first would
-  make the thing being checked for -- the presence of the quote characters -- disappear before the check ever
-  ran.
+  whether `null` is possible, only what a *present* value looks like once compared.
+
+  **The rule this axis follows: a property has a value and an encoding. Quoting is the encoding. It is never
+  part of the value.** The value (the unquoted form) is the default everywhere -- everything that cares what
+  a property *means* uses it: the library's own comparisons above, content validation, parsing, dedup, and map
+  keys, *and* every public typed getter that returns a property's value. The same rule applies on both sides
+  of the API boundary, because it is the same question being asked -- a caller writing
+  `info.getNumber().equals("1")` is doing exactly what an internal comparison site does, and must not get a
+  different answer.
+
+  The encoding (the raw form) is used in exactly four places; this list is meant to be complete, so an
+  intentional raw use that is not on it is a gap in the rule, not a permitted carve-out:
+  1. **Writing.** The header is emitted byte-for-byte from `getPropertiesRaw()`/`getRawProperties()`, never
+     re-encoded.
+  2. **Encoding validation.** A check that inspects the raw quoting itself -- `IdDescriptionMetadata.init()`'s
+     and `InfoMetadata.init()`'s "should be quoted but was" checks on `Description`/`Source`/`Version` -- must
+     keep reading the raw form, since unquoting first would make the thing being checked for, the presence of
+     the quote characters, disappear before the check ever ran.
+  3. **Source-form diagnostics.** A message whose job is to point the reader at a line in *their* file shows
+     the source spelling, so they can find it (`VcfMetadata.java:466`'s context-mismatch exception). This is
+     not the same as a message *about* a value's content -- a grammar-check warning naming the value that
+     failed sensibly shows the value form; choose per message by asking which one the reader needs.
+  4. **The explicit opt-in.** `getPropertyRaw(key)`/`getPropertiesRaw()`, for a caller who wants the encoding.
+
+  **The naming invariant:** of the accessors that return a property value, one whose name contains `Raw`
+  returns the encoding, and every other one returns the value -- scoped to accessors that return a property
+  *value*; it says nothing about `getPropertyKeys()`, `getContext()`, `getType()`, or similar, which are
+  outside the value/encoding distinction entirely.
+
+  Item 1 rests on a dependency, not a guarantee: the writer emits raw and never re-encodes, so output is
+  well-formed only if the encoding was already valid when the declaration was *constructed*. That holds for
+  every parsed declaration, but not for every programmatically constructed one -- see `TODO.md`'s "Reject an
+  unquoted structural delimiter at construction" entry for the known gap.
 - A class or method's `@RestrictedApi`/`@hidden` disclaimer (e.g. `InternalUtils`, `VcfMetadata.validateAlt`,
   `VcfFloat.parse(String, VcfWarnings)`) is the identical kind of documentation-only signal: no ErrorProne
   plugin is configured in this codebase, so nothing enforces it at compile time or runtime either. It is a

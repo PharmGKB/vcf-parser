@@ -39,6 +39,7 @@ before assuming it generalizes to a similar-looking case.
 | `##contig` ID character set | SAM reference-name rules; does not extend to INFO/FORMAT tag names | ✅ |
 | Contig ID with a non-leading asterisk (hts-specs' `failed/` fixtures vs. VCFv4.3 errata) | Accept (matches bcftools; matches this library's existing implementation) | ✅ |
 | `##contig` extra/unmodeled attributes | Allowed, no warning | ✅ |
+| Optional metadata fields must be quoted (`VCFv4.3.tex:128`) vs. `##contig`'s own unquoted examples | No optional-field quoting check added; unquoted is valid | ✅ |
 | Generic metadata property with an empty value | Drop (deliberately stricter than bcftools) | ✅ |
 | `##pedigreeDB`/`##assembly` bracket-wrapped values colliding with attribute-list grammar | Reject when empty or no `=` inside the brackets; accept when it contains `=` | ✅ |
 | A literal `%` in a metadata declaration ID | No code change; existing `##ALT`/`##FILTER`/`##SAMPLE` looser-grammar decision stands despite vcf_validator flagging `%` in `##FILTER`/`##SAMPLE` | ✅ |
@@ -187,6 +188,38 @@ package still calling `ensureNoExtras()`, warning about attributes the others to
 attribute, expected to parse cleanly) and live bcftools testing (silently round-trips a custom contig
 attribute with zero warning) that `##contig` should tolerate extra attributes the same as every other
 declaration type. `ContigMetadata.ensureNoExtras()` call removed.
+
+### Optional metadata fields must be quoted (`VCFv4.3.tex:128`) vs. `##contig`'s own unquoted examples
+
+`VCFv4.3.tex:128` states, verbatim: *"The values of optional fields must be written as quoted strings, even
+for numeric values."* Carried unchanged at `VCFv4.4.tex:128` and `VCFv4.5.tex:126`. Taken at face value, this
+would make any unquoted optional-field value (`##INFO`'s `Source`/`Version`, `##contig`'s `assembly`/`md5`/
+`taxonomy`/`URL`, or any unmodeled generic attribute) invalid.
+
+But the same three specs call a `##contig`'s non-ID attributes "additional optional attributes"
+(`VCFv4.3.tex:239`, `VCFv4.4.tex:253`, `VCFv4.5.tex:302` -- "The structured \texttt{contig} field must include
+the ID attribute and can include additional optional attributes with the following ones reserved:") and then
+show several of those same attributes unquoted in their own worked examples: `VCFv4.3.tex:49`
+(`assembly=B36,md5=f126cdf8a6e0c7f379d618ff66beb2da,...,taxonomy=x`) and `:254`
+(`URL=ftp://example.com/assembly.fa,md5=f126cdf8a6e0c7f379d618ff66beb2da,...`). Three consecutive spec
+versions carry both the quoting rule and the contradicting unquoted examples unchanged.
+
+**Resolved in favour of unquoted-is-valid by the conformance corpus.**
+`test/vcf/4.3/passed/passed_meta_contig.vcf:7` declares `##fileformat=VCFv4.3` and contains
+`##contig=<ID=contig_accession,species="Homo sapiens",accession=GCA_000001405.1>` -- `accession=
+GCA_000001405.1` is an arbitrary, non-reserved optional attribute, unquoted, in a **passing** 4.3 fixture.
+Confirmed directly: the 4.3 `failed/` set (224 fixtures) has zero entries about an unquoted optional field --
+every quoting-related `##CauseOfFailure=` in that set (`failed_meta_001.vcf`, `failed_meta_006.vcf`,
+`failed_meta_007.vcf`, `failed_meta_008.vcf`, `failed_meta_alt_003.vcf`, `failed_meta_info_002.vcf`) concerns
+`Description`, which has its own explicit, unambiguous quoting rule at `VCFv4.3.tex:172`.
+
+**Decision:** no optional-field quoting check is added -- it would warn on files hts-specs itself certifies as
+valid. No per-version list of what counts as an "optional" field is needed either, since the contradiction is
+resolved rather than narrowed. This is also the resolution behind `VALIDATION_PHILOSOPHY.md`'s raw-vs-unquoted
+rule treating quoting as an encoding choice rather than a correctness signal: a metadata property's value can
+be legitimately unquoted, so a public getter returning that value must return the same content whether or not
+the source spelled it with quotes. Drafted as an upstream hts-specs issue in the untracked
+`spec-contradictions.md` (never committed).
 
 ### Generic metadata property with an empty value
 
