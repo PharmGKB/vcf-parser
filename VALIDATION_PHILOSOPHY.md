@@ -284,7 +284,9 @@ declared version" for that list, and its lenient section for the four gated rule
      keep reading the raw form, since unquoting first would make the thing being checked for, the presence of
      the quote characters, disappear before the check ever ran.
   3. **Source-form diagnostics.** A message whose job is to point the reader at a line in *their* file shows
-     the source spelling, so they can find it (`VcfMetadata.java:466`'s context-mismatch exception). This is
+     the source spelling, so they can find it (`VcfMetadata.checkSameContext`'s context-mismatch exception,
+     `VcfMetadata.java:475`: `throw new VcfFormatException("Declaration " + kind + " " +
+     md.getPropertyRaw("ID") + " was built under a " ...)`). This is
      not the same as a message *about* a value's content -- a grammar-check warning naming the value that
      failed sensibly shows the value form; choose per message by asking which one the reader needs.
   4. **The explicit opt-in.** `getPropertyRaw(key)`/`getPropertiesRaw()`, for a caller who wants the encoding.

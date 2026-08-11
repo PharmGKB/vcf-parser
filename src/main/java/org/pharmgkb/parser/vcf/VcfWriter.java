@@ -604,12 +604,13 @@ public class VcfWriter implements Closeable {
    * Validates every entry of a metadata map (INFO/FORMAT/FILTER/ALT/contig/SAMPLE), including that each entry's own
    * {@code ID} property, unquoted, still matches the map key it's stored under. That invariant normally holds
    * automatically (these maps are keyed by each entry's unquoted {@code ID} -- see
-   * {@code VcfMetadata.Builder#addAlt(IdDescriptionMetadata, boolean)}'s own comment -- not by {@code getId()},
-   * which keeps returning the raw, possibly still-quoted value; see AGENTS.md's "Unquoting before internal use"
-   * policy), but a declaration's own raw {@code ID} property could historically be changed to a different value,
-   * or removed entirely, without it being reflected in the map key. Left undetected, the header would then
-   * declare a different (or missing) ID than what data lines actually reference by that entry's map key, and a
-   * duplicate-ID check across entries would also be unable to catch a real collision this way (see below).
+   * {@code VcfMetadata.Builder#addAlt(IdDescriptionMetadata, boolean)}'s own comment -- and
+   * {@link IdMetadata#getId()} returns that same unquoted value, so the two can no longer disagree over quoting
+   * alone; see AGENTS.md's "Unquoting before internal use" policy), but a declaration's own raw {@code ID}
+   * property could historically be changed to a different value, or removed entirely, without it being
+   * reflected in the map key. Left undetected, the header would then declare a different (or missing) ID than
+   * what data lines actually reference by that entry's map key, and a duplicate-ID check across entries would
+   * also be unable to catch a real collision this way (see below).
    * <p>
    * The route that made that drift possible was {@link VcfMetadata#getInfo()} and its siblings returning the
    * backing map directly, plus {@link BaseMetadata#getPropertiesRaw()} being a live view. Both are unmodifiable

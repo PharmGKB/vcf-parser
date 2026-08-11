@@ -28,11 +28,12 @@ public abstract sealed class IdMetadata extends BaseMetadata permits IdDescripti
     // see AGENTS.md's "Unquoting before internal use" policy. Unlike init() below, there is no stored property
     // to read yet at this point (putPropertyRaw only runs once validation passes, at the bottom of this
     // constructor), so this unquotes the constructor parameter directly via InternalUtils.unquote rather than
-    // getPropertyUnquoted. id itself is still stored and returned by getId() unmodified -- unquoting here
-    // changes only what is tested, not what is stored: a caller passing id="\"   \"" (e.g. via
-    // VcfMetadata.Builder.addFilter(String, String)) previously got the misleading "must not contain
-    // whitespace" from the raw quote/space characters here, one step before addFilter's own blank check
-    // correctly dropped it as blank; both checks now agree.
+    // getPropertyUnquoted. id itself is still stored unmodified (putPropertyRaw below keeps the caller's
+    // spelling verbatim, which is what getPropertyRaw(ID) hands back and what the writer emits; getId()
+    // unquotes on read) -- unquoting here changes only what is tested, not what is stored: a caller passing
+    // id="\"   \"" (e.g. via VcfMetadata.Builder.addFilter(String, String)) previously got the misleading
+    // "must not contain whitespace" from the raw quote/space characters here, one step before addFilter's own
+    // blank check correctly dropped it as blank; both checks now agree.
     String unquotedId = id == null ? null : InternalUtils.unquote(id);
     // VCFv4.3.tex line 121: "All structured lines require an ID..." -- VCFv4.2 doesn't use the word "required" but
     // its own templates for all six keyed types show ID unconditionally first; see DUPLICATE_METADATA_ID_HANDLING.md
@@ -74,11 +75,11 @@ public abstract sealed class IdMetadata extends BaseMetadata permits IdDescripti
 
   private void init() {
     // getPropertyUnquoted, not getPropertyRaw: this is a comparison/validation use (blank- and
-    // whitespace-checking the ID's actual content), not a value handed back to a consumer, so it must see
-    // the value with any surrounding quote pair already stripped -- see AGENTS.md's "Unquoting before
-    // internal use" policy and VALIDATION_PHILOSOPHY.md's "How the principles interact." Without this, a
-    // quoted-empty ID (ID="") or quoted-whitespace ID (ID="   ") kept its literal quote/space characters,
-    // which are never blank once trimmed, and escaped every check below -- see the retired WONT_FIX.md entry.
+    // whitespace-checking the ID's actual content), so it must see the value with any surrounding quote pair
+    // already stripped -- see AGENTS.md's "Unquoting before internal use" policy and VALIDATION_PHILOSOPHY.md's
+    // "How the principles interact." Without this, a quoted-empty ID (ID="") or quoted-whitespace ID
+    // (ID="   ") kept its literal quote/space characters, which are never blank once trimmed, and escaped
+    // every check below -- see the retired WONT_FIX.md entry.
     String id = getPropertyUnquoted(ID);
     warnIfMissing(ID, id);
     // warnIfMissing only tests for null; a present-but-blank ID (id.equals("")) previously got no diagnostic at
@@ -122,16 +123,21 @@ public abstract sealed class IdMetadata extends BaseMetadata permits IdDescripti
   }
 
   /**
-   * @return Null only when incorrectly constructed without one. This is the raw property value, exactly as
-   * declared -- still quoted if the declaration used {@code ID="foo"} rather than {@code ID=foo}. It is
-   * <strong>not</strong> necessarily the same string this declaration is keyed under in
-   * {@link VcfMetadata#getAlts()} and its siblings, which key by the <em>unquoted</em> form: for a declaration
-   * written {@code ID="foo"}, this method returns {@code "\"foo\""} while the map key is {@code "foo"}. See
-   * AGENTS.md's "Unquoting before internal use" policy.
+   * @return The {@code ID} tag's value, <em>unquoted</em>: a declaration written {@code ID="foo"} returns
+   * {@code foo}, with any {@code \"}/{@code \\} escapes decoded. Quoting is an encoding of the header syntax,
+   * not part of the value -- see VALIDATION_PHILOSOPHY.md's value/encoding rule. This can therefore no longer
+   * disagree over quoting <em>alone</em> with the string this declaration is keyed under in
+   * {@link VcfMetadata#getAlts()} and its siblings, which key by the same unquoted form. (The two can still be
+   * made to diverge by mutating a stored declaration's {@code ID} in place through the package-private
+   * {@code BaseMetadata.trustedMutableProperties()} bypass, which is why
+   * {@code VcfWriter.validateBeforeWrite()} still checks them against each other.) Use
+   * {@link #getPropertyRaw(String) getPropertyRaw(ID)} for the original spelling as it appeared in the file.
+   * <p>
+   * Null only when incorrectly constructed without one.
    */
   @Nullable
   public final String getId() {
-    return getPropertyRaw(ID);
+    return getPropertyUnquoted(ID);
   }
 
 }

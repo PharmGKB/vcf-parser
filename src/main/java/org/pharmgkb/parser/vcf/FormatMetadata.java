@@ -134,11 +134,17 @@ public final class FormatMetadata extends IdDescriptionMetadata {
 
   /**
    * Value is either an integer or "A", "G", "R", or ".".
-   * @return Null only when incorrectly constructed without one
+   * @return The {@code Number} tag's value, <em>unquoted</em>: a declaration written {@code Number="1"}
+   * returns {@code 1}, with any {@code \"}/{@code \\} escapes decoded. Quoting is an encoding of the header
+   * syntax, not part of the value -- see VALIDATION_PHILOSOPHY.md's value/encoding rule. Use
+   * {@link #getPropertyRaw(String) getPropertyRaw(Number)} for the original spelling as it appeared in the
+   * file.
+   * <p>
+   * Null only when incorrectly constructed without one.
    */
   @Nullable
   public String getNumber() {
-    return getPropertyRaw(NUMBER);
+    return getPropertyUnquoted(NUMBER);
   }
 
   /**

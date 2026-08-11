@@ -1443,4 +1443,76 @@ class VcfSampleTest {
     VcfSample sample43 = VcfContext.strict("VCFv4.3").newSample(List.of("XZ"), List.of("a%3Bb%03Ac%41d"));
     assertEquals(sample42.getProperty("XZ"), sample43.getProperty("XZ"));
   }
+
+  // --- Quoted-Number regression tests. These pin that a declaration written Number="1" behaves identically to
+  // one written Number=1 on the metadata-aware read path. FormatMetadata.getNumber() returns the unquoted
+  // value (quoting is an encoding, not part of the value -- see VALIDATION_PHILOSOPHY.md's value/encoding
+  // rule), so the two spellings compare equal wherever the read path tests the Number. They did not before:
+  // getNumber() returned the raw "\"1\"", which matched no expected Number anywhere, which is why these tests
+  // are shaped around proving each individual comparison site now sees "1".
+
+  @Test
+  void testQuotedNumberYieldsTheSameScalarShapeAsUnquoted() {
+    // the defect is a shape decision at VcfSample.java:398, reachable only through the metadata-aware getter --
+    // comparing two metadata getters directly is not the test
+    LinkedHashMap<String, String> sampleProps = new LinkedHashMap<>();
+    sampleProps.put("GT", "0/1");
+    sampleProps.put("XX", "7");
+    VcfSample sample = LENIENT_CONTEXT.newSample(sampleProps);
+    VcfPosition position =
+        LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, List.of("GT", "XX"), -1);
+
+    FormatMetadata plain = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+        new String[] {"ID=XX", "Number=1", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT));
+    FormatMetadata quoted = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+        new String[] {"ID=XX", "Number=\"1\"", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT));
+
+    VcfMetadata withPlain = new VcfMetadata.Builder(LENIENT_CONTEXT)
+        .setFileFormat("VCFv4.2").addFormat(plain).build();
+    VcfMetadata withQuoted = new VcfMetadata.Builder(LENIENT_CONTEXT)
+        .setFileFormat("VCFv4.2").addFormat(quoted).build();
+
+    // scalar 7, explicitly NOT the one-element list [7] -- which is the actual pre-fix behavior for the
+    // quoted declaration, because "\"1\"".equals("1") is false at VcfSample.java:398
+    // assigned through an Object local first (matching this file's other metadata-aware-getter tests, e.g.
+    // testGetPropertyWithPositionAndMetadataChecksReservedListCardinality) -- getProperty's <T> T signature
+    // otherwise lets target-typed inference pick T=Long here, and the resulting unchecked (Long) cast at the
+    // call site throws ClassCastException instead of failing the assertion when the quoted-Number defect
+    // actually returns a List.
+    Object resultPlain = sample.getProperty(position, withPlain, "XX");
+    Object resultQuoted = sample.getProperty(position, withQuoted, "XX");
+    assertEquals(7L, resultPlain);
+    assertEquals(7L, resultQuoted);
+  }
+
+  @Test
+  void testQuotedNumberStillRunsTheCardinalityCheckOnTheReadPath() {
+    // InternalUtils.warnIfWrongCardinality is shared but reached from two call sites -- VcfSample.java:406 (read
+    // path, covered here) and VcfWriter.java:885 (validateBeforeWrite(), covered in VcfWriterTest) -- each
+    // passing its own raw/unquoted number, and the raw value broke both.
+    LinkedHashMap<String, String> sampleProps = new LinkedHashMap<>();
+    sampleProps.put("GT", "0/1");
+    sampleProps.put("XX", "1,2,3");
+    VcfSample sample = LENIENT_CONTEXT.newSample(sampleProps);
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null,
+        List.of("GT", "XX"), -1);
+    FormatMetadata quoted = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+        new String[] {"ID=XX", "Number=\"2\"", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT));
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addFormat(quoted).build();
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);   // after construction
+    try {
+      sample.getProperty(position, metadata, "XX");
+      // positive: the ordinary cardinality check runs, naming the key so an unrelated warning cannot satisfy it
+      assertTrue(appender.anyMessageContains("FORMAT XX has 3 value(s), but Number=2 requires 2"));
+      // negative: the misleading pre-fix diagnostic is gone
+      assertFalse(appender.anyMessageContains("too large to validate"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
 }

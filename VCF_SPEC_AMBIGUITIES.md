@@ -210,8 +210,9 @@ versions carry both the quoting rule and the contradicting unquoted examples unc
 GCA_000001405.1` is an arbitrary, non-reserved optional attribute, unquoted, in a **passing** 4.3 fixture.
 Confirmed directly: the 4.3 `failed/` set (224 fixtures) has zero entries about an unquoted optional field --
 every quoting-related `##CauseOfFailure=` in that set (`failed_meta_001.vcf`, `failed_meta_006.vcf`,
-`failed_meta_007.vcf`, `failed_meta_008.vcf`, `failed_meta_alt_003.vcf`, `failed_meta_info_002.vcf`) concerns
-`Description`, which has its own explicit, unambiguous quoting rule at `VCFv4.3.tex:172`.
+`failed_meta_007.vcf`, `failed_meta_008.vcf`, `failed_meta_alt_003.vcf`, `failed_meta_info_002.vcf`,
+`failed_meta_format_002.vcf`) concerns `Description`, which has its own explicit, unambiguous quoting rule at
+`VCFv4.3.tex:172`.
 
 **Decision:** no optional-field quoting check is added -- it would warn on files hts-specs itself certifies as
 valid. No per-version list of what counts as an "optional" field is needed either, since the contradiction is

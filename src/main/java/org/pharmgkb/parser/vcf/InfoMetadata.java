@@ -97,11 +97,12 @@ public final class InfoMetadata extends IdDescriptionMetadata {
   private void init() {
     m_type = null;
     // getPropertyUnquoted, not getPropertyRaw, for Number/Type/ID below: every use here is a comparison or
-    // validation (NUMBER_PATTERN, InfoType.valueOf, the tag-name grammar, the ReservedInfoProperty lookup), not
-    // a value handed back to a consumer -- see AGENTS.md's "Unquoting before internal use" policy. Without
-    // this, a quoted Number/Type/ID (e.g. Number="1") kept its literal quote characters and either failed a
-    // check it should have passed, or (for ID) silently skipped the ReservedInfoProperty comparison entirely
-    // because the quoted string never matched a reserved key's exact name.
+    // validation (NUMBER_PATTERN, InfoType.valueOf, the tag-name grammar, the ReservedInfoProperty lookup), so
+    // each must see the value's actual content rather than its header-syntax quoting -- see AGENTS.md's
+    // "Unquoting before internal use" policy. Without this, a quoted Number/Type/ID (e.g. Number="1") kept
+    // its literal quote characters and either failed a check it should have passed, or (for ID) silently
+    // skipped the ReservedInfoProperty comparison entirely because the quoted string never matched a reserved
+    // key's exact name.
     String number = getPropertyUnquoted(NUMBER);
     checkNumberProperty(number);
     String type = getPropertyUnquoted(TYPE);
@@ -159,11 +160,17 @@ public final class InfoMetadata extends IdDescriptionMetadata {
 
   /**
    * Value is either an integer or "A", "G", "R", or ".".
-   * @return Null only when incorrectly constructed without one
+   * @return The {@code Number} tag's value, <em>unquoted</em>: a declaration written {@code Number="1"}
+   * returns {@code 1}, with any {@code \"}/{@code \\} escapes decoded. Quoting is an encoding of the header
+   * syntax, not part of the value -- see VALIDATION_PHILOSOPHY.md's value/encoding rule. Use
+   * {@link #getPropertyRaw(String) getPropertyRaw(Number)} for the original spelling as it appeared in the
+   * file.
+   * <p>
+   * Null only when incorrectly constructed without one.
    */
   @Nullable
   public String getNumber() {
-    return getPropertyRaw(NUMBER);
+    return getPropertyUnquoted(NUMBER);
   }
 
   /**
@@ -173,8 +180,8 @@ public final class InfoMetadata extends IdDescriptionMetadata {
   @Nullable
   public SpecialVcfNumber getReservedNumber() {
     // getPropertyUnquoted, not getPropertyRaw: fromId() is an exact-match comparison against a fixed set
-    // ("A"/"G"/"R"/"."), not a value handed back verbatim -- unlike getNumber() just above, which is deliberately
-    // still raw. See AGENTS.md's "Unquoting before internal use" policy.
+    // ("A"/"G"/"R"/"."), so it must see the Number's actual content rather than its header-syntax quoting.
+    // See AGENTS.md's "Unquoting before internal use" policy.
     return SpecialVcfNumber.fromId(getPropertyUnquoted(NUMBER));
   }
 

@@ -218,11 +218,11 @@ raw-value overload) used to warn "must not contain whitespace" from this constru
 `addFilter`'s later blank check correctly dropped it; both now agree it is blank. `ID=""` and `ID="   "` are
 caught as blank identically to their unquoted equivalents, for all seven structured declaration types, and
 `ID="A"` now dedupes against `ID=A` (a deliberate semantic change: quoting is an encoding, not part of the
-identifier -- see `DUPLICATE_METADATA_ID_HANDLING.md`'s "Quoting is not part of the identity" section). The six
-raw-returning public getters (`IdMetadata.getId()` and friends) are unchanged and still present the raw value;
-only the internal comparison/storage points changed -- `VcfMetadata.getAlts()` and its siblings now document
-that their map key is the unquoted `ID`, which can differ from `getId()`'s own raw return. Regression
-fixtures: `IdDescriptionMetadataTest`'s
+identifier -- see `DUPLICATE_METADATA_ID_HANDLING.md`'s "Quoting is not part of the identity" section). The
+seven typed public getters (`IdMetadata.getId()`, `InfoMetadata`/`FormatMetadata.getNumber()`, and
+`ContigMetadata.getAssembly()`/`getTaxonomy()`/`getMd5()`/`getUrl()`) now return the unquoted value as well,
+so `VcfMetadata.getAlts()`'s map key can no longer differ from `getId()`'s return -- `getPropertyRaw(ID)` is
+the opt-in for the encoding. Regression fixtures: `IdDescriptionMetadataTest`'s
 `testQuotedEmptyIdWarnsAsBlank`/`testQuotedWhitespaceOnlyIdWarnsAsBlank`/
 `testMapConstructorThrowsOnQuotedBlankIdUnderStrict`, `VcfMetadataTest`'s
 `testAddFilterQuotedIdDedupesAgainstUnquotedId`/`testAddFilterDropsQuotedBlankId`/
@@ -404,13 +404,17 @@ list slot's occupant via low-level `List` API misuse with no existing analog any
 ### The six `HashMap`-keyed types' `warnIfDuplicate`: in-place `ID` mutation
 
 `VcfMetadata`'s/`Builder`'s six keyed types (INFO/FORMAT/FILTER/ALT/contig/SAMPLE) dedupe via
-`warnIfDuplicate(Map<String, XxxMetadata>, id, ...)`, an O(1) `HashMap.containsKey(id)` check keyed by
-`md.getId()`'s unquoted form (see `DUPLICATE_METADATA_ID_HANDLING.md`'s "Quoting is not part of the identity"
-section), captured at add time. `IdMetadata.getId()` itself reads live from the object's own mutable raw-properties
-map, and every `BaseMetadata` subclass exposes `putPropertyRaw`/`putAndQuoteProperty` plus a live
-`getPropertiesRaw()` map as a real, tested, load-bearing mutation path --
-`VcfWriterTest.testHeaderContentRejectionAllowsCorrectedRetry` calls
-`metadata.getInfo().get("AF").putPropertyRaw("ID", ...)` directly on an already-added, already-keyed entry.
+`warnIfDuplicate(Map<String, XxxMetadata>, id, ...)`, an O(1) `HashMap.containsKey(id)` check keyed by the
+declaration's unquoted `ID` (see `DUPLICATE_METADATA_ID_HANDLING.md`'s "Quoting is not part of the identity"
+section), captured at add time. `IdMetadata.getId()` reads that same unquoted form, but reads it *live* from
+the object's own raw-properties map on every call, and that map is still reachable for mutation from inside
+this package: `putPropertyRaw`/`putAndQuoteProperty` are package-private (`BaseMetadata.java:257`/`:240`), and
+`BaseMetadata.trustedMutableProperties()` is the unchecked bypass for the rest. No *public* route remains --
+`getPropertiesRaw()` and the six keyed getters are all unmodifiable views now (see
+`VcfWriter.validateKeyedMetadataEntries`'s own Javadoc) -- but the in-package route is real, tested and
+load-bearing: `VcfWriterTest.testHeaderContentRejectionAllowsCorrectedRetry` calls
+`metadata.getInfo().get("AF").putPropertyRaw("ID", ...)` directly on an already-added, already-keyed entry,
+and `trustedMutableProperties().remove("ID")` covers the removal case alongside it.
 
 So an already-added entry's `ID` can change without the map's key ever updating: it stays reachable at its OLD
 key, but `getId()` reports the NEW value. If a caller later adds a new declaration whose ID happens to match
@@ -419,7 +423,8 @@ value), and the add silently succeeds -- leaving two entries in the map, under d
 the same `getId()`.
 
 **Verified empirically** (`FILTER`, representative of all six -- same shared `warnIfDuplicate` mechanism): add
-`md1` (id="A") and `md2` (id="B"); mutate `md2.getPropertiesRaw().put("ID", "C")` (now reports `getId()=="C"`,
+`md1` (id="A") and `md2` (id="B"); mutate `md2`'s stored `ID` to `"C"` in place (via `putPropertyRaw`, or
+`trustedMutableProperties()`; `getPropertiesRaw()` itself is an unmodifiable view now) (now reports `getId()=="C"`,
 still keyed under `"B"`); add `md5` (id="C") -- wrongly accepted, since the map has no key `"C"` yet. Result:
 `{A: md1, B: md2(getId=C), C: md5(getId=C)}` -- two entries reporting `getId()==C`.
 

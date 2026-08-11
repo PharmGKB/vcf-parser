@@ -16,6 +16,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
 import org.junit.jupiter.api.Test;
@@ -1449,7 +1450,8 @@ public class VcfWriterTest {
   public void testWriteThenReparseRoundTripsQuotedFilterId() throws Exception {
     // full parse -> write -> parse round trip for a quoted keyed-type ID (AGENTS.md's Tests section asks for
     // this on a parser-to-writer change): the quoting must survive verbatim through a write, and re-parsing
-    // that output must reach the identical state -- same raw (quoted) ID via getId(), same unquoted map key.
+    // that output must reach the identical state -- same raw (quoted) ID via getPropertyRaw("ID"), same
+    // unquoted ID via getId(), same unquoted map key.
     String vcf = "##fileformat=VCFv4.2\n##FILTER=<ID=\"q10\",Description=\"d\">\n" +
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
         "chr1\t1\t.\tA\tT\t.\t.\t.\n";
@@ -1460,7 +1462,8 @@ public class VcfWriterTest {
       parsed = parser.getMetadata();
     }
     assertEquals("q10", parsed.getFilters().keySet().iterator().next());
-    assertEquals("\"q10\"", parsed.getFilters().get("q10").getId());
+    assertEquals("\"q10\"", parsed.getFilters().get("q10").getPropertyRaw("ID"));
+    assertEquals("q10", parsed.getFilters().get("q10").getId());
 
     StringWriter sw = new StringWriter();
     try (VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build()) {
@@ -1477,7 +1480,80 @@ public class VcfWriterTest {
       reparsed = parser.getMetadata();
     }
     assertEquals("q10", reparsed.getFilters().keySet().iterator().next());
-    assertEquals("\"q10\"", reparsed.getFilters().get("q10").getId());
+    assertEquals("\"q10\"", reparsed.getFilters().get("q10").getPropertyRaw("ID"));
+    assertEquals("q10", reparsed.getFilters().get("q10").getId());
+  }
+
+  @Test
+  void testQuotedValuesRoundTripByteIdenticallyForEveryChangedGetter() throws Exception {
+    // Declarations are ordered to match buildHeaderLines exactly (INFO, FILTER, FORMAT, contig).
+    // The assembly value carries escape sequences deliberately, and is the only field here that can:
+    // assembly has no content validation in ContigMetadata.init(), so an escaped value neither warns nor
+    // throws. That makes this the one place decode-on-read and preserve-on-write are pinned to the SAME value.
+    String header = "##fileformat=VCFv4.2\n" +
+        "##INFO=<ID=XX,Number=\"1\",Type=Integer,Description=\"d\">\n" +
+        "##FILTER=<ID=\"q10\",Description=\"d\">\n" +
+        "##FORMAT=<ID=YY,Number=\"1\",Type=Integer,Description=\"d\">\n" +
+        "##contig=<ID=1,length=\"123\",assembly=\"a \\\"b\\\\c\",md5=\"f126cdf8a6e0c7f379d618ff66beb2da\"," +
+        "taxonomy=\"x\",URL=\"ftp://example.com/a.fa\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    String vcf = header + "chr1\t1\t.\tA\tT\t.\t.\t.\n";
+
+    VcfMetadata parsed;
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder().fromReader(reader).parseWith((md, record) -> { }).build()) {
+      parser.parse();
+      parsed = parser.getMetadata();
+    }
+    assertQuotedGettersAndRawForms(parsed);
+
+    // default write path -- validateBeforeWrite() off
+    StringWriter sw = new StringWriter();
+    try (VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build()) {
+      writer.writeHeader(parsed);
+    }
+    assertEquals(header, sw.toString(), "the header must round-trip byte for byte, including the newline");
+
+    // re-parse the output: proves the preserved encoding survives a second parse, not just a string compare
+    VcfMetadata reparsed;
+    try (BufferedReader reader = new BufferedReader(new StringReader(sw + "chr1\t1\t.\tA\tT\t.\t.\t.\n"));
+         VcfParser parser = new VcfParser.Builder().fromReader(reader).parseWith((md, record) -> { }).build()) {
+      parser.parse();
+      reparsed = parser.getMetadata();
+    }
+    assertQuotedGettersAndRawForms(reparsed);
+  }
+
+  /**
+   * Asserts the value form from each of the seven changed getters AND the encoding from getPropertyRaw.
+   * <p>
+   * The getPropertyRaw half is the anti-regression requirement: without it, the migration could be made to
+   * pass by unquoting at STORAGE instead of at the getter, which would turn every test green while silently
+   * destroying round-tripping.
+   */
+  private static void assertQuotedGettersAndRawForms(VcfMetadata md) {
+    InfoMetadata info = md.getInfo().get("XX");
+    assertEquals("1", info.getNumber());
+    assertEquals("\"1\"", info.getPropertyRaw(InfoMetadata.NUMBER));
+
+    IdDescriptionMetadata filter = md.getFilters().get("q10");
+    assertEquals("q10", filter.getId());
+    assertEquals("\"q10\"", filter.getPropertyRaw(IdMetadata.ID));
+
+    FormatMetadata format = md.getFormats().get("YY");
+    assertEquals("1", format.getNumber());
+    assertEquals("\"1\"", format.getPropertyRaw(FormatMetadata.NUMBER));
+
+    ContigMetadata contig = md.getContigs().get("1");
+    assertEquals("a \"b\\c", contig.getAssembly());
+    assertEquals("\"a \\\"b\\\\c\"", contig.getPropertyRaw(ContigMetadata.ASSEMBLY));
+    assertEquals("x", contig.getTaxonomy());
+    assertEquals("\"x\"", contig.getPropertyRaw(ContigMetadata.TAXONOMY));
+    assertEquals("f126cdf8a6e0c7f379d618ff66beb2da", contig.getMd5());
+    assertEquals("\"f126cdf8a6e0c7f379d618ff66beb2da\"", contig.getPropertyRaw(ContigMetadata.MD5));
+    assertEquals("ftp://example.com/a.fa", contig.getUrl());
+    assertEquals("\"ftp://example.com/a.fa\"", contig.getPropertyRaw(ContigMetadata.URL));
+    assertEquals(123L, contig.getLength()); // unchanged getter, rides along free
   }
 
   @Test
@@ -3727,6 +3803,230 @@ public class VcfWriterTest {
       parser.parse();
     }
     assertEquals(Collections.singletonList("a b"), reparsed);
+  }
+
+  // --- Quoted-Number regression tests. These pin that a declaration written Number="1"/Number="G" behaves
+  // identically to its unquoted spelling on both write paths. InfoMetadata.getNumber() and
+  // FormatMetadata.getNumber() return the unquoted value (quoting is an encoding, not part of the value --
+  // see VALIDATION_PHILOSOPHY.md's value/encoding rule), so every Number comparison the writer makes now sees
+  // the same string for both spellings. They did not before: getNumber() returned the raw "\"1\"", which
+  // either failed a comparison it should have passed or failed a parse outright, silently suppressing the
+  // diagnostic each test below asserts. That history is why each test names its specific comparison site.
+
+  @Test
+  public void testQuotedInfoNumberStillRunsTheOrdinaryCardinalityCheck() throws Exception {
+    // validateBeforeWrite() ON: validateInfo/validateSamples run only inside if (m_validateBeforeWrite)
+    // (VcfWriter.java:332, :340-341). On the default path this check is never reached at all. Non-reserved key
+    // with an explicit Type: a reserved key (DP/AF/AC) would contribute its own reserved-Number/Type
+    // diagnostics and the assertion could pass on an unrelated warning.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##INFO=<ID=XX,Number=\"2\",Type=Integer,Description=\"d\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\t.\tA\tT\t.\t.\tXX=1,2,3\n";
+    List<VcfRecord> records = new ArrayList<>();
+    VcfMetadata metadata;
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder().fromReader(reader)
+             .parseWith((md, record) -> records.add(record)).build()) {
+      parser.parse();
+      metadata = parser.getMetadata();
+    }
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    // attached AFTER parsing: construction-time warnings must not be able to satisfy the assertions below
+    appender.start();
+    root.addAppender(appender);
+    try {
+      StringWriter sw = new StringWriter();
+      try (VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw))
+          .validateBeforeWrite().build()) {
+        writer.writeHeader(metadata);
+        writer.writeLine(metadata, records.get(0).getPosition(), records.get(0).getSamples());
+      }
+      // positive: the ordinary check runs. Names the key so an unrelated cardinality warning cannot satisfy it.
+      assertTrue(appender.anyMessageContains("INFO XX has 3 value(s), but Number=2 requires 2"),
+          "expected the ordinary cardinality warning; got " + appender.getRelevantWarnOrHigherMessages(Set.of()));
+      // negative: the misleading diagnostic is gone. Alone this would be satisfied by deleting the check.
+      assertFalse(appender.anyMessageContains("too large to validate"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  /**
+   * Writes one record under a single shared VCFv4.3 context and returns the warnings emitted by the write.
+   * <p>
+   * One shared VcfContext for metadata, position, sample and writer is mandatory, not stylistic:
+   * VcfWriter.java:314 and :319 compare by REFERENCE IDENTITY (position.getContext() != context), so two
+   * distinct contexts that both resolve to 4.3 are still rejected. A ##fileformat=VCFv4.3 line is not enough.
+   * <p>
+   * Record shape is fixed here so Number=G's expected cardinality is determined rather than inferred: one ALT
+   * allele and GT=0/1 give combinationsWithRepetition(numAltAlleles + 1 = 2, ploidy = 2) = 3, so the two-element
+   * value below is a guaranteed mismatch. Without an explicit GT the ploidy is inferred, and
+   * resolvePloidyForCardinalityCheck applies a diploidy default to GL/PL/GP/PP only -- an unspecified fixture
+   * can silently produce an expected count that happens to match, making the assertion vacuous.
+   */
+  private static org.pharmgkb.parser.vcf.spec.WarnCapturingAppender writeOneRecordWithQuotedNumberG(
+      String formatKey) throws Exception {
+    VcfContext ctx = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
+
+    FormatMetadata gt = new FormatMetadata(ctx, InternalUtils.extractProperties(
+        new String[] {"ID=GT", "Number=1", "Type=String", "Description=\"gt\""}, VcfWarnings.DEFAULT));
+    FormatMetadata subject = new FormatMetadata(ctx, InternalUtils.extractProperties(
+        new String[] {"ID=" + formatKey, "Number=\"G\"", "Type=Integer", "Description=\"d\""},
+        VcfWarnings.DEFAULT));
+    VcfMetadata metadata = new VcfMetadata.Builder(ctx)
+        .setFileFormat("VCFv4.3").addFormat(gt).addFormat(subject)
+        .setColumns(List.of("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .build();
+
+    VcfPosition position = ctx.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null,
+        List.of("GT", formatKey), -1);
+    LinkedHashMap<String, String> sampleProps = new LinkedHashMap<>();
+    sampleProps.put("GT", "0/1");
+    sampleProps.put(formatKey, "1,2");   // two elements against an expected three
+    VcfSample sample = ctx.newSample(sampleProps);
+    // context identity precondition, asserted before any warning assertion: without this the test could
+    // "pass" by observing a construction failure rather than the exemption branch
+    assertSame(ctx, position.getContext());
+    assertSame(ctx, sample.getContext());
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);   // attached AFTER construction -- setup warnings must not reach the assertions
+    try {
+      StringWriter sw = new StringWriter();
+      try (VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw))
+          .validateBeforeWrite().build()) {
+        writer.writeHeader(metadata);
+        writer.writeLine(metadata, position, List.of(sample));
+      }
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    return appender;
+  }
+
+  @Test
+  public void testQuotedNumberGStillWarnsForANonExemptFormatKey() throws Exception {
+    // ZZ is not CNL/CNP/GLE, so the ordinary Number=G cardinality check must run. This is the positive twin:
+    // it proves the "G" branch is live, rather than everything-named-G having become exempt.
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender = writeOneRecordWithQuotedNumberG("ZZ");
+    assertTrue(appender.anyMessageContains("FORMAT ZZ for sample #0 has 2 value(s), but Number=G requires 3"),
+        "expected the ordinary Number=G cardinality warning; got "
+            + appender.getRelevantWarnOrHigherMessages(Set.of()));
+  }
+
+  @Test
+  public void testQuotedNumberGOnCnlAtV43IsStillExempt() throws Exception {
+    // identical record shape; the ONLY variable is the FORMAT key, hence the exemption branch
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender = writeOneRecordWithQuotedNumberG("CNL");
+    assertFalse(appender.anyMessageContains("but Number=G requires"),
+        "CNL's Number=G means per-potential-copy-number, so the genotype-ordering check must stay exempt");
+    // This second assertion is what gives this test regression signal of its own, and it is NOT redundant.
+    // The first assertion passes both before and after the fix, for unrelated reasons: pre-fix the quoted
+    // "G" defeats isExemptFromGenotypeOrderingCardinalityCheck AND getExpectedCardinality, which falls to
+    // Long.parseLong, throws, warns "too large to validate" and returns null -- and warnIfWrongCardinality
+    // stays silent when expected is null. So no "requires" message appears pre-fix either.
+    // The "too large" warning, by contrast, IS emitted pre-fix and must be gone post-fix, because an exempt
+    // key never reaches getExpectedCardinality at all.
+    assertFalse(appender.anyMessageContains("too large to validate"),
+        "an exempt key must not reach getExpectedCardinality, so the quoted-Number parse failure must be gone");
+  }
+
+  @Test
+  public void testQuotedFormatNumberStillRunsTheDefaultPathTypeCheck() throws Exception {
+    // DEFAULT path -- deliberately NOT validateBeforeWrite(): this branch runs only under
+    // !m_validateBeforeWrite (VcfWriter.java:967). It pins that a quoted Number reaches the type-conversion
+    // probe at all: the probe is gated on Integer.parseInt(format.getNumber()) == 1, and while getNumber()
+    // returned the raw value that parse threw into an empty catch, left number null, and skipped the check
+    // silently. No negative twin, because the old symptom was an absent diagnostic rather than a misleading
+    // one. See testQuotedInfoNumberStillRunsTheDefaultPathTypeCheck for the INFO twin of this same branch.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##FORMAT=<ID=XX,Number=\"1\",Type=Integer,Description=\"d\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "chr1\t1\t.\tA\tT\t.\t.\t.\tXX\tabc\n";
+    List<VcfRecord> records = new ArrayList<>();
+    VcfMetadata metadata;
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder().fromReader(reader)
+             .parseWith((md, record) -> records.add(record)).build()) {
+      parser.parse();
+      metadata = parser.getMetadata();
+    }
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);   // after parsing
+    try {
+      StringWriter sw = new StringWriter();
+      try (VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build()) {
+        writer.writeHeader(metadata);
+        writer.writeLine(metadata, records.get(0).getPosition(), records.get(0).getSamples());
+      }
+      // names BOTH the key and the Integer type -- that is what distinguishes this repaired default-path
+      // branch from the full-diagnostics path the INFO-cardinality test above covers
+      assertTrue(appender.anyMessageContains("Property XX for sample #0 is not of type Integer"),
+          "expected the default-path type warning; got "
+              + appender.getRelevantWarnOrHigherMessages(Set.of()));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testQuotedInfoNumberStillRunsTheDefaultPathTypeCheck() throws Exception {
+    // The INFO twin of testQuotedFormatNumberStillRunsTheDefaultPathTypeCheck above, and a separate branch
+    // from it: this one is addInfoOrDot (VcfWriter.java:1042-1054), that one is addSampleConditionally
+    // (:967-975). Both are gated on !m_validateBeforeWrite, so neither is reachable from
+    // testQuotedInfoNumberStillRunsTheOrdinaryCardinalityCheck, which runs with validateBeforeWrite() ON.
+    // The message shape differs too -- no sample index here -- which is what the assertion below keys on.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##INFO=<ID=XX,Number=\"1\",Type=Integer,Description=\"d\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\t.\tA\tT\t.\t.\tXX=abc\n";
+    List<VcfRecord> records = new ArrayList<>();
+    VcfMetadata metadata;
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder().fromReader(reader)
+             .parseWith((md, record) -> records.add(record)).build()) {
+      parser.parse();
+      metadata = parser.getMetadata();
+    }
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);   // after parsing
+    try {
+      StringWriter sw = new StringWriter();
+      try (VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build()) {
+        writer.writeHeader(metadata);
+        writer.writeLine(metadata, records.get(0).getPosition(), records.get(0).getSamples());
+      }
+      // names the key and the Integer type, and deliberately omits "for sample #" -- asserting on the INFO
+      // message shape is what keeps the FORMAT branch from satisfying this test
+      assertTrue(appender.anyMessageContains("Property XX is not of type Integer"),
+          "expected the default-path INFO type warning; got "
+              + appender.getRelevantWarnOrHigherMessages(Set.of()));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
   }
 
 }

@@ -27,9 +27,10 @@ import java.util.Map;
  * {@code PedigreeMetadata} already in the builder's list could have its own {@code ID} mutated in place, the
  * set would silently go stale -- a genuinely new {@code ID=A} would be rejected as a duplicate of an {@code A}
  * that no longer exists, and the real duplicate would be accepted. The six keyed types cannot make the same
- * guarantee (their typed constructors need the inserters), which is why the equivalent
- * {@code getId()}-vs-map-key gap for them is a documented, writer-caught residual rather than a closed one --
- * see {@code WONT_FIX.md}.
+ * guarantee (their typed constructors need the inserters), which is why the equivalent stale-key gap for them
+ * -- an in-place {@code ID} mutation leaving {@code getId()} and the map key disagreeing; quoting is not a
+ * cause, since both read the unquoted value -- is a documented, writer-caught residual rather than a closed
+ * one; see {@code WONT_FIX.md}.
  * <p>
  * One in-package route remains, for every declaration type including this one:
  * {@code BaseMetadata.trustedMutableProperties()}, the deliberately unchecked test-only bypass. It is

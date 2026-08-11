@@ -124,17 +124,32 @@ public final class ContigMetadata extends IdMetadata {
   }
 
   /**
-   * @return Null when the optional {@code assembly} tag is absent (spec-compliant -- see VCFv4.2.tex line 121)
-   * or otherwise unusable
+   * @return The {@code assembly} tag's value, <em>unquoted</em>: a declaration written
+   * {@code assembly="GRCh38"} returns {@code GRCh38}, with any {@code \"}/{@code \\} escapes decoded. Quoting
+   * is an encoding of the header syntax, not part of the value -- see VALIDATION_PHILOSOPHY.md's
+   * value/encoding rule. Use {@link #getPropertyRaw(String) getPropertyRaw(assembly)} for the original
+   * spelling as it appeared in the file.
+   * <p>
+   * Null when the optional {@code assembly} tag is absent (spec-compliant -- see VCFv4.2.tex line 121) or
+   * otherwise unusable.
    */
   @Nullable
   public String getAssembly() {
-    return getPropertyRaw(ASSEMBLY);
+    return getPropertyUnquoted(ASSEMBLY);
   }
 
+  /**
+   * @return The {@code taxonomy} tag's value, <em>unquoted</em>: a declaration written {@code taxonomy="9606"}
+   * returns {@code 9606}, with any {@code \"}/{@code \\} escapes decoded. Quoting is an encoding of the header
+   * syntax, not part of the value -- see VALIDATION_PHILOSOPHY.md's value/encoding rule. Use
+   * {@link #getPropertyRaw(String) getPropertyRaw(taxonomy)} for the original spelling as it appeared in the
+   * file.
+   * <p>
+   * Null when the optional {@code taxonomy} tag is absent (spec-compliant -- see VCFv4.2.tex line 121).
+   */
   @Nullable
   public String getTaxonomy() {
-    return getPropertyRaw(TAXONOMY);
+    return getPropertyUnquoted(TAXONOMY);
   }
 
   @Nullable
@@ -142,14 +157,30 @@ public final class ContigMetadata extends IdMetadata {
     return getPropertyUnquoted(SPECIES);
   }
 
+  /**
+   * @return The {@code md5} tag's value, <em>unquoted</em>: a declaration written {@code md5="d7d0..."}
+   * returns {@code d7d0...}, with any {@code \"}/{@code \\} escapes decoded. Quoting is an encoding of the
+   * header syntax, not part of the value -- see VALIDATION_PHILOSOPHY.md's value/encoding rule. Use
+   * {@link #getPropertyRaw(String) getPropertyRaw(md5)} for the original spelling as it appeared in the file.
+   * <p>
+   * Null when the optional {@code md5} tag is absent (spec-compliant -- see VCFv4.2.tex line 121).
+   */
   @Nullable
   public String getMd5() {
-    return getPropertyRaw(MD5);
+    return getPropertyUnquoted(MD5);
   }
 
+  /**
+   * @return The {@code URL} tag's value, <em>unquoted</em>: a declaration written {@code URL="ftp://x/y.fa"}
+   * returns {@code ftp://x/y.fa}, with any {@code \"}/{@code \\} escapes decoded. Quoting is an encoding of
+   * the header syntax, not part of the value -- see VALIDATION_PHILOSOPHY.md's value/encoding rule. Use
+   * {@link #getPropertyRaw(String) getPropertyRaw(URL)} for the original spelling as it appeared in the file.
+   * <p>
+   * Null when the optional {@code URL} tag is absent (spec-compliant -- see VCFv4.2.tex line 121).
+   */
   @Nullable
   public String getUrl() {
-    return getPropertyRaw(URL);
+    return getPropertyUnquoted(URL);
   }
 
   private void init() {
@@ -170,10 +201,10 @@ public final class ContigMetadata extends IdMetadata {
     // defines a formal grammar for the url value in ##assembly=url / ##pedigreeDB=URL" -- the same is true of
     // ##contig's url tag, so this check is a library-level well-formedness convenience with no spec mandate,
     // unlike the ID/length checks above.
-    // getPropertyUnquoted, not getPropertyRaw: this is well-formedness validation (URI.create/toURL), not a
-    // value handed back to a consumer -- see getUrl()'s own Javadoc (still raw, unchanged) and AGENTS.md's
-    // "Unquoting before internal use" policy. A quoted URL (e.g. URL="http://example.com") otherwise failed
-    // this check purely because of its own surrounding quote characters.
+    // getPropertyUnquoted, not getPropertyRaw: this is well-formedness validation (URI.create/toURL), which
+    // must see the URL's actual content rather than its header-syntax quoting -- see AGENTS.md's "Unquoting
+    // before internal use" policy. A quoted URL (e.g. URL="http://example.com") otherwise failed this check
+    // purely because of its own surrounding quote characters.
     String url = getPropertyUnquoted(URL);
     if (url != null) {
       try {
@@ -182,8 +213,8 @@ public final class ContigMetadata extends IdMetadata {
         warnOrThrow("{} URL {} is malformed: {}", getLabel(), url, e.getMessage());
       }
     }
-    // getPropertyUnquoted, not getId(): the character-set/first-character checks below are validation, not
-    // presentation -- see this method's own URL comment just above.
+    // getPropertyUnquoted: the character-set/first-character checks below must see the ID's actual content,
+    // per AGENTS.md's "Unquoting before internal use" policy -- see this method's own URL comment just above.
     String id = getPropertyUnquoted(ID);
     if (id != null && !id.isEmpty()) {
       char first = id.charAt(0);

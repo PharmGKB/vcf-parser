@@ -132,9 +132,11 @@ the properties map until validation passes), so it calls `InternalUtils.unquote(
   too.
 
 The six keyed types' own public getters (`getId()`, `FormatMetadata.getNumber()`, `InfoMetadata.getNumber()`,
-`ContigMetadata.getAssembly()`/`getTaxonomy()`/`getMd5()`/`getUrl()`) are unaffected by any of this: they keep
-returning the raw, possibly still-quoted value, since they present data to a consumer rather than compare it
-internally.
+`ContigMetadata.getAssembly()`/`getTaxonomy()`/`getMd5()`/`getUrl()`) follow the same rule: they return the
+*unquoted* value too, since quoting is an encoding and the value is what a consumer asked for -- see
+`VALIDATION_PHILOSOPHY.md`'s "a property has a value and an encoding" rule. The dedup consequence is that a
+declaration's `getId()` and the map key it is stored under are now *always* the same string, for every one of
+the six keyed types; a caller who wants the original spelling opts in via `getPropertyRaw(ID)`.
 
 ### Missing ID is spec-grounded
 
