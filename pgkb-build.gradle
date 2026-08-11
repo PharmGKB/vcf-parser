@@ -92,6 +92,13 @@ nexusPublishing {
     sonatype {
       username = project.ext.sonatypeUser
       password = project.ext.sonatypePwd
+      // build.gradle computes this from the ossrhStagingProfileId property or the OSSRH_STAGING_PROFILE_ID
+      // env var; before this it was computed and never consumed. Guarded because both sources are absent on
+      // a normal local build, and assigning null here would be worse than leaving it unset -- the plugin can
+      // resolve the profile remotely when it isn't supplied.
+      if (project.ext.sonatypeStagingProfileId != null) {
+        stagingProfileId = project.ext.sonatypeStagingProfileId
+      }
     }
   }
 }

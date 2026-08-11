@@ -43,8 +43,8 @@ public abstract sealed class IdMetadata extends BaseMetadata permits IdDescripti
       // declaration keyed on nothing. init() reports the same condition for the Map-based shape.
       return;
     }
-    // see init()'s own comment (cited from VCFv4.2.tex/VCFv4.3.tex line 105/200 and the hts-specs fixtures named
-    // there) for why an ID may not contain whitespace
+    // see init()'s own comment (cited from VCFv4.3.tex line 200 and the hts-specs fixtures named there) for why
+    // an ID may not contain whitespace
     if (InternalUtils.containsWhitespace(unquotedId)) {
       warnOrThrow("{} metadata ID \"{}\" must not contain whitespace", label, unquotedId);
     }
@@ -96,7 +96,8 @@ public abstract sealed class IdMetadata extends BaseMetadata permits IdDescripti
     if (id != null && id.trim().isEmpty()) {
       warnOrThrow("{} metadata ID is blank", getLabel());
     } else if (id != null && InternalUtils.containsWhitespace(id)) {
-      // VCFv4.2.tex/VCFv4.3.tex line 105/200 only states this rule for ##ALT's own ID explicitly, but hts-specs'
+      // VCFv4.3.tex line 200 ("ID values are case sensitive strings and must not contain whitespace, commas or
+      // angle brackets") only states this rule for ##ALT's own ID explicitly, but hts-specs'
       // own conformance fixtures (test/vcf/{4.1,4.2,4.3}/failed/failed_meta_contig_001.vcf,
       // test/vcf/4.3/failed/failed_meta_sample_001.vcf) extend it to ##contig and ##SAMPLE, bcftools 1.23.1
       // empirically warns ("Invalid tag name"/"Invalid contig name") for ##INFO/##FORMAT/##contig ID
