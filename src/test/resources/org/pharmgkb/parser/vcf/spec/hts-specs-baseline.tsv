@@ -58,7 +58,10 @@ test/vcf/4.1/failed/failed_body_samples_ploidy_001.vcf	parser-throw-or-warn	sile
 test/vcf/4.1/failed/failed_body_samples_ploidy_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: cardinality in PL does not match the cardinality derived from allele number and GT ploidy
 test/vcf/4.1/failed/failed_body_samples_ploidy_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: cardinality in PL does not match the cardinality derived from allele number and GT ploidy
 test/vcf/4.1/failed/failed_meta_alt_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect ALT ID value
+test/vcf/4.1/failed/failed_meta_alt_004.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect order of ALT fields
 test/vcf/4.1/failed/failed_meta_assembly_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Non-valid URL
+test/vcf/4.1/failed/failed_meta_format_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect order of FORMAT fields
+test/vcf/4.1/failed/failed_meta_info_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect order of INFO fields
 test/vcf/4.1/failed/failed_meta_pedigree_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Genome ID with whitespace
 test/vcf/4.1/failed/failed_meta_pedigree_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Genome ID with non-accepted punctuation character
 test/vcf/4.1/failed/failed_meta_pedigreedb_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Non-valid URL
@@ -122,7 +125,10 @@ test/vcf/4.2/failed/failed_body_samples_ploidy_001.vcf	parser-throw-or-warn	sile
 test/vcf/4.2/failed/failed_body_samples_ploidy_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: cardinality in PL does not match the cardinality derived from allele number and GT ploidy
 test/vcf/4.2/failed/failed_body_samples_ploidy_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: cardinality in PL does not match the cardinality derived from allele number and GT ploidy
 test/vcf/4.2/failed/failed_meta_alt_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect ALT ID value
+test/vcf/4.2/failed/failed_meta_alt_004.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect order of ALT fields
 test/vcf/4.2/failed/failed_meta_assembly_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Meta-data entry is not a key-value pair
+test/vcf/4.2/failed/failed_meta_format_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect order of FORMAT fields
+test/vcf/4.2/failed/failed_meta_info_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect order of INFO fields
 test/vcf/4.2/failed/failed_meta_pedigree_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Genome ID with whitespace
 test/vcf/4.2/failed/failed_meta_pedigree_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Genome ID with non-accepted punctuation character
 test/vcf/4.2/failed/failed_meta_pedigreedb_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Non-valid URL
@@ -193,8 +199,11 @@ test/vcf/4.3/failed/failed_body_samples_ploidy_000.vcf	parser-throw-or-warn	sile
 test/vcf/4.3/failed/failed_body_samples_ploidy_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: cardinality in PL does not match the cardinality derived from allele number and GT ploidy
 test/vcf/4.3/failed/failed_body_samples_ploidy_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: cardinality in PL does not match the cardinality derived from allele number and GT ploidy
 test/vcf/4.3/failed/failed_body_samples_ploidy_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: cardinality in PL does not match the cardinality derived from allele number and GT ploidy
+test/vcf/4.3/failed/failed_meta_alt_004.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect order of ALT fields
 test/vcf/4.3/failed/failed_meta_assembly_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Meta-data entry is not a key-value pair
 test/vcf/4.3/failed/failed_meta_contig_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: contig ID contains illegal character
+test/vcf/4.3/failed/failed_meta_format_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect order of FORMAT fields
+test/vcf/4.3/failed/failed_meta_info_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect order of INFO fields
 test/vcf/4.3/failed/failed_meta_meta_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect META Number value
 test/vcf/4.3/failed/failed_meta_meta_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Incorrect META Type value
 test/vcf/4.3/failed/failed_meta_meta_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: META Values must be surrounded by square brackets

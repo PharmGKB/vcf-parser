@@ -38,6 +38,10 @@ Reserved INFO/FORMAT keys (e.g. `AC`, `DP`, `GT`, `PL`) are exposed as typed val
 [`ReservedInfoProperty`](src/main/java/org/pharmgkb/parser/vcf/ReservedInfoProperty.java)/
 [`ReservedFormatProperty`](src/main/java/org/pharmgkb/parser/vcf/ReservedFormatProperty.java), via
 `VcfPosition.getInfo(ReservedInfoProperty)`/`VcfSample.getProperty(ReservedFormatProperty)`.
+The structured metadata declarations VCF defines (`##INFO`, `##FORMAT`, `##FILTER`, `##ALT`, `##contig`,
+`##SAMPLE`, `##META`, `##PEDIGREE`) come back through `VcfMetadata`'s own typed accessors --
+`getInfo()`, `getFormats()`, `getFilters()`, `getAlts()`, `getContigs()`, `getSamples()`, `getMetas()`,
+`getPedigrees()` -- not `getRawProperties()`, which holds only declarations outside that set.
 Values are handed back as the raw text the file contained -- this library never percent-decodes an INFO or
 sample value, and never percent-encodes one on write.
 [`VcfPercentEncoding`](src/main/java/org/pharmgkb/parser/vcf/VcfPercentEncoding.java) is an opt-in utility for

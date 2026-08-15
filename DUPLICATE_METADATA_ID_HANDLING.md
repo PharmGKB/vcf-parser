@@ -5,9 +5,10 @@ This document describes `VcfMetadata.Builder`'s/`VcfMetadata`'s behavior under a
 file's behavior is exactly as described below. Under a strict context (`VcfContext.strict(fileFormat)`) each
 of these conditions throws `VcfFormatException` immediately instead; see `VALIDATION_PHILOSOPHY.md`.
 
-VCF metadata declarations (`##contig`, `##INFO`, `##FORMAT`, `##FILTER`, `##ALT`, `##SAMPLE`) are each keyed by an
-`ID` attribute. Neither [VCFv4.2.tex](https://github.com/samtools/hts-specs) nor VCFv4.3.tex states what happens
-when the same `ID` is declared twice for the same type within one file — the spec is simply silent on it.
+VCF metadata declarations (`##contig`, `##INFO`, `##FORMAT`, `##FILTER`, `##ALT`, `##SAMPLE`, `##META`) are each
+keyed by an `ID` attribute. Neither [VCFv4.2.tex](https://github.com/samtools/hts-specs) nor VCFv4.3.tex states
+what happens when the same `ID` is declared twice for the same type within one file — the spec is simply silent
+on it.
 
 ## Why this warns instead of throwing
 
@@ -17,9 +18,11 @@ when the same `ID` is declared twice for the same type within one file — the s
 
 - **vcf_validator** (the EBI reference validator; the tool [hts-specs](https://github.com/samtools/hts-specs) uses
   to classify its own `passed/`/`failed/` conformance fixtures) reports a file with a repeated declaration ID as
-  **valid**, for every one of the six declaration types.
+  **valid**, for every one of the seven declaration types (verified directly for `##META`: vcf_validator 0.10.2
+  against a `VCFv4.3` fixture declaring `##META=<ID=Assay,...>` twice with different `Values`).
 - **bcftools**, the reference implementation most of the ecosystem treats as canonical, keeps the **first**
-  declaration and silently drops each duplicate — no warning, no error — again for every one of the six types.
+  declaration and silently drops each duplicate — no warning, no error — again for every one of the seven types
+  (verified directly for `##META`: bcftools 1.23.1).
 
 > **Measurement hazard: never probe this with `##FILTER=<ID=PASS,...>`.** htslib injects
 > `##FILTER=<ID=PASS,Description="All filters passed">` into the header *before* parsing the file
@@ -40,7 +43,7 @@ conformance suite, its own reference validator, and the ecosystem's reference im
 acceptable, so `vcf-parser` now matches that practical tolerance: it logs a warning and keeps the first declaration,
 rather than throwing `VcfFormatException`.
 
-For the six `Map`-backed types above, this is construction-time-only: once stored, a `Map<String, ...>` can't
+For the seven `Map`-backed types above, this is construction-time-only: once stored, a `Map<String, ...>` can't
 hold two entries under one key, so a "duplicate" can only be encountered while *adding* a declaration, which
 now happens in exactly one place -- `VcfMetadata.Builder` (used directly, or by `VcfParser` at parse time, or
 via `VcfMetadata.toBuilder()`). A built `VcfMetadata` is immutable, with no instance `addXxx` methods and no
@@ -65,13 +68,14 @@ declaration type, each declaring the same ID twice with different attributes.
 | `##FILTER` | Silent | Valid | Keeps first, drops duplicate, no warning | Warn + keep first |
 | `##ALT` | Silent | Valid | Keeps first, drops duplicate, no warning | Warn + keep first |
 | `##SAMPLE` | Silent | Valid | Keeps first, drops duplicate, no warning | Warn + keep first |
+| `##META` | Silent | Valid | Keeps first, drops duplicate, no warning | Warn + keep first |
 
 Contrast with a duplicate `#CHROM` sample-column name, which remains a structural error in `vcf-parser`. This is a
 different *kind* of duplication, not merely a stricter policy choice: `#CHROM`'s sample columns are *positional* —
 every data line's per-sample values are aligned to them by index, and `VcfMetadata.getSampleIndex(id)` resolves a
 name via `m_columns.indexOf(id)`. A duplicate name makes the *second* column's data permanently unreachable by
 name (only reachable positionally), silently misdirecting any name-based lookup to the first column's data instead
-— a real data-integrity hazard none of the six declaration types above have, since a declaration merely describes
+— a real data-integrity hazard none of the seven declaration types above have, since a declaration merely describes
 something; nothing else in the file indexes into it by position.
 
 Both reference tools independently draw this same line:
@@ -88,8 +92,10 @@ Duplicated sample name 'S1'` and fails to parse; `vcf_validator` reports the fil
 
 Unlike a duplicate ID (above), a metadata declaration whose `ID` is **absent, empty, or whitespace-only** is a
 different failure mode entirely: it isn't a collision between two declarations, it's a single declaration that
-has no ID to dedupe on. At *add* time, `vcf-parser` warns and drops such a declaration in full, for all six keyed
-types -- never stored, unlike a duplicate-ID-when-present (which keeps the first and drops the rest). This
+has no ID to dedupe on. At *add* time, `vcf-parser` warns and drops such a declaration in full, for all seven
+keyed types (including `##META`, whose required-`ID` rule is unconditional/version-independent -- unlike
+`##PEDIGREE` below, whose own `ID` requirement only starts at VCFv4.3) -- never stored, unlike a
+duplicate-ID-when-present (which keeps the first and drops the rest). This
 add-time drop is independently preceded by a first warning of its own, from the declaration object's own
 `IdMetadata.init()` at construction (before `addXxx` ever sees it) -- parsing one malformed header line produces
 both warnings; see `WONT_FIX.md`'s "Multiple independent checks warn separately about the same underlying
@@ -101,19 +107,19 @@ on it from then on. Since the metadata layer was frozen there is no public route
 through the package-private `BaseMetadata.trustedMutableProperties()` bypass, which is what keeps
 `VcfWriter`'s equivalent write-time check tested. See `VALIDATION_REFERENCE.md`'s equivalent bullet.
 
-`##PEDIGREE` is a seventh, differently-shaped case, not covered by the "never stored, for all six keyed types"
+`##PEDIGREE` is an eighth, differently-shaped case, not covered by the "never stored, for all seven keyed types"
 rule above: under VCFv4.3+ (VCFv4.3.tex line 121, "All structured lines require an ID which must be unique
 within their type"), both `VcfMetadata.Builder.addPedigree` (construction) and `VcfWriter.validateMetadata()`'s
 PEDIGREE loop (`validateBeforeWrite()`) warn (or, construction-side only, throw under a strict context) on an
-absent/empty/whitespace-only `ID`, but **keep** the declaration rather than dropping it. The six keyed types
+absent/empty/whitespace-only `ID`, but **keep** the declaration rather than dropping it. The seven keyed types
 drop because they're `Map`-backed and a blank `ID` leaves nothing to key the entry on ("cannot be stored");
 `##PEDIGREE` is `List`-backed, so that reason doesn't apply -- there's no map slot to fail to claim. In both
 places the missing-ID check is checked *before* the duplicate-ID branch, and a blank `ID` is deliberately never
 added to the respective dedupe set (`m_pedigreeIds` at construction, the write-time `pedigreeIds` local at
 write time), so two blank-ID `##PEDIGREE` declarations each independently warn "has no ID" rather than the
 second colliding with the first as a spurious `Duplicate ID ""` -- on either route. At construction this also
-produces only one warning, not the two-warning pattern described above for the six keyed types:
-`PedigreeMetadata` extends `BaseMetadata` directly (`PedigreeMetadata.java:39`), not `IdMetadata`, so there is
+produces only one warning, not the two-warning pattern described above for the seven keyed types:
+`PedigreeMetadata` extends `BaseMetadata` directly (`PedigreeMetadata.java:44`), not `IdMetadata`, so there is
 no `IdMetadata.init()` precursor check to fire first. Under VCFv4.2, `##PEDIGREE` is unaffected on both routes:
 its own grammar (VCFv4.2.tex line 152) has no `ID` attribute at all, so the version gate never activates and
 the declaration is added/kept unconditionally, exactly as before this rule existed.
@@ -121,7 +127,7 @@ the declaration is added/kept unconditionally, exactly as before this rule exist
 ### Quoting is not part of the identity
 
 Every missing/blank-`ID` check described above compares the unquoted form before comparing or storing it, per
-AGENTS.md's "Unquoting before internal use" policy: `IdMetadata.init()`, the six keyed types'
+AGENTS.md's "Unquoting before internal use" policy: `IdMetadata.init()`, the seven keyed types'
 `addXxx`/`replaceXxx` blank check and dedupe key, `VcfMetadata.Builder.addPedigree`, and
 `VcfWriter.validateMetadata()`'s PEDIGREE loop all read `getPropertyUnquoted(ID)`, never `getPropertyRaw(ID)`.
 The typed `IdMetadata(VcfContext, String, String)` constructor reaches the identical outcome by a different
@@ -130,36 +136,40 @@ the properties map until validation passes), so it calls `InternalUtils.unquote(
 `getPropertyUnquoted` -- there is no property to read yet. Two consequences follow directly:
 
 - A **quoted** blank `ID` -- either whitespace-only (`##PEDIGREE=<ID="   ",...>` / `##FILTER=<ID="   ",...>`)
-  or empty (`ID=""`) -- is detected identically to its unquoted equivalent (`ID=`, `ID=   `), for all seven
+  or empty (`ID=""`) -- is detected identically to its unquoted equivalent (`ID=`, `ID=   `), for all eight
   structured declaration types. Before this was fixed, every one of these checks read `getPropertyRaw(ID)`
   instead: a quoted blank `ID` arrived as a non-blank raw string (the quote characters survive trimming) and
   escaped detection entirely for `##PEDIGREE` (whose own blank check has no whitespace fallback), or was
-  misdiagnosed as "must not contain whitespace" instead of "is blank" for the six keyed types (see the retired
+  misdiagnosed as "must not contain whitespace" instead of "is blank" for the seven keyed types (see the retired
   `WONT_FIX.md` entry this section replaces).
 - `ID="A"` and `ID=A` are **the same ID** for dedup purposes: quoting is an encoding, not part of the
   identifier. A declaration whose `ID` is quoted now collides with an earlier (or later) declaration of the
-  same unquoted `ID`, for all seven types -- the six keyed types' map storage key is itself the unquoted `ID`
+  same unquoted `ID`, for all eight types -- the seven keyed types' map storage key is itself the unquoted `ID`
   (so `getInfo()`/`getAlts()`/etc. are reachable by the plain, unquoted key even when the sole declaration used
   a quoted one), and `##PEDIGREE`'s `m_pedigreeIds`/write-time `pedigreeIds` dedupe sets store the unquoted form
   too.
 
-The six keyed types' own public getters (`getId()`, `FormatMetadata.getNumber()`, `InfoMetadata.getNumber()`,
+The seven keyed types' own public getters (`getId()`, `FormatMetadata.getNumber()`, `InfoMetadata.getNumber()`,
 `ContigMetadata.getAssembly()`/`getTaxonomy()`/`getMd5()`/`getUrl()`) follow the same rule: they return the
 *unquoted* value too, since quoting is an encoding and the value is what a consumer asked for -- see
 `VALIDATION_PHILOSOPHY.md`'s "a property has a value and an encoding" rule. The dedup consequence is that a
 declaration's `getId()` and the map key it is stored under are now *always* the same string, for every one of
-the six keyed types; a caller who wants the original spelling opts in via `getPropertyRaw(ID)`.
+the seven keyed types; a caller who wants the original spelling opts in via `getPropertyRaw(ID)`.
 
 ### Missing ID is spec-grounded
 
 VCFv4.3.tex line 121 (unchanged in VCFv4.4/VCFv4.5): "All structured lines require an ID which must be unique
 within their type, i.e., within all the meta-information lines with the same `##key=` prefix." VCFv4.2 never
-uses the word "required," but its own templates for all six types show `ID=` unconditionally first, with no
-optional-field notation -- consistent with, not contradicted by, VCFv4.3's explicit statement. VCFv4.4/VCFv4.5
+uses the word "required," but its own templates for all six pre-4.3 types show `ID=` unconditionally first, with
+no optional-field notation -- consistent with, not contradicted by, VCFv4.3's explicit statement. VCFv4.4/VCFv4.5
 additionally give `##ALT` its own explicit restatement: "ALT meta-information lines are structured lines with
-require[d] fields of ID and Description..." This applies uniformly to all six types, regardless of what bcftools
-actually does per type (see below) -- per `AGENTS.md`'s decision hierarchy, spec text governs when it isn't
-silent.
+require[d] fields of ID and Description..." This applies uniformly to all six pre-4.3 types, regardless of what
+bcftools actually does per type (see below) -- per `AGENTS.md`'s decision hierarchy, spec text governs when it
+isn't silent. `##META` has no VCFv4.2 form to draw a templates argument from (it is introduced at VCFv4.3), but
+line 121's "All structured lines" text is unqualified by declaration type, so it grounds `##META`'s own
+required-`ID` rule directly and unconditionally from the version `##META` exists in onward -- unlike `##PEDIGREE`
+just below, whose own VCFv4.2 grammar has no `ID` attribute at all, which is why *its* rule is version-gated
+instead.
 
 ### bcftools/vcf_validator behavior (live-tested)
 
@@ -174,8 +184,9 @@ declaration of each type, for both a wholly missing `ID` attribute and an empty 
 | `##INFO` | Warn + dropped | Invalid | Warn ("Invalid tag name") + kept | Invalid (same charset message) |
 | `##FORMAT` | Warn + dropped | Invalid | Warn + kept | Invalid (presumed same pattern) |
 | `##contig` | Warn + dropped | Invalid | Warn ("Invalid contig name") + kept | Invalid (presumed same pattern) |
+| `##META` | Kept, no warning | Invalid ("Error in META metadata") | Kept (`ID=,...` verbatim), no warning | Invalid ("ID contains a character different from...") |
 
-`##ALT`/`##SAMPLE` aren't part of BCF's binary dictionary encoding, so htslib never validates their `ID` at all.
+`##ALT`/`##SAMPLE`/`##META` aren't part of BCF's binary dictionary encoding, so htslib never validates their `ID` at all.
 `##INFO`/`##FORMAT`/`##contig`/`##FILTER` ARE part of BCF's dictionary, so a *missing* `ID` invalidates the whole
 declaration -- but an *empty* `ID=` is, inconsistently, tolerated. `vcf-parser` does not replicate bcftools's
 per-type inconsistency for missing IDs (see above -- the spec settles that dimension), and does not replicate
@@ -209,8 +220,8 @@ surfaces any complaint about a dropped duplicate's content either.
 - `VcfMetadata.warnIfDuplicate(Map, String, String, VcfContext)` — the shared helper, used by
   `VcfMetadata.Builder`'s `addXxx` methods; a strict context throws instead of warning (see
   `VALIDATION_PHILOSOPHY.md`).
-- `VcfMetadata.Builder.addAlt()` / `addInfo()` / `addFormat()` / `addFilter()` / `addContig()` / `addSample()` —
-  each calls `warnIfDuplicate()` before storing a new declaration, and returns immediately (without storing) if
+- `VcfMetadata.Builder.addAlt()` / `addInfo()` / `addFormat()` / `addFilter()` / `addContig()` / `addSample()` /
+  `addMeta()` — each calls `warnIfDuplicate()` before storing a new declaration, and returns immediately (without storing) if
   it reports a duplicate. There is no `removeXxx` anywhere: a built `VcfMetadata` is immutable. To produce a
   `VcfMetadata` without some declaration entirely, build a fresh one rather than editing an existing one --
   `Builder` has no way to drop one. To overwrite an existing declaration under the same `ID` instead, use the
@@ -220,10 +231,10 @@ surfaces any complaint about a dropped duplicate's content either.
   (compared unquoted -- see this file's "Quoting is not part of the identity" section); adds unconditionally
   when no `ID` property is present, **below VCFv4.3**. At VCFv4.3+, an absent
   or blank `ID` instead warns "has no ID" (or throws, under a strict context) but is still kept -- see this
-  file's "Missing or empty ID" section's seventh-type paragraph, added by the VCF 4.3-target phase's Task 4.
+  file's "Missing or empty ID" section's eighth-type paragraph, added by the VCF 4.3-target phase's Task 4.
 - `VcfWriter.validateMetadata()`'s PEDIGREE loop — the same duplicate-ID check, but warn-only (never drops),
   since it runs post-construction on content the caller already holds a reference to. Also mirrors
-  `addPedigree()`'s missing/blank-`ID` gate at VCFv4.3+ (same seventh-type paragraph as above): a blank `ID`
+  `addPedigree()`'s missing/blank-`ID` gate at VCFv4.3+ (same eighth-type paragraph as above): a blank `ID`
   warns and is kept, and is skipped before this method's own duplicate-ID dedupe set to avoid the same
   spurious-collision failure mode.
 - `IdMetadata`'s shared `IdMetadata(VcfContext, String label, String id)` constructor -- used by every
@@ -239,7 +250,7 @@ surfaces any complaint about a dropped duplicate's content either.
   check, not a restatement: parsing one malformed header line produces both this warning and the `addXxx`-level
   one in the same log; see `WONT_FIX.md`'s "Missing or blank metadata ID" sub-case (referenced above) for why
   neither is suppressed in favor of the other.
-- `VcfMetadata.Builder`'s 6 `addXxx` methods each check for a missing or blank `ID` before calling
+- `VcfMetadata.Builder`'s 7 `addXxx` methods each check for a missing or blank `ID` before calling
   `warnIfDuplicate()`, warning and dropping the declaration entirely (never storing it) if so -- this is what
   actually removes a malformed declaration from storage, built via the parser's lenient `Map`-based
   construction path. Under a strict `VcfContext`, both checks throw `VcfFormatException` instead -- see
@@ -260,7 +271,9 @@ throws under a strict one. Neither outcome lets a caller actually replace a decl
 `replaceSample()` are the fix: one pair of overloads per keyed type (a typed overload and a raw-`Map` overload,
 mirroring `addXxx`'s own pairing, so leniency keeps coming from the `VcfContext` rather than the overload shape),
 each bypassing `warnIfDuplicate()` entirely for what is, by calling `replaceXxx`, always an intentional overwrite.
-There is no `replacePedigree`: `##PEDIGREE`'s `List` backing (see below) has no single `Map` entry to overwrite,
+`replaceMeta()` follows the same present-check-then-mutate shape but breaks the pairing: `##META` has no simple
+`ID`+`Description` schema (see `MetaMetadata`'s own Javadoc), so it gets only the raw-`Map` overload, not a typed
+one. There is no `replacePedigree`: `##PEDIGREE`'s `List` backing (see below) has no single `Map` entry to overwrite,
 and its `ID` is optional rather than mandatory.
 
 **The missing-target contract is deliberately not context-dependent.** Replacing an `ID` that has no existing
@@ -285,16 +298,17 @@ mutation (`m_alt.put(id, md)`) -- so a rejected replacement (invalid `Number`/`T
 declaration installed and the builder otherwise unchanged. Neither of the two mechanical-looking alternatives
 gives that for free: *remove-then-add* loses the valid original the moment validation throws (nothing left to put
 back), and *put-then-validate* leaves the invalid declaration stored -- `build()` does not re-run add-time
-validation, so it would silently survive into the built `VcfMetadata`. The other five keyed types have no
+validation, so it would silently survive into the built `VcfMetadata`. The other six keyed types have no
 add-time content check to preserve this ordering for, but `replaceInfo()`/`replaceFilter()`/`replaceFormat()`/
-`replaceContig()`/`replaceSample()` follow the same present-check-then-mutate shape for consistency.
+`replaceContig()`/`replaceSample()`/`replaceMeta()` follow the same present-check-then-mutate shape for
+consistency.
 
 ## `##PEDIGREE`: a conditional case
 
-Unlike the six keyed types above, `##PEDIGREE`'s grammar (`VCFv4.2.tex` line 152: `##PEDIGREE=<Name_0=G0-ID,...,
+Unlike the seven keyed types above, `##PEDIGREE`'s grammar (`VCFv4.2.tex` line 152: `##PEDIGREE=<Name_0=G0-ID,...,
 Name_N=GN-ID>`) has no mandatory `ID` attribute — the spec's own worked example (lines 904-908) declares three
 `##PEDIGREE` lines in one file, each with a different, non-`ID` attribute schema (`Derived=...,Original=...`).
-This is why `m_pedigree` is a `List<PedigreeMetadata>`, not a `Map<String, ...>` like the six keyed types — there is
+This is why `m_pedigree` is a `List<PedigreeMetadata>`, not a `Map<String, ...>` like the seven keyed types — there is
 no guaranteed key to map on.
 
 Empirical testing shows bcftools still dedupes PEDIGREE by `ID` whenever a line happens to declare one:
@@ -306,8 +320,8 @@ Empirical testing shows bcftools still dedupes PEDIGREE by `ID` whenever a line 
 | Two `##PEDIGREE` lines each with an empty `ID=` | Keeps **first**, drops duplicate | Valid |
 
 So the rule generalizes: bcftools dedupes by `ID` wherever that key is present, regardless of the declaration's
-tag name — not six special cases plus an unrelated PEDIGREE rule, but one rule (dedupe on `ID` when present) that
-the six keyed types happen to always trigger (their grammar makes `ID` mandatory) and PEDIGREE only sometimes
+tag name — not seven special cases plus an unrelated PEDIGREE rule, but one rule (dedupe on `ID` when present) that
+the seven keyed types happen to always trigger (their grammar makes `ID` mandatory) and PEDIGREE only sometimes
 triggers (its grammar makes `ID` optional). `VcfMetadata.Builder.addPedigree()` and `VcfWriter`'s
 post-construction check both implement this **below VCFv4.3**: warn and keep first when `ID` is present and
 duplicated; add unconditionally when `ID` is absent.
@@ -318,5 +332,5 @@ row specifically) reflects bcftools 1.23.1's own behavior, which this library ma
 that a fully-optional-grammar reading of PEDIGREE could otherwise skip, so at 4.3+ this library deliberately
 diverges from bcftools here per `AGENTS.md`'s decision hierarchy (spec text governs where it isn't silent):
 two `##PEDIGREE` lines each with an empty `ID=` are now both **kept**, each independently warning "has no ID"
-rather than the second being dropped as a duplicate -- see the "Missing or empty ID" section's seventh-type
+rather than the second being dropped as a duplicate -- see the "Missing or empty ID" section's eighth-type
 paragraph above for the current, version-split rule on both the construction and write-time routes.

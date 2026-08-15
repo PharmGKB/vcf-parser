@@ -12,7 +12,7 @@ backlog for the current status of any 🟡 entry.
 
 This file does **not** duplicate two topics that already have their own dedicated, deeper reference docs:
 
-- Duplicate metadata declaration IDs (`##contig`/`##INFO`/`##FORMAT`/`##FILTER`/`##ALT`/`##SAMPLE`/`##PEDIGREE`)
+- Duplicate metadata declaration IDs (`##contig`/`##INFO`/`##FORMAT`/`##FILTER`/`##ALT`/`##SAMPLE`/`##META`/`##PEDIGREE`)
   — see [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md).
 - Zero-length ("empty") delimited field entries across ID/FILTER/ALT/FORMAT/INFO/sample values — see
   [`EMPTY_FIELD_HANDLING.md`](EMPTY_FIELD_HANDLING.md).
@@ -31,7 +31,7 @@ before assuming it generalizes to a similar-looking case.
 
 | Topic | Decision | Status |
 |---|---|---|
-| Duplicate attribute within one metadata declaration | Keep last (matches bcftools) | ✅ |
+| Duplicate attribute within one metadata declaration | Keep first (library choice; diverges from bcftools for a non-`ID` attribute) | ✅ |
 | Malformed attribute inside a metadata declaration's `<...>` list | Warn and drop just that attribute (matches bcftools; more lenient than two hts-specs `failed/` fixtures) -- an unquoted `=` in a value is no longer one of the malformed shapes this covers; see below | ✅ |
 | Whitespace in `##FILTER`/`##SAMPLE` declaration IDs | Reject (bcftools's silence is a coverage gap) | ✅ |
 | `##FORMAT`/`##INFO` ID grammar vs. `##FILTER`/`##SAMPLE`/`##ALT` | Stricter grammar for FORMAT/INFO only | ✅ |
@@ -43,8 +43,11 @@ before assuming it generalizes to a similar-looking case.
 | Generic metadata property with an empty value | Drop (deliberately stricter than bcftools) | ✅ |
 | `##pedigreeDB`/`##assembly` bracket-wrapped values colliding with attribute-list grammar | Reject when empty or no `=` inside the brackets; accept when it contains `=` | ✅ |
 | A literal `%` in a metadata declaration ID | No code change; existing `##ALT`/`##FILTER`/`##SAMPLE` looser-grammar decision stands despite vcf_validator flagging `%` in `##FILTER`/`##SAMPLE` | ✅ |
-| Metadata attribute NAME grammar (construction-time allowlist) | `^[A-Za-z_][0-9A-Za-z_.]*$` (matches bcftools); throw at construction, warn at `validateBeforeWrite()` | ✅ |
-| Unquoted metadata attribute value: malformed bracket vs. `<`/`>`/`;` | Throw (both modes) for an unquoted comma or malformed bracket value; warn at `validateBeforeWrite()` only for `<`/`>`/`"`/space; no check for `;` (bcftools gives it no special meaning here) | ✅ |
+| Metadata attribute NAME grammar (parse and write warn, construction throws) | `^[A-Za-z_][0-9A-Za-z_.]*$` (matches bcftools); warn at parse time, throw at construction, warn at `validateBeforeWrite()` | ✅ |
+| Unquoted metadata attribute value: malformed bracket vs. `<`/`>`/`;` | Throw (both modes) for an unquoted comma or malformed bracket value; warn at `validateBeforeWrite()` only for `<`/`>`/`"`/space; no check for `;` (bcftools gives it no special meaning here) -- whether a `,` *inside* an unquoted `<...>` span still ends the attribute (it does) is a separate question, see "Angle brackets are not a quoting form in a metadata attribute value" below | ✅ |
+| Angle brackets are not a quoting form in a metadata attribute value | Comma splitting unchanged; unlike htslib's `<`/`>` nesting counter, a value needing `,`/`<`/`>` must be double-quoted (only `[...]` is a comma-separation exception) | ✅ |
+| Generalizing `[...]` beyond `##META`'s `Values` to any attribute | Scope acceptance to `##META`'s `Values` only, in both parsing and construction (maintainer choice on a genuine tie -- the spec's one narrow example is silence, not prohibition, but bcftools' generalization is not followed); the fatal unterminated-`[` floor stays universal regardless | ✅ |
+| `##META` attribute order | Not checked, for ANY keyed declaration type (bcftools ignores ordering universally; vcf_validator rejects the spec's own worked example, disqualifying its verdict) | ✅ |
 | FORMAT declared but zero sample columns | Reject (both tools agree) | ✅ |
 | Empty sample name in `#CHROM` header | Reject (both tools agree) | ✅ |
 | CHROM contiguity / POS ordering within a CHROM block | Warn, don't reject (neither tool rejects it) | ✅ |
@@ -74,14 +77,22 @@ before assuming it generalizes to a similar-looking case.
 A single declaration's own `<ID=...,Number=...,...>` structure repeating one attribute (e.g.
 `Type=Integer,...,Type=String`) is a different scenario from a duplicate *declaration* ID across separate
 lines (see `DUPLICATE_METADATA_ID_HANDLING.md`) — hts-specs' conformance suite has no fixture for it either
-way. Confirmed live against bcftools: forcing conversion to binary BCF (which enforces the declared type,
-unlike plain-text VCF) shows bcftools always resolves to the **last**-declared value regardless of which type
-came first. vcf_validator rejects this case outright, but per the tie-breaker hierarchy its stricter
-structural-field reading is non-authoritative here.
+way, and no VCF version (4.2-4.5) contemplates a repeated attribute name within one declaration either. There
+is therefore no spec to defer to, and this is a library choice rather than a spec question.
 
-**Decision:** keep the last value (the opposite of every other duplicate-key case in this codebase, which
-keep the first), with a warning. Implemented in `InternalUtils.foldAttributes`, shared by
-`extractPropertiesFromLine` (real parsing) and `extractProperties` (the test-facing array-based entry point).
+**Decision:** keep the first value, with a warning — the same shape, applied one level down, as
+`AGENTS.md:118`'s duplicate-declaration-ID rule ("warns and keeps the first declaration... never
+keep-last/overwrite"). Implemented in `InternalUtils.foldAttributes`, shared by `extractPropertiesFromLine`
+(real parsing) and `extractProperties` (the test-facing array-based entry point).
+
+This is a deliberate, documented divergence from bcftools rather than an oversight: confirmed live against
+bcftools 1.23.1 by forcing conversion to binary BCF (which enforces the declared type, unlike plain-text VCF,
+making the survivor observable), declaring `Type` twice resolves to the **last**-declared value regardless of
+which type came first, while declaring `ID` twice resolves to the **first**-declared value (control-verified
+against the same mechanism). Per `AGENTS.md`'s Spec Ambiguity Decision Hierarchy, declining to adopt a
+measured tool behavior must be written down rather than left implicit — this entry is that record. vcf_validator
+rejects the `Type`-duplicate case outright, but per the tie-breaker hierarchy its stricter structural-field
+reading is non-authoritative here regardless.
 
 ### Malformed attribute inside a metadata declaration's `<...>` list
 
@@ -286,7 +297,7 @@ future agent who runs vcf_validator against a `%`-containing `##FILTER`/`##SAMPL
 "invalid" doesn't treat that as a fresh finding: vcf_validator's own inconsistency here, unsupported by any
 hts-specs fixture for those three types, is not treated as controlling, per the tie-breaker hierarchy.
 
-### Metadata attribute NAME grammar (construction-time allowlist)
+### Metadata attribute NAME grammar (parse and write warn, construction throws)
 
 `VCFv4.3.tex` line 117 states a structured declaration's value is "a comma-separated list of key=value pairs,
 enclosed within `<' and `>' characters" but never gives `key` (the attribute NAME) a character-set grammar of
@@ -299,15 +310,19 @@ declaration (`[E::bcf_hdr_parse_line] Could not parse the header line`) while th
 (exit 0, every other declaration and every data line still emitted) — the exact `AGENTS.md` worked example for
 carried-forward content.
 
-**Decision:** `InternalUtils.METADATA_ATTRIBUTE_NAME_PATTERN` enforces this same regex. Construction
-(`InternalUtils.checkMetadataPropertyEncoding`, all 25 `VcfMetadata.Builder` call sites) throws for a name
-outside it, since originated content must never reach the header in a form bcftools silently discards.
-`validateBeforeWrite()`'s counterpart (`checkMetadataPropertyEncodingForWrite`) only warns, since the file
-stays readable and this route's content may be carried-forward (parsed, not originated) rather than
-originated by the write call itself — the parse path does not enforce this allowlist at all, matching this
-library's general policy of preserving recoverable input. Tests:
+**Decision:** `InternalUtils.METADATA_ATTRIBUTE_NAME_PATTERN` enforces this same regex at all three stages. The
+parse path (`InternalUtils.foldAttributes`'s post-fold loop, once per surviving key rather than once per parsed
+attribute — a repeated invalid name is one bad name, and the fold loop's own duplicate-attribute warning already
+reports the repetition) warns and preserves the value, per the Parser Validation Policy's "warn, never drop"
+rule for carried-forward content. Construction (`InternalUtils.checkMetadataPropertyEncoding`, all 27
+`VcfMetadata.Builder` call sites) throws for a name outside it, since originated content must never reach the
+header in a form bcftools silently discards. `validateBeforeWrite()`'s counterpart
+(`checkMetadataPropertyEncodingForWrite`) only warns, since the file stays readable and this route's content may
+be carried-forward (parsed, not originated) rather than originated by the write call itself. Tests:
 `MetadataPropertyEncodingTest#constructionRejectsANameOutsideTheAllowlist`/
 `#constructionAcceptsSpecConformantNames`/`#aNameOutsideTheAllowlistSurvivesParsing`,
+`InternalUtilsTest#anInvalidAttributeNameWarnsAtParseTimeAndIsStillStored`/
+`#aRepeatedInvalidNameWarnsOnceNotOncePerOccurrence`,
 `BcftoolsDependencyTest#testMetadataAttributeNameOutsideAllowlistBcftoolsDropsDeclarationSilently`.
 
 ### Unquoted metadata attribute value: malformed bracket vs. `<`/`>`/`;`
@@ -338,33 +353,288 @@ Confirmed live (bcftools 1.23.1):
 
 **Decision:** `InternalUtils.findEncodingProblems` sorts these into `EncodingProblem.unreadableOutput=true`
 (throws at both construction and `validateBeforeWrite()`) or `=false` (throws at construction only; warns at
-`validateBeforeWrite()`) -- but `unreadableOutput=true` is not one reason, it is two, and only one of its
-three members earns it on file-readability grounds:
-- **The unterminated bracket** throws because the file genuinely becomes unreadable (exit 255) -- the
-  absolute floor a warn branch would violate.
-- **The unquoted comma and the bracket-with-trailing-junk sub-shape** throw for a weaker, different reason:
-  measured, each only makes bcftools discard the one declaration (exit 0) -- the SAME outcome the invalid-name
-  case below only warns for -- but the attribute-list tokenizer can never produce either shape as a stored
-  value on the parse path (an unquoted value always terminates at its first comma; trailing content after a
-  bracket's close is always split off and warned about separately, never merged into the stored value), so
-  throwing here harms no carried-forward content and costs nothing. They are grouped with the unterminated
-  shape under the same flag for that reason, not because bcftools treats all three alike (see
-  `InternalUtils.isWellFormedBracketValue` and `EncodingProblem`'s own Javadoc).
+`validateBeforeWrite()`) -- but `unreadableOutput=true` is not one reason, it is three (the classifier's own
+Javadoc says so explicitly), and only one earns it on file-readability grounds; the other two are about a
+different kind of unreadability -- this library's own re-parse, not bcftools':
+- **The unterminated bracket** throws UNCONDITIONALLY -- on any attribute of any declaration type, not just
+  `##META`'s `Values` -- because the file genuinely becomes unreadable (exit 255), the absolute floor a warn
+  branch would violate. This check runs BEFORE the `Values`-only gate for exactly that reason: bcftools' own
+  generic bracket handling is unaffected by this library's narrower quoting-acceptance scope (see "General
+  bracket-list quoting beyond `##META`'s `Values`" below), so the floor stays universal even though acceptance
+  of a well-formed bracket value does not.
+- **The unquoted comma** throws for a weaker, different reason: measured, it only makes bcftools discard the
+  one declaration (exit 0) -- the SAME outcome the invalid-name case below only warns for -- but the
+  attribute-list tokenizer can never produce a stored value containing an unquoted comma (it always
+  terminates at the first one), so throwing here harms no carried-forward content and costs nothing.
+- **The bracket-with-trailing-junk sub-shape** (`[a]b]`) throws for the same reason, but this classification
+  now applies ONLY on `##META`'s `Values` (`InternalUtils.isWellFormedMetaValuesBracket`): outside `Values`, a
+  leading `[` that clears the universal unterminated-floor above (i.e. has a `]` somewhere) is not
+  bracket-checked at all -- it falls through to the generic "unquoted structural delimiter" check instead
+  (`unreadableOutput=false`), since bracket grammar no longer applies to it either way.
+- **A malformed quoted value (leading `"`, no valid closing `"`) that also contains a comma** (e.g.
+  `x="abc,def`) throws for a reason specific to THIS library, not bcftools: `parseOneAttribute`'s own
+  recovery for a malformed quoted value (its `close<0` branch) re-scans for the next COMMA rather than the
+  value's own end, so emitting `x="abc,def` verbatim would re-parse to just `x="abc`, with `def` silently
+  dropped (it has no `=` of its own) -- genuinely unreadable by THIS library's own tokenizer, independent of
+  what bcftools would do with it. The comma-free sibling (`x="ab`, no comma at all) is real too but is
+  `unreadableOutput=false`: bcftools itself does not hard-fail on an unterminated leading quote, only warns
+  and mangles the declaration, and this library's own re-parse recovers it losslessly since there is no comma
+  for the recovery scan to stop at early.
 - `unreadableOutput=false` (throws at construction only; warns at `validateBeforeWrite()`): an invalid
-  attribute name, an unescaped `<`/`>`, an unescaped `"`, and leading/trailing space -- each of these DOES
-  leave the file readable, and (unlike the comma/bracket-junk shapes) the tokenizer CAN produce some of them
-  on the parse path (a bad name and an unescaped `<`/`>`/`"` all parse and round-trip today), so warning is
-  the only option that does not regress carried-forward content.
+  attribute name, an unescaped `<`/`>`, an unescaped `"`, leading/trailing space, a malformed quoted value with
+  no comma (above), and (outside `##META`'s `Values`) a leading `[` that isn't dangling -- each of these DOES
+  leave the file readable and re-parseable, and the tokenizer CAN produce some of them on the parse path, so
+  warning is the only option that does not regress carried-forward content.
 - No check at all: `;` — bcftools gives it no special meaning in this grammar, and neither does this library.
 
-Tests: `MetadataPropertyEncodingTest#constructionAcceptsABracketValueAndRejectsAMalformedOne`/
-`#bracketWellFormednessUsesTheSameEscapeRuleAsTheTokenizer`/
-`#constructionRejectsAngleBracketsAndLayoutWhitespaceInALiteralValue`/`#constructionAcceptsAnEqualsSignInAValue`,
+Tests: `MetadataPropertyEncodingTest#constructionRejectsABracketValueOutsideMetaValues`/
+`#constructionAcceptsAWellFormedBracketValueOnMetaValuesOnly`/
+`#constructionRejectsAMalformedBracketValueOnMetaValues`/
+`#constructionRejectsAngleBracketsAndLayoutWhitespaceInALiteralValue`/`#constructionAcceptsAnEqualsSignInAValue`/
+`#diagnosticsModeThrowsForAMalformedQuotedValueContainingAComma`,
 `BcftoolsDependencyTest#testUnterminatedBracketValueBcftoolsHardErrors`/
 `#testBracketValueWithTrailingJunkBcftoolsDropsDeclarationSilently`/
 `#testUnescapedLessThanInMetadataValueBcftoolsMisparsesButSurvives`/
 `#testUnescapedGreaterThanInMetadataValueBcftoolsTruncatesDeclaration`/
 `#testUnescapedSemicolonInMetadataValueBcftoolsTreatsAsOrdinaryContent`.
+
+### Angle brackets are not a quoting form in a metadata attribute value
+
+`InternalUtils.tokenizeAttributeList`/`parseAttribute` (via the shared `parseOneAttribute`) split a metadata
+declaration's attribute list on every raw, unquoted comma. htslib 1.23.1 instead keeps an angle-bracket
+nesting counter (`~/Dev/htslib/vcf.c:730-733`, `if ( *q=='<' ) nopen++;` ... `if ( *q==',' && nopen==1 )
+break;`), so it reads `Description=A<1,2>B` as one value where this library truncates it to `A<1`.
+
+**For a non-`ID` value the target spec is silent, not prohibitive** -- the argument rests on that silence, not
+on a prohibition:
+
+- `VCFv4.3.tex:117` -- "A *structured* meta-information line is similar, but the value is itself a
+  comma-separated list of key=value pairs, enclosed within `<' and `>' characters". `,` is the separator with
+  no stated exception, so under the spec's own grammar `Extra=A<1,2>B` is two list entries, the second having
+  no `=`.
+- `VCFv4.3.tex:173` -- "Double-quote character must be escaped with backslash $\backslash$ and backslash as
+  $\backslash\backslash$" -- the only escaping mechanism the target spec states. (`VCFv4.2.tex:81` says
+  double-quote "**can** be escaped", not "must"; do not group the two under one quote.)
+- Scoped, usable only where they apply: `VCFv4.3.tex:200` ("ID values are case sensitive strings and must not
+  contain whitespace, commas or angle brackets") governs the **`##ALT` ID** specifically (scope set by the
+  "Alternative allele field format" section heading at `:192`, restated `:354`, "no whitespace, commas, or
+  angle-brackets are permitted in the ID String itself"); `VCFv4.2.tex:105` states the same ALT-ID rule but
+  omits "commas", which 4.3 added; `VCFv4.3.tex:265` ("In particular, excluding commas facilitates parsing
+  `##contig` lines, and excluding the characters `<>[]` and initial `*` avoids clashes with symbolic
+  alleles") is the rationale for the **contig-name character class**, an identifier charset, not a general
+  attribute-value rule.
+- hts-specs: `test/vcf/4.3/failed/failed_meta_alt_008.vcf` (`##CauseOfFailure=The ALT ID contains an opening
+  angle bracket`) and `failed_meta_alt_009.vcf` (`##CauseOfFailure=The ALT ID contains a closing angle
+  bracket`) -- also `##ALT` ID findings, not general attribute-value findings.
+
+**The one comma-separation exception the spec evidences is `[...]`**: `VCFv4.3.tex:273`'s
+`##META=<ID=Assay,Type=String,Number=.,Values=[WholeGenome, Exome]>` carries a comma *inside* brackets, and
+`test/vcf/4.3/passed/passed_meta_meta.vcf` contains the same form in a `passed/` fixture. This library
+implements that exception (`parseOneAttribute`'s bracket branch) and not the angle-bracket one, which the spec
+evidences nowhere.
+
+**Decision:** comma splitting is unchanged. A value that must contain `,`, `<`, or `>` has to be double-quoted,
+which already round-trips byte-for-byte and silently on both write paths. Implemented (or rather, deliberately
+NOT implemented) via `InternalUtils.parseOneAttribute`, whose Javadoc now states the divergence explicitly so
+it is not "fixed" back to match htslib.
+
+**Accepted cost, both directions.** On some malformed input bcftools destroys the declaration's `Number`/`Type`
+and we do not; on other malformed input bcftools is silent and correct and **we** produce the worse reading.
+Earlier drafts asserted only the favourable direction.
+
+**Evidence (descriptive, not the decision basis).** This table records interop behavior for future readers. It
+is **not** what the Decision rests on -- that is `VCFv4.3.tex:117`. Byte-for-byte re-emission is not evidence
+about splitting; the observable is a typed read. Tools: **bcftools 1.23.1 / htslib 1.23.1** (grammar is
+version-independent -- `bcf_hdr_parse_line` never reads `##fileformat`), **vcf_validator 0.10.2** (4.3 grammar;
+neither known 0.10.2 defect is in range). All four spec columns (4.2-4.5) read `silent` for every row -- the
+most important cells here, since they are why the argument runs from `:117` rather than from a prohibition.
+
+- **Shape A** (bcftools): `##INFO=<ID=X,Extra=«suspect»,Number=1,Type=Integer,Description="d">`, record
+  `1 100 . A G . . X=abc`, `bcftools view <file>`. If later attributes parsed, `Type` registers and `X=abc`
+  coerces to `X=.`; if swallowed, "no Type defined. Assuming String" and `abc` passes.
+- **Shape B** (vcf_validator): suspect placed **last**,
+  `##INFO=<ID=X,Number=1,Type=Integer,Description="d",Extra=«suspect»>`, record `1 100 . A G . . X=1` (**not**
+  `X=abc` -- that payload is itself a Type violation and makes every cell, control included, read "not valid"),
+  plus a `##reference` line; invoked as `vcf_validator -i <file>`.
+
+| `«suspect»` | bcftools 1.23.1 (A) | vcf_validator 0.10.2 (B) | this library |
+|---|---|---|---|
+| *(control: no `Extra`)* | `X=.` | valid | Type registered |
+| `Extra=plain` *(control B)* | `X=.` | **not valid** — so B's verdicts are about quoting, not brackets | preserved |
+| `"A<1,2>B"` — conforming | `X=.` | **valid** | intact, byte-for-byte, silent |
+| `A<1,2>B` | `X=.`; one value | not valid | truncated to `A<1` |
+| `A<1,"2">B` | `X=.`; one value | not valid | truncated to `A<1` |
+| `A<1,[2>B` | `X=.`; one value | not valid | truncated to `A<1` |
+| `a<b` | "no Type defined"; `X=abc`; doubled `>` emitted | not valid | all attributes preserved |
+| `a>b` | truncates to `##INFO=<ID=X,Extra=a>`, losing `Number`/`Type`/`Description`; also `X=abc` + "no Type defined" | not valid | all attributes preserved |
+| `a<b,…,Description=">"` | "no Type defined"; `X=abc` | not valid | all attributes preserved |
+
+No new `bcftoolsDependencyTest` case is added for this table: it is purely descriptive, and this Decision
+depends on `VCFv4.3.tex:117`, not on bcftools.
+
+### General bracket-list quoting beyond `##META`'s `Values`
+
+`InternalUtils.findEncodingProblems`'s bracket-well-formedness check (shared by construction and
+`validateBeforeWrite()`) used to accept a well-formed `[...]` value for *any* attribute of *any* declaration
+type -- not just `##META`'s `Values`, and so did the attribute-list tokenizer at parse time. TODO.md raised
+whether the amended "if still in doubt is a precondition" rule (see the angle-bracket entry above) flips this:
+since the spec only ever shows `[...]` for one specific attribute, does accepting it more broadly need its own
+justification, the way angle brackets did?
+
+**This is a genuine tie, not a rerun of the angle-bracket decision -- and a maintainer judgment call, not a
+forced conclusion.** Angle brackets had two pieces of forbidding evidence: `VCFv4.3.tex:200`/`VCFv4.2.tex:105`
+exclude `<`/`>` from an `##ALT` ID specifically, and two `failed/*.vcf` hts-specs fixtures
+(`failed_meta_alt_008/009.vcf`) reject them directly -- so accepting htslib's generalization there really would
+mean implementing a construct the spec forbids; there was no tie to break. Square brackets have neither.
+`VCFv4.3.tex:265`'s "excluding the characters `<>[]`... avoids clashes with symbolic alleles" (the same
+sentence verbatim at `VCFv4.4.tex:279`/`VCFv4.5.tex:328`) looks similar at first glance, but read in its full
+context (`VCFv4.3.tex:250-266`, under "Contig names follow the same rules as the SAM format's reference
+sequence names") it governs the **contig-name character set** -- what characters may appear inside a contig's
+`ID` -- not whether `[...]` may wrap an attribute's *value*. No `failed/*.vcf` fixture rejects a
+`[...]`-wrapped value on a non-`META` attribute either -- confirmed by grepping the entire conformance corpus
+(`test/vcf/{4.1,4.2,4.3,4.5}/{passed,failed}/*.vcf`; hts-specs publishes no 4.4 fixture directory) for `[`.
+htslib's own bracket handling (`~/Dev/htslib/vcf.c:684-757`, `bcf_hdr_parse_line`) is attribute/declaration-
+type-agnostic, exactly like its angle-bracket `nopen` counter -- confirmed live, not just from source: nesting
+a duplicate `Type=String` inside a *different* `##INFO` attribute's bracketed value and querying the resulting
+typed value showed bcftools 1.23.1 protects the interior comma there too, regardless of attribute name or
+declaration type (a plain `view -h` header echo cannot show this -- pure text passthrough -- so this used the
+same type-coercion technique the "Duplicate attribute within one metadata declaration" entry above describes).
+So the spec's posture toward the general form genuinely is **silence, not prohibition** -- one narrow positive
+example, nothing forbidding it elsewhere -- and that silence is a tie bcftools is entitled to break, per
+`AGENTS.md`'s amended text.
+
+**Decision: take the narrower reading anyway.** Construction, `validateBeforeWrite()`, and parsing all scope
+bracket-list *acceptance* to `##META`'s `Values` specifically -- the one place any VCF version (4.3-4.5)
+actually evidences the form -- rather than following bcftools' generalization. This is a deliberate choice to
+track the spec's literal evidence rather than htslib's convenience, made explicitly because the tie exists
+(nothing here claims the spec forbids the general form): `Values` staying otherwise completely opaque
+(`MetaMetadata`'s own Javadoc) already makes it the one attribute this codebase gives any special value-form
+recognition to at all, and extending that recognition to every attribute of every declaration type -- for a
+form the spec itself never shows anywhere else -- was judged to buy nothing but an unevidenced dependency on
+htslib's own convenience. A leading `[` on any other attribute now gets exactly the same treatment `<`/`>`
+already get: ordinary content, warned about, never protecting an interior comma (`InternalUtils.
+parseOneAttribute`'s `isMetaValues` gate; `findEncodingProblems`'s identical gate on its bracket branch).
+Within `Values` itself, the bracket scan has no escape mechanism (the spec defines none for `[`/`]`, unlike
+double-quote's backslash escaping) -- the closing `]` is found by a plain, unescaped scan, exactly the way
+`VcfParser.removeAngleBrackets` finds the declaration's own outer `<`/`>` by plain byte matching, not a
+quoting scan.
+
+**One fatal-vs-non-fatal asymmetry survives the narrowing, and stays universal rather than being re-scoped
+to `Values`.** Every measured `<`/`>` mishandling shape stays at bcftools exit 0 (corrupted but readable) --
+none are fatal. An unterminated `[` uniquely is (measured: `[E::bcf_hdr_parse_line] Missing ']' in header
+line`, exit 255), and that fact is unaffected by this library's own acceptance-scoping decision: bcftools'
+bracket handling still treats *any* leading `[` as opening a quoted span regardless of which attribute or
+declaration type carries it. So `InternalUtils.findEncodingProblems`'s "no `]` anywhere" check stays
+unconditional -- construction refuses to originate an unterminated `[` on any attribute, not just `Values`.
+
+**A real bug, caught by external adversarial review after this decision first shipped: the PARSE side also
+had to close this gap, not just construction.** The first cut of this decision treated a non-`Values`
+unterminated `[` exactly like `<` at parse time too (warned, preserved verbatim, no defensive rewrite) --
+reasoning that the risk was narrow, since it seemed to require deliberately malformed input. That reasoning
+was wrong: splitting at the comma (since `[` doesn't protect it outside `Values`) can turn a **well-formed**
+bracket value into a dangling one purely as a side effect of truncation. `##contig=<ID=c1,x=[a, b],
+length=999>` is perfectly valid input, but truncating `x`'s value at its interior comma yields `[a` -- no `]`
+anywhere -- and writing that back out raw manufactures `##contig=<ID=c1,x=[a,length=999>`, which bcftools
+cannot read at all (confirmed live: exit 255). That is not carrying forward already-malformed content; it is
+this library's own splitting *creating* new fatal content from safe input, which the absolute floor on
+originated output does not distinguish from originated-and-fatal. `InternalUtils.parseOneAttribute`'s literal
+branch now re-quotes (`InternalUtils.quote`) whenever the stored value dangles a `[` with no `]` anywhere,
+regardless of whether that happened via truncation or because the input was already unterminated -- the two
+are indistinguishable once stored, so one check covers both, and the tokenizer once again can never produce a
+bare, unquoted, unterminated `[` as a stored value (the only route left is the package-private
+`BaseMetadata#trustedMutableProperties()` bypass, per `MetadataPropertyEncodingTest
+#diagnosticsModeStillThrowsWhenOutputWouldBeUnreadable`'s own comment). bcftools failing on this shape at all
+is arguably its own defect -- filed upstream at
+[samtools/htslib#2065](https://github.com/samtools/htslib/issues/2065) -- but that is why this library
+defends against the shape rather than a reason to leave it unhandled: the fix costs nothing (parsing still
+does not protect the comma, matching the design decision), and closes a hole neither the original design
+discussion nor its first implementation had actually scoped correctly. See `BCFTOOLS_VERSION_DEPENDENCIES.md`'s
+"Unterminated bracket value in a metadata attribute" entry for the write-path verification.
+
+Pinned by `BcftoolsDependencyTest#testUnterminatedBracketValueBcftoolsHardErrors` (pins bcftools' own behavior
+on this byte sequence, independent of this library), `#testBracketValueWithTrailingJunkBcftoolsDropsDeclarationSilently`,
+and `#testNonMetaValuesBracketTruncationDoesNotManufactureAnUnreadableHeader` (the regression test -- parses
+and writes the well-formed-input example above through this library's own pipeline, then pipes the actual
+output through bcftools to prove it stays readable). Also
+`AttributeListTokenizerTest#bracketValueDoesNotProtectCommasElsewhereButStaysBcftoolsSafe` and
+`WriterRoundTripTest#testNonMetaValuesBracketTruncationStaysBcftoolsSafeOnWrite`.
+
+### `##META` attribute order
+
+`MetaMetadata`'s constructor was given a `BaseMetadata.checkAttributeOrder()` call by analogy with
+`ContigMetadata` (the other direct `IdMetadata` subclass), rather than by a decision this file recorded. Once
+`##META` was routed through the parser/writer, the call went live and warned -- and, under a strict context,
+threw -- on text copied verbatim from the specification itself.
+
+**What the spec text says, by version:**
+- VCFv4.3 (target): nothing. No ordering prose for `##META` at all.
+- **VCFv4.2: nothing either.** Neither 4.2 nor 4.3 contains any structured-header-line attribute-ordering
+  prose. (An earlier draft cited `VCFv4.2.tex:1160`, *"Note that the specific order of fields isn't
+  defined…"* -- that sentence is in the BCF2 genotype-field encoding section and concerns FORMAT field order
+  in a BCF2 genotypes block, not header attributes; VCFv4.3 carries the equivalent at `VCFv4.3.tex:1657`.)
+- VCFv4.4/4.5 (`VCFv4.4.tex:134-135`): "To aid human readability, the order of fields **should** be ID,
+  Number, Type, Description, then any optional fields. Implementations **must not rely on the order** of the
+  fields within structured lines and are not required to preserve field ordering."
+
+No version *requires* an order; the only normative statement across all four is a read-side "must not rely
+on," which argues against enforcing one, not for it.
+
+**Measured, 2026-08-12 (bcftools 1.23.1, vcf_validator 0.10.2):**
+
+| shape | bcftools | vcf_validator |
+|---|---|---|
+| `##META=<ID=Assay,Number=.,Type=String,Values=[a, b]>` *(canonical; control)* | exit 0, silent | valid |
+| `##META=<ID=Assay,Type=String,Number=.,Values=[a, b]>` -- `VCFv4.3.tex:273` verbatim | exit 0, silent | **not valid** |
+| `##META=<Number=1,Type=Integer,Values="d",ID=Assay>` *(ID last)* | exit 0, silent | not valid |
+| `##INFO=<Number=1,Type=Integer,Description="d",ID=DP>` *(ID last)* | exit 0, silent | not valid |
+| `##ALT=<ID=DEL,Type=String,Number=1,Description="Deletion">` *(Type before Number)* | exit 0, silent | not valid |
+
+bcftools ignores attribute order entirely, on every shape probed, including the non-`##META` control rows
+included to confirm this isn't `##META`-specific tolerance. vcf_validator rejects every non-canonical
+ordering -- including the specification's own worked `##META` example -- which disqualifies its verdict here
+per `AGENTS.md`'s guidance on a tool result that contradicts the spec text it's meant to be enforcing.
+
+**Decision, extended to every keyed declaration type, 2026-08-14 (originally scoped to `##META` alone):**
+bcftools is the tie-breaker per `AGENTS.md`'s Decision Hierarchy, and the target spec is silent besides. The
+identical reasoning that justified relaxing `##META` applies without modification to
+`##INFO`/`##FORMAT`/`##ALT`/`##FILTER`/`##contig`/`##SAMPLE` -- no VCF version requires an order for any of
+them either, and the measured table above already includes non-`##META` control rows (`##INFO`/`##ALT`, ID
+declared last or `Type` before `Number`) confirming bcftools ignores order universally, not just for
+`##META`. A narrower "ID must come first" compromise was considered and rejected: the ID-last `##INFO`
+control row shows bcftools doesn't privilege ID's position over any other attribute's either, so that
+narrower rule would have been an unmeasured, unjustified special case, not something the evidence supports.
+
+**`BaseMetadata.checkAttributeOrder()` and the `IdMetadata.validateAttributeOrder()` dispatch hook that
+called it were removed entirely, not just disabled per-type.** After extending this decision to every keyed
+type, every concrete subclass overrode the hook to a no-op, leaving `IdMetadata`'s own base implementation
+permanently unreachable -- genuinely dead code, and (unlike `checkAttributeOrder()` itself) never public, so
+deleting it was a pure simplification with nothing to disclose. `checkAttributeOrder()` itself was `public`
+API, but was introduced 2026-07-24 (confirmed via `git log`), entirely after the last real release (`v0.3.1`,
+2022-12-13) -- it never shipped, so there was no external consumer to protect, and removing it costs nothing
+a hypothetical deprecation cycle would have bought. The three call sites that used it as a convenient
+"trigger a warning directly" mechanism for otherwise-unrelated test purposes (a `PEDIGREE` warnings-routing
+test, two "typed constructor's own property order" tests) were rewritten against different, still-live
+mechanisms rather than reproducing the deleted check as test-only code -- see
+`VcfParserTest#testPedigreeMetadataWarningsSinkIsWiredToParserWarningsFile` (now triggered by a missing
+`##PEDIGREE` `ID` under VCFv4.3+) and `InfoMetadataTest#testTypedConstructorInsertsPropertiesInCanonicalOrder`/
+`FormatMetadataTest`'s sibling (now asserting `getPropertyKeys()`'s iteration order directly, since the typed
+constructors still insert properties in a sensible default order for output readability -- just unenforced).
+
+`test/vcf/4.3/failed/failed_meta_meta_003.vcf` (`##CauseOfFailure=Incorrect order of META fields`) and the
+newly-added `failed_meta_info_003.vcf`/`failed_meta_format_003.vcf`/`failed_meta_alt_004.vcf` (one row per
+spec version each, four fixture families x up to three versions = ten total baseline rows) all return to
+`hts-specs-baseline.tsv` as **permanently accepted** divergences -- see `HTS_SPECS_BASELINE_STATUS.md`.
+Pinned by `MetaMetadataTest#aMetaDeclarationIsNotAttributeOrderChecked`,
+`InfoMetadataTest#testMapConstructorIsNotAttributeOrderChecked`,
+`FormatMetadataTest#testMapConstructorIsNotAttributeOrderChecked`,
+`IdDescriptionMetadataTest#testMapConstructorIsNotAttributeOrderChecked` (covers `##ALT`/`##FILTER`/`##SAMPLE`),
+`ContigMetadataTest#testMapConstructorIsNotAttributeOrderChecked`,
+`WriterRoundTripTest#testOutOfOrderInfoDeclarationRoundTripsWithoutRewriting`, and, on the bcftools side,
+`BCFTOOLS_VERSION_DEPENDENCIES.md`'s "`##META` attribute order" entry
+(`BcftoolsDependencyTest#testMetaAttributeOrderBcftoolsIgnoresCanonicalOrdering`/
+`#testMetaAttributeOrderBcftoolsAcceptsTheSpecsOwnWorkedExample`/
+`#testInfoAttributeOrderBcftoolsIgnoresIdPosition`, the last one generalizing the decision's evidence beyond
+`##META` with its own dedicated case per `BEHAVIOR_TABLE_STANDARD.md`'s evidence-preservation tier 2).
 
 ## Data-line / record structure
 

@@ -30,8 +30,10 @@ public class IdDescriptionMetadataTest {
   }
 
   @Test
-  public void testAttributeOrderWarnsWhenOutOfCanonicalOrder() {
-    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_alt_004.vcf's ##CauseOfFailure=Incorrect order of ALT fields
+  public void testMapConstructorIsNotAttributeOrderChecked() {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_alt_004.vcf's ##CauseOfFailure=Incorrect order of ALT
+    // fields -- attribute-order checking was removed from every keyed declaration type (see
+    // VCF_SPEC_AMBIGUITIES.md's "##META attribute order" entry), so this now warns about nothing at all.
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -41,49 +43,7 @@ public class IdDescriptionMetadataTest {
     try {
       new IdDescriptionMetadata(LENIENT_CONTEXT, "TEST", InternalUtils.extractProperties(
           new String[]{"ID=DEL", "Type=String", "Number=1", "Description=\"Deletion\""}, VcfWarnings.DEFAULT));
-      assertTrue(appender.hasWarnOrHigher());
-    } finally {
-      root.detachAppender(appender);
-      appender.stop();
-    }
-  }
-
-  @Test
-  public void testAttributeOrderDoesNotWarnForCanonicalIdThenDescription() {
-    // ##ALT/##FILTER's own canonical form is just ID,Description -- the common case
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
-        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
-    appender.start();
-    root.addAppender(appender);
-    try {
-      new IdDescriptionMetadata(LENIENT_CONTEXT, "TEST",
-          InternalUtils.extractProperties(new String[]{"ID=DEL", "Description=\"Deletion\""}, VcfWarnings.DEFAULT));
       assertFalse(appender.hasWarnOrHigher());
-    } finally {
-      root.detachAppender(appender);
-      appender.stop();
-    }
-  }
-
-  @Test
-  public void testDirectValidateDoesNotDoubleWarnAttributeOrder() {
-    // regression test: IdMetadata.validate() (this class's superclass) and IdDescriptionMetadata.validate() each
-    // used to call checkAttributeOrder() -- calling .validate() directly (e.g. after mutating properties via
-    // getPropertiesRaw(), as VcfWriter's validateKeyedMetadataEntries does) fired the attribute-order warning twice
-    IdDescriptionMetadata md = new IdDescriptionMetadata(LENIENT_CONTEXT, "TEST",
-        InternalUtils.extractProperties(new String[]{"ID=DEL", "Type=String", "Number=1", "Description=\"Deletion\""},
-            VcfWarnings.DEFAULT));
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
-        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
-    appender.start();
-    root.addAppender(appender);
-    try {
-      md.validate();
-      assertEquals(1, appender.countMessagesContaining("declared out of canonical order"));
     } finally {
       root.detachAppender(appender);
       appender.stop();

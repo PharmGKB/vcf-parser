@@ -59,7 +59,7 @@ public class VcfWriterTest {
   private static VcfMetadata trustedMetadata(String fileFormat,
       Map<String, InfoMetadata> info, List<PedigreeMetadata> pedigrees,
       ListMultimap<String, String> rawProperties) {
-    return new VcfMetadata(fileFormat, null, info, null, null, null, null, pedigrees, List.of(), rawProperties,
+    return new VcfMetadata(fileFormat, null, info, null, null, null, null, null, pedigrees, List.of(), rawProperties,
         LENIENT_CONTEXT);
   }
 
@@ -1393,9 +1393,10 @@ public class VcfWriterTest {
   public void testValidateBeforeWriteWarnsAboutUnescapedQuoteInMetadataValue() throws Exception {
     // a value that isn't validly quoted (isQuoted() is false) but also contains no ',' or '=' previously slipped
     // through unrejected, then (until InternalUtils.findEncodingProblems' construction/write-mode split) threw
-    // unconditionally in validateBeforeWrite() too. Verified live: a value of "abc"def" (embedded unescaped
-    // '"', no comma/equals), if written and then re-read, truncates at the first unescaped '"' it contains (the
-    // attribute-list tokenizer finds a quoted value's closing delimiter by position, not by unbalanced-quote
+    // unconditionally in validateBeforeWrite() too. Verified live: a value of "abc"def" (embedded unescaped '"',
+    // no comma/equals) selects findEncodingProblems' quoted branch on its leading '"' and fails isQuoted ("has a
+    // malformed quoted value"); if written and then re-read, it truncates at the first unescaped '"' it contains
+    // (the attribute-list tokenizer finds a quoted value's closing delimiter by position, not by unbalanced-quote
     // parity) -- silently losing the "def\"" tail the caller supplied, even though the following BBBB property
     // below is unaffected. That loss is real but leaves the file readable (unlike an unquoted comma or a
     // malformed bracket value, which findEncodingProblems marks unreadableOutput), so this is now the
@@ -1421,7 +1422,7 @@ public class VcfWriterTest {
     root.addAppender(appender);
     try {
       writer.writeHeader(metadata);
-      assertTrue(appender.anyMessageContains("unquoted structural delimiter"));
+      assertTrue(appender.anyMessageContains("malformed quoted value"));
       assertThat(sw.toString(), containsString("AAAA=\"abc\"def\""));
       assertThat(sw.toString(), containsString("BBBB=\"has,a,comma\""));
     } finally {
@@ -1585,33 +1586,6 @@ public class VcfWriterTest {
     IdDescriptionMetadata alt = new IdDescriptionMetadata(LENIENT_CONTEXT, "ALT", "DEL", "Deletion");
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addAlt(alt).build();
     metadata.getAlts().get("DEL").trustedMutableProperties().put("Number", "B");
-    StringWriter sw = new StringWriter();
-    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
-
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
-        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
-    appender.start();
-    root.addAppender(appender);
-    try {
-      writer.writeHeader(metadata);
-      assertTrue(appender.hasWarnOrHigher());
-    } finally {
-      root.detachAppender(appender);
-      appender.stop();
-    }
-  }
-
-  @Test
-  public void testValidateBeforeWriteWarnsOnMetadataMutatedOutOfCanonicalOrder() throws Exception {
-    // reordering the backing map after construction (remove then re-add) bypasses the order check that only runs
-    // once, inside IdDescriptionMetadata's Map-based constructor -- validateBeforeWrite() must re-check it
-    InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "NS", "d", InfoType.Integer, "1", null, null);
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addInfo(info).build();
-    Map<String, String> props = metadata.getInfo().get("NS").trustedMutableProperties();
-    String number = props.remove("Number");
-    props.put("Number", number);
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
 
@@ -2773,6 +2747,28 @@ public class VcfWriterTest {
     // first position, so (unlike testHeaderContentRejectionAllowsCorrectedRetry's putPropertyRaw-only fix above)
     // ID=AF lands at the end of the attribute list here, not the start
     assertTrue(sw.toString().contains("ID=AF>"));
+  }
+
+  @Test
+  public void testValidateBeforeWriteCatchesMismatchedMetaId() throws Exception {
+    // pins the attribute-list-tokenizer phase's Task 5 wiring of validateKeyedMetadataEntries("META", ...) into
+    // validateMetadata() -- the same ID-vs-map-key drift check the two tests above already pin for INFO. Without
+    // that wiring, this would silently write "##META=<ID=MISMATCHED,...>" under the map key "Assay".
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    Map<String, String> props = new LinkedHashMap<>();
+    props.put("ID", "Assay");
+    props.put("Type", "String");
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addMeta(props)
+        .build();
+    metadata.getMetas().get("Assay").putPropertyRaw("ID", "MISMATCHED"); // stored under key "Assay" but own ID differs
+    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+    assertTrue(writer.isValid()); // content rejection, not a write failure -- must not invalidate
+
+    metadata.getMetas().get("Assay").putPropertyRaw("ID", "Assay"); // fix the mismatch
+    writer.writeHeader(metadata); // must succeed now
+    assertTrue(sw.toString().contains("##META=<ID=Assay"));
   }
 
   @Test

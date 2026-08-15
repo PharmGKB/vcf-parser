@@ -556,32 +556,6 @@ public class ContigMetadataTest {
   }
 
   @Test
-  public void testDirectValidateCatchesOutOfCanonicalOrderAttributes() {
-    // regression test: IdMetadata.validate() now calls checkAttributeOrder() (previously only IdDescriptionMetadata
-    // did, so ContigMetadata -- which extends IdMetadata directly, not IdDescriptionMetadata -- was never covered
-    // by a direct .validate() call, only by VcfWriter's own explicit checkAttributeOrder() call). ContigMetadata
-    // doesn't model Number/Type/Description/Source/Version itself, but checkAttributeOrder() checks order among
-    // whichever of those well-known keys are present in the raw property map, regardless of whether this metadata
-    // kind's own getters use them -- so a raw "Number" property placed before "ID" still exercises the check.
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
-        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
-    Map<String, String> props = org.pharmgkb.parser.vcf.InternalUtils.extractProperties(
-        new String[]{"Number=1", "ID=chr1"}, VcfWarnings.DEFAULT);
-    ContigMetadata contig = new ContigMetadata(LENIENT_CONTEXT, props);
-    appender.start();
-    root.addAppender(appender);
-    try {
-      contig.validate();
-      assertTrue(appender.anyMessageContains("declared out of canonical order"));
-    } finally {
-      root.detachAppender(appender);
-      appender.stop();
-    }
-  }
-
-  @Test
   public void testTypedConstructorRejectsNullOrBlankId() {
     assertThrows(VcfFormatException.class,
         () -> new ContigMetadata(STRICT_CONTEXT, null, 100L, "GRCh38", null, null, null, null));
@@ -622,22 +596,17 @@ public class ContigMetadataTest {
   }
 
   @Test
-  public void testMapConstructorChecksAttributeOrder() {
-    // ContigMetadata extends IdMetadata directly, not IdDescriptionMetadata -- unlike InfoMetadata/
-    // FormatMetadata/IdDescriptionMetadata (ALT/FILTER/SAMPLE), its Map-based constructor previously never
-    // called checkAttributeOrder() at all, only validate() did. None of CONTIG's own modeled attributes
-    // (length/assembly/md5/species/taxonomy/URL) are in BaseMetadata's checked canonical set (ID/Number/Type/
-    // Description/Source/Version), so this needs an "extra" property that happens to collide with one of
-    // those six keys to actually demonstrate the check firing -- Description is a legal extra property for
-    // ##contig (VCFv4.2.tex line 123's "extra fields" sentence doesn't name ##contig directly, but see
-    // testExtraPropertyRetainedWithoutWarning above for the actual basis: the ##contig worked example's own
-    // trailing "..." and hts-specs' passed_meta_contig.vcf fixture), and declaring it before ID violates the
-    // canonical order.
+  public void testMapConstructorIsNotAttributeOrderChecked() {
+    // attribute-order checking was removed from every keyed declaration type, ##contig included (see
+    // VCF_SPEC_AMBIGUITIES.md's "##META attribute order" entry). None of CONTIG's own modeled attributes
+    // (length/assembly/md5/species/taxonomy/URL) collided with the old canonical ID/Number/Type/Description/
+    // Source/Version set, so this uses the same "extra" Description property the old regression test did, to
+    // confirm this specific shape produces no warning any more either.
     StringWriter sink = new StringWriter();
     VcfWarnings warnings = new VcfWarnings(sink);
     new ContigMetadata(lenientContext(warnings), InternalUtils.extractProperties(
         new String[] {"Description=\"d\"", "ID=1"}, warnings));
-    assertTrue(sink.toString().contains("declared out of canonical order"));
+    assertEquals("", sink.toString());
   }
 
 }

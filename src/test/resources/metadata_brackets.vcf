@@ -1,5 +1,6 @@
 ##fileformat=VCFv4.3
-##contig=<ID=c1,x=[WholeGenome, Exome],length=999>
-##SAMPLE=<ID=s1,Assay=[a, b],Description="d">
+##META=<ID=Assay,Type=String,Number=.,Values=[WholeGenome, Exome]>
+##contig=<ID=c1,x=[a, b],length=999>
+##SAMPLE=<ID=s1,Assay=[c, d],Description="d">
 #CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
 c1	5	.	A	T	.	.	.

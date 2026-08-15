@@ -158,64 +158,11 @@ class BcftoolsDependencyTest {
     return execute(command);
   }
 
-  /** Converts {@code vcfContent} to BCF, then runs {@code bcftools query -f <queryFormat>} against it, since
-   * plain-text VCF doesn't enforce a FORMAT/INFO key's declared Type the way binary BCF does. */
-  private static String convertToBcfThenQuery(String vcfContent, String queryFormat)
-      throws IOException, InterruptedException {
-    Path vcfFile = Files.createTempFile("bcftools-dependency-test-", ".vcf");
-    Path bcfFile = Files.createTempFile("bcftools-dependency-test-", ".bcf");
-    try {
-      Files.writeString(vcfFile, vcfContent, StandardCharsets.UTF_8);
-      BcftoolsResult convert = execute(List.of("bcftools", "view", "-Ob", "-o", bcfFile.toAbsolutePath().toString(),
-          vcfFile.toAbsolutePath().toString()));
-      assertEquals(0, convert.exitCode(), "VCF-to-BCF conversion failed: " + convert.output());
-      BcftoolsResult query = execute(List.of("bcftools", "query", "-f", queryFormat,
-          bcfFile.toAbsolutePath().toString()));
-      return query.output();
-    } finally {
-      Files.deleteIfExists(vcfFile);
-      Files.deleteIfExists(bcfFile);
-    }
-  }
-
   private static BcftoolsResult execute(List<String> command) throws IOException, InterruptedException {
     Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
     String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
     int exitCode = process.waitFor();
     return new BcftoolsResult(exitCode, output);
-  }
-
-  @Test
-  void testDuplicateAttributeWithinDeclarationBcftoolsKeepsLast() throws IOException, InterruptedException {
-    // a repeated attribute within one declaration (distinct from a duplicate declaration ID across separate
-    // lines -- see DUPLICATE_METADATA_ID_HANDLING.md for that case) resolves to the LAST-declared value once
-    // forced through actual BCF binary encoding, which enforces the declared Type unlike plain-text VCF
-    String typeStringLast = "##fileformat=VCFv4.2\n" +
-        "##FORMAT=<ID=XX,Type=Integer,Type=String,Number=1,Description=\"dup type\">\n" +
-        "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
-        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
-        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:XX\t0/1:abc\n";
-    assertEquals("abc\n", convertToBcfThenQuery(typeStringLast, "[%XX]\n"));
-
-    String typeIntegerLast = "##fileformat=VCFv4.2\n" +
-        "##FORMAT=<ID=XX,Type=String,Type=Integer,Number=1,Description=\"dup type\">\n" +
-        "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
-        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
-        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:XX\t0/1:abc\n";
-    // with Type=Integer resolved as the last-declared type, "abc" is not a valid Integer -- bcftools hard-errors
-    // converting to BCF rather than silently coercing it, confirming the last-declared type genuinely governs
-    Path vcfFile = Files.createTempFile("bcftools-dependency-test-", ".vcf");
-    Path bcfFile = Files.createTempFile("bcftools-dependency-test-", ".bcf");
-    try {
-      Files.writeString(vcfFile, typeIntegerLast, StandardCharsets.UTF_8);
-      BcftoolsResult result = execute(List.of("bcftools", "view", "-Ob", "-o", bcfFile.toAbsolutePath().toString(),
-          vcfFile.toAbsolutePath().toString()));
-      assertTrue(result.exitCode() != 0 && result.output().contains("Invalid character"),
-          "Expected a hard parse error for a non-Integer value under Type=Integer, got: " + result.output());
-    } finally {
-      Files.deleteIfExists(vcfFile);
-      Files.deleteIfExists(bcfFile);
-    }
   }
 
   @Test
@@ -316,6 +263,19 @@ class BcftoolsDependencyTest {
     assertEquals(0, result.exitCode(), result.output());
     assertTrue(result.output().contains("##PEDIGREE=<ID=,Name_0=G0-A>"), result.output());
     assertFalse(result.output().contains("G0-B"), result.output());
+  }
+
+  @Test
+  void testMetaMissingIdBcftoolsKeepsSilently() throws IOException, InterruptedException {
+    // deliberate divergence: vcf-parser warns and drops an ID-less ##META (DUPLICATE_METADATA_ID_HANDLING.md's
+    // "Missing or empty ID" section -- the required-ID rule is version-independent for ##META), but bcftools
+    // keeps it unchanged with no warning and exit 0. Measured live: bcftools 1.23.1 emits nothing to stderr.
+    String vcf = "##fileformat=VCFv4.2\n##META=<Type=String,Number=.,Values=[A, B]>\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("##META=<Type=String,Number=.,Values=[A, B]>"), result.output());
   }
 
   @Test
@@ -557,6 +517,61 @@ class BcftoolsDependencyTest {
   }
 
   @Test
+  void testMetaAttributeOrderBcftoolsIgnoresCanonicalOrdering() throws IOException, InterruptedException {
+    // control for the spec-order test below: the canonical ID,Number,Type,... order. If a future bcftools
+    // started treating attribute order as significant, silence here (not just for the out-of-order shape
+    // below) would flip too -- this is the boundary the decision rests on, the same reason the contig-asterisk
+    // pair above carries both a positive and a control probe.
+    String vcf = "##fileformat=VCFv4.3\n##META=<ID=Assay,Number=.,Type=String,Values=[a, b]>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("##META=<ID=Assay,Number=.,Type=String,Values=[a, b]>"),
+        "Expected bcftools to retain the canonically-ordered ##META declaration, got: " + result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"),
+        "Expected no bcftools warning/error at all, got: " + result.output());
+  }
+
+  @Test
+  void testMetaAttributeOrderBcftoolsAcceptsTheSpecsOwnWorkedExample() throws IOException, InterruptedException {
+    // round-trip-critical shape: VCFv4.3.tex:273's own worked example uses ID,Type,Number -- not the
+    // ID,Number,Type,Description,Source,Version order this library's typed constructors follow for output
+    // readability. No declaration type attribute-order checks any more (see VCF_SPEC_AMBIGUITIES.md's "##META
+    // attribute order" entry), so this pins the bcftools side of that decision: if a future bcftools upgrade
+    // started warning on ordering, that would silently rot the justification for the ten permanently-accepted
+    // hts-specs-baseline.tsv rows this decision covers (failed_meta_{meta_003,info_003,format_003,alt_004},
+    // three spec versions each) without anything else catching it (htslib never consults ##fileformat, and
+    // htsSpecsTest never runs bcftools).
+    String vcf = "##fileformat=VCFv4.3\n##META=<ID=Assay,Type=String,Number=.,Values=[a, b]>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("##META=<ID=Assay,Type=String,Number=.,Values=[a, b]>"),
+        "Expected bcftools to retain the spec's own out-of-canonical-order ##META declaration verbatim, got: "
+            + result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"),
+        "Expected no bcftools warning/error at all, got: " + result.output());
+  }
+
+  @Test
+  void testInfoAttributeOrderBcftoolsIgnoresIdPosition() throws IOException, InterruptedException {
+    // Generalizes the two ##META tests above to a non-##META type, per BEHAVIOR_TABLE_STANDARD.md's
+    // "Preserving the evidence" tier 2: the decision to remove attribute-order checking from every keyed type
+    // (not just ##META) rests partly on this exact shape -- VCF_SPEC_AMBIGUITIES.md's "##META attribute
+    // order" table's measured control row, ID declared LAST -- which previously had no dedicated
+    // bcftoolsDependencyTest case of its own, only the table's prose. bcftools doesn't privilege ID's position
+    // any more than any other attribute's.
+    String vcf = "##fileformat=VCFv4.2\n##INFO=<Number=1,Type=Integer,Description=\"d\",ID=DP>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("##INFO=<Number=1,Type=Integer,Description=\"d\",ID=DP>"),
+        "Expected bcftools to retain the ID-last ##INFO declaration verbatim, got: " + result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"),
+        "Expected no bcftools warning/error at all, got: " + result.output());
+  }
+
+  @Test
   void testMetadataAttributeNameOutsideAllowlistBcftoolsDropsDeclarationSilently() throws IOException, InterruptedException {
     // AGENTS.md's own worked example for InternalUtils.METADATA_ATTRIBUTE_NAME_PATTERN: bcftools discards the
     // WHOLE declaration for an attribute name outside ^[A-Za-z_][0-9A-Za-z_.]*$, but the file itself stays
@@ -575,9 +590,25 @@ class BcftoolsDependencyTest {
 
   @Test
   void testUnterminatedBracketValueBcftoolsHardErrors() throws IOException, InterruptedException {
-    // round-trip-critical: InternalUtils.isWellFormedBracketValue's whole reason to throw (not merely warn) at
-    // write time -- a bracket value with no closing ']' before end of line makes bcftools abort the ENTIRE
-    // file, unlike every other malformed shape in this class, which bcftools recovers from at exit 0
+    // round-trip-critical: a bracket value with no closing ']' before end of line makes bcftools abort the
+    // ENTIRE file, unlike every other malformed shape in this class, which bcftools recovers from at exit 0.
+    // This is what InternalUtils.findEncodingProblems's UNCONDITIONAL "no ']' anywhere" check throws for
+    // (not the narrower, ##META's-Values-only isWellFormedMetaValuesBracket check) -- it fires regardless of
+    // attribute name or declaration type, per VCF_SPEC_AMBIGUITIES.md's "General bracket-list quoting beyond
+    // ##META's Values" entry: bcftools' OWN generic bracket handling is unaffected by this library's
+    // Values-only quoting scope, so this floor stays universal even though ACCEPTANCE of a well-formed
+    // bracket value does not. This specific shape (##contig's own "x" attribute, not ##META's Values)
+    // deliberately pins that universality. bcftools' failure here is arguably its own defect -- filed
+    // upstream at https://github.com/samtools/htslib/issues/2065 -- but this library does not attempt to
+    // route around it via a version check or a spec-compliance argument. It DOES, however, defensively
+    // requote any dangling '['-with-no-']' at parse time regardless of attribute/declaration type
+    // (InternalUtils.parseOneAttribute's literal branch), for a narrower reason than working around
+    // bcftools' bug: outside ##META's Values, splitting at a comma can turn a WELL-FORMED bracket value into
+    // one that looks unterminated once truncated (see the same entry's worked example), and this library
+    // must not manufacture new bcftools-fatal output from input that was never malformed to begin with. The
+    // hand-built input here is never fed through this library's own parser (a real "[a=b" from a file, or a
+    // truncation producing one, is always requoted before it could reach bcftools as-is) -- it exists purely
+    // to pin what bcftools itself does with this byte sequence, independent of this library.
     String vcf = "##fileformat=VCFv4.2\n##contig=<ID=1,length=100,x=[a=b>\n" +
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n1\t1\t.\tA\tT\t.\t.\t.\n";
     BcftoolsResult result = runBcftools(vcf, "view", "-h");
@@ -586,13 +617,38 @@ class BcftoolsDependencyTest {
   }
 
   @Test
+  void testNonMetaValuesBracketTruncationDoesNotManufactureAnUnreadableHeader()
+      throws IOException, InterruptedException {
+    // Regression test for a real bug caught by external review, using this library's OWN parser and writer
+    // (not just a hand-built string, unlike every other test in this class) -- this is the strongest possible
+    // verification that the fix in InternalUtils.parseOneAttribute's literal branch actually closes the gap.
+    // "##contig=<ID=c1,x=[a, b],length=999>" is a perfectly well-formed input: '[' is not comma-protecting
+    // outside ##META's Values, so it truncates to "x=[a" at parse time -- a value with a dangling '[' and no
+    // ']' anywhere. Before the fix, writing that back out RAW manufactured a value bcftools could not read at
+    // all (exit 255) from an input that was never malformed to begin with. The fix requotes it
+    // ("x=\"[a\""), which this test proves bcftools accepts.
+    String vcf = "##fileformat=VCFv4.3\n##contig=<ID=c1,x=[a, b],length=999>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "c1\t5\t.\tA\tT\t.\t.\t.\n";
+    WriterRoundTrip.ParsedFile parsed = WriterRoundTrip.parseText(vcf);
+    String written = WriterRoundTrip.write(parsed);
+    assertTrue(written.contains("x=\"[a\""), "expected the truncated value to be re-quoted: " + written);
+    BcftoolsResult result = runBcftools(written, "view", "-h");
+    assertEquals(0, result.exitCode(), "this library's own output must be readable by bcftools: " + result.output());
+  }
+
+  @Test
   void testBracketValueWithTrailingJunkBcftoolsDropsDeclarationSilently() throws IOException, InterruptedException {
-    // the OTHER malformed-bracket shape InternalUtils.isWellFormedBracketValue rejects: a bracket value that
-    // DOES close, but is followed by non-comma junk before the next attribute (or the declaration's own '>').
-    // Unlike the unterminated case above, bcftools survives this at exit 0 -- but drops the whole declaration,
-    // the same non-fatal-but-silent-loss outcome as the invalid-name case above, which is why
-    // InternalUtils.EncodingProblem groups both malformed-bracket shapes under the same unreadableOutput=true
-    // rather than distinguishing "hard error" from "silent drop"
+    // the OTHER malformed-bracket shape: a bracket value that DOES close, but is followed by non-comma junk
+    // before the next attribute (or the declaration's own '>'). Unlike the unterminated case above, bcftools
+    // survives this at exit 0 -- but drops the whole declaration, the same non-fatal-but-silent-loss outcome
+    // as the invalid-name case above. On ##contig's own "x" attribute (as here, outside ##META's Values),
+    // findEncodingProblems now classifies this the same as any other unquoted structural delimiter
+    // (unreadableOutput=false, since it is non-fatal) rather than as a malformed bracket specifically --
+    // construction still throws regardless (checkMetadataPropertyEncoding throws for ANY problem), only
+    // validateBeforeWrite()'s throw-vs-warn split reads the flag. On ##META's Values specifically, the same
+    // shape stays unreadableOutput=true (isWellFormedMetaValuesBracket), since the tokenizer can never
+    // produce it as a stored value on the parse path either, so the extra caution there costs nothing.
     String vcf = "##fileformat=VCFv4.2\n##contig=<ID=1,length=100,x=[a]b]>\n" +
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n1\t1\t.\tA\tT\t.\t.\t.\n";
     BcftoolsResult result = runBcftools(vcf, "view", "-h");

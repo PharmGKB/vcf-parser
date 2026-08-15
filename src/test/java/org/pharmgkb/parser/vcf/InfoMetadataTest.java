@@ -1,6 +1,8 @@
 package org.pharmgkb.parser.vcf;
 
 import java.io.StringWriter;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
@@ -201,38 +203,27 @@ public class InfoMetadataTest {
   }
 
   @Test
-  public void testAttributeOrderWarnsWhenOutOfCanonicalOrder() {
-    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_info_003.vcf's ##CauseOfFailure=Incorrect order of INFO fields
+  public void testMapConstructorIsNotAttributeOrderChecked() {
+    // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_info_003.vcf's ##CauseOfFailure=Incorrect order of INFO
+    // fields -- attribute-order checking was removed from every keyed declaration type (see
+    // VCF_SPEC_AMBIGUITIES.md's "##META attribute order" entry), so this now warns about nothing at all.
     StringWriter sink = new StringWriter();
     VcfWarnings warnings = new VcfWarnings(sink);
     new InfoMetadata(lenientContext(warnings), InternalUtils.extractProperties(
         new String[]{"Number=1", "Type=Integer", "Description=\"Raw read depth\"", "ID=DP"}, warnings));
-    assertTrue(sink.toString().contains("order") || sink.toString().contains("ORDER"));
+    assertEquals("", sink.toString());
   }
 
   @Test
-  public void testTypedConstructorDoesNotWarnAboutAttributeOrder() {
-    // the typed constructor's own internal property-insertion order matches the canonical
-    // ID, Number, Type, Description, Source, Version order (see the constructor's own comment); checkAttributeOrder
-    // is called directly here rather than via validate() (IdMetadata.validate() does call checkAttributeOrder()
-    // unconditionally, regardless of construction path) purely so this test can assert on checkAttributeOrder's
-    // warning in isolation, without also running validate()'s other unrelated checks. Source/Version are both
-    // non-null here because an earlier version of this constructor inserted Description after Source/Version
-    // instead of before them, which only this specific case would have caught.
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
-        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
-    appender.start();
-    root.addAppender(appender);
-    try {
-      InfoMetadata info = new InfoMetadata(STRICT_CONTEXT, "DP", "Raw read depth", InfoType.Integer, "1", "src", "1.0");
-      info.checkAttributeOrder();
-      assertFalse(appender.hasWarnOrHigher());
-    } finally {
-      root.detachAppender(appender);
-      appender.stop();
-    }
+  public void testTypedConstructorInsertsPropertiesInCanonicalOrder() {
+    // Not enforced by any validation any more (attribute order isn't checked at all), but the typed
+    // constructor still inserts properties in the ID, Number, Type, Description, Source, Version order for
+    // output readability, matching VCFv4.4.tex:134-135's "to aid human readability" recommendation. Source/
+    // Version are both non-null here because an earlier version of this constructor inserted Description after
+    // Source/Version instead of before them, which only this specific case would have caught.
+    InfoMetadata info = new InfoMetadata(STRICT_CONTEXT, "DP", "Raw read depth", InfoType.Integer, "1", "src", "1.0");
+    assertEquals(List.of("ID", "Number", "Type", "Description", "Source", "Version"),
+        new ArrayList<>(info.getPropertyKeys()));
   }
 
   @Test

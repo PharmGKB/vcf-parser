@@ -10,7 +10,8 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * {@code sealed}: see {@link BaseMetadata}'s class Javadoc for why the hierarchy is closed.
  */
-public abstract sealed class IdMetadata extends BaseMetadata permits IdDescriptionMetadata, ContigMetadata {
+public abstract sealed class IdMetadata extends BaseMetadata permits IdDescriptionMetadata, ContigMetadata,
+    MetaMetadata {
 
   public static final String ID = "ID";
 
@@ -70,7 +71,6 @@ public abstract sealed class IdMetadata extends BaseMetadata permits IdDescripti
   public void validate() {
     super.validate();
     init();
-    checkAttributeOrder();
   }
 
   private void init() {
@@ -112,7 +112,9 @@ public abstract sealed class IdMetadata extends BaseMetadata permits IdDescripti
     // Every ##INFO/##FILTER/##FORMAT/##ALT/##contig/##SAMPLE worked example in VCFv4.2.tex (e.g. line 35:
     // "##INFO=<ID=NS,Number=1,...>") delimits attributes with an unescaped comma; a literal comma inside an ID
     // value would be indistinguishable from the end of the ID attribute itself, for every one of these six
-    // types uniformly -- unlike the whitespace check above, this needs no bcftools/vcf_validator corroboration,
+    // types uniformly (VCFv4.3.tex's own ##META worked example, lines 273-276, e.g. "##META=<ID=Assay,Type=
+    // String,...>", uses the identical comma-delimited grammar, so the same reasoning covers ##META once it
+    // exists at 4.3+) -- unlike the whitespace check above, this needs no bcftools/vcf_validator corroboration,
     // since it follows directly from the attribute-list grammar every example shares, not a per-type policy
     // choice. Deliberately not scoped away from ALT the way angle brackets are (see VcfMetadata.validateAlt()'s
     // own comment): a comma is never part of either of ALT's spec-sanctioned colonless conventions (an IUPAC

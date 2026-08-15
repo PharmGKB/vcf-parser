@@ -80,21 +80,54 @@ class MetadataPropertyEncodingTest {
     builder().addContig(contigProps("v", "_x.y1"));
   }
 
+  private static LinkedHashMap<String, String> metaProps(String values) {
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put(IdMetadata.ID, "Assay");
+    map.put("Values", values);
+    return map;
+  }
+
   @Test
-  void constructionAcceptsABracketValueAndRejectsAMalformedOne() {
-    builder().addContig(contigProps("[WholeGenome, Exome]"));   // VCFv4.3.tex:273's own shape
-    // '[a=b' makes bcftools exit 255 -- the file becomes unreadable, so we must never originate it
+  void constructionRejectsABracketValueOutsideMetaValues() {
+    // the spec-evidenced shape (VCFv4.3.tex:273's Values=[WholeGenome, Exome]) is no longer accepted outside
+    // ##META's Values -- an unquoted comma inside the brackets is now rejected exactly like any other
+    // unquoted comma, since '[' carries no protecting meaning here (see VCF_SPEC_AMBIGUITIES.md's "General
+    // bracket-list quoting beyond ##META's Values" entry)
+    assertThrows(VcfFormatException.class, () -> builder().addContig(contigProps("[WholeGenome, Exome]")));
+    // '[a=b' still throws too -- bcftools' OWN generic bracket handling is unaffected by this library's
+    // narrower quoting decision, so an unterminated '[' is still universally unreadable to it (exit 255)
+    // regardless of attribute/declaration type
     assertThrows(VcfFormatException.class, () -> builder().addContig(contigProps("[a=b")));
+    // these still throw too, but now for the generic "unquoted structural delimiter" reason (a leading '['
+    // is folded into the same check '<'/'>' already get, and checkMetadataPropertyEncoding throws for ANY
+    // problem regardless of severity) -- there is no bracket grammar left to be "malformed" outside Values
     assertThrows(VcfFormatException.class, () -> builder().addContig(contigProps("[a]b]")));
     assertThrows(VcfFormatException.class, () -> builder().addContig(contigProps("[a] junk")));
   }
 
   @Test
-  void bracketWellFormednessUsesTheSameEscapeRuleAsTheTokenizer() {
-    // these must agree with AttributeListTokenizerTest#escapedDelimitersDoNotClose -- one shared scanner
-    builder().addContig(contigProps("[]"));
-    builder().addContig(contigProps("[a\\]b]"));   // odd run: the first ']' is escaped, the last closes
-    builder().addContig(contigProps("[a\\\\]"));   // even run: escaped backslash, so ']' closes
+  void constructionAcceptsAWellFormedBracketValueOnMetaValuesOnly() {
+    builder().addMeta(metaProps("[WholeGenome, Exome]"));   // VCFv4.3.tex:273's own shape
+  }
+
+  @Test
+  void constructionRejectsAMalformedBracketValueOnMetaValues() {
+    // '[a=b' makes bcftools exit 255 -- the file becomes unreadable, so we must never originate it
+    assertThrows(VcfFormatException.class, () -> builder().addMeta(metaProps("[a=b")));
+    assertThrows(VcfFormatException.class, () -> builder().addMeta(metaProps("[a]b]")));
+    assertThrows(VcfFormatException.class, () -> builder().addMeta(metaProps("[a] junk")));
+  }
+
+  @Test
+  void metaValuesBracketHasNoEscapeMechanism() {
+    // these must agree with AttributeListTokenizerTest#metaValuesBracketsHaveNoEscapeMechanism -- one shared
+    // scanner. Unlike the quoted-value form, the spec defines no escape for '[' / ']', so a backslash before
+    // ']' does not protect it from closing the value.
+    builder().addMeta(metaProps("[]"));
+    builder().addMeta(metaProps("[a\\\\]"));   // no escaping applies, so this is well-formed regardless
+    // an odd backslash run before ']' does NOT protect it (unlike the quoted-value form): the first LITERAL
+    // ']' is not this value's last character, so it is malformed junk-after-close, not an escaped one
+    assertThrows(VcfFormatException.class, () -> builder().addMeta(metaProps("[a\\]b]")));
   }
 
   @Test
@@ -244,9 +277,10 @@ class MetadataPropertyEncodingTest {
   private record MapRoute(String kind, LinkedHashMap<String, String> good, LinkedHashMap<String, String> bad,
       BiConsumer<VcfMetadata.Builder, Map<String, String>> add) {}
 
-  // All seven kinds. The comma sits in a raw-stored attribute in each: Description for the five
+  // All eight kinds. The comma sits in a raw-stored attribute in each: Description for the five
   // IdDescriptionMetadata-shaped kinds (the Map route stores it verbatim -- only the TYPED route auto-quotes
-  // it), assembly for contig, and an arbitrary attribute for PEDIGREE, which has no fixed schema.
+  // it), assembly for contig, an arbitrary attribute for PEDIGREE (which has no fixed schema), and Values for
+  // META (which has no auto-quoted field either -- see MetaMetadata's own Javadoc).
   private static final MapRoute[] MAP_ROUTES = {
       new MapRoute("ALT", map("ID", "DEL", "Description", "\"d\""), map("ID", "DEL", "Description", "a,b"),
           VcfMetadata.Builder::addAlt),
@@ -264,6 +298,9 @@ class MetadataPropertyEncodingTest {
           VcfMetadata.Builder::addSample),
       new MapRoute("PEDIGREE", map("ID", "p1", "Original", "g0"), map("ID", "p1", "Original", "a,b"),
           VcfMetadata.Builder::addPedigree),
+      new MapRoute("META", map("ID", "Assay", "Number", "1", "Type", "String", "Values", "x"),
+          map("ID", "Assay", "Number", "1", "Type", "String", "Values", "a,b"),
+          VcfMetadata.Builder::addMeta),
   };
 
   @Test
@@ -286,8 +323,9 @@ class MetadataPropertyEncodingTest {
 
   @Test
   void testEveryPublicMapReplaceRouteRejectsAnUnquotedDelimiter() {
-    // six, not seven: there is no replacePedigree (VcfMetadata.java:885 is addPedigree(Map); the comment at
-    // VcfMetadata.java:908-915 explains why -- PEDIGREE is List-backed, not Map-backed, so it has no replace
+    // seven, not eight: there is no replacePedigree (VcfMetadata.java:928, "public Builder addPedigree(Map<...>
+    // properties) {", is addPedigree(Map); the comment at VcfMetadata.java:955-956, "There is no replacePedigree:
+    // PEDIGREE is List-backed, not Map-backed", explains why -- so it has no replace
     // counterpart), so PEDIGREE is add-only and is deliberately absent here.
     record ReplaceRoute(String kind, BiConsumer<VcfMetadata.Builder, Map<String, String>> replace) {}
     ReplaceRoute[] routes = {
@@ -297,6 +335,7 @@ class MetadataPropertyEncodingTest {
         new ReplaceRoute("FORMAT", VcfMetadata.Builder::replaceFormat),
         new ReplaceRoute("contig", VcfMetadata.Builder::replaceContig),
         new ReplaceRoute("SAMPLE", VcfMetadata.Builder::replaceSample),
+        new ReplaceRoute("META", VcfMetadata.Builder::replaceMeta),
     };
     for (ReplaceRoute rr : routes) {
       MapRoute r = mapRoute(rr.kind());
@@ -314,7 +353,7 @@ class MetadataPropertyEncodingTest {
   void testEveryPublicMapReplaceRouteStillAcceptsAValidReplacement() {
     // the map-replace matrix's counterweight, matching the add matrix's. Without it, a Task 4 wiring that
     // rejected every replacement outright would pass the whole replace group.
-    for (String kind : new String[] {"ALT", "INFO", "FILTER", "FORMAT", "contig", "SAMPLE"}) {
+    for (String kind : new String[] {"ALT", "INFO", "FILTER", "FORMAT", "contig", "SAMPLE", "META"}) {
       MapRoute r = mapRoute(kind);
       VcfMetadata.Builder b = builder();
       r.add().accept(b, new LinkedHashMap<>(r.good()));
@@ -331,6 +370,7 @@ class MetadataPropertyEncodingTest {
       case "FORMAT" -> VcfMetadata.Builder::replaceFormat;
       case "contig" -> VcfMetadata.Builder::replaceContig;
       case "SAMPLE" -> VcfMetadata.Builder::replaceSample;
+      case "META" -> VcfMetadata.Builder::replaceMeta;
       default -> throw new IllegalArgumentException(kind);
     };
   }
@@ -735,6 +775,23 @@ class MetadataPropertyEncodingTest {
   }
 
   @Test
+  void diagnosticsModeThrowsForAMalformedQuotedValueContainingAComma() throws Exception {
+    // Public construction already throws for this shape too (checkMetadataPropertyEncoding throws for ANY
+    // problem, regardless of unreadableOutput), so trustedMutableProperties() -- the same bypass the test
+    // above uses -- is the only way to isolate validateBeforeWrite()'s own throw-vs-warn classification.
+    // Our own round-trip, not bcftools, is the reason: a malformed quoted value with no valid closing '"' is
+    // recovered by parseOneAttribute's close<0 branch, which re-scans for the next COMMA rather than the
+    // value's own end -- so `x="abc,def` emitted verbatim re-parses to just `x="abc`, with "def" silently
+    // dropped (it has no '=' of its own). That is genuinely unreadable by this library, so validateBeforeWrite()
+    // must throw here, not merely warn.
+    VcfMetadata md = parseHeader("##contig=<ID=c1,length=999>").metadata();
+    md.getContigs().get("c1").trustedMutableProperties().put("x", "\"abc,def");
+    assertThrows(VcfFormatException.class, () ->
+        new VcfWriter.Builder().validateBeforeWrite().toWriter(new PrintWriter(new StringWriter())).build()
+            .writeHeader(md));
+  }
+
+  @Test
   void aNameOutsideTheAllowlistSurvivesParsing() throws Exception {
     VcfMetadata md = parseHeader("##contig=<ID=c1,a-b=v,length=999>").metadata();
     assertEquals("v", md.getContigs().get("c1").getPropertyRaw("a-b"));
@@ -759,6 +816,34 @@ class MetadataPropertyEncodingTest {
           new VcfWriter.Builder().validateBeforeWrite().toWriter(new PrintWriter(out)).build().writeHeader(md));
       assertTrue(appender.anyMessageContains("unquoted structural delimiter"));
       assertThat(out.toString(), containsString("x=a>b"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void diagnosticsModeWarnsRatherThanThrowingOnABracketOutsideMetaValues() throws Exception {
+    // The '['-flavoured twin of diagnosticsModeWarnsRatherThanThrowingOnAnUnquotedAngleBracket above, flagged
+    // by external review as an untested reclassification: outside ##META's Values, a bracket that closes but
+    // has trailing junk after it ("x=[a]b]") is no longer malformed-bracket-checked at all -- it has a ']'
+    // somewhere, so it clears findEncodingProblems' universal unterminated-bracket floor and falls through to
+    // the same generic "unquoted structural delimiter" check '<'/'>' get (unreadableOutput=false). Before this
+    // fix's narrowing, this exact shape was grouped with the genuinely-unterminated case and threw at BOTH
+    // construction and validateBeforeWrite(); now it only throws at construction (checkMetadataPropertyEncoding
+    // throws for ANY problem, regardless of severity) and warns at validateBeforeWrite(). Control: flipping
+    // this back to unreadableOutput=true in InternalUtils.findEncodingProblems must make this fail.
+    VcfMetadata md = parseHeader("##contig=<ID=c1,x=[a]b],length=999>").metadata();
+    Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      StringWriter out = new StringWriter();
+      assertDoesNotThrow(() ->
+          new VcfWriter.Builder().validateBeforeWrite().toWriter(new PrintWriter(out)).build().writeHeader(md));
+      assertTrue(appender.anyMessageContains("unquoted structural delimiter"));
+      assertThat(out.toString(), containsString("x=[a]b]"));
     } finally {
       root.detachAppender(appender);
       appender.stop();

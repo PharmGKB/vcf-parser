@@ -151,78 +151,6 @@ public class BaseMetadataTest {
   }
 
   @Test
-  public void testCheckAttributeOrderWarnsWhenOutOfCanonicalOrder() {
-    // VCFv4.2.tex line 69: ##INFO=<ID=ID,Number=number,Type=type,Description="description",Source="source",
-    // Version="version"> -- every canonical template and worked example in the spec uses this relative order
-    Map<String, String> map = new LinkedHashMap<>();
-    map.put("Number", "1");
-    map.put("Type", "Integer");
-    map.put("Description", "d");
-    map.put("ID", "DP");
-    BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", map);
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
-        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
-    appender.start();
-    root.addAppender(appender);
-    try {
-      metadata.checkAttributeOrder();
-      assertTrue(appender.hasWarnOrHigher());
-    } finally {
-      root.detachAppender(appender);
-      appender.stop();
-    }
-  }
-
-  @Test
-  public void testCheckAttributeOrderDoesNotWarnWhenCanonical() {
-    Map<String, String> map = new LinkedHashMap<>();
-    map.put("ID", "DP");
-    map.put("Number", "1");
-    map.put("Type", "Integer");
-    map.put("Description", "d");
-    BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", map);
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
-        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
-    appender.start();
-    root.addAppender(appender);
-    try {
-      metadata.checkAttributeOrder();
-      assertFalse(appender.hasWarnOrHigher());
-    } finally {
-      root.detachAppender(appender);
-      appender.stop();
-    }
-  }
-
-  @Test
-  public void testCheckAttributeOrderIgnoresUnrecognizedKeysAndTheirPosition() {
-    // only ID/Number/Type/Description/Source/Version are order-checked -- an unrecognized extra key, in any
-    // position, must not affect the result (VCFv4.2 explicitly allows extra fields)
-    Map<String, String> map = new LinkedHashMap<>();
-    map.put("Custom", "z");
-    map.put("ID", "DP");
-    map.put("Description", "d");
-    BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", map);
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
-        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
-    appender.start();
-    root.addAppender(appender);
-    try {
-      metadata.checkAttributeOrder();
-      assertFalse(appender.hasWarnOrHigher());
-    } finally {
-      root.detachAppender(appender);
-      appender.stop();
-    }
-  }
-
-  @Test
   public void testValidateThrowsForNullPropertyValueInsertedViaGetPropertiesRaw() {
     // regression test: putPropertyRaw/putAndQuoteProperty already reject a null value at insertion, but
     // validateProperties() (called by validate(), and unconditionally at construction) only checked for a null
@@ -235,20 +163,6 @@ public class BaseMetadataTest {
     metadata.trustedMutableProperties().put("Extra", null);
     VcfFormatException e = assertThrows(VcfFormatException.class, metadata::validate);
     assertTrue(e.getMessage().contains("null value"));
-  }
-
-  @Test
-  public void testCheckAttributeOrderThrowsForNullPropertyName() {
-    // regression test: checkAttributeOrder() used to let CANONICAL_ATTRIBUTE_ORDER.contains(key) throw an
-    // uncaught NullPointerException for a null key instead of the clean VcfFormatException
-    // validateProperties() already throws for the identical invalid state. See the test above for why the
-    // package-private trustedMutableProperties() bypass, not getPropertiesRaw(), is the route now.
-    Map<String, String> map = new LinkedHashMap<>();
-    map.put("ID", "DP");
-    BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", map);
-    metadata.trustedMutableProperties().put(null, "x");
-    VcfFormatException e = assertThrows(VcfFormatException.class, metadata::checkAttributeOrder);
-    assertTrue(e.getMessage().contains("null property name"));
   }
 
   @Test

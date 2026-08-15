@@ -63,32 +63,46 @@ their arguments can never be derived from a parsed VCF file's own data.
 
 ### `BaseMetadata`/`IdDescriptionMetadata` constructors' `label` parameter
 
-`BaseMetadata(String label, Map<String, String> properties)`, `IdDescriptionMetadata(String label, String
-id, String description)`, and `IdDescriptionMetadata(String label, Map<String, String> properties,
-VcfWarnings warnings)` are all `public` constructors on `public` classes -- externally callable, not
-internal-only, though the only in-repo caller (`VcfParser.java`) always passes a hardcoded literal
-(`"ALT"`, `"FILTER"`, `"SAMPLE"`). Every other parameter in each of these constructors (`properties`, `id`,
-`description`, `warnings`) is null-checked and throws `VcfFormatException` per the Public API Null-Safety
-Policy; `label` is not. A caller passing `label = null` gets a fully-constructed object whose `getLabel()`
-permanently returns `null`, and every future diagnostic this instance produces embeds the literal text
-`"null"` (SLF4J's `MessageFormatter`, which every `m_warnings.warn("{} ...", getLabel(), ...)` call site
-routes through, explicitly renders a `null` argument as `"null"`, not blank) -- e.g. `"null metadata ID is
-blank"` instead of a message clearly attributed to `FILTER`/`INFO`/etc. `label` is caller-configuration, not
-VCF content, the same category `VcfParser.Builder`'s required-argument setters (above) are exempted from
-this policy for: at every real call site -- in this repo's own code, and for any external caller building
-`VcfMetadata` programmatically without going through `VcfParser` -- `label` is a hardcoded classification
-string the calling code chooses for itself (`"FILTER"`, `"INFO"`, a caller's own custom tag), never
-something derived from parsed VCF file content the way `properties`/`id`/`description` are.
+**Re-verified 2026-08-14: the constructors involved are now package-private, not public, and this changes
+what kind of finding this is.** `BaseMetadata(VcfContext context, String label, Map<String, String>
+properties)` (`BaseMetadata.java:78`) has no visibility modifier at all -- package-private -- and its own
+Javadoc states this is deliberate: *"nothing should instantiate the base declaration type directly ...
+this is real encapsulation rather than a documentation-only restriction"*. `IdDescriptionMetadata`'s two
+constructors, `IdDescriptionMetadata(VcfContext context, String label, @Nullable String id, @Nullable String
+description)` and `IdDescriptionMetadata(VcfContext context, String label, Map<String, String> properties)`
+(`IdDescriptionMetadata.java:27`/`:41`), are likewise package-private; there is no
+`IdDescriptionMetadata(String, Map, VcfWarnings)` overload at all, and every constructor in this hierarchy
+now takes a leading `VcfContext`, not just the label/properties/id/description shape this entry originally
+described (a `VcfContext`-threading refactor after this entry was written). So no external caller can reach
+any of these constructors, at all -- this is no longer a Public API Null-Safety Policy question, since that
+policy is scoped to the public surface, and this surface no longer is. The only real call sites are in
+`VcfMetadata.java` (12 of them, e.g. `:722`, `:742`, `:876`), not `VcfParser.java` as originally stated --
+`VcfParser` never calls these constructors directly -- and every one of the 12 still passes a hardcoded
+literal (`"ALT"`, `"FILTER"`, `"SAMPLE"`).
 
-**Decision: won't fix, for both cases above.** A `null` here is always the direct caller's own programming
-mistake (forgot to check a variable before passing it in), never something an untrusted `.vcf` file could
-trigger -- exactly the case `Preconditions.checkNotNull`'s fail-fast-with-NPE idiom is meant for, and why
-converting either to `VcfFormatException` (a *content*-rejection exception type) would be the wrong fix even
-taken in isolation, not just an inconsistent one. Converting `VcfParser.Builder`'s case specifically would
-also mean re-litigating an established, consistently-applied convention across every `Builder` in this
-codebase, not just this one. Revisit `VcfParser.Builder`'s case only alongside a deliberate, codebase-wide
-decision to migrate every `Builder`'s required-argument convention away from `Preconditions.checkNotNull`,
-not as a one-off. Revisit `label`'s case if a real caller reports this as a genuine (non-hypothetical) source
+The underlying observation still holds as a purely internal fact: `label` is still not null-checked (`m_label
+= label;`, `BaseMetadata.java:88`, no guard), so a same-package caller passing `label = null` would get a
+`getLabel()` that permanently returns `null`, with the same downstream `"null metadata ID is blank"`-style
+diagnostic text described below. But note this no longer matches the shape the section title above promises:
+it was never true that this path "uses a raw `NullPointerException`" -- passing `null` here doesn't throw
+anything at all, at construction or later; it silently degrades diagnostic quality. That mismatch predates
+this re-verification and was not introduced by it.
+
+**Decision: won't fix, for both cases above -- and `label`'s case is now lower priority than when this entry
+was written, not higher.** A `null` here is always the direct caller's own programming mistake (forgot to
+check a variable before passing it in), never something an untrusted `.vcf` file could trigger. For
+`VcfParser.Builder`'s still-public setters, that is exactly the case `Preconditions.checkNotNull`'s
+fail-fast-with-NPE idiom is meant for, and converting to `VcfFormatException` (a *content*-rejection
+exception type) would be the wrong fix even taken in isolation, not just an inconsistent one. For `label`,
+the caller in question is now always this library's own code (`VcfMetadata.java`'s 12 call sites, all
+hardcoded literals) rather than a potential external one, so adding a fail-fast check of either kind would
+guard against a mistake only this package's own future maintainers could make -- worth doing opportunistically
+if `BaseMetadata`/`IdDescriptionMetadata` are touched for another reason, but not worth a dedicated fix.
+Converting `VcfParser.Builder`'s case specifically would also mean re-litigating an established,
+consistently-applied convention across every `Builder` in this codebase, not just this one. Revisit
+`VcfParser.Builder`'s case only alongside a deliberate, codebase-wide decision to migrate every `Builder`'s
+required-argument convention away from `Preconditions.checkNotNull`, not as a one-off. Revisit `label`'s case
+if a real caller reports this as a genuine (non-hypothetical) source
 of confusing diagnostics, or if `label` ever becomes something this library itself derives from parsed
 content rather than something every caller always supplies as a literal.
 
@@ -187,8 +201,8 @@ today) for a purely cosmetic double-warning that only a deliberately exhaustive 
 
 ### Missing or blank metadata ID
 
-A missing or blank `ID` on any of the six keyed metadata declaration types (INFO/FORMAT/FILTER/ALT/contig/
-SAMPLE) is independently caught at two layers: first at construction time, by the declaration object's own
+A missing or blank `ID` on any of the seven keyed metadata declaration types (INFO/FORMAT/FILTER/ALT/contig/
+SAMPLE/META) is independently caught at two layers: first at construction time, by the declaration object's own
 `IdMetadata.init()` (e.g. "INFO metadata ID is blank"), and again at registration time, by
 `VcfMetadata`/`Builder`'s own `addXxx` method, which finds no usable ID to key the declaration by and warns
 before dropping it (e.g. "INFO metadata declaration has no ID and cannot be stored; dropped: {...}"). Like
@@ -207,7 +221,7 @@ shared implementation for an unrelated reason that would make deduplication free
 
 **Closed by teaching every comparison/validation site that reads or receives a metadata ID to unquote it
 first** -- see AGENTS.md's "Unquoting before internal use" policy and VALIDATION_PHILOSOPHY.md's "How the
-principles interact." `IdMetadata.init()`, `VcfMetadata.Builder`'s six keyed-type `addXxx`/`replaceXxx` methods
+principles interact." `IdMetadata.init()`, `VcfMetadata.Builder`'s seven keyed-type `addXxx`/`replaceXxx` methods
 (blank check, dedupe key, and the map's own storage key), `VcfMetadata.Builder.addPedigree`, and
 `VcfWriter.validateMetadata()`'s PEDIGREE loop all now read `getPropertyUnquoted(ID)` rather than
 `getPropertyRaw(ID)`. The typed `IdMetadata(VcfContext, String, String)` constructor's own blank/whitespace/
@@ -216,7 +230,7 @@ isn't yet a stored property, so they call `InternalUtils.unquote(id)` directly i
 diagnostic wart, not just the missing-ID gap: `VcfMetadata.Builder.addFilter("\"   \"", "d")` (the typed,
 raw-value overload) used to warn "must not contain whitespace" from this constructor's own raw check before
 `addFilter`'s later blank check correctly dropped it; both now agree it is blank. `ID=""` and `ID="   "` are
-caught as blank identically to their unquoted equivalents, for all seven structured declaration types, and
+caught as blank identically to their unquoted equivalents, for all eight structured declaration types, and
 `ID="A"` now dedupes against `ID=A` (a deliberate semantic change: quoting is an encoding, not part of the
 identifier -- see `DUPLICATE_METADATA_ID_HANDLING.md`'s "Quoting is not part of the identity" section). The
 seven typed public getters (`IdMetadata.getId()`, `InfoMetadata`/`FormatMetadata.getNumber()`, and
@@ -265,7 +279,18 @@ change, not the docs sweep that surfaced it. Flagged here rather than silently l
 Revisit by fixing `IdMetadata.init()`/`addPedigree` to test the unquoted value, with regression fixtures for
 both `ID=""` and `ID="   "` across at least one keyed type and PEDIGREE.
 
-## `BaseMetadata.checkAttributeOrder()` doesn't detect a custom/unrecognized attribute wedged between two canonical ones
+## RESOLVED: `BaseMetadata.checkAttributeOrder()` doesn't detect a custom/unrecognized attribute wedged between two canonical ones
+
+**Closed by removing `checkAttributeOrder()` and all attribute-order enforcement entirely, 2026-08-14.**
+Every keyed declaration type -- not just `##META`, which was relaxed first -- no longer attribute-order
+checks at all: no VCF version requires an order, bcftools 1.23.1 ignores it on every shape measured
+(including the ID-last INFO control row that would have made even a narrower "ID must come first" rule
+unjustified), and vcf_validator's contrary verdict is disqualified for rejecting the spec's own worked
+example. See `VCF_SPEC_AMBIGUITIES.md`'s "`##META` attribute order" entry for the full decision. The method
+this entry describes, and the scope-limitation gap it documents, no longer exist -- there is nothing left to
+under- or over-detect. The original observation is kept below for the record.
+
+Original entry, unedited:
 
 `checkAttributeOrder()` only checks relative order among the six well-known VCF
 metadata keys (`ID`/`Number`/`Type`/`Description`/`Source`/`Version`); any other key is filtered out before
@@ -299,22 +324,22 @@ declarations under 4.3+ each warn independently rather than the second colliding
 `Duplicate ID ""` the way this entry documents. The reasoning and "won't fix" decision below are unchanged and
 still current for VCFv4.2, where `##PEDIGREE` has no `ID` attribute in its own grammar at all and this task's
 version gate never activates -- see `DUPLICATE_METADATA_ID_HANDLING.md`'s "Missing or empty ID" section's
-seventh-type paragraph for the current, version-split rule.
+eighth-type paragraph for the current, version-split rule.
 
 `VcfMetadata.addPedigree`/`VcfMetadata.Builder.addPedigree` and `VcfWriter.validateMetadata()`'s PEDIGREE loop
 gate their duplicate-ID dedup on `id != null` only, with no blank-string check, **below VCFv4.3** (see the
-scoping paragraph just above for the 4.3+ behavior) -- unlike the six keyed types (INFO/FORMAT/FILTER/ALT/
-contig/SAMPLE), whose own `addXxx` methods explicitly drop a declaration with a missing OR blank `ID` before
+scoping paragraph just above for the 4.3+ behavior) -- unlike the seven keyed types (INFO/FORMAT/FILTER/ALT/
+contig/SAMPLE/META), whose own `addXxx` methods explicitly drop a declaration with a missing OR blank `ID` before
 ever reaching the duplicate check (`DUPLICATE_METADATA_ID_HANDLING.md`'s "Missing or empty ID" section). This
 looked, on first read, like an inconsistency: two `##PEDIGREE=<ID=,...>` lines each declaring a literal empty
-`ID=` collide on that empty string and the second is silently dropped, where the six-keyed-type convention
+`ID=` collide on that empty string and the second is silently dropped, where the seven-keyed-type convention
 would keep both.
 
 It isn't an inconsistency once bcftools is actually consulted. `DUPLICATE_METADATA_ID_HANDLING.md`'s own
 "Empty/whitespace ID is a deliberate stricter-than-bcftools choice" section already establishes that the
-six keyed types' blank-ID exemption is a project-specific editorial decision that bcftools itself does NOT
-follow (bcftools keeps an empty-ID `INFO`/`FORMAT`/`contig`/`FILTER` declaration). PEDIGREE was never given
-that same editorial exemption -- its own rule, per the same file's "`##PEDIGREE`: a conditional case"
+seven keyed types' blank-ID exemption is a project-specific editorial decision that bcftools itself does NOT
+follow (bcftools keeps an empty-ID `INFO`/`FORMAT`/`contig`/`FILTER`/`META` declaration). PEDIGREE was never
+given that same editorial exemption -- its own rule, per the same file's "`##PEDIGREE`: a conditional case"
 section, is simply "dedupe on `ID` when present, regardless of tag name," chosen specifically to match
 bcftools's actual observed behavior (bcftools keeps both of two ID-*less* PEDIGREE lines, but drops the
 second of two sharing a literal `ID=P1`).
@@ -322,12 +347,12 @@ second of two sharing a literal `ID=P1`).
 **Verified directly (bcftools 1.23.1, htslib 1.23.1):** a hand-built fixture with two `##PEDIGREE=<ID=,...>`
 lines (empty `ID=`, differing `Name_0`) fed to `bcftools view -h` keeps only the first line and silently
 drops the second -- confirming bcftools treats an empty `ID=` on `##PEDIGREE` as a real, dedupe-worthy
-value, the opposite of its own leniency for the six keyed types. This specific case (empty, not merely
+value, the opposite of its own leniency for the seven keyed types. This specific case (empty, not merely
 missing, `ID=` on `##PEDIGREE`) was not previously covered by `DUPLICATE_METADATA_ID_HANDLING.md`'s existing
 bcftools-verified table, which only tested "no `ID` property at all" vs. "two lines sharing `ID=P1`."
 
 **Decision: won't fix.** The current behavior already matches bcftools; adding a blank-ID exemption to
-`addPedigree` (mirroring the six keyed types) would make PEDIGREE diverge from bcftools's actual behavior
+`addPedigree` (mirroring the seven keyed types) would make PEDIGREE diverge from bcftools's actual behavior
 for no documented reason, since PEDIGREE was never granted that stricter-than-bcftools carve-out in the
 first place. `DUPLICATE_METADATA_ID_HANDLING.md`'s PEDIGREE table has been updated with this empty-`ID=`
 case so a future sweep doesn't re-derive the same question. Revisit only if a future bcftools version
@@ -348,7 +373,7 @@ were and why they were once accepted -- reintroducing any public post-constructi
   desync it any more, that cache was simplified from a `modCount`-guarded, rebuild-on-demand
   `TrackedPedigreeList` to a plain incrementally-maintained `Set<String>`; the staleness machinery this entry
   describes no longer exists to be gapped.)
-- **The six `HashMap`-keyed types' in-place `ID` mutation**: this needed an already-added entry's `ID` to
+- **The seven `HashMap`-keyed types' in-place `ID` mutation**: this needed an already-added entry's `ID` to
   change while its map key did not, which required `putPropertyRaw` or a live `getPropertiesRaw()`. Both are
   gone from the public API: `getPropertiesRaw()` returns an unmodifiable view, and `putPropertyRaw`/
   `putAndQuoteProperty` are package-private (a subclass constructor's own populate step). Point 1 of the
@@ -358,13 +383,14 @@ were and why they were once accepted -- reintroducing any public post-constructi
   mismatch check remains live and remains tested (via the package-private `trustedMutableProperties()` bypass);
   whether it can now go is Task 11's question, not this entry's.
 
-  **Scope of "closed": the public API, not this package's own code.** For the six keyed types the inserters
-  still work in-package (their typed constructors need them), so a same-package caller can still drift an
-  entry's `ID` away from its map key -- which is exactly what the writer check above exists to catch, and what
-  `VcfWriterTest` uses `trustedMutableProperties()` to exercise. `PedigreeMetadata` is the one exception: it
-  overrides both inserters to throw even in-package, because `Builder.addPedigree`'s dedup `Set` has no
-  recompute path and would silently go stale. Do not generalise PEDIGREE's stronger guarantee to the other
-  five types, or the other five's weaker one to PEDIGREE.
+  **Scope of "closed": the public API, not this package's own code.** For the seven keyed types the inserters
+  still work in-package (their typed constructors need them, where they have one -- `##META` has no typed
+  constructor of its own, but still inherits `IdMetadata`'s in-package inserters), so a same-package caller can
+  still drift an entry's `ID` away from its map key -- which is exactly what the writer check above exists to
+  catch, and what `VcfWriterTest` uses `trustedMutableProperties()` to exercise. `PedigreeMetadata` is the one
+  exception: it overrides both inserters to throw even in-package, because `Builder.addPedigree`'s dedup `Set`
+  has no recompute path and would silently go stale. Do not generalise PEDIGREE's stronger guarantee to the
+  other seven types, or the other seven's weaker one to PEDIGREE.
 
 Original reasoning, unedited:
 
@@ -615,3 +641,43 @@ for `GLE`/`CNP` (`InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck`, s
 
 Revisit if a real caller reports hitting this on an actual corrupted GLE value, or if a future VCF spec
 version ever re-adds and tightens GLE's grammar.
+
+## `VcfWriter.validateBeforeWrite()`'s metadata-property-encoding check is hoisted to run once per header; the ID-drift check is not
+
+`VcfWriter.writeHeader()`'s `validateBeforeWrite()` branch (`VcfWriter.java:162-166`) calls
+`validateMetadataPropertyEncodings(metadata)` exactly once, from `writeHeader()` only. Its own Javadoc
+(`VcfWriter.java:672-684`) states this is deliberate: `VcfMetadata` is immutable, so the check's result
+cannot change between calls, and re-running it from `validateMetadata()` (which `writeLine()` also calls,
+once per record) would multiply an invalid-property-name warning by (bad properties) x (declarations) x
+(records) on a large VCF.
+
+`validateMetadata()`'s own `validateKeyedMetadataEntries()` ID-drift check (`VcfWriter.java:663-668` --
+confirms each entry's own `ID` property still matches the map key it's stored under) is not given the same
+hoist -- it runs from both
+`writeHeader()` (`:163`) and every `writeLine()` call (`:343`), and a comment at the duplicate-ID-warning
+site (`VcfWriter.java:517-520`) names that repetition as an accepted tradeoff for this check specifically.
+So the two checks inside the same `validateBeforeWrite()` diagnostics pass disagree about how often they
+re-run, and nothing states why one earned the hoist and the other didn't.
+
+This asymmetry is reachable only through the package-private, test-only `BaseMetadata.trustedMutableProperties()`
+bypass (`BaseMetadata.java:213-226`, "Not for production code: nothing in `src/main` calls it" -- confirmed
+by grep, zero `src/main` call sites, only Javadoc mentions of the name). Triggering it would require
+mutating an already-built `VcfMetadata`'s raw properties map between a `writeHeader()` call and a later
+`writeLine()` call on the same writer -- no public API can do this, since `VcfMetadata`/`BaseMetadata` are
+immutable post-construction (see this file's own "closing the live-ID/key gap" freeze referenced by the
+duplicate-ID-dedup entries above). `VcfWriterTest.testValidateBeforeWriteRejectsMetadataDelimiterInjectedThroughRawView`
+(`VcfWriterTest.java:1320-1329`) exercises the bypass, but only within a single `writeHeader()` call --
+there is no test for the header-already-written-then-mutated-then-`writeLine()` sequence, because there is
+no way to construct that sequence without using the bypass a second time.
+
+Even granting that access, re-checking on the later `writeLine()` call would buy nothing: the header's bytes
+are already on the `Writer` by the time that call runs, so catching the mutation there could only throw
+*after* the un-checked header content has already been emitted -- not meaningfully better than not catching
+it. The ID-drift check does not have this particular defense (it polices a record-independent invariant that
+doesn't depend on already-emitted bytes), but it is exposed to the identical unreachability in practice,
+since it too depends on the same bypass to trigger post-header-write.
+
+**Decision: won't fix.** Reachable only via a test-only bypass with no production caller, and even a
+caller using that bypass deliberately gains no real protection from a later re-check, since the header is
+already flushed by then. Revisit if `trustedMutableProperties()`'s package-private scope is ever widened,
+or if a real (non-test) route to mutate an already-constructed `VcfMetadata` is ever reintroduced.

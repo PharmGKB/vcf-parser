@@ -1,6 +1,8 @@
 package org.pharmgkb.parser.vcf;
 
 import java.io.StringWriter;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
@@ -367,9 +369,11 @@ public class FormatMetadataTest {
   }
 
   @Test
-  public void testAttributeOrderWarnsWhenOutOfCanonicalOrder() {
+  public void testMapConstructorIsNotAttributeOrderChecked() {
     // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_format_003.vcf's
-    // ##CauseOfFailure=Incorrect order of FORMAT fields
+    // ##CauseOfFailure=Incorrect order of FORMAT fields -- attribute-order checking was removed from every
+    // keyed declaration type (see VCF_SPEC_AMBIGUITIES.md's "##META attribute order" entry), so this now
+    // warns about nothing at all.
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -379,7 +383,7 @@ public class FormatMetadataTest {
     try {
       new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
           new String[]{"Number=1", "Type=Integer", "Description=\"Raw read depth\"", "ID=DP"}, VcfWarnings.DEFAULT));
-      assertTrue(appender.hasWarnOrHigher());
+      assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
       appender.stop();
@@ -387,20 +391,12 @@ public class FormatMetadataTest {
   }
 
   @Test
-  public void testTypedConstructorDoesNotWarnAboutAttributeOrder() {
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
-        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
-    appender.start();
-    root.addAppender(appender);
-    try {
-      new FormatMetadata(STRICT_CONTEXT, "DP", "Raw read depth", "1", FormatType.Integer);
-      assertFalse(appender.hasWarnOrHigher());
-    } finally {
-      root.detachAppender(appender);
-      appender.stop();
-    }
+  public void testTypedConstructorInsertsPropertiesInCanonicalOrder() {
+    // Not enforced by any validation any more (attribute order isn't checked at all), but the typed
+    // constructor still inserts properties in the ID, Number, Type, Description order for output readability,
+    // matching VCFv4.4.tex:134-135's "to aid human readability" recommendation.
+    FormatMetadata format = new FormatMetadata(STRICT_CONTEXT, "DP", "Raw read depth", "1", FormatType.Integer);
+    assertEquals(List.of("ID", "Number", "Type", "Description"), new ArrayList<>(format.getPropertyKeys()));
   }
 
   @Test

@@ -345,15 +345,44 @@ public class InternalUtils {
    * none), when {@code commaIsSeparator}; otherwise {@code s.length()}, since {@code s} is then already exactly
    * one attribute and a {@code ,} inside it is ordinary content.
    */
+  /**
+   * @return whether {@code name} is {@code ##META}'s {@code Values} attribute -- the one place any VCF
+   * version (4.3-4.5) evidences {@code [...]} as a comma-protecting value form (VCFv4.3.tex:273-276's worked
+   * examples). Shared by {@link #parseOneAttribute} and {@link #findEncodingProblems} so construction and
+   * parsing cannot independently drift on which attribute gets bracket-list quoting -- see
+   * VCF_SPEC_AMBIGUITIES.md's "General bracket-list quoting beyond `##META`'s `Values`" entry for why this is
+   * scoped this narrowly rather than generalized to every attribute the way htslib generalizes it.
+   */
+  private static boolean isMetaValues(String kind, String name) {
+    return kind.equals("META") && name.equals("Values");
+  }
+
   private static int attributeLimit(String s, int from, boolean commaIsSeparator) {
     return commaIsSeparator ? indexOfComma(s, from) : s.length();
   }
 
   /**
    * Parses one {@code name=value} pair starting at {@code s.charAt(i)}, implementing bcftools' splitting
-   * grammar (htslib 1.23.1 {@code bcf_hdr_parse_line}). A value's form is decided by its first byte after the
-   * optional space skip: {@code "} quoted, {@code [} bracket, otherwise literal. A quote or bracket anywhere
-   * else is an ordinary byte and protects nothing.
+   * grammar (htslib 1.23.1 {@code bcf_hdr_parse_line}) with TWO deliberate exceptions.
+   *
+   * <p>First, htslib's unquoted-value scan keeps an angle-bracket nesting counter (`vcf.c:730-733`, "if (
+   * *q=='<' ) nopen++;" ... "if ( *q==',' && nopen==1 ) break;") so a {@code ,} inside a {@code <...>} span
+   * does not end the attribute. This library does NOT implement that counter, because no VCF version defines
+   * {@code <...>} as a quoting or nesting form for a value -- VCFv4.3.tex:117, "the value is itself a
+   * comma-separated list of key=value pairs, enclosed within `<' and `>' characters", makes {@code ,} the
+   * separator with no stated exception. A value that must contain {@code ,}, {@code <}, or {@code >} has to
+   * be double-quoted. This is a recorded decision, not an oversight -- see VCF_SPEC_AMBIGUITIES.md's "Angle
+   * brackets are not a quoting form in a metadata attribute value" entry before "fixing" it.
+   *
+   * <p>Second, and unlike htslib (whose {@code [}/{@code ]} handling is attribute-name- and declaration-type-
+   * agnostic), a leading {@code [} is recognized as a comma-protecting delimiter ONLY for {@code ##META}'s
+   * {@code Values} attribute -- the one place any VCF version (4.3-4.5) evidences the form at all
+   * (VCFv4.3.tex:273-276's worked examples). Everywhere else, {@code [} is an ordinary byte, exactly like
+   * {@code <}/{@code >}: it protects nothing, and its presence only warns. See VCF_SPEC_AMBIGUITIES.md's
+   * "General bracket-list quoting beyond `##META`'s `Values`" entry for the full reasoning and the reversal
+   * this represents from an earlier, broader decision. Within {@code Values}'s bracket span, there is no
+   * escape mechanism for {@code [}/{@code ]} (the spec defines none), so the closing {@code ]} is found by a
+   * plain, unescaped scan -- commas, quotes, and backslashes inside are all ordinary content.
    *
    * <p>This deliberately does NOT enforce bcftools' name-validity rule -- see the design spec's "Precisely
    * which grammar, on which surface" table. The parse path accepts a superset and preserves it.
@@ -363,9 +392,12 @@ public class InternalUtils {
    * when {@code s} is already exactly one attribute (a {@code ,} is ordinary content, and the name scan runs
    * to the first {@code =} only). {@link #tokenizeAttributeList} passes {@code true}; {@link #parseAttribute}
    * passes {@code false}. Every other rule here is shared between the two callers.
+   * @param kind the declaration type this attribute list belongs to (e.g. {@code "META"}), used only to
+   * decide whether this is {@code ##META}'s {@code Values} attribute; {@link #parseAttribute} has no such
+   * context and passes {@code ""}, which can never match.
    */
   private static AttributeParseResult parseOneAttribute(String s, int i, boolean commaIsSeparator,
-      VcfWarnings warnings) {
+      VcfWarnings warnings, String kind) {
     int n = s.length();
     int limit = attributeLimit(s, i, commaIsSeparator);
     int nameEnd = i;
@@ -390,9 +422,13 @@ public class InternalUtils {
     char first = idx < n ? s.charAt(idx) : '\0';
     String rawValue;
     int nextIndex;
-    if (first == '"' || first == '[') {
-      char closer = first == '"' ? '"' : ']';
-      int close = indexOfUnescaped(s, closer, valueStart + 1, valueStart);
+    if (first == '"' || (first == '[' && isMetaValues(kind, name))) {
+      // META's Values has no escape mechanism for '[' / ']' (the spec defines none), unlike the quoted-value
+      // form's backslash escaping -- a plain, unescaped scan for the next ']' is correct here, not
+      // indexOfUnescaped.
+      int close = first == '"'
+          ? indexOfUnescaped(s, '"', valueStart + 1, valueStart)
+          : s.indexOf(']', valueStart + 1);
       if (close >= 0) {
         rawValue = s.substring(valueStart, close + 1);
         int end = attributeLimit(s, close + 1, commaIsSeparator);
@@ -401,24 +437,51 @@ public class InternalUtils {
               + "delimiter; discarding it", name, s.substring(close + 1, end));
         }
         nextIndex = end + 1;
-      } else {
+      } else if (first == '"') {
         int end = attributeLimit(s, valueStart, commaIsSeparator);
         String content = s.substring(valueStart, end);
         warnings.warn("Metadata attribute \"{}\" has an unterminated {}; recovering best-effort",
-            name, first == '"' ? "quoted value" : "bracket value");
-        // An unterminated '[' is the one branch that re-encodes rather than preserving input bytes:
-        // bcftools exits 255 on a header line containing one, and AGENTS.md's floor forbids emitting a
-        // file bcftools cannot read at all, even for carried-forward content.
-        rawValue = first == '"' ? content : quote(content);
+            name, "quoted value");
+        rawValue = content;
+        nextIndex = end + 1;
+      } else {
+        // META's Values, unterminated '[': parse-only leniency -- emit the value as-is, unmodified, and let
+        // a downstream tool decide what to do with it, rather than re-encoding it (the unterminated-quote
+        // recovery above does not re-encode either; the ORIGINAL unterminated-bracket recovery this replaces
+        // used to re-quote defensively, back when '[' was a general-purpose delimiter reachable on any
+        // attribute -- now that it is scoped to this one spec-evidenced attribute, construction rejects this
+        // shape outright (see findEncodingProblems), so an emitted "as-is" value here can only ever be
+        // carried-forward content from someone else's file, never something this library originated.
+        int end = attributeLimit(s, valueStart, commaIsSeparator);
+        rawValue = s.substring(valueStart, end);
+        warnings.warn("Metadata attribute \"{}\" has no closing ']'; preserving its value as-is", name);
         nextIndex = end + 1;
       }
     } else {
       int end = attributeLimit(s, valueStart, commaIsSeparator);
       // leading 0x20 was already consumed before valueStart, so this only strips the trailing run
-      rawValue = stripAsciiSpaces(s.substring(valueStart, end));
-      if (rawValue.indexOf('<') >= 0 || rawValue.indexOf('>') >= 0 || containsUnescapedQuote(rawValue)) {
-        warnings.warn("Metadata attribute \"{}\" has an unquoted value \"{}\" containing a character "
-            + "bcftools treats as structural; preserving it", name, rawValue);
+      String literal = stripAsciiSpaces(s.substring(valueStart, end));
+      if (first == '[' && literal.indexOf(']') < 0) {
+        // Splitting at the comma (since '[' is not comma-protecting outside ##META's Values) can turn a
+        // WELL-FORMED bracket value into something that looks unterminated once serialized on its own --
+        // e.g. "x=[a, b]" truncates to just "[a" here, the ']' having been discarded along with the "
+        // b]" fragment that follows the comma. Writing "[a" back out verbatim would manufacture a value
+        // bcftools cannot read (exit 255) from an input that was perfectly safe -- not a case of carrying
+        // forward already-malformed content, but of THIS library creating new fatal content via its own
+        // truncation. Defensively re-quote whenever the stored value dangles a '[' with no ']' anywhere in
+        // it, regardless of whether that happened via truncation or because the original input already had
+        // no closing ']' before this attribute's own boundary -- either way, quoting keeps the default write
+        // path from ever originating this shape.
+        rawValue = quote(literal);
+        warnings.warn("Metadata attribute \"{}\" has an unquoted value \"{}\" starting with '[' but never "
+            + "closing it; quoting it so it stays safe to write back out", name, literal);
+      } else {
+        rawValue = literal;
+        if (first == '[' || literal.indexOf('<') >= 0 || literal.indexOf('>') >= 0
+            || containsUnescapedQuote(literal)) {
+          warnings.warn("Metadata attribute \"{}\" has an unquoted value \"{}\" containing a character "
+              + "bcftools treats as structural; preserving it", name, literal);
+        }
       }
       nextIndex = end + 1;
     }
@@ -431,8 +494,10 @@ public class InternalUtils {
    * true}.
    *
    * @param innerText the attribute list WITHOUT the surrounding {@code <} and {@code >}
+   * @param kind the declaration type this attribute list belongs to (e.g. {@code "META"}) -- see {@link
+   * #parseOneAttribute}'s {@code kind} parameter
    */
-  static List<Attribute> tokenizeAttributeList(String innerText, VcfWarnings warnings) {
+  static List<Attribute> tokenizeAttributeList(String innerText, VcfWarnings warnings, String kind) {
     List<Attribute> attributes = new ArrayList<>();
     int n = innerText.length();
     if (n == 0) {
@@ -441,7 +506,7 @@ public class InternalUtils {
     boolean trailingSeparator = innerText.charAt(n - 1) == ',';
     int i = 0;
     while (i < n) {
-      AttributeParseResult result = parseOneAttribute(innerText, i, true, warnings);
+      AttributeParseResult result = parseOneAttribute(innerText, i, true, warnings, kind);
       if (result.attribute() != null) {
         attributes.add(result.attribute());
       }
@@ -453,35 +518,44 @@ public class InternalUtils {
     return attributes;
   }
 
-  static Map<String, String> extractPropertiesFromLine(String value, VcfWarnings warnings) {
-    return foldAttributes(tokenizeAttributeList(value, warnings), warnings);
+  static Map<String, String> extractPropertiesFromLine(String value, VcfWarnings warnings, String kind) {
+    return foldAttributes(tokenizeAttributeList(value, warnings, kind), warnings);
   }
 
   /**
    * Folds tokenized attributes into the {@code Map} the model consumes. Owns the duplicate-name rule -- warn
-   * and keep last -- which was previously in {@code extractProperties}; see BCFTOOLS_VERSION_DEPENDENCIES.md.
-   * A plain map fold would keep last but silently lose the warning.
+   * and keep first -- which was previously in {@code extractProperties}; see VCF_SPEC_AMBIGUITIES.md.
+   * A plain map fold would keep last but silently lose the warning. Also owns the parse-time
+   * {@link #METADATA_ATTRIBUTE_NAME_PATTERN} check, run once per surviving key after the fold.
    */
   private static Map<String, String> foldAttributes(List<Attribute> attributes, VcfWarnings warnings) {
     Map<String, String> properties = new LinkedHashMap<>();
     for (Attribute attribute : attributes) {
       if (properties.containsKey(attribute.name())) {
-        // Keeping the LAST value here is deliberate and differs from every other duplicate-key case in this
-        // codebase (which keep the first) -- this handles a duplicate ATTRIBUTE within one metadata declaration's
-        // own <ID=...,Number=...,...> structure, a different scenario from a duplicate declaration ID across
-        // separate lines or a duplicate INFO/FORMAT key within a data record. hts-specs' test/vcf/{4.1,4.2,4.3}
-        // conformance suite has no fixture for a repeated attribute within one declaration. Confirmed live against
-        // bcftools 1.23.1: declaring Type twice (e.g. Type=Integer,...,Type=String) with a value only valid under
-        // one of the two, then forcing conversion to binary BCF (which enforces the declared type, unlike
-        // plain-text VCF), shows bcftools always resolves to the LAST-declared value regardless of which type came
-        // first -- e.g. Type=String declared last preserves a non-numeric value as-is; Type=Integer declared last
-        // silently coerces the same non-numeric value to the missing sentinel. vcf_validator 0.10.2 rejects this
-        // case outright, but per this project's tie-breaker hierarchy its stricter structural-field behavior is
-        // non-authoritative when it disagrees with bcftools.
-        warnings.warn("Metadata declaration contains duplicate attribute \"{}\"; keeping the last value",
+        // Keeping the FIRST value is one policy applied evenly: AGENTS.md requires keep-first for a duplicate
+        // declaration ID across all eight declaration types ("never keep-last/overwrite"), and this is the same shape
+        // one level down. No VCF version (4.2-4.5) contemplates a repeated attribute name within one
+        // declaration, so there is no spec to defer to and this is a library choice -- deliberately NOT derived
+        // from bcftools, which keeps LAST for a non-ID attribute and FIRST for ID (both measured, bcftools
+        // 1.23.1). Diverging from a tool on input no spec contemplates is a decision, not a defect; see
+        // VCF_SPEC_AMBIGUITIES.md's "Duplicate attribute within one metadata declaration" entry.
+        // The duplicate is unrepresentable either way -- this Map holds one value per key -- so keep-first loses
+        // no more data than keep-last; it selects the other survivor.
+        warnings.warn("Metadata declaration contains duplicate attribute \"{}\"; keeping the first value",
             attribute.name());
+        continue;
       }
       properties.put(attribute.name(), attribute.rawValue());
+    }
+    // Parse-time counterpart to findEncodingProblems' construction/write-time check of the same pattern. Runs
+    // POST-fold, once per surviving key: a repeated invalid name is one bad name, and the duplicate-attribute
+    // warning above already reports the repetition. Warn, never drop -- the value is preserved and re-emitted,
+    // per the Parser Validation Policy. Without this, an attribute name containing e.g. '>' was silently
+    // accepted at parse time and first surfaced only at validateBeforeWrite().
+    for (String name : properties.keySet()) {
+      if (!METADATA_ATTRIBUTE_NAME_PATTERN.matcher(name).matches()) {
+        warnings.warn("Metadata attribute name \"{}\" is not valid", name);
+      }
     }
     return properties;
   }
@@ -501,7 +575,9 @@ public class InternalUtils {
    * @return the parsed attribute, or {@code null} if it has no {@code =} or an empty name (warned)
    */
   static @Nullable Attribute parseAttribute(String attribute, VcfWarnings warnings) {
-    return parseOneAttribute(attribute, 0, false, warnings).attribute();
+    // "" can never equal "META", so this test-facing surface never takes the Values-specific bracket branch --
+    // it has no declaration-type context to offer, and no caller needs it (see parseOneAttribute's kind param).
+    return parseOneAttribute(attribute, 0, false, warnings, "").attribute();
   }
 
   // public only because 122 test call sites (InfoMetadataTest, FormatMetadataTest, IdDescriptionMetadataTest,
@@ -587,17 +663,25 @@ public class InternalUtils {
   }
 
   private static final Set<String> RESERVED_METADATA_KEYS =
-      Set.of("fileformat", "ALT", "FILTER", "INFO", "FORMAT", "contig", "SAMPLE", "PEDIGREE");
+      Set.of("fileformat", "ALT", "FILTER", "INFO", "FORMAT", "contig", "SAMPLE", "PEDIGREE", "META");
 
   /**
    * @return true if {@code name} is one of the structured metadata declaration keywords (e.g. "INFO",
-   * "FORMAT") that {@link VcfParser#parseMetadata} always routes to its own structured-parsing path -- a raw
-   * property using one of these names could never be re-read as what it was written, since reparsing would
-   * route it through the wrong path entirely
+   * "FORMAT") that {@link VcfParser#parseMetadata} routes to its own structured-parsing path under {@code
+   * version} -- a raw property using one of these names could never be re-read as what it was written, since
+   * reparsing would route it through the wrong path entirely. "META" is excluded below {@link VcfVersion#V4_3},
+   * since {@code ##META} does not exist before VCFv4.3 (see {@code VcfParser.parseMetadata}'s own "META" case)
+   * and a raw "META" property there reparses as itself, not as a structured declaration.
    */
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
-  public static boolean isReservedMetadataKey(@Nullable String name) {
-    return name != null && RESERVED_METADATA_KEYS.contains(name);
+  public static boolean isReservedMetadataKey(@Nullable String name, VcfVersion version) {
+    if (name == null) {
+      return false;
+    }
+    if (name.equals("META") && !version.isAtLeast(VcfVersion.V4_3)) {
+      return false;
+    }
+    return RESERVED_METADATA_KEYS.contains(name);
   }
 
   /**
@@ -1345,8 +1429,8 @@ public class InternalUtils {
 
   /**
    * A problem found by {@link #findEncodingProblems}. {@code unreadableOutput} marks the ones that throw at
-   * write time too ({@link #checkMetadataPropertyEncodingForWrite}), and it groups two genuinely different
-   * reasons under one flag, not one reason with two examples:
+   * write time too ({@link #checkMetadataPropertyEncodingForWrite}), and it groups three genuinely different
+   * reasons under one flag, not one reason with three examples:
    * <ul>
    *   <li>The unterminated-bracket shape (no closing {@code ]} at all) throws because bcftools genuinely
    *   cannot read the file at all (measured: exit 255) -- the absolute floor {@code AGENTS.md}'s Writer
@@ -1357,6 +1441,13 @@ public class InternalUtils {
    *   shape as a STORED value on the parse path (a comma always ends an unquoted value there; trailing
    *   content after a bracket's close is always split off and warned about separately, never merged into
    *   the stored value), so throwing here harms no carried-forward content and costs nothing.</li>
+   *   <li>The malformed-quoted-value-with-a-comma shape (a value starting with {@code "} that fails
+   *   {@link #isQuoted} and also contains a {@code ,}) throws for a third reason that is about
+   *   THIS library, not bcftools: a value with no valid closing {@code "} is recovered by rescanning for the
+   *   next comma rather than the value's own end ({@link #parseOneAttribute}'s {@code close<0} branch), so
+   *   re-emitting this shape verbatim and re-parsing it silently drops everything after that comma. Like the
+   *   previous bullet, the parse path itself can never produce this exact shape as a stored value (its own
+   *   recovery already truncates at the first comma), so throwing here costs nothing either.</li>
    * </ul>
    */
   private record EncodingProblem(String message, boolean unreadableOutput) {}
@@ -1390,18 +1481,59 @@ public class InternalUtils {
         continue;
       }
       String value = property.getValue();
-      if (isQuoted(value)) {
+      // Select the branch on the value's first byte, exactly as the tokenizer itself does (design spec's
+      // §5, "Construction-time value predicate") -- selecting on well-formedness instead is a defect: a
+      // malformed value in one quoting form would fail that form's test, fall through to the literal
+      // branch, and (for a form other than a leading '"') might pass that branch's checks too and be
+      // emitted verbatim.
+      if (value.startsWith("\"")) {
+        if (!isQuoted(value)) {
+          if (value.indexOf(',') >= 0) {
+            // Fatal for a different reason than bcftools: OUR OWN tokenizer's recovery for a malformed
+            // quoted value (parseOneAttribute's close<0 branch) re-scans for the next COMMA, not the value's
+            // own end, so an embedded comma is genuinely ambiguous on re-parse. Emitted verbatim,
+            // `x="abc,def` re-parses to just `x="abc`, with "def" silently dropped (it has no '=' of its
+            // own, so it warns and is discarded rather than merged back in) -- unreadable BY US regardless
+            // of what bcftools does with it, so this must throw rather than warn, the same as the plain
+            // unquoted-comma case below.
+            problems.add(new EncodingProblem(
+                kind + " metadata property " + name + " has a malformed quoted value containing a comma", true));
+          } else {
+            // Non-fatal, same as the unescaped '<'/'>' cases below: measured, bcftools does not hard-fail on
+            // an unterminated leading quote ("ab, no closing quote) -- it warns ("Incomplete header line")
+            // and mangles the declaration, but the file stays readable (design spec's Evidence table,
+            // "quote-position value" row). This used to be caught incidentally by containsUnescapedQuote() in
+            // the literal branch below, once isQuoted's well-formedness check (rather than the leading '"'
+            // byte) selected the branch -- one check covering another's gap, the exact pattern §5 was written
+            // to prevent.
+            problems.add(new EncodingProblem(
+                kind + " metadata property " + name + " has a malformed quoted value", false));
+          }
+        }
         continue;
       }
-      if (value.startsWith("[")) {
-        if (!isWellFormedBracketValue(value)) {
-          // Two different reasons converge on the same throw -- see EncodingProblem's own Javadoc. An
-          // unterminated bracket ('[abc', no closing ']' at all) makes bcftools exit 255: the file becomes
-          // genuinely unreadable, the absolute floor. A bracket that DOES close but has junk after it
-          // ('[a]b]') only makes bcftools exit 0 and drop the one declaration -- the same outcome an invalid
-          // name only warns for -- but the tokenizer can never produce this exact shape as a stored value on
-          // the parse path either (trailing content after a bracket's close is always split off and warned
-          // about separately, never merged into the stored value), so throwing costs nothing here too.
+      // Bracket-quoting ACCEPTANCE (a well-formed value protecting an interior comma) is scoped to ##META's
+      // Values ONLY -- see VCF_SPEC_AMBIGUITIES.md's "General bracket-list quoting beyond ##META's Values"
+      // entry. But bcftools' OWN generic bracket handling is unaffected by that scoping: it still treats ANY
+      // leading '[' as opening a quoted span, regardless of attribute or declaration type, and keeps scanning
+      // for a closing ']' past the end of the line (even past this declaration's own closing '>') if none
+      // exists. A value with NO ']' anywhere is therefore universally unreadable to bcftools (measured exit
+      // 255) no matter which attribute carries it, so that floor is checked unconditionally, before the
+      // Values-only gate below.
+      if (value.startsWith("[") && value.indexOf(']', 1) < 0) {
+        problems.add(new EncodingProblem(
+            kind + " metadata property " + name + " has an unterminated bracket value bcftools cannot read",
+            true));
+        continue;
+      }
+      if (value.startsWith("[") && isMetaValues(kind, name)) {
+        if (!isWellFormedMetaValuesBracket(value)) {
+          // The unterminated case was already thrown above (universally); what's left here is a bracket that
+          // DOES close but has junk after it ('[a]b]') -- that only makes bcftools exit 0 and drop the one
+          // declaration -- the same outcome an invalid name only warns for -- but the tokenizer can never
+          // produce this exact shape as a stored value on the parse path either (trailing content after a
+          // bracket's close is always split off and warned about separately, never merged into the stored
+          // value), so throwing costs nothing here too.
           problems.add(new EncodingProblem(
               kind + " metadata property " + name + " has a malformed bracket value", true));
         }
@@ -1411,13 +1543,15 @@ public class InternalUtils {
         // bcftools merely discards the declaration at exit 0 for this (the same outcome the invalid-name
         // case above only warns for), but the tokenizer can never produce a STORED literal value containing
         // a comma -- an unquoted value always terminates at the first one -- so no carried-forward content
-        // is harmed by throwing, and the check costs nothing. See EncodingProblem's own Javadoc.
+        // is harmed by throwing, and the check costs nothing. See EncodingProblem's own Javadoc. This also
+        // catches a leading '[' outside Values that contains a comma (e.g. "[a,b]" on some other attribute):
+        // it is exactly as unreadable-on-reparse as any other unquoted comma, so it gets the same throw.
         problems.add(new EncodingProblem(
             kind + " metadata property " + name + " contains an unquoted comma", true));
         continue;
       }
-      if (value.indexOf('<') >= 0 || value.indexOf('>') >= 0 || containsUnescapedQuote(value)
-          || value.startsWith(" ") || value.endsWith(" ")) {
+      if (value.startsWith("[") || value.indexOf('<') >= 0 || value.indexOf('>') >= 0
+          || containsUnescapedQuote(value) || value.startsWith(" ") || value.endsWith(" ")) {
         problems.add(new EncodingProblem(kind + " metadata property " + name
             + " contains an unquoted structural delimiter or layout whitespace", false));
       }
@@ -1426,13 +1560,17 @@ public class InternalUtils {
   }
 
   /**
-   * @return whether {@code value} is a well-formed bracket value: it starts with {@code [} and its FIRST
-   * unescaped {@code ]} is its last character. Deliberately calls the same {@link #indexOfUnescaped} the
-   * tokenizer uses, so construction and parsing cannot disagree about where a bracket value ends -- the exact
-   * divergence this whole change exists to remove.
+   * @return whether {@code value} (already known to start with {@code [}, and only ever consulted for
+   * {@code ##META}'s {@code Values} attribute, via {@link #isMetaValues}) is well-formed: its FIRST literal
+   * {@code ]} is its last character. Deliberately a plain, unescaped scan -- unlike {@link #isQuoted}'s
+   * double-quote form, the spec defines no escape mechanism for {@code [}/{@code ]} -- applying the identical
+   * rule {@link #parseOneAttribute}'s {@code isMetaValues} branch uses to find a value's closing {@code ]}
+   * (a different scan in code, since one runs over the whole remaining line at parse time and this one runs
+   * over an already-extracted, already-stored value at construction time, but the same first-literal-{@code
+   * ]} rule), so construction and parsing cannot disagree about where a bracket value ends.
    */
-  private static boolean isWellFormedBracketValue(String value) {
-    return indexOfUnescaped(value, ']', 1, 0) == value.length() - 1;
+  private static boolean isWellFormedMetaValuesBracket(String value) {
+    return value.indexOf(']', 1) == value.length() - 1;
   }
 
   static boolean isQuoted(String value) {

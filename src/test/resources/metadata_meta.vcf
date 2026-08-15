@@ -1,0 +1,9 @@
+##fileformat=VCFv4.3
+##Note=These four ##META lines are copied verbatim from VCFv4.3.tex:273-276, including its Type-before-Number attribute order, which is out of BaseMetadata's canonical ID,Number,Type,... order but is deliberately NOT attribute-order checked (see MetaMetadata's Javadoc and VCF_SPEC_AMBIGUITIES.md's "##META attribute order" entry): no spec version requires an order, and bcftools 1.23.1 accepts this exact ordering silently; only vcf_validator 0.10.2 rejects it ("Error in META metadata"), and it is not credible here because it also rejects the spec's own worked example.
+##META=<ID=Assay,Type=String,Number=.,Values=[WholeGenome, Exome]>
+##META=<ID=Disease,Type=String,Number=.,Values=[None, Cancer]>
+##META=<ID=Ethnicity,Type=String,Number=.,Values=[AFR, CEU, ASN, MEX]>
+##META=<ID=Tissue,Type=String,Number=.,Values=[Blood, Breast, Colon, Lung, ?]>
+##contig=<ID=1,length=249250621>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+1	123	.	TC	T	.	.	.

@@ -99,9 +99,12 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   its value, is still rejected. VCFv4.3 removed the key (VCFv4.3.tex line 2168, "Removed unused and ill-defined GLE
   FORMAT tag"), so from VCFv4.3 a key named `GLE` is an ordinary custom key and its value is colon-rejected like
   every other key's.
-- `VcfWriter.writeLine` is given a number of samples that disagrees with the header's declared sample count, any
-  FORMAT/sample data at all when the header declares no samples, or an empty `REF` (which has no missing-value
-  sentinel in the spec, unlike `ALT`/`ID`/`FILTER`): in every case the output would not be valid, re-parseable VCF.
+- `VcfWriter.writeLine` throws `VcfFormatException` if it is given a number of samples that disagrees with the
+  header's declared sample count, or any FORMAT/sample data at all when the header declares no samples: in
+  either case the output would not be valid, re-parseable VCF. (An empty `REF` -- which has no missing-value
+  sentinel in the spec, unlike `ALT`/`ID`/`FILTER` -- needs no corresponding guard here: `VcfPosition`'s own
+  `checkRef()` runs unconditionally in every constructor, so a `VcfPosition` can never carry an empty `REF`
+  into this method to begin with.)
 ### Direct/programmatic construction
 
 - A metadata declaration built under a strict `VcfContext` (e.g.
@@ -186,31 +189,36 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   declaration instead (matching bcftools; see
   [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md)), routed to that context's
   `VcfWarnings`. `VcfParser`'s own internal use always builds a lenient context, so parsing a file's behavior
-  is unchanged by any of this. `##PEDIGREE`'s own missing-ID rule differs from the six keyed types just
+  is unchanged by any of this. `##PEDIGREE`'s own missing-ID rule differs from the seven keyed types just
   described in one respect -- see [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md)'s
-  seventh-type paragraph in "Missing or empty ID": under VCFv4.3+ a strict context throws exactly like the six
+  eighth-type paragraph in "Missing or empty ID": under VCFv4.3+ a strict context throws exactly like the seven
   keyed types, but a lenient one keeps the declaration rather than dropping it, since `##PEDIGREE` is
   `List`-backed and has no map slot to fail to claim.
 - `VcfMetadata.Builder.replaceAlt()` / `replaceInfo()` / `replaceFormat()` / `replaceFilter()` / `replaceContig()`
-  / `replaceSample()` throw `VcfFormatException` for an `ID` with no existing declaration to replace -- in both
+  / `replaceSample()` / `replaceMeta()` throw `VcfFormatException` for an `ID` with no existing declaration to replace -- in both
   a lenient and a strict context, unlike most rules in this section. This is deliberate, not an oversight: a
   missing replace target is a programming error in either mode, not a content violation, so it is not routed
   through `warnOrThrow`. See
   [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md)'s "`replaceXxx`: the supported way to
   overwrite a declaration" section.
-- `VcfMetadata.Builder`'s content-accepting `addXxx`/`replaceXxx` routes (25 checked call sites across the
-  seven kinds' typed and `Map` overloads) call `InternalUtils.checkMetadataPropertyEncoding`, which throws
+- `VcfMetadata.Builder`'s content-accepting `addXxx`/`replaceXxx` routes (27 checked call sites across the
+  eight kinds' typed and `Map` overloads) call `InternalUtils.checkMetadataPropertyEncoding`, which throws
   `VcfFormatException`, unconditionally in both a lenient and a strict context, for ANY problem
   `InternalUtils.findEncodingProblems` finds in the constructed declaration's `getPropertiesRaw()`: a property
   name outside `InternalUtils.METADATA_ATTRIBUTE_NAME_PATTERN` (`^[A-Za-z_][0-9A-Za-z_.]*$`, matching bcftools
-  -- see `VCF_SPEC_AMBIGUITIES.md`'s "Metadata attribute NAME grammar" entry), a malformed bracket value (one
-  that does not close with its FIRST unescaped `]`, checked via the same `indexOfUnescaped` the tokenizer
-  itself uses), or -- for a value that is neither quoted nor bracket-shaped -- an unquoted `,`, `<`, `>`, an
+  -- see `VCF_SPEC_AMBIGUITIES.md`'s "Metadata attribute NAME grammar" entry), a value starting with `[` and
+  never closing with a `]` anywhere (checked UNCONDITIONALLY, on any attribute of any declaration type, since
+  bcftools' own generic bracket handling hard-fails the whole file on this shape regardless of attribute name
+  -- see `STRUCTURAL_DELIMITER_HANDLING.md`'s "Brackets: a second value-quoting form, scoped to `##META`'s
+  `Values`"), beyond that a malformed bracket value on `##META`'s `Values` specifically (one that does close
+  but not with its FIRST LITERAL `]`, checked via `InternalUtils.isWellFormedMetaValuesBracket`'s plain,
+  unescaped scan -- unlike `"`, the spec defines no escape mechanism for `[`/`]`, so this deliberately does
+  NOT use `indexOfUnescaped`), or -- for a value that is neither quoted nor bracket-shaped -- an unquoted `,`, `<`, `>`, an
   unescaped `"`, or leading/trailing space. `=` is deliberately NOT one of these: an unquoted value may contain
   it freely, unlike before this check was aligned with the attribute-list tokenizer's own grammar. This matches
   `checkNoLineTerminator` rather than being routed through `warnOrThrow`, since this is structural corruption
   (`AGENTS.md`'s Parser Validation Policy: "invalid delimiter handling that changes field alignment"), not a
-  case a lenient warning could usefully recover from. `VcfParser`'s own seven package-private
+  case a lenient warning could usefully recover from. `VcfParser`'s own eight package-private
   `addXxxTrusted(Map)` routes skip this check, because the parser deliberately warns-and-recovers on an
   unescaped quote and stores the recovered value; `Builder.addRawProperty` applies a narrower, also-
   unconditional rule instead (rejects `=` only in the generic property's *name*, since a `##key=value` line is
@@ -233,7 +241,9 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   warns to the writer's own `m_warnings` sink and leaves the value unchanged, since the file stays
   bcftools-readable and this route's content may be carried-forward (parsed, not originated) rather than
   something this write call created -- the same originated-vs-carried-forward distinction `AGENTS.md`'s
-  "bcftools is asymmetric evidence" section states, using `##contig=<ID=1,a-b=v>` as its own worked example.
+  "bcftools is asymmetric evidence" section states, using `##contig=<ID=1,a-b=v>` as its own worked example. An
+  invalid property *name* specifically is not write-only: the parse path warns on it too (see "Metadata
+  declarations" in the Lenient section below) rather than only surfacing it here for the first time.
 - `VcfMetadata.Builder` throws `VcfFormatException` for a declaration built under a *different* `VcfContext`
   instance (compared by reference, not value) than the builder's own. `VcfMetadata` itself has no instance
   mutators to add this check to -- it is immutable, and `getInfo()`/its siblings return memoized unmodifiable
@@ -241,8 +251,9 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   standalone object before it is ever added to a builder: without it, a caller could construct one under one
   `VcfContext` and add it to a `VcfMetadata.Builder` built under a different one, silently routing that
   declaration's own future validation (e.g. a re-run of `validate()`) to the wrong `VcfWarnings` sink than the
-  metadata object it now lives in uses. See `VALIDATION_PHILOSOPHY.md:60` and
-  `DUPLICATE_METADATA_ID_HANDLING.md:34`.
+  metadata object it now lives in uses. See `VALIDATION_PHILOSOPHY.md:64`
+  ("A declaration built under one context cannot be moved into a metadata object built under another by any
+  route (see `VcfMetadata.checkSameContext`)").
 - `VcfContext.newRecord` throws `VcfFormatException` if its position or any of its samples was created under a
   different `VcfContext` instance, for the same reason -- a record assembled from two contexts has no
   unambiguous warnings destination, and no unambiguous resolved VCF version either.
@@ -312,7 +323,7 @@ The default writer path is optimized for data written directly after parsing. It
 and maintains record and sample-column structure without full revalidation. If data has been mutated and a full
 structural validity and diagnostic check is required, build the writer with `VcfWriter.Builder.validateBeforeWrite()`.
 In that mode, structurally invalid output is rejected and detected semantic non-compliance is reported with a
-warning. This mode also enforces that every `INFO`/`FORMAT`/`FILTER`/`ALT`/`contig`/`SAMPLE` metadata entry's own
+warning. This mode also enforces that every `INFO`/`FORMAT`/`FILTER`/`ALT`/`contig`/`SAMPLE`/`META` metadata entry's own
 `ID` property must still match the key it's stored under in `VcfMetadata`'s maps (an entry's raw `ID` changing to
 a different value, or being removed entirely, without it being reflected in the map key would otherwise make the
 header declare a different (or missing) ID than what records reference by that entry's map key). No public API
@@ -352,14 +363,28 @@ is a structural failure and still throws -- see the strict section above):
   See [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md) for the full per-type
   bcftools/vcf_validator comparison and the empty-vs-missing rationale, including the distinct already-stored
   case (an object whose `ID` is live-mutated to blank after being stored is not retroactively removed).
-  `##PEDIGREE` is a seventh, differently-shaped case gated on VCFv4.3+ specifically (VCFv4.2's own `##PEDIGREE`
+  `##PEDIGREE` is an eighth, differently-shaped case gated on VCFv4.3+ specifically (VCFv4.2's own `##PEDIGREE`
   grammar has no `ID` attribute at all, so this never fires under 4.2): a missing/empty/whitespace-only `ID`
   warns but the declaration is **kept**, not dropped, and `VcfWriter.validateMetadata()` re-checks the same
   condition at write time under `validateBeforeWrite()`. Every one of these checks compares the `ID` unquoted
   (see AGENTS.md's "Unquoting before internal use" policy), so a quoted-empty (`ID=""`) or quoted-whitespace
   (`ID="   "`) value is caught identically to its unquoted equivalent. See
-  [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md)'s seventh-type paragraph for why
+  [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md)'s eighth-type paragraph for why
   (`List`-backed, so nothing is "cannot be stored" for).
+- `##META` itself does not exist as a structured declaration type before VCFv4.3 -- 0 occurrences in
+  `VCFv4.1.tex`/`VCFv4.2.tex`; `VCFv4.3.tex`'s changelog at line 2155 reads "Introduced ##META header lines
+  for defining phenotype metadata". Below VCFv4.3, `VcfParser.parseMetadata`'s `case "META":` falls through to
+  `addRawProperty` (the same path an unrecognized key takes) instead of `removeAngleBrackets`/
+  `parseMetadataProperty`, so a pre-4.3 `##META` line -- bracketed or freeform -- is preserved as an ordinary
+  raw property, not parsed into a `MetaMetadata`. `InternalUtils.isReservedMetadataKey` takes the declared
+  `VcfVersion` for the same reason: below 4.3, `"META"` is excluded from the reserved set so `addRawProperty`
+  (`VcfMetadata.java`) and `VcfWriter`'s reserved-key check don't drop/reject that raw property either.
+  **Deliberately not gated at `Builder.addMeta` or at write time** (unlike `##PEDIGREE`'s ID rule above): every
+  VCF version has always permitted an arbitrary unrecognized `##key=value` metadata line, and bcftools' header
+  tokenizer never consults `##fileformat` at all, so constructing or writing a structured `##META` under a
+  pre-4.3 declared version is not spec-non-compliant and there is no "bcftools would reject this" argument for
+  refusing it -- gating construction/write would be a stricter rule than parsing itself enforces, for no spec
+  or interop reason.
 - A missing or invalid `Number`, `Type`, or `Description`; an unquoted `Description`; or `Type=Flag` with a `Number`
   other than `0`. `Number`/`Type` validity is checked unquoted (a quoted `Number="1"` is treated the same as
   `Number=1`); the `Description` quoting check itself is deliberately the exception -- see AGENTS.md's
@@ -371,6 +396,17 @@ is a structural failure and still throws -- see the strict section above):
   section above enforces at construction time): warned, not dropped -- the declaration is still stored and
   usable. See `VCF_SPEC_AMBIGUITIES.md`'s "`##FORMAT`/`##INFO` declaration ID grammar is stricter than
   `##FILTER`/`##SAMPLE`/`##ALT`" entry.
+- A metadata declaration attribute NAME (the `key` in the `key=value` pairs a structured line's `<...>` value is
+  a comma-separated list of, per VCFv4.3.tex line 117, "a comma-separated list of key=value pairs, enclosed
+  within `<' and `>' characters" -- verbatim at VCFv4.4/4.5, silent on `key`'s own character-set grammar at
+  every version, so bcftools governs) that doesn't match
+  `InternalUtils.METADATA_ATTRIBUTE_NAME_PATTERN` (`^[A-Za-z_][0-9A-Za-z_.]*$`, matching bcftools): warned, not
+  dropped -- the value is still stored and re-emitted. Checked in `InternalUtils.foldAttributes`'s post-fold
+  loop, once per surviving key rather than once per parsed attribute, since a name repeated across two
+  invalid-named occurrences is one bad name and the fold loop's own duplicate-attribute warning already reports
+  the repetition. The same regex is also enforced at construction time (throws, see the strict section above)
+  and by `VcfWriter.Builder.validateBeforeWrite()` (warns, see above) -- see `VCF_SPEC_AMBIGUITIES.md`'s
+  "Metadata attribute NAME grammar" entry for the full three-stage picture.
 - A header/metadata sample-count mismatch, or a sample named in the header but absent from the metadata: warned
   during parsing, and separately by `VcfWriter.Builder.validateBeforeWrite()`'s `writeHeader()` (checked once,
   since `#CHROM`'s sample columns can't change after a `VcfMetadata` is built).
@@ -478,8 +514,6 @@ is a structural failure and still throws -- see the strict section above):
   `Number=G`/`Type=String` at all (see the removed-`GLE` entry above), so a non-canonical `GLE` declaration
   warns here under VCFv4.2 and earlier but is accepted without comment from VCFv4.3, where `GLE` is an ordinary
   custom key whose declaration is the only definition it has.
-- An `##INFO`/`##FORMAT`/`##ALT`/`##FILTER`/`##SAMPLE` declaration whose attributes are out of the canonical
-  `ID, Number, Type, Description, Source, Version` order every spec example uses.
 - An `##ALT` structural-variant ID (e.g. `<DEL:ME:ALU>`) that doesn't match VCF's reserved code hierarchy
   (DEL/INS/DUP/INV/CNV/BND and colon-delimited subtypes) — but only when the ID actually contains a colon; a
   colon-less ID (e.g. an IUPAC ambiguity code, or a `CN0`-through-`CN124`-style copy-number allele used by 1000
@@ -489,26 +523,31 @@ is a structural failure and still throws -- see the strict section above):
   "Reserved structural variant code re-used as a subtype" entry.
 ### Metadata declaration IDs: additional edge cases
 
-- Any of those same six types' `ID` that is present but blank or whitespace-only (`ID=` or `ID=   `) on an
+- Any of the seven ID-bearing declaration types' (`##contig`/`##INFO`/`##FORMAT`/`##FILTER`/`##SAMPLE`/`##ALT`/
+  `##META`) `ID` that is present but blank or whitespace-only (`ID=` or `ID=   `) on an
   object that already exists in storage — as opposed to a declaration still being parsed, which is dropped
   before storage per the missing/blank-ID bullet above: warns (VCFv4.3.tex line 121, the same citation as
   that bullet). This covers a declaration built directly or live-mutated after construction, which the
   parser's own drop-before-storage check never sees. A whitespace-only `ID` falls under this bullet, not the
   whitespace-containing-`ID` bullet below (which fires only when trimming the `ID` would leave usable
   content).
-- A `##contig`/`##INFO`/`##FORMAT`/`##FILTER`/`##SAMPLE`/`##ALT` declaration's `ID` containing whitespace (as
-  opposed to being entirely blank/missing, handled by the two bullets above): warns uniformly across all six
-  types. See `VCF_SPEC_AMBIGUITIES.md`'s "Whitespace in `##FILTER`/`##SAMPLE` declaration IDs" entry (titled
-  after the two types with the least direct spec support, but the decision covers all six) for the full
-  per-version spec/hts-specs-fixture/bcftools/vcf_validator comparison. `##ALT` IDs also separately warn on
-  angle brackets (`<`/`>`), per VCFv4.2.tex line 105 -- an `##ALT`-specific restriction not extended to the
-  other five types, since no fixture or spec passage evidences it for them.
-- Any of those same six declaration types' `ID` containing a comma: warns, with no exception for `##ALT` (unlike
-  angle brackets above) — a comma is never part of `##ALT`'s own colon-delimited structural-variant-code grammar
-  or its colonless conventions (an IUPAC ambiguity code or a `CN0`-style copy-number allele) either. This follows
-  directly from every `##INFO`/`##FILTER`/`##FORMAT`/`##ALT`/`##contig`/`##SAMPLE` worked example's own
-  comma-delimited attribute-list syntax, not a per-type policy choice, so it needs no bcftools/vcf_validator
-  corroboration the way the whitespace check above does.
+- A `##contig`/`##INFO`/`##FORMAT`/`##FILTER`/`##SAMPLE`/`##ALT`/`##META` declaration's `ID` containing
+  whitespace (as opposed to being entirely blank/missing, handled by the two bullets above): warns uniformly
+  across all seven types, since every one of them extends `IdMetadata` and shares its `init()` check. See
+  `VCF_SPEC_AMBIGUITIES.md`'s "Whitespace in `##FILTER`/`##SAMPLE` declaration IDs" entry (titled after the two
+  types with the least direct spec support, but the decision covers all seven) for the full
+  per-version spec/hts-specs-fixture/bcftools/vcf_validator comparison (`##META` was not itself part of that
+  comparison, since it did not yet route through this check at the time -- it inherits the same rule as the
+  same code path). `##ALT` IDs also separately warn on angle brackets (`<`/`>`), per VCFv4.2.tex line 105 -- an
+  `##ALT`-specific restriction not extended to the other six types, since no fixture or spec passage evidences
+  it for them.
+- Any of those same seven declaration types' `ID` containing a comma: warns, with no exception for `##ALT`
+  (unlike angle brackets above) — a comma is never part of `##ALT`'s own colon-delimited structural-variant-code
+  grammar or its colonless conventions (an IUPAC ambiguity code or a `CN0`-style copy-number allele) either.
+  This follows directly from every `##INFO`/`##FILTER`/`##FORMAT`/`##ALT`/`##contig`/`##SAMPLE` worked example's
+  own comma-delimited attribute-list syntax (and, for `##META`, the same `IdMetadata.init()` check those six
+  share), not a per-type policy choice, so it needs no bcftools/vcf_validator corroboration the way the
+  whitespace check above does.
 
 ### Other lenient behavior
 
@@ -572,9 +611,11 @@ bcftools-confirmed rationale.
 This library targets VCFv4.3. The eight rules indexed below are all target-spec rules that this library
 applies to *every* declared `##fileformat`, including `VCFv4.1` and `VCFv4.2` files that predate the rule --
 none of them is version-gated. A version branch is reserved instead for a rule whose *meaning* genuinely
-differs between versions and where both readings are valid (`GP`, `GLE`, `CNL`), plus one differently-shaped
-case -- `##PEDIGREE` requiring an `ID` at VCFv4.3+, a required-field rule on a declaration rather than a
-value- or `Number`-meaning change (see its own entry in the lenient section above) -- see the entries for
+differs between versions and where both readings are valid (`GP`, `GLE`, `CNL`), plus two differently-shaped
+cases -- `##PEDIGREE` requiring an `ID` at VCFv4.3+, a required-field rule on a declaration rather than a
+value- or `Number`-meaning change (see its own entry in the lenient section above), and `##META` not existing
+as a structured declaration type at all before VCFv4.3, gating the declaration type's existence rather than
+one of its fields (see its own entry in the lenient section above too) -- see the entries for
 those above, and `VALIDATION_PHILOSOPHY.md`'s "How the declared version is dispatched" for the mechanism.
 Each rule is now tabled with the rest of its subject matter rather than gathered here as a separate citation
 appendix:

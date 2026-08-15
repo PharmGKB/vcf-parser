@@ -118,20 +118,29 @@ is `VCFv4.2`), and a bare ordinal comparison silently changes meaning if a versi
 enum. `isAtLeast` also rejects a `null` argument with `VcfFormatException` rather than answering it.
 
 **Gate only a genuine change of meaning.** A version branch is reserved for a rule whose meaning differs
-between versions with both readings valid. Today that is four rules -- three of that shape, plus one
-differently-shaped fourth: `FORMAT/GP` (phred-scaled under VCFv4.2 and earlier per VCFv4.2.tex line 227, a
+between versions with both readings valid. Today that is five rules -- three of that shape, plus two more,
+differently shaped: `FORMAT/GP` (phred-scaled under VCFv4.2 and earlier per VCFv4.2.tex line 227, a
 0-1 probability from VCFv4.3 per VCFv4.3.tex line 491), `FORMAT/GLE` (a reserved key at VCFv4.1.tex line
 208/VCFv4.2.tex line 225, removed by VCFv4.3 per VCFv4.3.tex line 2168), `FORMAT/CNL`'s expected `Number` (`.`
 at VCFv4.2.tex line 308 and earlier, `G` from VCFv4.3.tex line 678 -- see
-`ReservedFormatProperty.CopyNumberLikelihood`'s own comment), and, differently shaped because it is a
+`ReservedFormatProperty.CopyNumberLikelihood`'s own comment); then, differently shaped because it is a
 required-field rule on a declaration rather than a value- or `Number`-meaning change, `##PEDIGREE` requiring an
 `ID` at VCFv4.3+ (VCFv4.2's own `##PEDIGREE` grammar has no `ID` attribute at all, so the rule cannot even be
 asked under 4.2 -- enforced at `VcfMetadata.Builder.addPedigree` and re-checked at write time by
-`VcfWriter.validateMetadata()` under `validateBeforeWrite()`). Where the target VCF specification (VCFv4.3)
+`VcfWriter.validateMetadata()` under `validateBeforeWrite()`); and, differently shaped again because it gates
+whether the declaration type is recognized as structured at all rather than a rule on one of its fields,
+`##META` not existing before VCFv4.3 (0 occurrences in VCFv4.1.tex/VCFv4.2.tex; VCFv4.3.tex's own changelog at
+line 2155 reads "Introduced ##META header lines for defining phenotype metadata" -- enforced only at
+`VcfParser.parseMetadata`'s own "META" case, and at `InternalUtils.isReservedMetadataKey` so a pre-4.3 raw
+`META` property isn't dropped by `addRawProperty`/`VcfWriter`'s reserved-key check either; deliberately *not*
+re-checked at `VcfMetadata.Builder.addMeta` or at write time, unlike `##PEDIGREE` -- constructing or writing a
+structured `##META` under a pre-4.3 declared version isn't spec-non-compliant, since every version has always
+permitted an arbitrary unrecognized `##key=value` line, and bcftools' header tokenizer is version-independent
+regardless). Where the target VCF specification (VCFv4.3)
 states a rule directly, the rule is simply adopted at every version, including the 4.1/4.2 input that predates
 it; only where the target itself is silent does a version later than the target supply clarifying guidance
 instead -- either way there is no branch at all -- see `VALIDATION_REFERENCE.md`'s "Rules applied at every
-declared version" for that list, and its lenient section for the four gated rules' exact per-version behavior.
+declared version" for that list, and its lenient section for the five gated rules' exact per-version behavior.
 
 ## Where this applies
 
@@ -208,8 +217,9 @@ declared version" for that list, and its lenient section for the four gated rule
   out from under it) via its own local overrides of `putPropertyRaw`/`putAndQuoteProperty`, which throw
   `UnsupportedOperationException` even in-package. Those overrides were kept, not subsumed, once the base
   class itself became immutable: deleting them reopens the exact stale-dedup-cache bug they exist to prevent,
-  since the six keyed types' own `putPropertyRaw`/`putAndQuoteProperty` remain callable in-package for their
-  typed constructors' own populate step, and `PedigreeMetadata`'s dedup `Set` (unlike the six keyed types' own
+  since the seven keyed types' own `putPropertyRaw`/`putAndQuoteProperty` remain callable in-package for their
+  typed constructors' own populate step (or, for `##META`, its inherited `IdMetadata` populate step -- it has
+  no typed constructor of its own), and `PedigreeMetadata`'s dedup `Set` (unlike the seven keyed types' own
   `HashMap`, which is keyed by ID and so is self-correcting) has no recompute path if a stored entry's `ID`
   changes out from under it. See `WONT_FIX.md`'s "Scope of 'closed': the public API, not this package's own
   code" paragraph and `PedigreeMetadata`'s own class Javadoc.
@@ -285,7 +295,7 @@ declared version" for that list, and its lenient section for the four gated rule
      the quote characters, disappear before the check ever ran.
   3. **Source-form diagnostics.** A message whose job is to point the reader at a line in *their* file shows
      the source spelling, so they can find it (`VcfMetadata.checkSameContext`'s context-mismatch exception,
-     `VcfMetadata.java:475`: `throw new VcfFormatException("Declaration " + kind + " " +
+     `VcfMetadata.java:492`: `throw new VcfFormatException("Declaration " + kind + " " +
      md.getPropertyRaw("ID") + " was built under a " ...)`). This is
      not the same as a message *about* a value's content -- a grammar-check warning naming the value that
      failed sensibly shows the value form; choose per message by asking which one the reader needs.

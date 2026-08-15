@@ -70,7 +70,8 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
 - Test: `BcftoolsDependencyTest#testGenericPropertyEmptyBracketsBcftoolsRejects`,
   `#testGenericPropertyBracketedNoEqualsBcftoolsRejects`, `#testGenericPropertyBracketedWithEqualsBcftoolsAccepts`,
   `#testGenericPropertySquareBracketSubListBcftoolsAccepts`
-- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "`##pedigreeDB`/`##assembly` bracket collision" entry
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "`##pedigreeDB`/`##assembly` bracket-wrapped values colliding with
+  attribute-list grammar" entry
 
 ### Percent-encoding is never decoded
 - Test: `BcftoolsDependencyTest#testPercentEncodingBcftoolsDecodesNothingAnywhere`
@@ -97,28 +98,52 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
 
 ### Unterminated bracket value in a metadata attribute
 - Test: `BcftoolsDependencyTest#testUnterminatedBracketValueBcftoolsHardErrors`
-- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Unquoted metadata attribute value: malformed bracket vs. `<`/`>`/`;`"
-  entry. `InternalUtils.checkMetadataPropertyEncoding`/`checkMetadataPropertyEncodingForWrite` both throw for
-  this shape (construction AND `validateBeforeWrite()`), since it is the one malformed-value shape that makes
-  the ENTIRE file unreadable (`[E::bcf_hdr_parse_line] Missing ']' in header line`, exit 255) rather than
-  merely dropping one declaration -- if this library ever originated one, bcftools could not read the file
-  back at all.
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "General bracket-list quoting beyond `##META`'s `Values`" entry (which
+  supersedes this decision's original citation, "Unquoted metadata attribute value: malformed bracket vs.
+  `<`/`>`/`;`", after bracket-quoting *acceptance* was narrowed to `##META`'s `Values` -- this specific check
+  did not narrow with it). `InternalUtils.findEncodingProblems`'s unconditional "no `]` anywhere" check throws
+  for this shape at BOTH construction and `validateBeforeWrite()`, regardless of attribute name or
+  declaration type, since it is the one malformed-value shape that makes the ENTIRE file unreadable
+  (`[E::bcf_hdr_parse_line] Missing ']' in header line`, exit 255) rather than merely dropping one
+  declaration -- if this library ever originated one, bcftools could not read the file back at all. This
+  check is deliberately NOT gated to `##META`'s `Values`: bcftools' own generic bracket handling treats any
+  leading `[` as opening a quoted span regardless of this library's narrower acceptance scope, so the fatal
+  floor stays universal even though which values get read back as *protected* does not. Pinned via `##contig`'s
+  own `x` attribute specifically (not `##META`'s `Values`) to prove the universality.
+- **Parse side closes the same gap, after a real bug caught by external review.** The first cut of this
+  decision left parsing a `[`-leading value with no closing `]` on any attribute *other than* `##META`'s
+  `Values` un-rewritten -- ordinary content, warned about, exactly like an unquoted `<`. That was wrong:
+  splitting at the comma (since `[` doesn't protect it outside `Values`) can turn a WELL-FORMED bracket value
+  into a dangling one purely via truncation -- `##contig=<ID=c1,x=[a, b],length=999>` is valid input, but
+  truncating `x`'s value at its interior comma yields `[a`, no `]` anywhere, and writing that back out raw
+  manufactured `##contig=<ID=c1,x=[a,length=999>` (confirmed live: bcftools exit 255). That is this library's
+  own splitting creating new fatal content from safe input, not carrying forward already-malformed content --
+  the "accepted cost" precedent for `<`/`>` mishandling does not cover it, since every measured `<`/`>` shape
+  stays at exit 0 (corrupted, never fatal); an unterminated `[` uniquely is fatal, and that asymmetry is
+  exactly why it needs its own defense rather than inheriting `<`'s treatment wholesale.
+  `InternalUtils.parseOneAttribute`'s literal branch now re-quotes (`InternalUtils.quote`) whenever the stored
+  value dangles a `[` with no `]` anywhere, regardless of whether that happened via truncation or because the
+  input was already unterminated (the two are indistinguishable once stored). bcftools' failure on this shape
+  at all is arguably its own defect -- filed upstream at
+  [samtools/htslib#2065](https://github.com/samtools/htslib/issues/2065) -- but that motivated defending
+  against the shape rather than accepting it, since the fix costs nothing (parsing still does not protect the
+  interior comma, matching the design decision) and closes a hole the original implementation had not
+  actually scoped correctly. Verified end-to-end (not just unit-level) by
+  `BcftoolsDependencyTest#testNonMetaValuesBracketTruncationDoesNotManufactureAnUnreadableHeader`, which
+  parses and writes the example above through this library's own pipeline and pipes the real output through
+  bcftools to confirm it stays readable.
 
 ## Other bcftools-dependent decisions
 
 (best-effort coverage, not exhaustive)
 
-### Duplicate attribute within one metadata declaration
-- Test: `BcftoolsDependencyTest#testDuplicateAttributeWithinDeclarationBcftoolsKeepsLast`
-- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Duplicate attribute within one metadata declaration" entry
-
 ### Malformed attribute inside a metadata declaration's `<...>` list
 - Test: `BcftoolsDependencyTest#testMalformedMetadataAttributeBcftoolsDropsDeclarationAndContinues`
 - Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Malformed attribute inside a metadata declaration's `<...>` list" entry
 
-### Metadata attribute name outside the construction-time allowlist
+### Metadata attribute name outside the allowlist
 - Test: `BcftoolsDependencyTest#testMetadataAttributeNameOutsideAllowlistBcftoolsDropsDeclarationSilently`
-- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Metadata attribute NAME grammar (construction-time allowlist)" entry
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Metadata attribute NAME grammar (parse and write warn, construction throws)" entry
 
 ### Bracket value with trailing junk (closed but malformed)
 - Test: `BcftoolsDependencyTest#testBracketValueWithTrailingJunkBcftoolsDropsDeclarationSilently`
@@ -158,6 +183,22 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
 - Test: `BcftoolsDependencyTest#testContigExtraAttributeBcftoolsAcceptsSilently`
 - Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "`##contig` extra/unmodeled attributes" entry
 
+### `##META` attribute order
+- Test: `BcftoolsDependencyTest#testMetaAttributeOrderBcftoolsIgnoresCanonicalOrdering` (canonical-order control),
+  `#testMetaAttributeOrderBcftoolsAcceptsTheSpecsOwnWorkedExample` (the spec-order shape the decision covers),
+  `#testInfoAttributeOrderBcftoolsIgnoresIdPosition` (generalizes to a non-`##META` type -- see below)
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "`##META` attribute order" entry. No keyed declaration type
+  attribute-order checks any more -- the decision, originally scoped to `##META` alone, was extended to
+  `##INFO`/`##FORMAT`/`##ALT`/`##FILTER`/`##contig`/`##SAMPLE` on 2026-08-14 -- so ten fixtures
+  (`failed_meta_{meta_003,info_003,format_003,alt_004}`, up to three spec versions each) are all
+  permanently-accepted `hts-specs-baseline.tsv` divergences whose sole justification is bcftools' own silence
+  on ordering -- nothing else re-checks that premise (`htsSpecsTest` never runs bcftools; `bcf_hdr_parse_line`
+  never consults `##fileformat`), so a future bcftools upgrade that started warning on ordering would rot
+  this decision silently without these three tests. The third test exists specifically because the
+  broader decision leans on a non-`##META` control row (an ID-last `##INFO` declaration) that had no
+  dedicated `bcftoolsDependencyTest` case of its own before this generalization -- see
+  `BEHAVIOR_TABLE_STANDARD.md`'s evidence-preservation tier 2.
+
 ### Generic metadata property with an empty value
 - Test: `BcftoolsDependencyTest#testGenericPropertyEmptyValueBcftoolsPreservesButWeAreStricter`
 - Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Generic metadata property with an empty value" entry
@@ -171,7 +212,14 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
 - Reasoning: `WONT_FIX.md`, "`PedigreeMetadata` duplicate-ID dedup treats a present-but-blank `ID` the same as
   a real ID" entry
 
-### Duplicate metadata declaration ID (six keyed types)
+### Missing `ID` on `##META`
+- Test: `BcftoolsDependencyTest#testMetaMissingIdBcftoolsKeepsSilently`
+- Reasoning: `DUPLICATE_METADATA_ID_HANDLING.md`'s "Missing or empty ID" section. A deliberate divergence:
+  bcftools 1.23.1 keeps an ID-less `##META` unchanged with no warning; `vcf-parser` warns and drops it,
+  since (unlike `##PEDIGREE`, whose `ID` requirement is version-gated at VCFv4.3+) `##META`'s required-`ID`
+  rule is version-independent.
+
+### Duplicate metadata declaration ID (seven keyed types)
 - Test: `BcftoolsDependencyTest#testDuplicateContigIdBcftoolsKeepsFirst` (representative; not every declaration
   type is independently re-verified here)
 - Reasoning: `DUPLICATE_METADATA_ID_HANDLING.md` (its own reference table is the fuller source of truth)

@@ -224,6 +224,9 @@ public class VcfWriter implements Closeable {
     addMetadataLines(lines, "FORMAT", metadata.getFormats().values());
     addMetadataLines(lines, "ALT", metadata.getAlts().values());
     addMetadataLines(lines, "contig", metadata.getContigs().values());
+    // VCFv4.3.tex's Meta-information lines subsection documents META (lines 273-276) between contig and
+    // SAMPLE (lines 277-278), so this keeps the same order.
+    addMetadataLines(lines, "META", metadata.getMetas().values());
     addMetadataLines(lines, "SAMPLE", metadata.getSamples().values());
     addMetadataLines(lines, "PEDIGREE", metadata.getPedigrees());
 
@@ -474,8 +477,9 @@ public class VcfWriter implements Closeable {
     validateKeyedMetadataEntries("FILTER", metadata.getFilters());
     validateKeyedMetadataEntries("ALT", metadata.getAlts());
     validateKeyedMetadataEntries("contig", metadata.getContigs());
+    validateKeyedMetadataEntries("META", metadata.getMetas());
     validateKeyedMetadataEntries("SAMPLE", metadata.getSamples());
-    // unlike the six kinds above, PEDIGREE entries aren't stored in a map keyed by ID, so there's no map key to
+    // unlike the seven kinds above, PEDIGREE entries aren't stored in a map keyed by ID, so there's no map key to
     // compare against; duplicate IDs across entries must still be checked directly here
     Set<String> pedigreeIds = new HashSet<>();
     for (BaseMetadata pedigree : metadata.getPedigrees()) {
@@ -541,12 +545,13 @@ public class VcfWriter implements Closeable {
         throw new VcfFormatException("Metadata property name \"" + key + "\" contains '=', which would shift " +
             "where the key/value split falls when re-read");
       }
-      if (InternalUtils.isReservedMetadataKey(key)) {
+      if (InternalUtils.isReservedMetadataKey(key, metadata.getContext().getVersion())) {
         // Only VcfMetadata's package-private trusted constructor can reach this now (getRawProperties() is an
-        // unmodifiable view, and addRawProperty() drops a reserved key at insertion time). Kept, and unlike
-        // addRawProperty()'s warn-and-drop this rejects outright, since a raw "INFO"/"FORMAT"/etc. property
-        // would produce output VcfParser cannot read back as what was written (see VcfParser.parseMetadata's
-        // switch)
+        // unmodifiable view, and addRawProperty() drops a reserved key at insertion time) -- except a pre-4.3
+        // "META", which addRawProperty() does not drop and isReservedMetadataKey excludes here too, for the
+        // same reason. Kept, and unlike addRawProperty()'s warn-and-drop this rejects outright, since a raw
+        // "INFO"/"FORMAT"/etc. property would produce output VcfParser cannot read back as what was written
+        // (see VcfParser.parseMetadata's switch)
         throw new VcfFormatException("Metadata property name \"" + key + "\" collides with a structured " +
             "declaration keyword");
       }
@@ -600,7 +605,7 @@ public class VcfWriter implements Closeable {
   }
 
   /**
-   * Validates every entry of a metadata map (INFO/FORMAT/FILTER/ALT/contig/SAMPLE), including that each entry's own
+   * Validates every entry of a metadata map (INFO/FORMAT/FILTER/ALT/contig/SAMPLE/META), including that each entry's own
    * {@code ID} property, unquoted, still matches the map key it's stored under. That invariant normally holds
    * automatically (these maps are keyed by each entry's unquoted {@code ID} -- see
    * {@code VcfMetadata.Builder#addAlt(IdDescriptionMetadata, boolean)}'s own comment -- and
@@ -650,8 +655,8 @@ public class VcfWriter implements Closeable {
       if (mapKey == null) {
         throw new VcfFormatException(kind + " metadata contains a null key");
       }
-      // VCFv4.3.tex line 121 ("All structured lines require an ID...") makes ID mandatory for all six keyed
-      // types; VCFv4.2 doesn't use the word "required" but its own templates for all six types show ID
+      // VCFv4.3.tex line 121 ("All structured lines require an ID...") makes ID mandatory for all seven keyed
+      // types; VCFv4.2 doesn't use the word "required" but its own templates for the six pre-4.3 types show ID
       // unconditionally first -- same guidance IdMetadata's own constructor already cites (IdMetadata.java:20-21;
       // see DUPLICATE_METADATA_ID_HANDLING.md) -- so an entirely-missing ID (id == null) is just as much a drift
       // from the map key as a changed one, and is also caught by !mapKey.equals(id) below.
@@ -683,6 +688,7 @@ public class VcfWriter implements Closeable {
     validateMetadataPropertiesForEntries("FORMAT", metadata.getFormats().values());
     validateMetadataPropertiesForEntries("ALT", metadata.getAlts().values());
     validateMetadataPropertiesForEntries("contig", metadata.getContigs().values());
+    validateMetadataPropertiesForEntries("META", metadata.getMetas().values());
     validateMetadataPropertiesForEntries("SAMPLE", metadata.getSamples().values());
     validateMetadataPropertiesForEntries("PEDIGREE", metadata.getPedigrees());
   }

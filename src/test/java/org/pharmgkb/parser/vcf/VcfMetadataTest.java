@@ -348,15 +348,18 @@ public class VcfMetadataTest {
   @Test
   public void testBuilderAddRawPropertyAcceptsSquareBracketSubListValue() {
     // regression test for the bug this predicate was corrected to fix: the exact hts-specs
-    // test/vcf/4.3/passed/passed_meta_meta.vcf fixture content is a real, legitimate generic property value
-    // that happens to be bracket-wrapped and contain a square-bracket sub-list -- an earlier, over-broad
-    // version of collidesWithAttributeListGrammar (reject ANY bracket-wrapped value) incorrectly rejected this;
-    // confirmed directly that bcftools 1.23.1 accepts and round-trips it unchanged
+    // test/vcf/4.3/passed/passed_meta_meta.vcf fixture content is a real, legitimate value that happens to be
+    // bracket-wrapped and contain a square-bracket sub-list -- an earlier, over-broad version of
+    // collidesWithAttributeListGrammar (reject ANY bracket-wrapped value) incorrectly rejected this; confirmed
+    // directly that bcftools 1.23.1 accepts and round-trips it unchanged. Stored under a non-reserved generic
+    // key here, not the literal "META" the fixture uses: this library now routes "META" to the structured
+    // ##META path (InternalUtils.RESERVED_METADATA_KEYS), so this test uses a different key to keep exercising
+    // a genuinely generic raw property with the same bracket-sub-list payload.
     VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2")
-        .addRawProperty("META", "<ID=Assay,Number=.,Type=String,Values=[WholeGenome, Exome]>")
+        .addRawProperty("customMeta", "<ID=Assay,Number=.,Type=String,Values=[WholeGenome, Exome]>")
         .build();
     assertEquals(java.util.Collections.singletonList("<ID=Assay,Number=.,Type=String,Values=[WholeGenome, Exome]>"),
-        metadata.getRawValuesOfProperty("META"));
+        metadata.getRawValuesOfProperty("customMeta"));
   }
 
   @Test
@@ -950,7 +953,7 @@ public class VcfMetadataTest {
   public void testAddPedigreeQuotedBlankIdUnder43WarnsAndIsKept() {
     // regression test for the retired WONT_FIX.md entry: under VCFv4.3, a quoted-empty (ID="") or
     // quoted-whitespace (ID="   ") PEDIGREE ID previously produced zero warnings at all -- addPedigree's own
-    // blank check had no whitespace check to even partially catch it, unlike the six keyed types -- so this was
+    // blank check had no whitespace check to even partially catch it, unlike the seven keyed types -- so this was
     // the fully silent escape the WONT_FIX.md entry called out. Both must now warn "has no ID", exactly like
     // the unquoted shapes, and (matching ##PEDIGREE's own kept-not-dropped rule) both must still be kept.
     java.util.Map<String, String> emptyProps = new java.util.LinkedHashMap<>();
@@ -1106,7 +1109,7 @@ public class VcfMetadataTest {
 
   /**
    * VCFv4.3 requires an ID on every structured line, so a 4.3 ##PEDIGREE without one is diagnosed --
-   * for an absent ID, an empty ID=, and a whitespace-only ID alike. Unlike the six keyed declaration
+   * for an absent ID, an empty ID=, and a whitespace-only ID alike. Unlike the seven keyed declaration
    * types, the declaration is KEPT: ##PEDIGREE is List-backed, so the "cannot be stored" reason those
    * types drop for does not apply. See DUPLICATE_METADATA_ID_HANDLING.md's "Missing or empty ID".
    */
@@ -1878,7 +1881,7 @@ public class VcfMetadataTest {
       checked.add(method.getName());
     }
     // guards against the loop silently matching nothing (e.g. after a refactor that moves these getters)
-    assertEquals(12, checked.size(), () -> "expected 12 collection-returning getters, found " + checked);
+    assertEquals(13, checked.size(), () -> "expected 13 collection-returning getters, found " + checked);
 
     // an unmodifiable Map still hands out Map.Entry objects; setValue() must not reach through either
     assertThrows(UnsupportedOperationException.class,

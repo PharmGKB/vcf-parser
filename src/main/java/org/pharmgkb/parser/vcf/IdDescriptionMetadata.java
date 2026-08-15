@@ -41,13 +41,13 @@ public sealed class IdDescriptionMetadata extends IdMetadata permits InfoMetadat
   IdDescriptionMetadata(VcfContext context, String label, Map<String, String> properties) {
     super(context, label, properties);
     init();
-    checkAttributeOrder();
   }
 
   /**
    * For subclasses (InfoMetadata, FormatMetadata) whose own typed constructor must insert additional properties
-   * between ID and Description to match their own canonical attribute order (see
-   * BaseMetadata#checkAttributeOrder) -- unlike the (label, id, description) constructor above, this does
+   * between ID and Description to match their own canonical attribute order (ID, Number, Type, Description,
+   * Source, Version -- unenforced, but still followed for output readability; see VCF_SPEC_AMBIGUITIES.md's
+   * "##META attribute order" entry) -- unlike the (label, id, description) constructor above, this does
    * not insert Description; the caller must add it itself afterward, via putAndQuoteProperty, in whatever
    * position is canonical for its own subtype.
    */

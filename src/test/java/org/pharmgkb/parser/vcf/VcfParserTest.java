@@ -477,6 +477,107 @@ public class VcfParserTest {
     assertTrue(captured[0].getInfo().containsKey("DP"));
   }
 
+  /**
+   * Parses {@code resourceName} and returns its {@link VcfMetadata}, without requiring a {@code parseWith}
+   * callback that inspects each data line -- {@link VcfParser#parseMetadata()} stops right after the header.
+   */
+  private static VcfMetadata parseResource(String resourceName) throws IOException {
+    try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource(resourceName));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, record) -> { })
+             .build()) {
+      return parser.parseMetadata();
+    }
+  }
+
+  @Test
+  void testMetaDeclarationsAreParsedAndRoundTrip() throws Exception {
+    // metadata_meta.vcf's four ##META lines are the spec's own worked example (VCFv4.3.tex:273-276), copied
+    // verbatim including its Type-before-Number attribute order -- see the fixture's own ##Note= line for why
+    // that order is deliberately not attribute-order checked.
+    VcfMetadata md = parseResource("/metadata_meta.vcf");
+    assertEquals("[WholeGenome, Exome]", md.getMetas().get("Assay").getPropertyRaw("Values"));
+    assertEquals("[Blood, Breast, Colon, Lung, ?]", md.getMetas().get("Tissue").getPropertyRaw("Values"));
+    // breaking change: ##META no longer appears as a raw property
+    assertTrue(md.getRawProperties().get("META").isEmpty());
+    StringWriter out = new StringWriter();
+    try (VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(out)).build()) {
+      writer.writeHeader(md);
+    }
+    assertThat(out.toString(), containsString("##META=<ID=Assay,Type=String,Number=.,Values=[WholeGenome, Exome]>"));
+  }
+
+  @Test
+  void testMetaDeclarationsSurviveARebuildBeforeWriting() throws Exception {
+    // the round-trip above writes the ORIGINAL object, so it cannot catch a missing toBuilder() copy loop
+    VcfMetadata md = parseResource("/metadata_meta.vcf").toBuilder().build();
+    StringWriter out = new StringWriter();
+    try (VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(out)).build()) {
+      writer.writeHeader(md);
+    }
+    assertThat(out.toString(), containsString("##META=<ID=Assay"));
+    assertThat(out.toString(), containsString("##META=<ID=Tissue"));
+  }
+
+  @Test
+  void testFreeformMetaLineBeforeV4_3IsPreservedAsRawProperty() throws IOException {
+    // ##META does not exist before VCFv4.3 (0 occurrences in VCFv4.1.tex/VCFv4.2.tex; VCFv4.3.tex's changelog
+    // line 2155 reads "Introduced ##META header lines for defining phenotype metadata"). Regression: this used
+    // to be routed unconditionally through removeAngleBrackets/parseMetadataProperty, so a pre-4.3 file's
+    // legitimate freeform "##META=..." line (no angle brackets) threw VcfFormatException and aborted the
+    // whole parse instead of being preserved like any other unrecognized metadata line.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##META=freeform text\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, record) -> { })
+             .build()) {
+      VcfMetadata md = parser.parseMetadata();
+      assertTrue(md.getMetas().isEmpty());
+      assertEquals(List.of("freeform text"), md.getRawProperties().get("META"));
+    }
+  }
+
+  @Test
+  void testBracketedMetaLineBeforeV4_3IsPreservedAsRawProperty() throws IOException {
+    // same version gate as above, but for a well-formed-looking bracketed value: below 4.3 this is not a
+    // structured declaration either, so it is preserved verbatim (brackets included) as a raw property rather
+    // than being parsed into a MetaMetadata (which would also require an ID it doesn't have here).
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##META=<Type=String,Number=1>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, record) -> { })
+             .build()) {
+      VcfMetadata md = parser.parseMetadata();
+      assertTrue(md.getMetas().isEmpty());
+      assertEquals(List.of("<Type=String,Number=1>"), md.getRawProperties().get("META"));
+    }
+  }
+
+  @Test
+  void testBracketedMetaLineAtV4_3StillRoutesToStructuredPath() throws IOException {
+    // control for the two tests above: the same bracketed shape, one version higher, must still take the
+    // structured path -- otherwise the version check itself could be backwards or a no-op
+    String vcf = "##fileformat=VCFv4.3\n" +
+        "##META=<ID=Foo,Type=String,Number=1>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, record) -> { })
+             .build()) {
+      VcfMetadata md = parser.parseMetadata();
+      assertTrue(md.getRawProperties().get("META").isEmpty());
+      assertTrue(md.getMetas().containsKey("Foo"));
+    }
+  }
+
   @Test
   void testMetadataDeclarationsSurviveTurkishDefaultLocale() throws IOException {
     // parseMetadataProperty() used to lower-case propName (without Locale.ROOT) before dispatching on it;
@@ -1958,12 +2059,13 @@ public class VcfParserTest {
   @Test
   public void testPedigreeMetadataWarningsSinkIsWiredToParserWarningsFile(@TempDir Path tempDir) throws IOException {
     // regression test: VcfParser's PEDIGREE case previously never called setWarningsSink on the constructed
-    // PedigreeMetadata, unlike every sibling declaration type. checkAttributeOrder() isn't invoked
-    // automatically for PEDIGREE, so this calls it directly (from within the parseWith callback, while the
-    // parser's own warnings-file redirection is still active) to prove a warning from it now correctly
-    // reaches the configured warnings file instead of silently falling back to the shared logger.
-    String vcf = "##fileformat=VCFv4.2\n" +
-        "##PEDIGREE=<Description=\"d\",ID=P1>\n" + // Description before ID -- out of canonical order
+    // PedigreeMetadata, unlike every sibling declaration type. The original trigger for this test was a direct
+    // checkAttributeOrder() call (attribute-order checking has since been removed entirely -- see
+    // VCF_SPEC_AMBIGUITIES.md's "##META attribute order" entry -- so that method no longer exists); a missing
+    // ID under VCFv4.3+ (warn-and-keep under a lenient context, per VcfMetadata.Builder.addPedigree) is used
+    // instead to prove a PEDIGREE-sourced warning still correctly reaches the configured warnings file.
+    String vcf = "##fileformat=VCFv4.3\n" +
+        "##PEDIGREE=<Description=\"d\">\n" + // no ID -- required from VCFv4.3, warned rather than dropped
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
         "1\t100\t.\tA\tT\t.\t.\t.\n";
     Path vcfFile = tempDir.resolve("sample.vcf");
@@ -1973,11 +2075,11 @@ public class VcfParserTest {
     try (VcfParser parser = new VcfParser.Builder()
         .fromFile(vcfFile)
         .warningsToFile(warningsFile)
-        .parseWith((metadata, record) -> metadata.getPedigrees().get(0).checkAttributeOrder())
+        .parseWith((metadata, record) -> { })
         .build()) {
       parser.parse();
     }
-    assertTrue(Files.readString(warningsFile).contains("PEDIGREE metadata attributes declared out of canonical order"));
+    assertTrue(Files.readString(warningsFile).contains("PEDIGREE metadata declaration has no ID"));
   }
 
   @Test
@@ -2750,7 +2852,11 @@ public class VcfParserTest {
   }
 
   @Test
-  void bracketValuesSurviveParsing() throws Exception {
+  void bracketValuesOnlyProtectCommasForMetaValues() throws Exception {
+    // bracket-list quoting is scoped to ##META's Values -- see VCF_SPEC_AMBIGUITIES.md's "General
+    // bracket-list quoting beyond ##META's Values" entry. metadata_brackets.vcf carries the spec's own shape
+    // on ##META's Values (protected) alongside the identical shape on ##contig's/##SAMPLE's OWN attributes
+    // (not protected -- the comma still splits them, exactly like an unquoted '<' would).
     VcfMetadata[] holder = new VcfMetadata[1];
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(
         VcfParserTest.class.getResourceAsStream("/metadata_brackets.vcf")))) {
@@ -2763,9 +2869,33 @@ public class VcfParserTest {
         }
       }).build().parse();
     }
-    assertEquals("[WholeGenome, Exome]", holder[0].getContigs().get("c1").getPropertyRaw("x"));
+    assertEquals("[WholeGenome, Exome]", holder[0].getMetas().get("Assay").getPropertyRaw("Values"));
+    // the comma inside "[a, b]" is NOT protected here -- 'x' is not ##META's Values, so it splits at the
+    // first comma, and the unnamed " b]" remainder has no '=' and is dropped. The truncated value has no
+    // closing ']' of its own, so it is quoted for safety rather than stored raw (writing "x=[a" back out
+    // verbatim would manufacture a value bcftools cannot read at all -- see AttributeListTokenizerTest
+    // #bracketValueDoesNotProtectCommasElsewhereButStaysBcftoolsSafe for the regression this pins).
+    assertEquals("\"[a\"", holder[0].getContigs().get("c1").getPropertyRaw("x"));
     assertEquals("999", holder[0].getContigs().get("c1").getPropertyRaw("length"));
-    assertEquals("[a, b]", holder[0].getSamples().get("s1").getPropertyRaw("Assay"));
+    assertEquals("\"[c\"", holder[0].getSamples().get("s1").getPropertyRaw("Assay"));
+  }
+
+  @Test
+  void aFabricatedDuplicateIdDoesNotStealAContigDeclarationsIdentity() throws Exception {
+    // Before keep-first, the truncation tail "ID=fake>B" displaced the real ID, so contig c1 ceased to exist and
+    // every record with CHROM=c1 lost its declaration.
+    String vcf = "##fileformat=VCFv4.3\n"
+        + "##contig=<ID=c1,x=A<1,ID=fake>B,length=999>\n"
+        + "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .parseWith((position, samples) -> { })
+        .build()) {
+      VcfMetadata metadata = parser.parseMetadata();
+      parser.parse();
+      assertTrue(metadata.getContigs().containsKey("c1"));
+      assertFalse(metadata.getContigs().containsKey("fake>B"));
+    }
   }
 
 }

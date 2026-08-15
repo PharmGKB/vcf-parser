@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -166,7 +167,7 @@ public class InternalUtilsTest {
     // an escaped backslash (\\) and an escaped double-quote (\") inside a quoted Description must not crash and must be
     // preserved (the split must not treat the escaped quote as a real quote)
     Map<String, String> props = InternalUtils.extractPropertiesFromLine("ID=X,Description=\"a \\\\ b \\\" c\"",
-        VcfWarnings.DEFAULT);
+        VcfWarnings.DEFAULT, "INFO");
     assertEquals("X", props.get("ID"));
     assertEquals("\"a \\\\ b \\\" c\"", props.get("Description"));
   }
@@ -176,18 +177,21 @@ public class InternalUtilsTest {
     // a backslash not followed by "\\" or "\"" has no defined escape meaning and must not consume/protect the following
     // delimiter; before the fix, the comma here was incorrectly treated as escaped, merging both properties into one
     // blob with two "=" signs, which then threw instead of parsing to two properties
-    Map<String, String> props = InternalUtils.extractPropertiesFromLine("Source=A\\,Number=1", VcfWarnings.DEFAULT);
+    Map<String, String> props = InternalUtils.extractPropertiesFromLine("Source=A\\,Number=1", VcfWarnings.DEFAULT,
+        "INFO");
     assertEquals("A\\", props.get("Source"));
     assertEquals("1", props.get("Number"));
   }
 
   @Test
-  public void testExtractPropertiesDuplicateAttributeWarnsAndKeepsLast() {
-    // a declaration with a repeated attribute (e.g. ##INFO=<ID=X,Number=1,Number=2,...>) silently kept only the
-    // last value with no diagnostic at all; must at least warn (VCF metadata-declaration policy is lenient, not a
-    // structural violation, so this doesn't throw)
-    Map<String, String> props = InternalUtils.extractPropertiesFromLine("ID=X,Number=1,Number=2", VcfWarnings.DEFAULT);
-    assertEquals("2", props.get("Number"));
+  public void testExtractPropertiesDuplicateAttributeWarnsAndKeepsFirst() {
+    // a declaration with a repeated attribute (e.g. ##INFO=<ID=X,Number=1,Number=2,...>) warns and keeps the
+    // FIRST value -- one policy applied evenly with every other duplicate-key case in this codebase (AGENTS.md's
+    // duplicate-declaration-ID rule). No spec version contemplates a repeated attribute name, so this is a
+    // library choice, deliberately NOT derived from bcftools (which keeps last for a non-ID attribute).
+    Map<String, String> props = InternalUtils.extractPropertiesFromLine("ID=X,Number=1,Number=2", VcfWarnings.DEFAULT,
+        "INFO");
+    assertEquals("1", props.get("Number"));
   }
 
   @Test
@@ -195,7 +199,7 @@ public class InternalUtilsTest {
     // a value literally containing the old "~~~~" placeholder must be preserved, and an escaped quote must not be
     // treated as a real quote (so the comma inside the quoted value is not a top-level delimiter)
     Map<String, String> props = InternalUtils.extractPropertiesFromLine(
-        "ID=X,Description=\"literal ~~~~ and \\\"q, v\\\"\"", VcfWarnings.DEFAULT);
+        "ID=X,Description=\"literal ~~~~ and \\\"q, v\\\"\"", VcfWarnings.DEFAULT, "INFO");
     assertEquals("X", props.get("ID"));
     assertEquals("\"literal ~~~~ and \\\"q, v\\\"\"", props.get("Description"));
   }
@@ -206,7 +210,8 @@ public class InternalUtilsTest {
     // Description,Genomes,Mixture on write because extractProperties built a plain HashMap (hash-bucket order),
     // not insertion order
     Map<String, String> props = InternalUtils.extractPropertiesFromLine(
-        "ID=Sample_ok,Genomes=G1_ID;G2_ID;GK_ID,Mixture=N1;N2;NK,Description=\"S1;S2;SK\"", VcfWarnings.DEFAULT);
+        "ID=Sample_ok,Genomes=G1_ID;G2_ID;GK_ID,Mixture=N1;N2;NK,Description=\"S1;S2;SK\"", VcfWarnings.DEFAULT,
+        "SAMPLE");
     assertEquals(Arrays.asList("ID", "Genomes", "Mixture", "Description"), new ArrayList<>(props.keySet()));
   }
 
@@ -225,7 +230,8 @@ public class InternalUtilsTest {
     Map<String, String> props;
     try {
       props = InternalUtils.extractPropertiesFromLine(
-          "ID=DEL,Number=1,Type=String,Description=\"Description with \"non-escaped quote\"", VcfWarnings.DEFAULT);
+          "ID=DEL,Number=1,Type=String,Description=\"Description with \"non-escaped quote\"", VcfWarnings.DEFAULT,
+          "INFO");
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -246,7 +252,7 @@ public class InternalUtilsTest {
     appender.start();
     root.addAppender(appender);
     try {
-      InternalUtils.extractPropertiesFromLine("ID=X,Description=\"a \\\" b\"", VcfWarnings.DEFAULT);
+      InternalUtils.extractPropertiesFromLine("ID=X,Description=\"a \\\" b\"", VcfWarnings.DEFAULT, "INFO");
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -263,7 +269,7 @@ public class InternalUtilsTest {
     appender.start();
     root.addAppender(appender);
     try {
-      InternalUtils.extractPropertiesFromLine("ID=X,Description=\"\"", VcfWarnings.DEFAULT);
+      InternalUtils.extractPropertiesFromLine("ID=X,Description=\"\"", VcfWarnings.DEFAULT, "INFO");
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -280,7 +286,7 @@ public class InternalUtilsTest {
     appender.start();
     root.addAppender(appender);
     try {
-      InternalUtils.extractPropertiesFromLine("ID=X,Number=1,Type=String", VcfWarnings.DEFAULT);
+      InternalUtils.extractPropertiesFromLine("ID=X,Number=1,Type=String", VcfWarnings.DEFAULT, "INFO");
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -735,11 +741,21 @@ public class InternalUtilsTest {
 
   @Test
   public void testIsReservedMetadataKey() {
-    assertTrue(InternalUtils.isReservedMetadataKey("INFO"));
-    assertFalse(InternalUtils.isReservedMetadataKey("NotReserved"));
+    assertTrue(InternalUtils.isReservedMetadataKey("INFO", VcfVersion.V4_3));
+    assertFalse(InternalUtils.isReservedMetadataKey("NotReserved", VcfVersion.V4_3));
     // regression test: this used to throw NullPointerException from Set.of(...).contains(null) instead of
     // returning false -- null is trivially not one of the fixed reserved keyword strings.
-    assertFalse(InternalUtils.isReservedMetadataKey(null));
+    assertFalse(InternalUtils.isReservedMetadataKey(null, VcfVersion.V4_3));
+  }
+
+  @Test
+  public void testIsReservedMetadataKeyExcludesMetaBeforeV4_3() {
+    // ##META does not exist before VCFv4.3 (VCFv4.1.tex/VCFv4.2.tex never mention it) -- see
+    // VcfParser.parseMetadata's own "META" case for the parse-time counterpart of this rule.
+    assertFalse(InternalUtils.isReservedMetadataKey("META", VcfVersion.V4_1));
+    assertFalse(InternalUtils.isReservedMetadataKey("META", VcfVersion.V4_2));
+    assertTrue(InternalUtils.isReservedMetadataKey("META", VcfVersion.V4_3));
+    assertTrue(InternalUtils.isReservedMetadataKey("META", VcfVersion.V4_4));
   }
 
   @Test
@@ -896,7 +912,7 @@ public class InternalUtilsTest {
     StringWriter sink = new StringWriter();
     Map<String, String> props = InternalUtils.extractProperties(
         new String[] {"ID=X", "Type=Integer", "Type=String"}, new VcfWarnings(sink));
-    assertEquals("String", props.get("Type"));
+    assertEquals("Integer", props.get("Type"));
     assertTrue(sink.toString().contains("duplicate attribute"));
   }
 
@@ -930,12 +946,42 @@ public class InternalUtilsTest {
   }
 
   @Test
-  void theArrayFormWarnsAndKeepsLastOnADuplicateName() {
+  void theArrayFormWarnsAndKeepsFirstOnADuplicateName() {
     StringWriter sink = new StringWriter();
     Map<String, String> props = InternalUtils.extractProperties(
         new String[] {"ID=A", "ID=B"}, new VcfWarnings(sink));
-    assertEquals("B", props.get("ID"));
+    assertEquals("A", props.get("ID"));
     assertThat(sink.toString(), containsString("duplicate attribute"));
+  }
+
+  @Test
+  void keepFirstAppliesToThreeOrMoreDuplicates() {
+    StringWriter sink = new StringWriter();
+    Map<String, String> props = InternalUtils.extractPropertiesFromLine(
+        "ID=X,Number=1,Number=2,Number=3", new VcfWarnings(sink), "INFO");
+    assertEquals("1", props.get("Number"));
+    assertThat(sink.toString(), containsString("keeping the first value"));
+  }
+
+  @Test
+  void aConformingQuotedDuplicateCannotDisplaceOrBeDisplacedByPosition() {
+    // Pins that keep-first is decided on ORDER ONLY, never on the value's form. An earlier design tested for a
+    // structural character in the value; because Attribute.rawValue() retains the quote delimiters, that test
+    // returned true for every quoted value and would have discarded this conforming one.
+    StringWriter sink = new StringWriter();
+    Map<String, String> props = InternalUtils.extractPropertiesFromLine(
+        "ID=X,Description=\"new, better\",Description=old", new VcfWarnings(sink), "INFO");
+    assertEquals("\"new, better\"", props.get("Description"));
+    assertThat(sink.toString(), containsString("duplicate attribute \"Description\""));
+  }
+
+  @Test
+  void aMalformedDuplicateIdCannotDisplaceAValidOne() {
+    // The case that motivated this change: a truncation tail containing '=' becomes a fabricated named
+    // attribute, and keep-last let it take over the declaration's identity.
+    Map<String, String> props = InternalUtils.extractPropertiesFromLine(
+        "ID=c1,x=A<1,ID=fake>B,length=999", VcfWarnings.DEFAULT, "contig");
+    assertEquals("c1", props.get("ID"));
   }
 
   @Test
@@ -1137,6 +1183,45 @@ public class InternalUtilsTest {
     assertFalse(InternalUtils.isValidRefBases("ACGTB"));
     assertFalse(InternalUtils.isValidRefBases("BACGT"));
     assertFalse(InternalUtils.isValidRefBases("ACBGT"));
+  }
+
+  @Test
+  void anInvalidAttributeNameWarnsAtParseTimeAndIsStillStored() {
+    // A truncation tail containing '=' is fabricated into a named attribute whose name is invalid. Before this,
+    // nothing named it at all -- the only warning was about the preceding value. Warn, do not drop: the parser
+    // preserves recoverable input.
+    StringWriter sink = new StringWriter();
+    Map<String, String> props = InternalUtils.extractPropertiesFromLine(
+        "ID=c1,x=A<1,2>B=q,length=999", new VcfWarnings(sink), "contig");
+    assertEquals("q", props.get("2>B"));
+    assertThat(sink.toString(), containsString("Metadata attribute name \"2>B\" is not valid"));
+  }
+
+  @Test
+  void aValidButUnusualAttributeNameDoesNotWarn() {
+    // Pins the pattern's actual boundary rather than assuming it: '_' may lead, '.' and digits may follow.
+    StringWriter sink = new StringWriter();
+    InternalUtils.extractPropertiesFromLine("ID=X,_a.b2=v", new VcfWarnings(sink), "INFO");
+    assertThat(sink.toString(), not(containsString("is not valid")));
+  }
+
+  @Test
+  void aRepeatedInvalidNameWarnsOnceNotOncePerOccurrence() {
+    // Pins the POST-FOLD placement. Per-attribute placement would warn twice here; the declaration has one bad
+    // name, and Task 2's duplicate warning already reports the repetition.
+    StringWriter sink = new StringWriter();
+    InternalUtils.extractPropertiesFromLine("ID=c1,2>B=x,2>B=y,length=999", new VcfWarnings(sink), "contig");
+    assertEquals(1, countOccurrences(sink.toString(), "Metadata attribute name \"2>B\" is not valid"));
+  }
+
+  private static int countOccurrences(String haystack, String needle) {
+    int count = 0;
+    int idx = haystack.indexOf(needle);
+    while (idx >= 0) {
+      count++;
+      idx = haystack.indexOf(needle, idx + needle.length());
+    }
+    return count;
   }
 
 }

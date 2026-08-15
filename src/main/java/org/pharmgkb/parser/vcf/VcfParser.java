@@ -572,6 +572,23 @@ public class VcfParser implements Closeable {
         parseMetadataProperty(mdBuilder, propName, removeAngleBrackets(propValue));
         break;
 
+      case "META": {
+        // ##META does not exist before VCFv4.3 -- it appears 0 times in VCFv4.1.tex/VCFv4.2.tex, and
+        // VCFv4.3.tex's own changelog (line 2155) reads "Introduced ##META header lines for defining phenotype
+        // metadata". Below 4.3 it is just an ordinary, unrecognized metadata line like any other, so it falls
+        // through to the same addRawProperty path as the default case rather than being forced through
+        // removeAngleBrackets/parseMetadataProperty, which would reject a pre-4.3 file's legitimate freeform
+        // "##META=..." line with no angle brackets.
+        VcfContext context = m_context;
+        assert context != null; // set above, before any metadata line (including this one) is parsed
+        if (context.getVersion().isAtLeast(VcfVersion.V4_3)) {
+          parseMetadataProperty(mdBuilder, propName, removeAngleBrackets(propValue));
+        } else {
+          mdBuilder.addRawProperty(propName, propValue);
+        }
+        break;
+      }
+
       default:
         mdBuilder.addRawProperty(propName, propValue);
     }
@@ -593,7 +610,7 @@ public class VcfParser implements Closeable {
    */
   private void parseMetadataProperty(VcfMetadata.Builder mdBuilder,
       String propName, String value) {
-    Map<String, String> props = InternalUtils.extractPropertiesFromLine(value, m_warnings);
+    Map<String, String> props = InternalUtils.extractPropertiesFromLine(value, m_warnings, propName);
     // propName is already constrained to these exact-case literals by parseMetadata()'s own switch above,
     // so no case-folding is needed here at all -- a prior version lower-cased propName before this switch,
     // which meant a Turkish/Azeri default locale's dotless-i case-folding (e.g. "INFO".toLowerCase() ->
@@ -623,6 +640,9 @@ public class VcfParser implements Closeable {
         break;
       case "PEDIGREE":
         mdBuilder.addPedigreeTrusted(props);
+        break;
+      case "META":
+        mdBuilder.addMetaTrusted(props);
         break;
     }
   }

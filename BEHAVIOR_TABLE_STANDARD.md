@@ -63,6 +63,35 @@ can quote outright. Do not use one to restate a rule the spec states plainly —
     column headed "Parse (target)" sitting beside columns headed 4.2/4.3/4.4/4.5 reads as "what the
     target spec requires", which is the opposite of what it means. Say *intended*, or just name the mode.
 
+## Descriptive-only tables
+
+Every rule above assumes the table is load-bearing -- the thing the Decision actually rests on. Not every
+table is: one may exist purely to record interop behavior for future readers, while the Decision itself
+rests on cited spec text and would be unchanged if every tool row flipped. `VCF_SPEC_AMBIGUITIES.md`'s
+"Angle brackets are not a quoting form in a metadata attribute value" table is the worked example -- its own
+note states "This table records interop behavior for future readers. It is **not** what the Decision rests
+on."
+
+A table that is genuinely descriptive-only -- and says so, in the table itself, not left for a reader to
+infer -- is exempt from three requirements above:
+
+- **The four per-version spec columns** may collapse into one prose sentence (e.g. "all four spec columns
+  read `silent` for every row") instead of four displayed columns, when every version agrees and the point
+  is that silence itself is uniform across them, not how they differ from each other.
+- **No `bcftoolsDependencyTest` case is required.** Say so explicitly in the doc (e.g. "No new
+  `bcftoolsDependencyTest` case is added for this table: it is purely descriptive, and this Decision depends
+  on `<spec citation>`, not on bcftools") so a reader doesn't read the omission as an oversight.
+- **No committed probe script is required**, since there is no regenerable table to protect from harness
+  drift the way a decision-bearing table's Tier 2 evidence is (see "Preserving the evidence" below) -- the
+  values here illustrate a already-settled point rather than justify one.
+
+This exemption narrows nothing else. A descriptive-only table still states its probe shape precisely enough
+to be re-run, still pins every tool version, still includes a control row, and still marks a known-tool-defect
+verdict as no evidence rather than weak evidence -- all of "Rules that are not optional" and "Two further
+rules that are not optional" below apply regardless of whether the table is decision-bearing. What changes is
+only which claim the table makes: a decision-bearing table's cells are the argument; a descriptive-only
+table's cells are a record, and must announce themselves as one.
+
 ## Rules that are not optional
 
 **Byte-identical output does not prove correct parsing.** This is the subtlest failure and the one that
@@ -163,10 +192,13 @@ strict/lenient column for a sensitivity that affects one row.
 
 ## Field exceptions
 
-A table describes a **universal** rule. Field-specific deviations belong in the field-exception register
-in `VALIDATION_REFERENCE.md` — one row per *declaration · field · deviation · authority · where
-documented*. The register is an index that points at the prose bullet or `VCF_SPEC_AMBIGUITIES.md` entry
-already owning each rule; it never restates them.
+A table describes a **universal** rule. Field-specific deviations belong in `VALIDATION_REFERENCE.md` — as
+its own prose bullet under whichever of that file's `## Strict`/`## Lenient`/`## Rules applied at every
+declared version` sections owns the behavior, naming the *declaration · field · deviation · authority · where
+documented* -- pointing at the `VCF_SPEC_AMBIGUITIES.md` entry that owns the rule's full reasoning rather than
+restating it. `VALIDATION_REFERENCE.md` is not itself a table (it is organized as itemized bullets, one per
+checkable rule), so a field exception does not get a *row*; it gets the same kind of bullet every other rule
+in that file already gets, with the field-specific scope stated explicitly in its text.
 
 This matters because a table verified field-independent invites the reader to assume it is the whole
 story. Keep two kinds of row visibly distinct:
@@ -175,9 +207,10 @@ story. Keep two kinds of row visibly distinct:
   brackets), and
 - a **tool artifact** (vcf_validator's stricter `##contig` validator).
 
-Citing the second as though it were the first is the specific failure this register exists to prevent.
+Citing the second as though it were the first is the specific failure this distinction exists to prevent.
 
-Adding a new field rule means adding a register row, not only a prose bullet.
+Adding a new field rule means adding a `VALIDATION_REFERENCE.md` bullet, not just leaving it implicit in the
+table.
 
 ## Preserving the evidence
 

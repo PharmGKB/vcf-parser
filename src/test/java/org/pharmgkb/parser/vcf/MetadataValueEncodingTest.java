@@ -153,10 +153,6 @@ class MetadataValueEncodingTest {
     // sentinel test above cannot catch that: under a lenient context the same regression only warns.
     VcfContext ctx = VcfContext.strict("VCFv4.2");
 
-    // Explicit puts, NOT new LinkedHashMap<>(Map.of(...)): Map.of does not promise iteration order, and
-    // IdDescriptionMetadata's map constructor calls checkAttributeOrder() (IdDescriptionMetadata.java:44),
-    // which routes through warnOrThrow -- so under this strict context an unlucky iteration order throws
-    // VcfFormatException before any getter assertion runs, nondeterministically.
     LinkedHashMap<String, String> filterProps = new LinkedHashMap<>();
     filterProps.put(IdMetadata.ID, "\"q10\"");
     filterProps.put(IdDescriptionMetadata.DESCRIPTION, "\"d\"");

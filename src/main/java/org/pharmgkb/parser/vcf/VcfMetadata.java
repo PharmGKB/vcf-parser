@@ -57,6 +57,7 @@ public final class VcfMetadata {
   private final ListMultimap<String, String> m_properties;
   private final Map<String, ContigMetadata> m_contig;
   private final Map<String, IdDescriptionMetadata> m_sample;
+  private final Map<String, MetaMetadata> m_meta;
   private final List<PedigreeMetadata> m_pedigree;
   private final VcfContext m_context;
 
@@ -71,6 +72,7 @@ public final class VcfMetadata {
   private @Nullable Map<String, FormatMetadata> m_formatView;
   private @Nullable Map<String, ContigMetadata> m_contigView;
   private @Nullable Map<String, IdDescriptionMetadata> m_sampleView;
+  private @Nullable Map<String, MetaMetadata> m_metaView;
   private @Nullable List<PedigreeMetadata> m_pedigreeView;
   private @Nullable ListMultimap<String, String> m_propertiesView;
   private @Nullable Set<String> m_propertyKeysView;
@@ -90,7 +92,8 @@ public final class VcfMetadata {
   VcfMetadata(String fileFormat, @Nullable Map<String, IdDescriptionMetadata> alt,
       @Nullable Map<String, InfoMetadata> info, @Nullable Map<String, IdDescriptionMetadata> filter,
       @Nullable Map<String, FormatMetadata> format, @Nullable Map<String, ContigMetadata> contig,
-      @Nullable Map<String, IdDescriptionMetadata> sample, @Nullable List<PedigreeMetadata> pedigree,
+      @Nullable Map<String, IdDescriptionMetadata> sample, @Nullable Map<String, MetaMetadata> meta,
+      @Nullable List<PedigreeMetadata> pedigree,
       List<String> columns, @Nullable ListMultimap<String, String> properties, VcfContext context) {
     Preconditions.checkNotNull(fileFormat);
     Preconditions.checkNotNull(columns);
@@ -107,6 +110,7 @@ public final class VcfMetadata {
     m_format     = format==null?     new LinkedHashMap<>()      : new LinkedHashMap<>(format);
     m_contig     = contig==null?     new LinkedHashMap<>()      : new LinkedHashMap<>(contig);
     m_sample     = sample==null?     new LinkedHashMap<>()      : new LinkedHashMap<>(sample);
+    m_meta       = meta==null?       new LinkedHashMap<>()      : new LinkedHashMap<>(meta);
     m_pedigree   = pedigree==null?   new ArrayList<>()          : new ArrayList<>(pedigree);
     m_properties = properties==null? LinkedListMultimap.create() : LinkedListMultimap.create(properties);
     // m_columns alone is a true immutable copy rather than a mutable one behind an unmodifiable view: unlike
@@ -135,7 +139,7 @@ public final class VcfMetadata {
    * {@link VcfContext} by reference (not a re-derived or newly constructed one -- see {@link VcfContext}'s
    * {@code newRecord}, which rejects a component built under a different context instance).
    * <p>
-   * Re-adds each structured declaration (ALT/INFO/FILTER/FORMAT/contig/SAMPLE/PEDIGREE) through {@link Builder}'s
+   * Re-adds each structured declaration (ALT/INFO/FILTER/FORMAT/contig/SAMPLE/META/PEDIGREE) through {@link Builder}'s
    * package-private object-taking overloads, carrying the existing declaration object over by reference rather
    * than reconstructing it from its raw properties -- see those overloads' own Javadoc. ALT is re-added through
    * {@code Builder}'s private {@code addAlt(IdDescriptionMetadata, boolean)} with content validation turned off:
@@ -162,6 +166,9 @@ public final class VcfMetadata {
     }
     for (IdDescriptionMetadata md : m_sample.values()) {
       builder.addSample(md);
+    }
+    for (MetaMetadata md : m_meta.values()) {
+      builder.addMeta(md);
     }
     for (PedigreeMetadata md : m_pedigree) {
       builder.addPedigree(md);
@@ -292,6 +299,16 @@ public final class VcfMetadata {
       m_sampleView = Collections.unmodifiableMap(m_sample);
     }
     return m_sampleView;
+  }
+
+  /**
+   * @return An unmodifiable view of the META declarations, keyed by each declaration's unquoted ID. See {@link #getAlts()}.
+   */
+  public Map<String, MetaMetadata> getMetas() {
+    if (m_metaView == null) {
+      m_metaView = Collections.unmodifiableMap(m_meta);
+    }
+    return m_metaView;
   }
 
   /**
@@ -490,11 +507,11 @@ public final class VcfMetadata {
    * empty ID" section for the full citation and the bcftools/vcf_validator comparison this is grounded in.
    * <p>
    * Neither VCFv4.2.tex nor VCFv4.3.tex states that a repeated declaration ID is an error for CONTIG/INFO/FORMAT/
-   * FILTER/ALT/SAMPLE (contrast with duplicate #CHROM sample-column names, which remain a structural error --
+   * FILTER/ALT/SAMPLE/META (contrast with duplicate #CHROM sample-column names, which remain a structural error --
    * see DUPLICATE_METADATA_ID_HANDLING.md for why). hts-specs' own test/vcf/{4.1,4.2}/passed/passed_meta_contig.vcf
    * fixture declares ##contig=&lt;ID=1&gt; twice and is expected to parse successfully. Confirmed valid by
-   * vcf_validator 0.10.2 for all six declaration types tested; bcftools 1.23.1 (htslib 1.23.1) keeps the first
-   * declaration and silently drops each duplicate, with no warning, for all six -- see
+   * vcf_validator 0.10.2 for all seven declaration types tested; bcftools 1.23.1 (htslib 1.23.1) keeps the first
+   * declaration and silently drops each duplicate, with no warning, for all seven -- see
    * DUPLICATE_METADATA_ID_HANDLING.md.
    */
   private static boolean warnIfDuplicate(Map<String, ?> map, String id, String typeName, VcfContext context) {
@@ -518,6 +535,7 @@ public final class VcfMetadata {
    *   <li>{@link #getContigs}</li>
    *   <li>{@link #getPedigrees}</li>
    *   <li>{@link #getSamples}</li>
+   *   <li>{@link #getMetas}</li>
    * </ul>
    * However, contains any in {@link #getAssemblies} and {@link #getPedigreeDatabases}.
    * <p>
@@ -559,6 +577,7 @@ public final class VcfMetadata {
    *   <li>{@link #getContigs}</li>
    *   <li>{@link #getPedigrees}</li>
    *   <li>{@link #getSamples}</li>
+   *   <li>{@link #getMetas}</li>
    * </ul>
    * However, contains any in {@link #getAssemblies} and {@link #getPedigreeDatabases}.
    * <p>
@@ -632,6 +651,7 @@ public final class VcfMetadata {
     private final Map<String, FormatMetadata> m_format = new LinkedHashMap<>();
     private final Map<String, ContigMetadata> m_contig = new LinkedHashMap<>();
     private final Map<String, IdDescriptionMetadata> m_sample = new LinkedHashMap<>();
+    private final Map<String, MetaMetadata> m_meta = new LinkedHashMap<>();
     private final List<PedigreeMetadata> m_pedigree = new ArrayList<>();
     /**
      * The {@code ID}s already added to {@link #m_pedigree}, maintained incrementally by {@link #addPedigree}.
@@ -882,6 +902,29 @@ public final class VcfMetadata {
       return addSample(md);
     }
 
+    public Builder addMeta(Map<String, String> properties) {
+      return addMeta(properties, true);
+    }
+
+    /**
+     * Package-private, for {@code VcfParser} only. Skips the structural-delimiter check because the parser
+     * deliberately warns-and-recovers on an unescaped quote and stores the recovered value -- checking its
+     * route would reject files this library accepts today. See STRUCTURAL_DELIMITER_HANDLING.md.
+     */
+    Builder addMetaTrusted(Map<String, String> properties) {
+      return addMeta(properties, false);
+    }
+
+    private Builder addMeta(Map<String, String> properties, boolean validateContent) {
+      MetaMetadata md = new MetaMetadata(m_context, properties);
+      if (validateContent) {
+        // META has no auto-quoted field (Values stays opaque, per MetaMetadata's own Javadoc), but the rule
+        // stays consistent with the other six keyed types
+        InternalUtils.checkMetadataPropertyEncoding("META", md.getPropertiesRaw());
+      }
+      return addMeta(md);
+    }
+
     public Builder addPedigree(Map<String, String> properties) {
       return addPedigree(properties, true);
     }
@@ -987,6 +1030,12 @@ public final class VcfMetadata {
       IdDescriptionMetadata md = new IdDescriptionMetadata(m_context, "SAMPLE", properties);
       InternalUtils.checkMetadataPropertyEncoding("SAMPLE", md.getPropertiesRaw());
       return replaceSample(md);
+    }
+
+    public Builder replaceMeta(Map<String, String> properties) {
+      MetaMetadata md = new MetaMetadata(m_context, properties);
+      InternalUtils.checkMetadataPropertyEncoding("META", md.getPropertiesRaw());
+      return replaceMeta(md);
     }
 
     /**
@@ -1146,10 +1195,33 @@ public final class VcfMetadata {
     }
 
     /**
+     * Adds an already-built declaration. Package-private: this shape is retained only for internal
+     * same-context callers (notably {@code VcfMetadata.toBuilder()}). It is not public because
+     * {@link VcfMetadata#getMetas}-style getters hand out existing declarations, so a public
+     * overload would let a caller move one built under another context into this builder -- see
+     * {@link #checkSameContext}.
+     */
+    Builder addMeta(MetaMetadata md) {
+      requireNonNull(md, "META");
+      checkSameContext(md, m_context, "META");
+      // getPropertyUnquoted(ID) -- see addAlt(IdDescriptionMetadata, boolean)'s identical comment.
+      String id = md.getPropertyUnquoted(IdMetadata.ID);
+      if (id == null || id.trim().isEmpty()) {
+        warnOrThrow(m_context, "META metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
+        return this;
+      }
+      if (warnIfDuplicate(m_meta, id, "META", m_context)) {
+        return this;
+      }
+      m_meta.put(id, md);
+      return this;
+    }
+
+    /**
      * Adds {@code md} to the list of PEDIGREE metadata. If {@code md} declares an {@code ID} property that
      * duplicates an earlier PEDIGREE entry's {@code ID} once both are unquoted ({@code ID="A"} duplicates
      * {@code ID=A} -- quoting is an encoding, not part of the identifier), warns and keeps the first entry
-     * instead of storing {@code md} -- matching the six keyed types' warn-and-keep-first rule. A PEDIGREE entry
+     * instead of storing {@code md} -- matching the seven keyed types' warn-and-keep-first rule. A PEDIGREE entry
      * with no {@code ID} property (VCFv4.2.tex line 152's own grammar, e.g.
      * {@code Name_0=G0-ID,...,Name_N=GN-ID}, has no mandatory ID attribute) is always added under VCFv4.2:
      * confirmed bcftools 1.23.1 keeps both of two ID-less duplicate
@@ -1173,8 +1245,8 @@ public final class VcfMetadata {
       // VCFv4.3.tex line 121, "All structured lines require an ID which must be unique within their type" --
       // VCFv4.2's own ##PEDIGREE template (VCFv4.2.tex line 152, ##PEDIGREE=<Name_0=G0-ID,...,Name_N=GN-ID>)
       // has no ID attribute at all, so this is gated on the declared version, not applied everywhere.
-      // Blank counts as absent, matching IdMetadata.init()'s trim()-based test and the six keyed types'
-      // inline check -- but unlike those six, the declaration is KEPT: they drop because a Map has no key
+      // Blank counts as absent, matching IdMetadata.init()'s trim()-based test and the seven keyed types'
+      // inline check -- but unlike those seven, the declaration is KEPT: they drop because a Map has no key
       // for them ("cannot be stored"), and ##PEDIGREE is List-backed. See DUPLICATE_METADATA_ID_HANDLING.md.
       // Checked BEFORE the duplicate branch, and deliberately not added to m_pedigreeIds, so two blank-ID
       // declarations each report their own missing ID instead of colliding as a spurious Duplicate ID "".
@@ -1321,6 +1393,21 @@ public final class VcfMetadata {
       return this;
     }
 
+    /**
+     * Replaces the existing META declaration under {@code md}'s unquoted {@code ID}, throwing via
+     * {@link #requirePresentForReplace} if none is stored. See {@link #replaceAlt(IdDescriptionMetadata)} for the
+     * shared reasoning; META has no equivalent post-construction content check to run before the map mutation.
+     */
+    private Builder replaceMeta(MetaMetadata md) {
+      requireNonNull(md, "META");
+      checkSameContext(md, m_context, "META");
+      // getPropertyUnquoted(ID) -- see replaceAlt(IdDescriptionMetadata)'s comment.
+      String id = md.getPropertyUnquoted(IdMetadata.ID);
+      requirePresentForReplace(m_meta, id, "META");
+      m_meta.put(id, md);
+      return this;
+    }
+
     public Builder addRawProperty(String name, String value) {
       // name/value are typed non-@Nullable, but nothing enforces that at runtime; guard here rather than letting
       // a null name reach InternalUtils.checkNoLineTerminator(name, value) below (name.contains(...) would NPE) or a
@@ -1343,10 +1430,13 @@ public final class VcfMetadata {
             + "re-parse split point: " + name);
       }
       InternalUtils.checkNoLineTerminator(name, value);
-      if (InternalUtils.isReservedMetadataKey(name)) {
-        // this cannot currently be reached through normal parsing -- VcfParser.parseMetadata's switch routes
-        // every reserved name to the structured path, never to addRawProperty -- but it closes the hole for
-        // direct/programmatic Builder use, matching the empty-value case below's warn-and-drop style
+      if (InternalUtils.isReservedMetadataKey(name, m_context.getVersion())) {
+        // for every reserved name except a pre-4.3 "META", this cannot currently be reached through normal
+        // parsing -- VcfParser.parseMetadata's switch routes every other reserved name to the structured path,
+        // never to addRawProperty -- but it closes the hole for direct/programmatic Builder use, matching the
+        // empty-value case below's warn-and-drop style. A pre-4.3 "META" IS reached through normal parsing
+        // (##META doesn't exist before VCFv4.3, so isReservedMetadataKey already excludes it there and this
+        // branch is never taken for it).
         warnOrThrow(m_context, "Metadata property name \"{}\" collides with a structured declaration keyword and was " +
             "dropped: {}", name, value);
         return this;
@@ -1384,7 +1474,7 @@ public final class VcfMetadata {
     }
 
     public VcfMetadata build() {
-      return new VcfMetadata(m_fileFormat, m_alt, m_info, m_filter, m_format, m_contig, m_sample, m_pedigree,
+      return new VcfMetadata(m_fileFormat, m_alt, m_info, m_filter, m_format, m_contig, m_sample, m_meta, m_pedigree,
           m_columns, m_properties, m_context);
     }
   }

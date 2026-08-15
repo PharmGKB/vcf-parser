@@ -165,7 +165,10 @@ class WriterRoundTripTest {
 
   @Test
   void testOutOfOrderInfoDeclarationRoundTripsWithoutRewriting() throws IOException {
-    // warn-and-preserve, not reject-and-rewrite: reproduces failed_meta_info_003.vcf's declared order
+    // not just no rewriting, no warning at all: reproduces failed_meta_info_003.vcf's declared order, which is
+    // now a permanently-accepted divergence -- attribute-order checking was removed from every keyed
+    // declaration type (see VCF_SPEC_AMBIGUITIES.md's "##META attribute order" entry), so this warns about
+    // nothing at all, not just "warn but preserve."
     String vcf =
         "##fileformat=VCFv4.2\n" +
         "##INFO=<Number=1,Type=Integer,Description=\"Raw read depth\",ID=DP>\n" +
@@ -179,7 +182,7 @@ class WriterRoundTripTest {
     WriterRoundTrip.ParsedFile parsed;
     try {
       parsed = WriterRoundTrip.parseText(vcf);
-      assertTrue(appender.hasWarnOrHigher());
+      assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
       appender.stop();
@@ -270,7 +273,7 @@ class WriterRoundTripTest {
   @Test
   void testDuplicatePedigreeIdRoundTripsKeepingFirstOnly() throws IOException {
     // warn-and-drop-duplicate, not reject: mirrors testDuplicateContigDeclarationRoundTripsKeepingFirstOnly's
-    // pattern for the six keyed types, applied to PEDIGREE's conditional (ID-present-only) dedup rule
+    // pattern for the seven keyed types, applied to PEDIGREE's conditional (ID-present-only) dedup rule
     String vcf =
         "##fileformat=VCFv4.2\n" +
         "##PEDIGREE=<ID=Child,Father=Dad>\n" +
@@ -363,22 +366,50 @@ class WriterRoundTripTest {
   }
 
   @Test
-  void testBracketQuotedValuesRoundTripByteIdenticallyThroughDefaultWrite() throws IOException {
+  void testMetaValuesBracketRoundTripsByteIdenticallyThroughDefaultWrite() throws IOException {
     // AGENTS.md: "For parser-to-writer changes, add a round-trip test showing that accepted input can be
-    // written and parsed again without column loss or delimiter corruption." Same content as
-    // src/test/resources/metadata_brackets.vcf (VcfParserTest#bracketValuesSurviveParsing, which only checks
-    // the parsed-in-memory values) -- this pins that the bracket-quoted values the attribute-list tokenizer
-    // now parses correctly (Task 2's whole point: they used to be split at their interior commas) also survive
-    // the default write path byte-for-byte, not just an in-memory getPropertyRaw() check.
+    // written and parsed again without column loss or delimiter corruption." Bracket-list quoting is scoped
+    // to ##META's Values (see VCF_SPEC_AMBIGUITIES.md's "General bracket-list quoting beyond ##META's
+    // Values" entry) -- this pins that the spec's own worked example (VcfParserTest
+    // #bracketValuesOnlyProtectCommasForMetaValues, which only checks the parsed-in-memory value) also
+    // survives the default write path byte-for-byte, not just an in-memory getPropertyRaw() check.
     String vcf =
         "##fileformat=VCFv4.3\n" +
-        "##contig=<ID=c1,x=[WholeGenome, Exome],length=999>\n" +
-        "##SAMPLE=<ID=s1,Assay=[a, b],Description=\"d\">\n" +
+        "##META=<ID=Assay,Type=String,Number=.,Values=[WholeGenome, Exome]>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t5\t.\tA\tT\t.\t.\t.\n";
+    WriterRoundTrip.ParsedFile parsed = WriterRoundTrip.parseText(vcf);
+    String written = WriterRoundTrip.write(parsed);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
+  }
+
+  @Test
+  void testNonMetaValuesBracketTruncationStaysBcftoolsSafeOnWrite() throws IOException {
+    // Regression test for a real bug caught by external review: outside ##META's Values, a comma inside
+    // "[...]" is not protected (VCF_SPEC_AMBIGUITIES.md's "General bracket-list quoting beyond ##META's
+    // Values" entry), so "x=[a, b]" truncates at the comma to just "x=[a" -- a value with a dangling '[' and
+    // no ']' anywhere. Writing that back out RAW would manufacture a value bcftools cannot read at all (exit
+    // 255) from an input that was perfectly well-formed; this is not carrying forward already-malformed
+    // content, it is this library's own truncation creating new fatal content. The byte-identical guarantee
+    // does NOT apply here -- the input is not byte-preserved, it is defensively re-quoted -- so this test
+    // instead pins that the WRITTEN output (a) contains no dangling '[' and (b) is stable under a second
+    // parse-and-write (idempotent), i.e. genuinely well-formed rather than merely happening to work once.
+    // BcftoolsDependencyTest#testNonMetaValuesBracketTruncationDoesNotManufactureAnUnreadableHeader is the
+    // stronger, tool-verified twin of this test.
+    String vcf =
+        "##fileformat=VCFv4.3\n" +
+        "##contig=<ID=c1,x=[a, b],length=999>\n" +
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
         "c1\t5\t.\tA\tT\t.\t.\t.\n";
     WriterRoundTrip.ParsedFile parsed = WriterRoundTrip.parseText(vcf);
     String written = WriterRoundTrip.write(parsed);
-    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
+    assertTrue(written.contains("x=\"[a\""), "expected the truncated value to be re-quoted for safety: " + written);
+    assertFalse(written.contains("x=[a,"), "must not write the dangling, unquoted '[' back out verbatim");
+    // stable under a second round trip -- re-parsing the (already-safe) written output and writing it again
+    // must reproduce the exact same bytes, since nothing about "\"[a\"" needs further correction
+    WriterRoundTrip.ParsedFile reparsed = WriterRoundTrip.parseText(written);
+    String rewritten = WriterRoundTrip.write(reparsed);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(written, rewritten));
   }
 
   @Test
