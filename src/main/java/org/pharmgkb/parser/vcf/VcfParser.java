@@ -604,25 +604,25 @@ public class VcfParser implements Closeable {
     // declaration can never arrive already bound to a different context than the builder's.
     switch (propName) {
       case "ALT":
-        mdBuilder.addAlt(props);
+        mdBuilder.addAltTrusted(props);
         break;
       case "FILTER":
-        mdBuilder.addFilter(props);
+        mdBuilder.addFilterTrusted(props);
         break;
       case "INFO":
-        mdBuilder.addInfo(props);
+        mdBuilder.addInfoTrusted(props);
         break;
       case "FORMAT":
-        mdBuilder.addFormat(props);
+        mdBuilder.addFormatTrusted(props);
         break;
       case "contig":
-        mdBuilder.addContig(props);
+        mdBuilder.addContigTrusted(props);
         break;
       case "SAMPLE":
-        mdBuilder.addSample(props);
+        mdBuilder.addSampleTrusted(props);
         break;
       case "PEDIGREE":
-        mdBuilder.addPedigree(props);
+        mdBuilder.addPedigreeTrusted(props);
         break;
     }
   }

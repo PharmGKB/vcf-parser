@@ -193,11 +193,24 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   `List`-backed and has no map slot to fail to claim.
 - `VcfMetadata.Builder.replaceAlt()` / `replaceInfo()` / `replaceFormat()` / `replaceFilter()` / `replaceContig()`
   / `replaceSample()` throw `VcfFormatException` for an `ID` with no existing declaration to replace -- in both
-  a lenient and a strict context, unlike every other rule on this page. This is deliberate, not an oversight: a
+  a lenient and a strict context, unlike most rules in this section. This is deliberate, not an oversight: a
   missing replace target is a programming error in either mode, not a content violation, so it is not routed
   through `warnOrThrow`. See
   [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md)'s "`replaceXxx`: the supported way to
   overwrite a declaration" section.
+- `VcfMetadata.Builder`'s content-accepting `addXxx`/`replaceXxx` routes (25 checked call sites across the
+  seven kinds' typed and `Map` overloads) throw `VcfFormatException`, unconditionally in both a lenient and a
+  strict context, when the constructed declaration's `getPropertiesRaw()` holds a property key that is
+  null/empty/contains `,` or `=`, or an unquoted value containing `,`, `=`, or an unescaped `"` -- matching
+  `checkNoLineTerminator` rather than being routed through `warnOrThrow`, since this is structural corruption
+  (`AGENTS.md`'s Parser Validation Policy: "invalid delimiter handling that changes field alignment"), not a
+  case a lenient warning could usefully recover from. `VcfParser`'s own seven package-private
+  `addXxxTrusted(Map)` routes skip this check, because the parser deliberately warns-and-recovers on an
+  unescaped quote and stores the recovered value; `Builder.addRawProperty` applies a narrower, also-
+  unconditional rule instead (rejects `=` only in the generic property's *name*, since a `##key=value` line is
+  re-read by splitting on the first `=` only). See
+  [`STRUCTURAL_DELIMITER_HANDLING.md`](STRUCTURAL_DELIMITER_HANDLING.md) for the full corruption matrix, the
+  severity ranking, and the parse-path exemption's rationale.
 - `VcfMetadata.Builder` throws `VcfFormatException` for a declaration built under a *different* `VcfContext`
   instance (compared by reference, not value) than the builder's own. `VcfMetadata` itself has no instance
   mutators to add this check to -- it is immutable, and `getInfo()`/its siblings return memoized unmodifiable

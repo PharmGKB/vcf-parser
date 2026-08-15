@@ -1185,4 +1185,82 @@ public class InternalUtils {
     throw new VcfFormatException("Type " + clas + " unrecognized");
   }
 
+  /**
+   * Rejects a metadata property whose key or value would corrupt the {@code <key=value,...>} attribute list it is
+   * emitted into. This is the single implementation behind both the construction-time check in
+   * {@code VcfMetadata.Builder} and the write-time check in {@code VcfWriter.validateMetadataProperties}; two
+   * independent copies of a predicate this subtle drift.
+   * <p>
+   * See STRUCTURAL_DELIMITER_HANDLING.md for the verified corruption matrix, including why an unescaped quote is
+   * the most destructive of the three and why its damage is position-dependent.
+   *
+   * @throws VcfFormatException if a key is null/empty, or contains {@code ,}, {@code =}, or any {@code "}
+   * (escaped or not), or if an unquoted value contains {@code ,}, {@code =}, or an unescaped {@code "}
+   */
+  static void checkMetadataPropertyEncoding(String kind, Map<String, String> properties) {
+    for (Map.Entry<String, String> property : properties.entrySet()) {
+      String propertyName = property.getKey();
+      // Any '"' in a NAME is rejected, escaped or not -- unlike a VALUE, where a properly escaped quote inside
+      // a quoted string is legal and common (VCFv4.3.tex line 119 gives the grammar as
+      // "##key=<key=value,key=value,...>" and states no character set for the inner key, so the spec is
+      // silent; per AGENTS.md's Decision Hierarchy bcftools governs). bcftools 1.23.1 (htslib 1.23.1) refuses
+      // the whole header line for a\"b, a\"b\" and "ab" alike -- all three produce
+      // "[E::bcf_hdr_parse_line] Could not parse the header line" and the declaration is dropped -- while
+      // accepting an escaped quote inside a quoted value. This library round-trips the escaped-name forms
+      // cleanly on its own, so an internal round-trip test cannot detect this; see
+      // BCFTOOLS_VERSION_DEPENDENCIES.md.
+      if (propertyName == null || propertyName.isEmpty() || propertyName.contains(",") ||
+          propertyName.contains("=") || propertyName.contains("\"")) {
+        throw new VcfFormatException(kind + " metadata contains an invalid property name: " + property.getKey());
+      }
+      String value = property.getValue();
+      if (!isQuoted(value) && (value.contains(",") || value.contains("=") || containsUnescapedQuote(value))) {
+        throw new VcfFormatException(kind + " metadata property " + propertyName +
+            " contains an unquoted structural delimiter");
+      }
+    }
+  }
+
+  static boolean isQuoted(String value) {
+    if (value.length() < 2 || value.charAt(0) != '"' || value.charAt(value.length() - 1) != '"') {
+      return false;
+    }
+    boolean escaped = false;
+    for (int i = 1; i < value.length() - 1; i++) {
+      char c = value.charAt(i);
+      if (c == '"' && !escaped) {
+        return false;
+      }
+      if (c == '\\') {
+        escaped = !escaped;
+      } else {
+        escaped = false;
+      }
+    }
+    return !escaped;
+  }
+
+  /**
+   * @return whether {@code value} contains a {@code "} not preceded by an escaping {@code \} (the same escape
+   * convention {@link InternalUtils}'s top-level splitter uses). {@link #isQuoted} already rejects a value that starts
+   * and ends with {@code "} but isn't validly escaped in between, but a value can also contain a stray, unescaped
+   * {@code "} without looking quoted at all (no leading/trailing {@code "}) and without containing {@code ,} or
+   * {@code =} either, so this must be checked independently of both. Left unrejected, such a value would flip the
+   * writer's top-level "inside a quoted value" tracking state when re-read, potentially misaligning every property
+   * that follows it in the same declaration. Verified live: a value of {@code "abc"def"} followed by another
+   * property in the same declaration fails to re-parse at all ({@code VcfFormatException}), not just producing a
+   * different value than intended.
+   */
+  static boolean containsUnescapedQuote(String value) {
+    for (int i = 0; i < value.length(); i++) {
+      char c = value.charAt(i);
+      if (c == '\\' && i + 1 < value.length() && (value.charAt(i + 1) == '\\' || value.charAt(i + 1) == '"')) {
+        i++; // skip the escaped character
+      } else if (c == '"') {
+        return true;
+      }
+    }
+    return false;
+  }
+
 }

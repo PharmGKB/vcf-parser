@@ -667,65 +667,13 @@ public class VcfWriter implements Closeable {
     }
   }
 
-  // both call sites pass the same map an entry.validate()/pedigree.validate() call already ran against,
-  // immediately before this method runs -- BaseMetadata.validate() already calls checkNoLineTerminator(key,
-  // value) for every property in that same map, so redoing it here would just repeat that work per property.
-  // It also now rejects a null value itself, so a null here is already unreachable -- no separate check needed.
+  // Kept as a thin delegate rather than deleted: this is validateBeforeWrite()'s diagnostics pass, and after
+  // the construction-time check lands it remains the net for the two routes that still bypass that check:
+  // BaseMetadata.trustedMutableProperties() (a test-only bypass), and VcfParser's own addXxxTrusted/
+  // object-taking routes, which deliberately store parser-recovered content (e.g. an unescaped quote) this
+  // check would otherwise reject -- see STRUCTURAL_DELIMITER_HANDLING.md's "Why the parse path is exempt".
   private void validateMetadataProperties(String kind, Map<String, String> properties) {
-    for (Map.Entry<String, String> property : properties.entrySet()) {
-      String propertyName = property.getKey();
-      if (propertyName == null || propertyName.isEmpty() || propertyName.contains(",") ||
-          propertyName.contains("=")) {
-        throw new VcfFormatException(kind + " metadata contains an invalid property name: " + property.getKey());
-      }
-      String value = property.getValue();
-      if (!isQuoted(value) && (value.contains(",") || value.contains("=") || containsUnescapedQuote(value))) {
-        throw new VcfFormatException(kind + " metadata property " + propertyName +
-            " contains an unquoted structural delimiter");
-      }
-    }
-  }
-
-  private static boolean isQuoted(String value) {
-    if (value.length() < 2 || value.charAt(0) != '"' || value.charAt(value.length() - 1) != '"') {
-      return false;
-    }
-    boolean escaped = false;
-    for (int i = 1; i < value.length() - 1; i++) {
-      char c = value.charAt(i);
-      if (c == '"' && !escaped) {
-        return false;
-      }
-      if (c == '\\') {
-        escaped = !escaped;
-      } else {
-        escaped = false;
-      }
-    }
-    return !escaped;
-  }
-
-  /**
-   * @return whether {@code value} contains a {@code "} not preceded by an escaping {@code \} (the same escape
-   * convention {@link InternalUtils}'s top-level splitter uses). {@link #isQuoted} already rejects a value that starts
-   * and ends with {@code "} but isn't validly escaped in between, but a value can also contain a stray, unescaped
-   * {@code "} without looking quoted at all (no leading/trailing {@code "}) and without containing {@code ,} or
-   * {@code =} either, so this must be checked independently of both. Left unrejected, such a value would flip the
-   * writer's top-level "inside a quoted value" tracking state when re-read, potentially misaligning every property
-   * that follows it in the same declaration. Verified live: a value of {@code "abc"def"} followed by another
-   * property in the same declaration fails to re-parse at all ({@code VcfFormatException}), not just producing a
-   * different value than intended.
-   */
-  private static boolean containsUnescapedQuote(String value) {
-    for (int i = 0; i < value.length(); i++) {
-      char c = value.charAt(i);
-      if (c == '\\' && i + 1 < value.length() && (value.charAt(i + 1) == '\\' || value.charAt(i + 1) == '"')) {
-        i++; // skip the escaped character
-      } else if (c == '"') {
-        return true;
-      }
-    }
-    return false;
+    InternalUtils.checkMetadataPropertyEncoding(kind, properties);
   }
 
   private void validateInfo(VcfMetadata metadata, VcfPosition position, VcfVersion recordVersion) {

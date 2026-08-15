@@ -699,58 +699,210 @@ public final class VcfMetadata {
      */
 
     public Builder addAlt(@Nullable String id, @Nullable String description) {
-      return addAlt(new IdDescriptionMetadata(m_context, "ALT", id, description));
+      IdDescriptionMetadata md = new IdDescriptionMetadata(m_context, "ALT", id, description);
+      // checked on the CONSTRUCTED declaration, not on the arguments -- see addAlt(Map, boolean)'s comment below
+      InternalUtils.checkMetadataPropertyEncoding("ALT", md.getPropertiesRaw());
+      return addAlt(md);
     }
 
     public Builder addAlt(Map<String, String> properties) {
-      return addAlt(new IdDescriptionMetadata(m_context, "ALT", properties));
+      return addAlt(properties, true);
+    }
+
+    /**
+     * Package-private, for {@code VcfParser} only. Skips the structural-delimiter check because the parser
+     * deliberately warns-and-recovers on an unescaped quote and stores the recovered value -- checking its
+     * route would reject files this library accepts today. See STRUCTURAL_DELIMITER_HANDLING.md.
+     */
+    Builder addAltTrusted(Map<String, String> properties) {
+      return addAlt(properties, false);
+    }
+
+    private Builder addAlt(Map<String, String> properties, boolean validateContent) {
+      IdDescriptionMetadata md = new IdDescriptionMetadata(m_context, "ALT", properties);
+      if (validateContent) {
+        // checked on the CONSTRUCTED declaration, not on `properties`: the typed routes above transform their
+        // arguments first (putAndQuoteProperty quotes Description), so checking the arguments would reject
+        // values the constructor was about to make safe
+        InternalUtils.checkMetadataPropertyEncoding("ALT", md.getPropertiesRaw());
+      }
+      return addAlt(md);
     }
 
     public Builder addInfo(@Nullable String id, @Nullable String description, @Nullable InfoType type,
         @Nullable String number, @Nullable String source, @Nullable String version) {
-      return addInfo(new InfoMetadata(m_context, id, description, type, number, source, version));
+      InfoMetadata md = new InfoMetadata(m_context, id, description, type, number, source, version);
+      InternalUtils.checkMetadataPropertyEncoding("INFO", md.getPropertiesRaw());
+      return addInfo(md);
     }
 
     public Builder addInfo(Map<String, String> properties) {
-      return addInfo(new InfoMetadata(m_context, properties));
+      return addInfo(properties, true);
+    }
+
+    /**
+     * Package-private, for {@code VcfParser} only. Skips the structural-delimiter check because the parser
+     * deliberately warns-and-recovers on an unescaped quote and stores the recovered value -- checking its
+     * route would reject files this library accepts today. See STRUCTURAL_DELIMITER_HANDLING.md.
+     */
+    Builder addInfoTrusted(Map<String, String> properties) {
+      return addInfo(properties, false);
+    }
+
+    private Builder addInfo(Map<String, String> properties, boolean validateContent) {
+      InfoMetadata md = new InfoMetadata(m_context, properties);
+      if (validateContent) {
+        // checked on the CONSTRUCTED declaration, not on `properties`: the typed routes above transform their
+        // arguments first (putAndQuoteProperty quotes Description/Source/Version), so checking the arguments
+        // would reject values the constructor was about to make safe
+        InternalUtils.checkMetadataPropertyEncoding("INFO", md.getPropertiesRaw());
+      }
+      return addInfo(md);
     }
 
     public Builder addFilter(@Nullable String id, @Nullable String description) {
-      return addFilter(new IdDescriptionMetadata(m_context, "FILTER", id, description));
+      IdDescriptionMetadata md = new IdDescriptionMetadata(m_context, "FILTER", id, description);
+      InternalUtils.checkMetadataPropertyEncoding("FILTER", md.getPropertiesRaw());
+      return addFilter(md);
     }
 
     public Builder addFilter(Map<String, String> properties) {
-      return addFilter(new IdDescriptionMetadata(m_context, "FILTER", properties));
+      return addFilter(properties, true);
+    }
+
+    /**
+     * Package-private, for {@code VcfParser} only. Skips the structural-delimiter check because the parser
+     * deliberately warns-and-recovers on an unescaped quote and stores the recovered value -- checking its
+     * route would reject files this library accepts today. See STRUCTURAL_DELIMITER_HANDLING.md.
+     */
+    Builder addFilterTrusted(Map<String, String> properties) {
+      return addFilter(properties, false);
+    }
+
+    private Builder addFilter(Map<String, String> properties, boolean validateContent) {
+      IdDescriptionMetadata md = new IdDescriptionMetadata(m_context, "FILTER", properties);
+      if (validateContent) {
+        // checked on the CONSTRUCTED declaration, not on `properties`: the typed routes above transform their
+        // arguments first (putAndQuoteProperty quotes Description), so checking the arguments would reject
+        // values the constructor was about to make safe
+        InternalUtils.checkMetadataPropertyEncoding("FILTER", md.getPropertiesRaw());
+      }
+      return addFilter(md);
     }
 
     public Builder addFormat(@Nullable String id, @Nullable String description, @Nullable String number,
         @Nullable FormatType type) {
-      return addFormat(new FormatMetadata(m_context, id, description, number, type));
+      FormatMetadata md = new FormatMetadata(m_context, id, description, number, type);
+      InternalUtils.checkMetadataPropertyEncoding("FORMAT", md.getPropertiesRaw());
+      return addFormat(md);
     }
 
     public Builder addFormat(Map<String, String> properties) {
-      return addFormat(new FormatMetadata(m_context, properties));
+      return addFormat(properties, true);
+    }
+
+    /**
+     * Package-private, for {@code VcfParser} only. Skips the structural-delimiter check because the parser
+     * deliberately warns-and-recovers on an unescaped quote and stores the recovered value -- checking its
+     * route would reject files this library accepts today. See STRUCTURAL_DELIMITER_HANDLING.md.
+     */
+    Builder addFormatTrusted(Map<String, String> properties) {
+      return addFormat(properties, false);
+    }
+
+    private Builder addFormat(Map<String, String> properties, boolean validateContent) {
+      FormatMetadata md = new FormatMetadata(m_context, properties);
+      if (validateContent) {
+        // checked on the CONSTRUCTED declaration, not on `properties`: the typed routes above transform their
+        // arguments first (putAndQuoteProperty quotes Description), so checking the arguments would reject
+        // values the constructor was about to make safe
+        InternalUtils.checkMetadataPropertyEncoding("FORMAT", md.getPropertiesRaw());
+      }
+      return addFormat(md);
     }
 
     public Builder addContig(@Nullable String id, @Nullable Long length, @Nullable String assembly,
         @Nullable String md5, @Nullable String species, @Nullable String taxonomy, @Nullable String url) {
-      return addContig(new ContigMetadata(m_context, id, length, assembly, md5, species, taxonomy, url));
+      ContigMetadata md = new ContigMetadata(m_context, id, length, assembly, md5, species, taxonomy, url);
+      InternalUtils.checkMetadataPropertyEncoding("contig", md.getPropertiesRaw());
+      return addContig(md);
     }
 
     public Builder addContig(Map<String, String> properties) {
-      return addContig(new ContigMetadata(m_context, properties));
+      return addContig(properties, true);
+    }
+
+    /**
+     * Package-private, for {@code VcfParser} only. Skips the structural-delimiter check because the parser
+     * deliberately warns-and-recovers on an unescaped quote and stores the recovered value -- checking its
+     * route would reject files this library accepts today. See STRUCTURAL_DELIMITER_HANDLING.md.
+     */
+    Builder addContigTrusted(Map<String, String> properties) {
+      return addContig(properties, false);
+    }
+
+    private Builder addContig(Map<String, String> properties, boolean validateContent) {
+      ContigMetadata md = new ContigMetadata(m_context, properties);
+      if (validateContent) {
+        // checked on the CONSTRUCTED declaration, not on `properties`: the typed routes above transform their
+        // arguments first (putAndQuoteProperty quotes species), so checking the arguments would reject values
+        // the constructor was about to make safe
+        InternalUtils.checkMetadataPropertyEncoding("contig", md.getPropertiesRaw());
+      }
+      return addContig(md);
     }
 
     public Builder addSample(@Nullable String id, @Nullable String description) {
-      return addSample(new IdDescriptionMetadata(m_context, "SAMPLE", id, description));
+      IdDescriptionMetadata md = new IdDescriptionMetadata(m_context, "SAMPLE", id, description);
+      InternalUtils.checkMetadataPropertyEncoding("SAMPLE", md.getPropertiesRaw());
+      return addSample(md);
     }
 
     public Builder addSample(Map<String, String> properties) {
-      return addSample(new IdDescriptionMetadata(m_context, "SAMPLE", properties));
+      return addSample(properties, true);
+    }
+
+    /**
+     * Package-private, for {@code VcfParser} only. Skips the structural-delimiter check because the parser
+     * deliberately warns-and-recovers on an unescaped quote and stores the recovered value -- checking its
+     * route would reject files this library accepts today. See STRUCTURAL_DELIMITER_HANDLING.md.
+     */
+    Builder addSampleTrusted(Map<String, String> properties) {
+      return addSample(properties, false);
+    }
+
+    private Builder addSample(Map<String, String> properties, boolean validateContent) {
+      IdDescriptionMetadata md = new IdDescriptionMetadata(m_context, "SAMPLE", properties);
+      if (validateContent) {
+        // checked on the CONSTRUCTED declaration, not on `properties`: the typed routes above transform their
+        // arguments first (putAndQuoteProperty quotes Description), so checking the arguments would reject
+        // values the constructor was about to make safe
+        InternalUtils.checkMetadataPropertyEncoding("SAMPLE", md.getPropertiesRaw());
+      }
+      return addSample(md);
     }
 
     public Builder addPedigree(Map<String, String> properties) {
-      return addPedigree(new PedigreeMetadata(m_context, properties));
+      return addPedigree(properties, true);
+    }
+
+    /**
+     * Package-private, for {@code VcfParser} only. Skips the structural-delimiter check because the parser
+     * deliberately warns-and-recovers on an unescaped quote and stores the recovered value -- checking its
+     * route would reject files this library accepts today. See STRUCTURAL_DELIMITER_HANDLING.md.
+     */
+    Builder addPedigreeTrusted(Map<String, String> properties) {
+      return addPedigree(properties, false);
+    }
+
+    private Builder addPedigree(Map<String, String> properties, boolean validateContent) {
+      PedigreeMetadata md = new PedigreeMetadata(m_context, properties);
+      if (validateContent) {
+        // checked on the CONSTRUCTED declaration, not on `properties`: PEDIGREE has no fixed schema, so unlike
+        // the other six kinds there is no auto-quoted field to worry about here, but the rule stays consistent
+        InternalUtils.checkMetadataPropertyEncoding("PEDIGREE", md.getPropertiesRaw());
+      }
+      return addPedigree(md);
     }
 
     /*
@@ -763,54 +915,78 @@ public final class VcfMetadata {
      */
 
     public Builder replaceAlt(@Nullable String id, @Nullable String description) {
-      return replaceAlt(new IdDescriptionMetadata(m_context, "ALT", id, description));
+      IdDescriptionMetadata md = new IdDescriptionMetadata(m_context, "ALT", id, description);
+      InternalUtils.checkMetadataPropertyEncoding("ALT", md.getPropertiesRaw());
+      return replaceAlt(md);
     }
 
     public Builder replaceAlt(Map<String, String> properties) {
-      return replaceAlt(new IdDescriptionMetadata(m_context, "ALT", properties));
+      IdDescriptionMetadata md = new IdDescriptionMetadata(m_context, "ALT", properties);
+      InternalUtils.checkMetadataPropertyEncoding("ALT", md.getPropertiesRaw());
+      return replaceAlt(md);
     }
 
     public Builder replaceInfo(@Nullable String id, @Nullable String description, @Nullable InfoType type,
         @Nullable String number, @Nullable String source, @Nullable String version) {
-      return replaceInfo(new InfoMetadata(m_context, id, description, type, number, source, version));
+      InfoMetadata md = new InfoMetadata(m_context, id, description, type, number, source, version);
+      InternalUtils.checkMetadataPropertyEncoding("INFO", md.getPropertiesRaw());
+      return replaceInfo(md);
     }
 
     public Builder replaceInfo(Map<String, String> properties) {
-      return replaceInfo(new InfoMetadata(m_context, properties));
+      InfoMetadata md = new InfoMetadata(m_context, properties);
+      InternalUtils.checkMetadataPropertyEncoding("INFO", md.getPropertiesRaw());
+      return replaceInfo(md);
     }
 
     public Builder replaceFilter(@Nullable String id, @Nullable String description) {
-      return replaceFilter(new IdDescriptionMetadata(m_context, "FILTER", id, description));
+      IdDescriptionMetadata md = new IdDescriptionMetadata(m_context, "FILTER", id, description);
+      InternalUtils.checkMetadataPropertyEncoding("FILTER", md.getPropertiesRaw());
+      return replaceFilter(md);
     }
 
     public Builder replaceFilter(Map<String, String> properties) {
-      return replaceFilter(new IdDescriptionMetadata(m_context, "FILTER", properties));
+      IdDescriptionMetadata md = new IdDescriptionMetadata(m_context, "FILTER", properties);
+      InternalUtils.checkMetadataPropertyEncoding("FILTER", md.getPropertiesRaw());
+      return replaceFilter(md);
     }
 
     public Builder replaceFormat(@Nullable String id, @Nullable String description, @Nullable String number,
         @Nullable FormatType type) {
-      return replaceFormat(new FormatMetadata(m_context, id, description, number, type));
+      FormatMetadata md = new FormatMetadata(m_context, id, description, number, type);
+      InternalUtils.checkMetadataPropertyEncoding("FORMAT", md.getPropertiesRaw());
+      return replaceFormat(md);
     }
 
     public Builder replaceFormat(Map<String, String> properties) {
-      return replaceFormat(new FormatMetadata(m_context, properties));
+      FormatMetadata md = new FormatMetadata(m_context, properties);
+      InternalUtils.checkMetadataPropertyEncoding("FORMAT", md.getPropertiesRaw());
+      return replaceFormat(md);
     }
 
     public Builder replaceContig(@Nullable String id, @Nullable Long length, @Nullable String assembly,
         @Nullable String md5, @Nullable String species, @Nullable String taxonomy, @Nullable String url) {
-      return replaceContig(new ContigMetadata(m_context, id, length, assembly, md5, species, taxonomy, url));
+      ContigMetadata md = new ContigMetadata(m_context, id, length, assembly, md5, species, taxonomy, url);
+      InternalUtils.checkMetadataPropertyEncoding("contig", md.getPropertiesRaw());
+      return replaceContig(md);
     }
 
     public Builder replaceContig(Map<String, String> properties) {
-      return replaceContig(new ContigMetadata(m_context, properties));
+      ContigMetadata md = new ContigMetadata(m_context, properties);
+      InternalUtils.checkMetadataPropertyEncoding("contig", md.getPropertiesRaw());
+      return replaceContig(md);
     }
 
     public Builder replaceSample(@Nullable String id, @Nullable String description) {
-      return replaceSample(new IdDescriptionMetadata(m_context, "SAMPLE", id, description));
+      IdDescriptionMetadata md = new IdDescriptionMetadata(m_context, "SAMPLE", id, description);
+      InternalUtils.checkMetadataPropertyEncoding("SAMPLE", md.getPropertiesRaw());
+      return replaceSample(md);
     }
 
     public Builder replaceSample(Map<String, String> properties) {
-      return replaceSample(new IdDescriptionMetadata(m_context, "SAMPLE", properties));
+      IdDescriptionMetadata md = new IdDescriptionMetadata(m_context, "SAMPLE", properties);
+      InternalUtils.checkMetadataPropertyEncoding("SAMPLE", md.getPropertiesRaw());
+      return replaceSample(md);
     }
 
     /**
@@ -1154,6 +1330,17 @@ public final class VcfMetadata {
       }
       if (value == null) {
         throw new VcfFormatException("Metadata property \"" + name + "\" has a null value");
+      }
+      // Deliberately narrower than the structured rule, and deliberately unconditional. A generic ##name=value
+      // line is re-read by splitting on the FIRST '=' (VcfParser.java:550-555), so an '=' in the name shifts
+      // that split point and corrupts, while an '=' or ',' in the value is returned intact. No trusted variant
+      // is needed: the parser derives the name from that same first-'=' split, so it cannot produce one
+      // containing '='. Placed below the null guards above, not at the top of the method: this check itself
+      // calls name.contains(...), which is what those guards exist to protect. See
+      // STRUCTURAL_DELIMITER_HANDLING.md.
+      if (name.contains("=")) {
+        throw new VcfFormatException("Raw metadata property name contains '=', which would shift the "
+            + "re-parse split point: " + name);
       }
       InternalUtils.checkNoLineTerminator(name, value);
       if (InternalUtils.isReservedMetadataKey(name)) {
