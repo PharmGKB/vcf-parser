@@ -23,7 +23,7 @@ originated-vs-carried-forward paragraph for why the two routes are allowed to di
 
 ## The defect
 
-`VcfWriter` has no encoding step. `getAllProperties` (`VcfWriter.java:1185-1199`) emits each `##KEY=<...>` line
+`VcfWriter` has no encoding step. `getAllProperties` (`VcfWriter.java:1201-1215`) emits each `##KEY=<...>` line
 by walking `BaseMetadata.getPropertiesRaw()` and appending every key and value **verbatim**, separated by `,`
 and `=` with no quoting and no escaping. Output is therefore well-formed only if the encoding
 was already valid when the declaration was **constructed** -- and before this check existed, construction did
@@ -131,7 +131,7 @@ type is `"META"` and the attribute name is exactly `"Values"` (`InternalUtils.pa
 `VCF_SPEC_AMBIGUITIES.md`'s "General bracket-list quoting beyond `##META`'s `Values`" entry for why this is
 narrower than htslib's own generalized handling, and why that narrowing is a deliberate choice on a genuine
 tie rather than something the spec forces. Everywhere else, a leading `[` is an ordinary byte with no
-quoting role at all, exactly like `<`/`>` (see "A structural character is defined by rank" above) -- it does
+quoting role at all, exactly like `<`/`>` (see "Severity ranking" above) -- it does
 not protect an interior comma, and a value like `assembly=[WholeGenome, Exome]` on `##contig` truncates at
 the comma just like any other unquoted value would.
 
@@ -147,6 +147,21 @@ unmodified** -- not re-quoted -- with a warning that there is no closing `]`, le
 what to do with it; construction rejects this shape outright (below), so a value reaching this branch can only
 ever be carried-forward content from someone else's file.
 
+**This is a deliberate exemption from the re-quote the non-`Values` case below gets for the same "dangling
+`[`, no `]` anywhere" shape, not an inconsistency.** That re-quote exists because outside `Values`, this
+library's OWN comma-splitting can turn a well-formed bracket value into a dangling one (truncating
+`x=[a, b]` at its interior comma yields `x=[a`) -- manufacturing new bcftools-fatal content from input that
+was never malformed. `Values` cannot suffer that failure mode: its closing-`]` scan (above) is unbounded by
+comma, so this library's own splitting can never be the cause of a dangling `[` here. The only way this
+branch is ever reached is if the ORIGINAL file's `Values` value already lacked a closing `]` anywhere in the
+rest of the line -- this library's parsing only observes that state, never creates it -- so bcftools would
+already exit fatally reading that same original file, before this library was ever involved. Re-emitting the
+value as-is therefore introduces no new failure mode; per `AGENTS.md`'s originated-vs-carried-forward
+distinction, it is a purely carried-forward artifact of someone else's malformed file, not this library
+manufacturing corruption. bcftools failing fatally on an unterminated `[` at all is the same filed defect as
+the non-`Values` case cites, [samtools/htslib#2065](https://github.com/samtools/htslib/issues/2065) -- which
+is exactly why this library does not additionally paper over it here.
+
 **Outside `Values`, a dangling `[` is defensively re-quoted -- not because the general bracket form is
 recognized, but because this library must never manufacture new bcftools-fatal output from its own
 splitting.** A well-formed, comma-containing bracket value on some other attribute (e.g.
@@ -157,10 +172,13 @@ literal (unquoted) branch checks for exactly this: if the value starts with `[` 
 truncation happened, contains no `]` anywhere, it is re-quoted (`InternalUtils.quote`) rather than stored raw,
 with a warning distinct from the ordinary "structural delimiter" one. This applies identically whether the
 dangling `[` came from truncating an originally well-formed value or from input that was already malformed --
-the two are indistinguishable once stored, so both are covered by the same check, and the tokenizer once again
-can never produce a bare, unquoted, unterminated `[` as a stored value (matching the invariant
-`MetadataPropertyEncodingTest#diagnosticsModeStillThrowsWhenOutputWouldBeUnreadable`'s comment relies on --
-the only route to that state is the package-private `BaseMetadata#trustedMutableProperties()` bypass).
+the two are indistinguishable once stored, so both are covered by the same check, and for a **non-`Values`**
+attribute the tokenizer once again can never produce a bare, unquoted, unterminated `[` as a stored value
+(matching the invariant `MetadataPropertyEncodingTest#diagnosticsModeStillThrowsWhenOutputWouldBeUnreadable`'s
+comment relies on -- the only route to that state is the package-private
+`BaseMetadata#trustedMutableProperties()` bypass; that test, like this paragraph, is scoped to the non-`Values`
+shape -- see "Brackets: a second value-quoting form" above for why `Values` itself is deliberately exempt from
+this same re-quote).
 
 **Construction mirrors this with an unconditional, non-gated check.** `InternalUtils.findEncodingProblems`
 checks, BEFORE the `##META`'s-`Values`-only gate, whether a value starting with `[` has no `]` anywhere at
@@ -213,10 +231,10 @@ which now only throw at construction.
 ## Where the check runs
 
 `InternalUtils.findEncodingProblems(String kind, Map<String, String> properties)`
-(`InternalUtils.java:1472-1560`) is the shared classifier, called by both `InternalUtils.
-checkMetadataPropertyEncoding` (`InternalUtils.java:1404-1408`, the construction-time entry point -- every
+(`InternalUtils.java:1656-1744`) is the shared classifier, called by both `InternalUtils.
+checkMetadataPropertyEncoding` (`InternalUtils.java:1588-1592`, the construction-time entry point -- every
 problem it finds throws) and `InternalUtils.checkMetadataPropertyEncodingForWrite`
-(`InternalUtils.java:1420-1428`, the `validateBeforeWrite()` entry point -- throws only for a problem marked
+(`InternalUtils.java:1604-1612`, the `validateBeforeWrite()` entry point -- throws only for a problem marked
 `unreadableOutput`, warns otherwise). Since the attribute-list-tokenizer phase's Task 6, it selects a branch on
 the property value's first byte -- exactly as the tokenizer itself does (see "Brackets: a second
 value-quoting form" above) -- then checks within it. It rejects:
@@ -226,23 +244,23 @@ value-quoting form" above) -- then checks within it. It rejects:
   shape the four-check list below this paragraph used to enumerate individually, since none of `,`, `=`, or
   `"` are in the allowlist's character set either);
 - a value starting with `"` (the **quoted** branch) that is not validly quoted (`InternalUtils.isQuoted`,
-  `InternalUtils.java:1576-1593`) -- and within that, one further split: a malformed value that also contains
+  `InternalUtils.java:1760-1777`) -- and within that, one further split: a malformed value that also contains
   a comma is `unreadableOutput=true` (this library's own tokenizer recovers a value with no valid closing `"`
   by scanning for the next comma rather than the value's own end, so an embedded comma silently drops
   everything after it on re-parse -- see `EncodingProblem`'s own Javadoc); a malformed value with no comma is
   `unreadableOutput=false` (bcftools itself does not hard-fail on an unterminated leading quote, only warns
   and mangles the declaration);
-- a value starting with `[` and containing no `]` anywhere (`InternalUtils.java:1523`) -- checked
+- a value starting with `[` and containing no `]` anywhere (`InternalUtils.java:1707`) -- checked
   UNCONDITIONALLY, before the `##META`'s-`Values`-only gate below, since bcftools' own generic bracket
   handling still treats any leading `[` as opening a quoted span regardless of attribute/declaration type,
   and hard-fails (exit 255) if it never finds a closing `]`;
 - beyond that universal floor, a value starting with `[` on `##META`'s `Values` specifically
-  (`InternalUtils.java:1529`) that is not a well-formed bracket value (`InternalUtils.
-  isWellFormedMetaValuesBracket`, `InternalUtils.java:1572` -- its first LITERAL `]`, no escape awareness,
+  (`InternalUtils.java:1713`) that is not a well-formed bracket value (`InternalUtils.
+  isWellFormedMetaValuesBracket`, `InternalUtils.java:1756` -- its first LITERAL `]`, no escape awareness,
   must be its last character); a leading `[` on any other attribute is not bracket-checked at all past the
   universal floor -- see "Brackets: a second value-quoting form, scoped to `##META`'s `Values`" above;
 - otherwise (the **literal** branch, for a value starting with neither `"` nor `[`): an unescaped `,`, `<`,
-  `>`, or `"` -- `InternalUtils.containsUnescapedQuote` (`InternalUtils.java:1608-1618`) is the helper behind
+  `>`, or `"` -- `InternalUtils.containsUnescapedQuote` (`InternalUtils.java:1792-1802`) is the helper behind
   the last of those -- or leading/trailing space.
 
 `=` is deliberately NOT one of these (see "Severity: unconditional throw" above for why this changed in
@@ -251,8 +269,8 @@ an interior comma (matching VCFv4.3.tex's own `##META` example).
 
 **The `null`-key shape is not new here, and is not reachable through this check at all.** A `null` key is
 already rejected during construction, for every construction route, by `BaseMetadata.validateProperties()`
-(`BaseMetadata.java:141-145`, "Metadata contains a null property name") -- this fires from `BaseMetadata`'s
-`Map`-based constructor (`BaseMetadata.java:78-91`, called at line 90) before a declaration is ever handed back
+(`BaseMetadata.java:139-143`, "Metadata contains a null property name") -- this fires from `BaseMetadata`'s
+`Map`-based constructor (`BaseMetadata.java:76-89`, called at line 88) before a declaration is ever handed back
 to the `Builder`, so the `Builder`'s own check never sees a `null` key. `findEncodingProblems` keeps its own
 `name == null` guard anyway (it costs nothing, and matches this method's defensive style), but a test asserting
 on a `null` key is pinning `validateProperties`'s message, not this check's (see
@@ -268,7 +286,7 @@ String description) { ... InternalUtils.checkMetadataPropertyEncoding("ALT", md.
 and the same shape repeated for the other five kinds).
 `##META` has no typed overload of this shape at all (see below), so this specific pattern doesn't extend to it.
 
-This is deliberate, not incidental: `BaseMetadata.putAndQuoteProperty` (`BaseMetadata.java:240`) quotes
+This is deliberate, not incidental: `BaseMetadata.putAndQuoteProperty` (`BaseMetadata.java:238`) quotes
 `Description`/`Source`/`Version`/`species` on the way into several of the typed constructors, so checking the
 *arguments* would reject a value the constructor was about to make safe by quoting it. Checking the
 *stored result* sees exactly what the writer will actually emit. `MetadataPropertyEncodingTest`
@@ -547,7 +565,7 @@ already contains an escaped quote still parses through today, now with a parse-t
 silently. Before Task 3, widening the check to also reject an
 escaped quote -- without also deciding what the parser itself should do -- would have made `validateBeforeWrite()`
 throw on content this library's own parser just accepted, because `validateBeforeWrite()`'s
-`validateMetadataProperties` (`VcfWriter.java:698-700`) was, at that time, the write-time net described in
+`validateMetadataProperties` (`VcfWriter.java:704-706`) was, at that time, the write-time net described in
 "Path asymmetry closed" above, running `checkMetadataPropertyEncoding` (the SAME unconditional-throw predicate
 construction used) against every entry's properties at write time, regardless of whether that entry came from
 a checked construction route or from the parser's exempt trusted routes. `toBuilder()` is *not* the mechanism

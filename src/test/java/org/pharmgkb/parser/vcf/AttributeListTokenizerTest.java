@@ -115,6 +115,16 @@ class AttributeListTokenizerTest {
     // spec-evidenced attribute, construction rejects an unterminated bracket outright (findEncodingProblems),
     // so a value reaching this branch can only be carried-forward content from someone else's file -- emit it
     // verbatim and let a downstream tool decide what to do with it, per the explicit design decision.
+    //
+    // This is NOT the same fix the non-Values case needed (see AttributeListTokenizerTest's sibling suite for
+    // that): Values's own closing-']' scan is unbounded by comma (aMetaValuesClosingBracketIsSearchedForAcrossTheWholeRemainder
+    // below), so this library's own splitting can never manufacture a dangling '[' here the way it could
+    // outside Values -- the only way this branch is ever reached is if the ORIGINAL file's Values value
+    // already had no closing ']' anywhere in the rest of the line. bcftools would already fail fatally reading
+    // that same original file, before this library was ever involved, so re-emitting it as-is introduces no
+    // NEW failure this library caused. bcftools' fatal exit on an unterminated '[' at all is a filed defect,
+    // https://github.com/samtools/htslib/issues/2065 -- see VCF_SPEC_AMBIGUITIES.md's "General bracket-list
+    // quoting beyond ##META's Values" entry for the full reasoning.
     assertThat(tokenize("ID=c1,Values=[abc,length=999", "META"),
         contains(attr("ID", "c1"), attr("Values", "[abc"), attr("length", "999")));
     assertThat(warnings(), containsString("no closing ']'"));

@@ -540,16 +540,38 @@ this library's own splitting *creating* new fatal content from safe input, which
 originated output does not distinguish from originated-and-fatal. `InternalUtils.parseOneAttribute`'s literal
 branch now re-quotes (`InternalUtils.quote`) whenever the stored value dangles a `[` with no `]` anywhere,
 regardless of whether that happened via truncation or because the input was already unterminated -- the two
-are indistinguishable once stored, so one check covers both, and the tokenizer once again can never produce a
-bare, unquoted, unterminated `[` as a stored value (the only route left is the package-private
-`BaseMetadata#trustedMutableProperties()` bypass, per `MetadataPropertyEncodingTest
-#diagnosticsModeStillThrowsWhenOutputWouldBeUnreadable`'s own comment). bcftools failing on this shape at all
-is arguably its own defect -- filed upstream at
+are indistinguishable once stored, so one check covers both, and for a **non-`Values`** attribute the
+tokenizer once again can never produce a bare, unquoted, unterminated `[` as a stored value (the only route
+left is the package-private `BaseMetadata#trustedMutableProperties()` bypass, per `MetadataPropertyEncodingTest
+#diagnosticsModeStillThrowsWhenOutputWouldBeUnreadable`'s own comment -- that test, like this paragraph, is
+about the non-`Values` shape; see the next paragraph for why `Values` itself is exempt from this same
+re-quote). bcftools failing on this shape at all is arguably its own defect -- filed upstream at
 [samtools/htslib#2065](https://github.com/samtools/htslib/issues/2065) -- but that is why this library
 defends against the shape rather than a reason to leave it unhandled: the fix costs nothing (parsing still
 does not protect the comma, matching the design decision), and closes a hole neither the original design
 discussion nor its first implementation had actually scoped correctly. See `BCFTOOLS_VERSION_DEPENDENCIES.md`'s
 "Unterminated bracket value in a metadata attribute" entry for the write-path verification.
+
+**`##META`'s `Values` itself deliberately does NOT get this same re-quote, and that is a distinct decision,
+not a gap in the one above.** `InternalUtils.parseOneAttribute`'s `isMetaValues` branch finds `Values`'s
+closing `]` with a plain `s.indexOf(']', ...)` over the ENTIRE remainder of the attribute list, not bounded by
+the next comma (`AttributeListTokenizerTest#aMetaValuesClosingBracketIsSearchedForAcrossTheWholeRemainder`) --
+deliberately, so the spec's own worked example (`VCFv4.3.tex:273-276`, e.g. `Values=[WholeGenome, Exome]`,
+whose list has interior commas) is never misread as unterminated. Because that scan is comma-unbounded, this
+library's own splitting can never turn a well-formed `Values` value into a dangling one the way it can outside
+`Values` -- the failure mode the re-quote above exists to close simply cannot arise here. Combined with
+`findEncodingProblems`'s unconditional, ungated "no `]` anywhere" check (confirmed: `addMeta(Map.of("ID", "x",
+"Values", "[a"))` throws `"META metadata property Values has an unterminated bracket value bcftools cannot
+read"` even under a lenient context), the only way `parseOneAttribute`'s `Values` branch is ever reached with
+no closing `]` at all is if the ORIGINAL file's `Values` value already had none anywhere in the rest of the
+line -- this library's parsing can only observe that state, never create it. bcftools would already exit
+fatally reading that same original file, before this library was ever involved, so re-emitting the value as-is
+on the default write path is a parse-only, purely carried-forward artifact of someone else's malformed file
+(the originated-vs-carried-forward distinction `AGENTS.md` states), not a case of this library manufacturing
+new corruption the way the pre-fix non-`Values` case did. That bcftools fails fatally on an unterminated `[`
+at all is the same filed defect, [samtools/htslib#2065](https://github.com/samtools/htslib/issues/2065) --
+which is exactly why this library does not additionally paper over it here the way it does for the genuinely
+self-inflicted non-`Values` case above.
 
 Pinned by `BcftoolsDependencyTest#testUnterminatedBracketValueBcftoolsHardErrors` (pins bcftools' own behavior
 on this byte sequence, independent of this library), `#testBracketValueWithTrailingJunkBcftoolsDropsDeclarationSilently`,

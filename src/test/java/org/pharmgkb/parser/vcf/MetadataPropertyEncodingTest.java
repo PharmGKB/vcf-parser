@@ -192,7 +192,7 @@ class MetadataPropertyEncodingTest {
     // '<' IS one of those 13 characters, so this probe no longer isolates the check under a hypothetical
     // STRICT_CONTEXT the way '=' once did -- under this file's actual LENIENT_CONTEXT it still isolates cleanly,
     // because ContigMetadata's own charset check routes through BaseMetadata.warnOrThrow, which only warns
-    // (rather than throws) when isLenient() (BaseMetadata.java:112-117); confirmed by temporarily widening the
+    // (rather than throws) when isLenient() (BaseMetadata.java:110-115); confirmed by temporarily widening the
     // predicate to accept '<' and re-running this test, which then failed with no other check taking its place.
     assertThrows(VcfFormatException.class,
         () -> builder().addContig("a<b", 100L, null, null, null, null, null));
@@ -201,7 +201,7 @@ class MetadataPropertyEncodingTest {
   @Test
   void testAddTypedAcceptsADelimiterInContigsOwnAutoQuotedField() throws Exception {
     // species is the one contig argument stored via putAndQuoteProperty (ContigMetadata.java:45), which quotes
-    // unconditionally (BaseMetadata.java:250), so "a,b" becomes "\"a,b\"" and is safe to emit. Same
+    // unconditionally (BaseMetadata.java:248), so "a,b" becomes "\"a,b\"" and is safe to emit. Same
     // constructor, same call shape, same character, opposite outcome from the rejection test above: the only
     // difference is which inserter the constructor happens to use for that argument. If this throws, the check
     // was applied to the ARGUMENTS instead of to the stored properties.
@@ -764,9 +764,12 @@ class MetadataPropertyEncodingTest {
 
   @Test
   void diagnosticsModeStillThrowsWhenOutputWouldBeUnreadable() throws Exception {
-    // The tokenizer can never PRODUCE a bare "[a=b" -- an unterminated bracket is requoted at parse time
-    // (Task 1). So the only route to this state is the package-private BaseMetadata#trustedMutableProperties()
-    // bypass (BaseMetadata.java:134), which is what this library's other writer-defence tests use.
+    // For a non-##META's-Values attribute like "x" here, the tokenizer can never PRODUCE a bare "[a=b" -- an
+    // unterminated bracket is requoted at parse time (Task 1). So the only route to this state is the
+    // package-private BaseMetadata#trustedMutableProperties() bypass (BaseMetadata.java:132), which is what
+    // this library's other writer-defence tests use. (##META's Values itself is deliberately exempt from
+    // this same re-quote -- see InternalUtils.parseOneAttribute's isMetaValues branch and
+    // VCF_SPEC_AMBIGUITIES.md's "General bracket-list quoting beyond ##META's Values" entry for why.)
     VcfMetadata md = parseHeader("##contig=<ID=c1,length=999>").metadata();
     md.getContigs().get("c1").trustedMutableProperties().put("x", "[a=b");
     assertThrows(VcfFormatException.class, () ->

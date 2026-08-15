@@ -391,7 +391,13 @@ is a structural failure and still throws -- see the strict section above):
   tokenizer never consults `##fileformat` at all, so constructing or writing a structured `##META` under a
   pre-4.3 declared version is not spec-non-compliant and there is no "bcftools would reject this" argument for
   refusing it -- gating construction/write would be a stricter rule than parsing itself enforces, for no spec
-  or interop reason.
+  or interop reason. **Consequence, not itself gated either:** a `##META` this library originates via
+  `addMeta`/`replaceMeta` under a pre-4.3 declared version writes cleanly (`##META=<ID=Assay>`) but is not
+  reproducible by parsing that same output back under the same pre-4.3 version -- the parse-only routing above
+  applies equally to this library's own output, so the re-parsed file has no `MetaMetadata` at all (only the
+  raw property). This is a direct, unavoidable consequence of the non-gating decision, not a separate defect:
+  constructing under a pre-4.3 version and expecting a structured round trip is a caller mistake, since
+  `##META` genuinely isn't a structured type at that version.
 - A missing or invalid `Number`, `Type`, or `Description`; an unquoted `Description`; or `Type=Flag` with a `Number`
   other than `0`. `Number`/`Type` validity is checked unquoted (a quoted `Number="1"` is treated the same as
   `Number=1`); the `Description` quoting check itself is deliberately the exception -- see AGENTS.md's

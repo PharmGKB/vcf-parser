@@ -453,6 +453,27 @@ public class InternalUtils {
         // attribute -- now that it is scoped to this one spec-evidenced attribute, construction rejects this
         // shape outright (see findEncodingProblems), so an emitted "as-is" value here can only ever be
         // carried-forward content from someone else's file, never something this library originated.
+        //
+        // Deliberately NOT given the same defensive re-quote the non-Values literal branch below gets for the
+        // identical "dangling '[', no ']' anywhere" shape, and this is not an oversight: that re-quote exists
+        // because outside Values, this library's OWN comma-splitting can turn a WELL-FORMED bracket value into
+        // a dangling one (splitting "[a, b]" at its interior comma yields "[a") -- manufacturing new
+        // bcftools-fatal content from input that was never malformed. Values cannot suffer that failure mode:
+        // its closing ']' scan above is a plain s.indexOf(']', ...) over the ENTIRE remainder of the line, not
+        // bounded by attributeLimit/the next comma (see aMetaValuesClosingBracketIsSearchedForAcrossTheWholeRemainder
+        // -- deliberately, so the spec's own ##META worked example, whose Values list contains interior commas,
+        // is never misread as "unterminated"). So the only way this branch is ever reached at all is if the
+        // ORIGINAL file's Values value already had no closing ']' anywhere in the rest of the line -- this
+        // library's own parsing cannot create that state, only observe it. bcftools would already fail fatally
+        // reading that same original file, before this library was ever involved, so re-emitting the value
+        // as-is on the default write path introduces no NEW failure mode; it is a parse-only, purely
+        // carried-forward artifact of someone else's malformed file (AGENTS.md's originated-vs-carried-forward
+        // distinction), not a case of this library manufacturing fresh corruption. bcftools' own fatal exit on
+        // an unterminated '[' at all is itself considered a defect and is filed upstream at
+        // https://github.com/samtools/htslib/issues/2065 -- the same issue the non-Values re-quote fix's own
+        // comment and VCF_SPEC_AMBIGUITIES.md/BCFTOOLS_VERSION_DEPENDENCIES.md cite; that filing is why this
+        // library does not additionally paper over bcftools' behavior here the way it does for the genuinely
+        // self-inflicted non-Values case.
         int end = attributeLimit(s, valueStart, commaIsSeparator);
         rawValue = s.substring(valueStart, end);
         warnings.warn("Metadata attribute \"{}\" has no closing ']'; preserving its value as-is", name);
@@ -581,12 +602,14 @@ public class InternalUtils {
     return parseOneAttribute(attribute, 0, false, warnings, "").attribute();
   }
 
-  // public only because 122 test call sites (InfoMetadataTest, FormatMetadataTest, IdDescriptionMetadataTest,
-  // VcfMetadataTest, ContigMetadataTest) call this directly to build a Map<String,String> from "key=value"
-  // arrays -- it has ZERO production callers now that extractPropertiesFromLine calls
-  // foldAttributes(tokenizeAttributeList(...)) directly instead of routing through this method; this is now a
-  // purely test-facing surface, kept @RestrictedApi/public for those 122 call sites' sake, not for any
-  // internal caller
+  // public only because a large number of test call sites across this package's metadata tests call this
+  // directly to build a Map<String,String> from "key=value" arrays -- it has ZERO production callers now that
+  // extractPropertiesFromLine calls foldAttributes(tokenizeAttributeList(...)) directly instead of routing
+  // through this method; this is now a purely test-facing surface, kept @RestrictedApi/public for those call
+  // sites' sake, not for any internal caller. (Deliberately not naming an exact count or class list here: per
+  // AGENTS.md's "an identifier grep is not an inventory," a number pinned into a comment only invites drift as
+  // tests are added -- the ZERO-production-callers claim above is the one that matters and is re-verified by
+  // this method having no non-test caller in src/main.)
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static Map<String, String> extractProperties(String[] props, VcfWarnings warnings) {
     List<Attribute> attributes = new ArrayList<>(props.length);
@@ -1641,7 +1664,7 @@ public class InternalUtils {
    * both call, so the rule for what counts as a problem exists once rather than as two copies free to drift.
    * <p>
    * <b>Why this dereferences {@code value} without a null check -- an ordering invariant, not an oversight.</b>
-   * {@code BaseMetadata.validateProperties} ({@code BaseMetadata.java:141-158}) rejects both a null key and a
+   * {@code BaseMetadata.validateProperties} ({@code BaseMetadata.java:139-156}) rejects both a null key and a
    * null value with {@code VcfFormatException}, and it always runs FIRST on both routes into this method: at
    * construction, the declaration object is built -- running {@code validateProperties} via the Map constructor
    * every parsed declaration uses -- before {@code checkMetadataPropertyEncoding} runs; at write time,
@@ -1782,12 +1805,14 @@ public class InternalUtils {
    * {@link #isQuoted} already rejects a value that starts and ends with {@code "} but isn't validly escaped in
    * between, but a value can also contain a stray, unescaped {@code "} without looking quoted at all (no
    * leading/trailing {@code "}) and without containing {@code ,} or {@code =} either, so this must be checked
-   * independently of both. Left unrejected, such a value would truncate at the first unescaped {@code "} it
-   * contains when the declaration is later re-read (the attribute-list tokenizer finds a quoted value's closing
-   * delimiter by position, not by unbalanced-quote parity), warning and discarding everything after that quote
-   * up to the next attribute boundary -- silently losing part of the value the caller supplied, even though (per
-   * {@code STRUCTURAL_DELIMITER_HANDLING.md}) a *following* attribute is no longer misaligned or swallowed the
-   * way it once was under this library's retired two-pass splitter.
+   * independently of both. Called only from a value's LITERAL branch (its first byte is neither {@code "} nor
+   * {@code [}), where a non-leading {@code "} does not truncate anything on re-read -- unlike a leading one, the
+   * attribute-list tokenizer classifies purely on the value's first byte, so this value takes the same literal
+   * branch again and is preserved whole (see {@code STRUCTURAL_DELIMITER_HANDLING.md}'s "Severity ranking"
+   * section: "a non-leading quote is an ordinary byte and protects nothing"). This is flagged anyway, exactly
+   * like an unescaped {@code <}/{@code >} in the same literal branch: {@code "} is a character bcftools' own
+   * header tokenizer treats as structural, so a value containing one unquoted is worth a warning on principle
+   * even though this library's own round trip is provably safe from it.
    */
   static boolean containsUnescapedQuote(String value) {
     for (int i = 0; i < value.length(); i++) {

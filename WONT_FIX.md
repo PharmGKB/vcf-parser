@@ -65,7 +65,7 @@ their arguments can never be derived from a parsed VCF file's own data.
 
 **Re-verified 2026-08-14: the constructors involved are now package-private, not public, and this changes
 what kind of finding this is.** `BaseMetadata(VcfContext context, String label, Map<String, String>
-properties)` (`BaseMetadata.java:78`) has no visibility modifier at all -- package-private -- and its own
+properties)` (`BaseMetadata.java:76`) has no visibility modifier at all -- package-private -- and its own
 Javadoc states this is deliberate: *"nothing should instantiate the base declaration type directly ...
 this is real encapsulation rather than a documentation-only restriction"*. `IdDescriptionMetadata`'s two
 constructors, `IdDescriptionMetadata(VcfContext context, String label, @Nullable String id, @Nullable String
@@ -81,7 +81,7 @@ policy is scoped to the public surface, and this surface no longer is. The only 
 literal (`"ALT"`, `"FILTER"`, `"SAMPLE"`).
 
 The underlying observation still holds as a purely internal fact: `label` is still not null-checked (`m_label
-= label;`, `BaseMetadata.java:88`, no guard), so a same-package caller passing `label = null` would get a
+= label;`, `BaseMetadata.java:86`, no guard), so a same-package caller passing `label = null` would get a
 `getLabel()` that permanently returns `null`, with the same downstream `"null metadata ID is blank"`-style
 diagnostic text described below. But note this no longer matches the shape the section title above promises:
 it was never true that this path "uses a raw `NullPointerException`" -- passing `null` here doesn't throw
@@ -434,7 +434,7 @@ list slot's occupant via low-level `List` API misuse with no existing analog any
 declaration's unquoted `ID` (see `DUPLICATE_METADATA_ID_HANDLING.md`'s "Quoting is not part of the identity"
 section), captured at add time. `IdMetadata.getId()` reads that same unquoted form, but reads it *live* from
 the object's own raw-properties map on every call, and that map is still reachable for mutation from inside
-this package: `putPropertyRaw`/`putAndQuoteProperty` are package-private (`BaseMetadata.java:257`/`:240`), and
+this package: `putPropertyRaw`/`putAndQuoteProperty` are package-private (`BaseMetadata.java:255`/`:238`), and
 `BaseMetadata.trustedMutableProperties()` is the unchecked bypass for the rest. No *public* route remains --
 `getPropertiesRaw()` and the six keyed getters are all unmodifiable views now (see
 `VcfWriter.validateKeyedMetadataEntries`'s own Javadoc) -- but the in-package route is real, tested and
@@ -662,7 +662,7 @@ So the two checks inside the same `validateBeforeWrite()` diagnostics pass disag
 re-run, and nothing states why one earned the hoist and the other didn't.
 
 This asymmetry is reachable only through the package-private, test-only `BaseMetadata.trustedMutableProperties()`
-bypass (`BaseMetadata.java:213-226`, "Not for production code: nothing in `src/main` calls it" -- confirmed
+bypass (`BaseMetadata.java:211-224`, "Not for production code: nothing in `src/main` calls it" -- confirmed
 by grep, zero `src/main` call sites, only Javadoc mentions of the name). Triggering it would require
 mutating an already-built `VcfMetadata`'s raw properties map between a `writeHeader()` call and a later
 `writeLine()` call on the same writer -- no public API can do this, since `VcfMetadata`/`BaseMetadata` are
