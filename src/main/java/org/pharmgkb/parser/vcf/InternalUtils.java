@@ -342,11 +342,6 @@ public class InternalUtils {
   private record AttributeParseResult(@Nullable Attribute attribute, int nextIndex) {}
 
   /**
-   * @return the index at which the current attribute must end: the next {@code ,} (or {@code s.length()} if
-   * none), when {@code commaIsSeparator}; otherwise {@code s.length()}, since {@code s} is then already exactly
-   * one attribute and a {@code ,} inside it is ordinary content.
-   */
-  /**
    * @return whether {@code name} is {@code ##META}'s {@code Values} attribute -- the one place any VCF
    * version (4.3-4.5) evidences {@code [...]} as a comma-protecting value form (VCFv4.3.tex:273-276's worked
    * examples). Shared by {@link #parseOneAttribute} and {@link #findEncodingProblems} so construction and
@@ -358,6 +353,11 @@ public class InternalUtils {
     return kind.equals("META") && name.equals("Values");
   }
 
+  /**
+   * @return the index at which the current attribute must end: the next {@code ,} (or {@code s.length()} if
+   * none), when {@code commaIsSeparator}; otherwise {@code s.length()}, since {@code s} is then already exactly
+   * one attribute and a {@code ,} inside it is ordinary content.
+   */
   private static int attributeLimit(String s, int from, boolean commaIsSeparator) {
     return commaIsSeparator ? indexOfComma(s, from) : s.length();
   }

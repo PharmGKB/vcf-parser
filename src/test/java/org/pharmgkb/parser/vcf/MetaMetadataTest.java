@@ -42,7 +42,7 @@ public class MetaMetadataTest {
   /**
    * An order-preserving map built in canonical attribute order (ID, Number, Type, Description, then any
    * extras) -- {@code BaseMetadata}'s own constructor javadoc warns that {@code Map.of(...)}'s unspecified
-   * iteration order "risks a meaningless (nondeterministic or simply wrong) attribute-order warning," so tests
+   * iteration order "risks emitting the declaration's attributes in an arbitrary order instead," so tests
    * exercising a declaration with more than one canonical attribute must use this instead, matching the shape
    * {@code VcfParser}'s real parsing path always constructs.
    */
