@@ -878,16 +878,22 @@ public class VcfWriterTest {
   public void testValidateBeforeWriteRejectsStructurallyInvalidSampleValue() throws Exception {
     // restores the coverage of the former testValidateBeforeWriteRejectsMutatedSampleValue, which reached this
     // rejection by mutating an already-built sample -- a route Task 9 removed. The writer-side check it pins
-    // (validateSamples -> VcfSample.validate() -> checkNoStructuralDelimiter) is still live, and removing the
-    // writer's now-unreachable defenses is Task 11's job, gated on Task 11 Step 1 PROVING they're unreachable.
-    // Deleting this test would remove exactly the evidence that proof rests on, and the tripwire if Task 11
-    // drops the wrong guard -- the same mistake Task 8 made and had to reverse.
+    // (validateSamples -> VcfSample.validate() -> checkNoStructuralDelimiter) is still live. Task 11 (see
+    // TODO.md's trusted-factory audit for the full history) has since run and settled this as a PERMANENT
+    // design decision, not a pending one: validateBeforeWrite() is the full-output diagnostics mode and must
+    // report what it can detect about the object it was handed rather than assume a construction-time
+    // invariant, so this check was explicitly kept, not scheduled for removal. Deleting this test would still
+    // remove real regression coverage for a check that is staying -- the same mistake Task 8 made and had to
+    // reverse -- it just isn't gating a future task's correctness anymore.
     //
-    // newTrustedSample() is the reconstruction route: it skips the structural-delimiter scan by design (its
-    // keys/values are documented as coming from a ':'/tab split and so "can never contain a delimiter"), which
-    // makes it the only remaining way to hand the writer a sample whose value contains a ':'. Package-private,
-    // reachable here because this test is in the same package -- mirroring how Task 8 restored the writer's
-    // empty-entry tests via newPositionCopyingTrustedFields().
+    // VcfSample.newDoublyUncheckedForTest() is the reconstruction route, not newTrustedSample(): the latter
+    // now self-verifies its own premise via an assert whenever this project's test JVM runs with assertions
+    // enabled (Gradle's default), so it can no longer be used to smuggle a genuinely structurally-invalid
+    // value past construction -- see VcfSample's trusted-branch Javadoc. newDoublyUncheckedForTest() is the
+    // deliberate, doubly-unchecked escape hatch that exists purely so this exact test can still build the
+    // fixture VcfWriter's defense-in-depth is written against. Package-private, reachable here because this
+    // test is in the same package -- mirroring how Task 8 restored the writer's empty-entry tests via
+    // newPositionCopyingTrustedFields().
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
@@ -895,7 +901,7 @@ public class VcfWriterTest {
         .build();
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, List.of("DP"), -1);
-    VcfSample sample = LENIENT_CONTEXT.newTrustedSample(List.of("DP"), List.of("1:2"));
+    VcfSample sample = VcfSample.newDoublyUncheckedForTest(LENIENT_CONTEXT, List.of("DP"), List.of("1:2"));
 
     writer.writeHeader(metadata);
     assertThrows(VcfFormatException.class,

@@ -84,16 +84,23 @@ class VcfSampleTest {
   }
 
   @Test
-  void testNewTrustedSkipsStructuralDelimiterCheckThatThePublicConstructorEnforces() {
-    // regression/contract test: newTrusted() is VcfParser's fast path -- it must skip checkNoStructuralDelimiter's
-    // scan (the ~92% of construction cost this factory exists to avoid), unlike the public constructor, which must
-    // still reject the identical input. This pins the actual difference in behavior between the two entry points,
-    // not just that newTrusted() doesn't crash.
+  void testNewTrustedSkipsStructuralDelimiterCheckInProductionButSelfVerifiesUnderAssertions() {
+    // regression/contract test for newTrustedSample()'s full, now two-part contract (see VcfSample's
+    // trusted-branch Javadoc): in a production JVM (assertions disabled, the default for a real caller), it
+    // skips checkNoStructuralDelimiter's scan entirely (the ~92% of construction cost this factory exists to
+    // avoid) for input the public constructor still rejects. This project's own test JVM runs with assertions
+    // enabled (Gradle's default for the `test` task), so under test the self-verifying assert added to
+    // VcfSample's trusted branch catches exactly this violation instead of silently admitting it. Pins both
+    // halves: the raw skip really exists (via the doubly-unchecked test-only bypass, which is
+    // assertion-independent and so demonstrates what the trusted path itself does before self-verification is
+    // layered on top), and the self-verification actually fires (via newTrustedSample itself, the method a
+    // real caller goes through, in THIS test JVM).
     List<String> keys = Collections.singletonList("key1");
     List<String> values = Collections.singletonList("value:with:colons");
     assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newSample(keys, values));
-    VcfSample sample = STRICT_CONTEXT.newTrustedSample(keys, values);
+    VcfSample sample = VcfSample.newDoublyUncheckedForTest(STRICT_CONTEXT, keys, values);
     assertEquals("value:with:colons", sample.getProperty("key1"));
+    assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newTrustedSample(keys, values));
   }
 
   @Test

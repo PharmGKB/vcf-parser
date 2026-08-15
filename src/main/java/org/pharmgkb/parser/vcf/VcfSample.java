@@ -72,10 +72,23 @@ public final class VcfSample {
    * @param trusted when {@code true}, skips the per-key/value {@link #checkNoStructuralDelimiter} scan, which
    * micro-benchmarking measured as ~92% of the plain path's cost (43.4% of all execution samples on a
    * 163-sample-per-record JFR profile). The non-null/matching-length checks still run; only the O(n)
-   * structural-delimiter scan is skipped, since a parser-produced key/value can never contain a colon, tab, or
-   * line terminator (already split on / stripped before reaching here).
+   * structural-delimiter scan is skipped. Its premise is NOT simply "a parser-produced key/value can never
+   * contain a colon, tab, or line terminator" -- a legacy (pre-4.3) GLE value deliberately can, and does,
+   * contain an internal {@code ':'} (see {@code VcfContext.newTrustedSample}'s Javadoc for the full,
+   * two-part premise this depends on). Rather than re-deriving that premise by hand, this constructor
+   * self-verifies it below whenever Java assertions are enabled (this project's own {@code test} task runs
+   * with them on by Gradle's default) -- a future change that breaks the premise (a new caller, a narrowed
+   * {@code checkNoStructuralDelimiter} exemption) fails the test suite immediately, at this exact line, with
+   * the same message the un-skipped check would have thrown, rather than silently drifting until someone
+   * happens to re-trace it. {@link #newDoublyUncheckedForTest} is the one deliberate way around this
+   * self-verification -- see its own Javadoc for why it has to exist separately.
    */
   VcfSample(VcfContext context, @Nullable List<String> keys, @Nullable List<String> values, boolean trusted) {
+    this(context, keys, values, trusted, true);
+  }
+
+  private VcfSample(VcfContext context, @Nullable List<String> keys, @Nullable List<String> values, boolean trusted,
+      boolean selfVerify) {
     m_context = Preconditions.checkNotNull(context, "context must not be null");
     m_warnings = context.getWarnings();
     if (keys == null) {
@@ -96,9 +109,43 @@ public final class VcfSample {
       for (int x = 0; x < keys.size(); x++) {
         checkNoStructuralDelimiter(keys.get(x), values.get(x), version);
       }
+    } else if (selfVerify) {
+      // self-verification only, compiled out at runtime unless assertions are enabled (see this
+      // constructor's own Javadoc) -- runs the exact check the trusted path skips, so this constructor's
+      // premise is re-proven on every sample this project's test suite ever constructs, not just read once
+      // and trusted forever. Lets checkNoStructuralDelimiter's own VcfFormatException propagate rather than
+      // wrapping it in a generic AssertionError, so a violation is reported with the real, specific message.
+      assert verifyTrustedSamplePremise(context, keys, values);
     }
     m_keys = keys;
     m_values = values;
+  }
+
+  private static boolean verifyTrustedSamplePremise(VcfContext context, List<String> keys, List<String> values) {
+    VcfVersion version = context.getVersion();
+    for (int x = 0; x < keys.size(); x++) {
+      checkNoStructuralDelimiter(keys.get(x), values.get(x), version);
+    }
+    return true;
+  }
+
+  /**
+   * Test-only, doubly-unchecked construction: skips {@link #checkNoStructuralDelimiter} entirely, INCLUDING
+   * the self-verifying assert the {@code trusted} constructor above now runs in its place. Not for production
+   * code -- nothing in {@code src/main} calls this; {@code VcfContext.newTrustedSample} (which DOES
+   * self-verify) is the real production fast path.
+   * <p>
+   * Exists because {@code VcfSample} has no other post-construction mutation route (Task 9 froze it -- no
+   * setters, no live-mutable views), so once the {@code trusted} constructor started self-verifying its own
+   * premise, this package's tests lost every way to synthesize a {@code VcfSample} carrying a structurally
+   * invalid value -- exactly the fixture {@code VcfWriter}'s defense-in-depth checks
+   * ({@code validateSamples -> VcfSample.validate() -> checkNoStructuralDelimiter}) are written against. This
+   * mirrors {@code BaseMetadata.trustedMutableProperties()}'s identical role for the metadata layer: a
+   * deliberately unchecked, package-private bypass that exists solely so this package's own tests can still
+   * construct the malformed state a real caller can no longer produce.
+   */
+  static VcfSample newDoublyUncheckedForTest(VcfContext context, List<String> keys, List<String> values) {
+    return new VcfSample(context, keys, values, true, false);
   }
 
   /**
