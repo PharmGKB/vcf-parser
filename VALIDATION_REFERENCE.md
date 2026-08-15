@@ -199,9 +199,15 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   [`DUPLICATE_METADATA_ID_HANDLING.md`](DUPLICATE_METADATA_ID_HANDLING.md)'s "`replaceXxx`: the supported way to
   overwrite a declaration" section.
 - `VcfMetadata.Builder`'s content-accepting `addXxx`/`replaceXxx` routes (25 checked call sites across the
-  seven kinds' typed and `Map` overloads) throw `VcfFormatException`, unconditionally in both a lenient and a
-  strict context, when the constructed declaration's `getPropertiesRaw()` holds a property key that is
-  null/empty/contains `,` or `=`, or an unquoted value containing `,`, `=`, or an unescaped `"` -- matching
+  seven kinds' typed and `Map` overloads) call `InternalUtils.checkMetadataPropertyEncoding`, which throws
+  `VcfFormatException`, unconditionally in both a lenient and a strict context, for ANY problem
+  `InternalUtils.findEncodingProblems` finds in the constructed declaration's `getPropertiesRaw()`: a property
+  name outside `InternalUtils.METADATA_ATTRIBUTE_NAME_PATTERN` (`^[A-Za-z_][0-9A-Za-z_.]*$`, matching bcftools
+  -- see `VCF_SPEC_AMBIGUITIES.md`'s "Metadata attribute NAME grammar" entry), a malformed bracket value (one
+  that does not close with its FIRST unescaped `]`, checked via the same `indexOfUnescaped` the tokenizer
+  itself uses), or -- for a value that is neither quoted nor bracket-shaped -- an unquoted `,`, `<`, `>`, an
+  unescaped `"`, or leading/trailing space. `=` is deliberately NOT one of these: an unquoted value may contain
+  it freely, unlike before this check was aligned with the attribute-list tokenizer's own grammar. This matches
   `checkNoLineTerminator` rather than being routed through `warnOrThrow`, since this is structural corruption
   (`AGENTS.md`'s Parser Validation Policy: "invalid delimiter handling that changes field alignment"), not a
   case a lenient warning could usefully recover from. `VcfParser`'s own seven package-private
@@ -211,6 +217,23 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   re-read by splitting on the first `=` only). See
   [`STRUCTURAL_DELIMITER_HANDLING.md`](STRUCTURAL_DELIMITER_HANDLING.md) for the full corruption matrix, the
   severity ranking, and the parse-path exemption's rationale.
+- `VcfWriter.validateBeforeWrite()`'s `validateMetadataPropertyEncodings` (run once per header, from
+  `writeHeader` only) calls `InternalUtils.checkMetadataPropertyEncodingForWrite`, the write-time counterpart
+  to the construction-time check above, sharing the identical `findEncodingProblems` classifier so the two
+  routes cannot drift about what counts as a problem. It throws only for a problem
+  `EncodingProblem.unreadableOutput()` marks -- an unquoted comma, or a malformed bracket value -- but that
+  flag is two different reasons, not one: an unterminated bracket value throws because it genuinely makes
+  bcftools unable to read the file at all (exit 255), while the comma and the closed-but-junk bracket
+  sub-shape throw for a weaker reason (bcftools merely discards the one declaration, exit 0 -- the same
+  outcome an invalid attribute name only warns for -- but the attribute-list tokenizer can never produce
+  either shape as a stored value while parsing, so throwing there costs nothing and harms no carried-forward
+  content). See `VCF_SPEC_AMBIGUITIES.md`'s "Unquoted metadata attribute value" entry and
+  `InternalUtils.EncodingProblem`'s own Javadoc for the live-measured evidence behind each. Every other
+  problem (an invalid property name, an unquoted `<`/`>`, an unescaped `"`, or leading/trailing space) only
+  warns to the writer's own `m_warnings` sink and leaves the value unchanged, since the file stays
+  bcftools-readable and this route's content may be carried-forward (parsed, not originated) rather than
+  something this write call created -- the same originated-vs-carried-forward distinction `AGENTS.md`'s
+  "bcftools is asymmetric evidence" section states, using `##contig=<ID=1,a-b=v>` as its own worked example.
 - `VcfMetadata.Builder` throws `VcfFormatException` for a declaration built under a *different* `VcfContext`
   instance (compared by reference, not value) than the builder's own. `VcfMetadata` itself has no instance
   mutators to add this check to -- it is immutable, and `getInfo()`/its siblings return memoized unmodifiable

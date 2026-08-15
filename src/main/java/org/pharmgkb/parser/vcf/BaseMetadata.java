@@ -146,10 +146,10 @@ public sealed class BaseMetadata permits IdMetadata, PedigreeMetadata {
       // putPropertyRaw/putAndQuoteProperty already reject a null value at the point of insertion, and
       // getPropertiesRaw() is unmodifiable, so no public route can introduce one; this closes the same gap for
       // a value inserted through the package-private trustedMutableProperties() bypass. Unreachable from real
-      // VCF parsing (InternalUtils.splitProperty always returns two non-null halves or throws), but this loop
-      // already runs unconditionally at construction (via the Map-based constructor every parsed declaration
-      // uses) and on every validate() re-check, so this is one more check on an already-active path, not a new
-      // one.
+      // VCF parsing (InternalUtils.parseAttribute/tokenizeAttributeList always produce a non-null name and
+      // value together, or drop the whole attribute), but this loop already runs unconditionally at
+      // construction (via the Map-based constructor every parsed declaration uses) and on every validate()
+      // re-check, so this is one more check on an already-active path, not a new one.
       if (entry.getValue() == null) {
         throw new VcfFormatException("Metadata property \"" + entry.getKey() + "\" has a null value");
       }

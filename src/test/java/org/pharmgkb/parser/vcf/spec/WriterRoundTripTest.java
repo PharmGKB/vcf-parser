@@ -325,9 +325,16 @@ class WriterRoundTripTest {
   }
 
   @Test
-  void testUnescapedQuoteInDescriptionRoundTripsWithoutRewriting() throws IOException {
-    // warn-and-preserve, not reject-and-rewrite: reproduces failed_meta_001.vcf's
-    // Description="Description with "non-escaped quote" (an odd count of unescaped '"' characters)
+  void testUnescapedQuoteInDescriptionCanonicalizesTrailingJunkOnWrite() throws IOException {
+    // warn-and-canonicalize, not reject-and-preserve-verbatim: reproduces failed_meta_001.vcf's
+    // Description="Description with "non-escaped quote" (an odd count of unescaped '"' characters). The
+    // attribute-list tokenizer (InternalUtils.tokenizeAttributeList) finds a quoted value's closing quote by
+    // POSITION -- the first unescaped '"' after the opening one -- rather than by unbalanced-quote parity, so
+    // the value closes right after "with " and the remaining "non-escaped quote\"" is trailing content, warned
+    // about and discarded rather than preserved verbatim (see STRUCTURAL_DELIMITER_HANDLING.md's junk-after-
+    // close recovery). This still satisfies AGENTS.md's Writer Round-Trip Policy: the recovered value is
+    // syntactically valid and its usable meaning ("Description with ") is preserved, even though the exact
+    // input bytes are not.
     String vcf =
         "##fileformat=VCFv4.2\n" +
         "##ALT=<ID=DEL,Number=1,Type=String,Description=\"Description with \"non-escaped quote\">\n" +
@@ -346,6 +353,30 @@ class WriterRoundTripTest {
       root.detachAppender(appender);
       appender.stop();
     }
+    String written = WriterRoundTrip.write(parsed);
+    String expected =
+        "##fileformat=VCFv4.2\n" +
+        "##ALT=<ID=DEL,Number=1,Type=String,Description=\"Description with \">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\t<DEL>\t.\tPASS\t.\n";
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(expected, written));
+  }
+
+  @Test
+  void testBracketQuotedValuesRoundTripByteIdenticallyThroughDefaultWrite() throws IOException {
+    // AGENTS.md: "For parser-to-writer changes, add a round-trip test showing that accepted input can be
+    // written and parsed again without column loss or delimiter corruption." Same content as
+    // src/test/resources/metadata_brackets.vcf (VcfParserTest#bracketValuesSurviveParsing, which only checks
+    // the parsed-in-memory values) -- this pins that the bracket-quoted values the attribute-list tokenizer
+    // now parses correctly (Task 2's whole point: they used to be split at their interior commas) also survive
+    // the default write path byte-for-byte, not just an in-memory getPropertyRaw() check.
+    String vcf =
+        "##fileformat=VCFv4.3\n" +
+        "##contig=<ID=c1,x=[WholeGenome, Exome],length=999>\n" +
+        "##SAMPLE=<ID=s1,Assay=[a, b],Description=\"d\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "c1\t5\t.\tA\tT\t.\t.\t.\n";
+    WriterRoundTrip.ParsedFile parsed = WriterRoundTrip.parseText(vcf);
     String written = WriterRoundTrip.write(parsed);
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
   }

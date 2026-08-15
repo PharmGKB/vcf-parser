@@ -6,9 +6,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
-import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.Test;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -320,13 +321,6 @@ public class InternalUtilsTest {
     for (String value : values) {
       assertEquals(value, InternalUtils.unquote(InternalUtils.quote(value)), "round-trip failed for: " + value);
     }
-  }
-
-  @Test
-  public void testSplitProp() throws Exception {
-    assertEquals(Pair.of("abc", "\"d=ef\""), InternalUtils.splitProperty("abc=\"d=ef\""));
-    assertEquals(Pair.of("\"a=bc\"", "\"d=ef\""), InternalUtils.splitProperty("\"a=bc\"=\"d=ef\""));
-    assertEquals(Pair.of("\"a=b=c\"", "\"d=ef\""), InternalUtils.splitProperty("\"a=b=c\"=\"d=ef\""));
   }
 
   @Test
@@ -907,31 +901,73 @@ public class InternalUtilsTest {
   }
 
   @Test
+  void anArrayElementsOwnCommaIsContentNotASeparator() {
+    Map<String, String> props = InternalUtils.extractProperties(
+        new String[] {"Description=a,b", "ID=X"}, VcfWarnings.DEFAULT);
+    assertEquals(2, props.size());
+    assertEquals("a,b", props.get("Description"));
+    assertEquals("X", props.get("ID"));
+  }
+
+  @Test
+  void theArrayFormSharesTheTokenizersValueRules() {
+    // same classification, same junk-after-close recovery -- only the boundaries differ
+    assertEquals("[a, b]", InternalUtils.extractProperties(
+        new String[] {"x=[a, b]"}, VcfWarnings.DEFAULT).get("x"));
+    assertEquals("\"a\"", InternalUtils.extractProperties(
+        new String[] {"x=\"a\" junk"}, VcfWarnings.DEFAULT).get("x"));
+  }
+
+  @Test
+  void nullsStillCrashRatherThanBeingSilentlyDropped() {
+    // InternalUtils is exempt from the VcfFormatException null policy (AGENTS.md); a raw NPE is the
+    // documented outcome and matches today's behaviour. Pinned so a future null guard cannot quietly
+    // downgrade a caller bug into a warned, dropped attribute.
+    assertThrows(NullPointerException.class,
+        () -> InternalUtils.extractProperties((String[]) null, VcfWarnings.DEFAULT));
+    assertThrows(NullPointerException.class,
+        () -> InternalUtils.extractProperties(new String[] {null}, VcfWarnings.DEFAULT));
+  }
+
+  @Test
+  void theArrayFormWarnsAndKeepsLastOnADuplicateName() {
+    StringWriter sink = new StringWriter();
+    Map<String, String> props = InternalUtils.extractProperties(
+        new String[] {"ID=A", "ID=B"}, new VcfWarnings(sink));
+    assertEquals("B", props.get("ID"));
+    assertThat(sink.toString(), containsString("duplicate attribute"));
+  }
+
+  @Test
   public void testExtractPropertiesWarnsAndDropsMalformedAttributeInsteadOfThrowing() {
-    // regression test: a comma-delimited attribute that doesn't split into exactly one "key=value" pair (here, an
-    // empty attribute produced by an interior double comma) previously made extractProperties rethrow
-    // unconditionally, aborting the entire metadata declaration -- and, via VcfParser, the entire file parse. It
-    // must instead warn and drop just that one attribute, keeping every other attribute that did parse.
+    // regression test: an attribute with no '=' at all (here, an empty attribute produced by an interior
+    // double comma in the original declaration, which the array-splitting caller turns into a bare "" element)
+    // previously made extractProperties rethrow unconditionally, aborting the entire metadata declaration --
+    // and, via VcfParser, the entire file parse. It must instead warn and drop just that one attribute,
+    // keeping every other attribute that did parse. Wording updated for the attribute-list tokenizer
+    // (InternalUtils.parseAttribute, shared with tokenizeAttributeList via parseOneAttribute): a missing '='
+    // is now reported directly rather than via a caught VcfFormatException wrapped as "Could not parse
+    // metadata attribute".
     StringWriter sink = new StringWriter();
     Map<String, String> props = InternalUtils.extractProperties(
         new String[] {"ID=AF", "", "Number=1", "Type=Float"}, new VcfWarnings(sink));
     assertEquals(Map.of("ID", "AF", "Number", "1", "Type", "Float"), props);
-    assertTrue(sink.toString().contains("Could not parse metadata attribute"));
+    assertTrue(sink.toString().contains("has no '='; dropping it"));
   }
 
   @Test
-  public void testExtractPropertiesWarnsAndDropsAttributeWithUnquotedEmbeddedEqualsSign() {
-    // pins the chosen recovery for an attribute whose unquoted value itself contains "=" -- splitProperty finds
-    // more than one top-level "=" and can't unambiguously determine the key/value split, so the whole attribute
-    // is dropped rather than guessed at, same recovery as the interior-empty-attribute case above. A quoted value
-    // containing "=" (e.g. Description="a=b") never reaches this path at all: splitTopLevel's quote-awareness
-    // means only the first, unquoted "=" is ever top-level.
+  public void testExtractPropertiesTreatsEmbeddedEqualsSignInValueAsOrdinaryContent() {
+    // regression-turned-behavior-change test: the retired splitProperty/splitTopLevel pair found every
+    // top-level "=" and dropped the whole attribute when there was more than one. The attribute-list tokenizer
+    // (InternalUtils.parseAttribute, sharing its per-attribute grammar with tokenizeAttributeList via
+    // parseOneAttribute) instead stops the name scan at the FIRST '=' only, so a second, unquoted "=" is
+    // ordinary value content -- the same rule AttributeListTokenizerTest#anEqualsSignInAValueIsOrdinary already
+    // pins for the attribute-list form, now shared by the array form.
     StringWriter sink = new StringWriter();
     Map<String, String> props = InternalUtils.extractProperties(
         new String[] {"ID=X", "Number=1", "Type=String", "Description=a=b"}, new VcfWarnings(sink));
-    assertEquals(Map.of("ID", "X", "Number", "1", "Type", "String"), props);
-    assertFalse(props.containsKey("Description"));
-    assertTrue(sink.toString().contains("Could not parse metadata attribute \"Description=a=b\""));
+    assertEquals(Map.of("ID", "X", "Number", "1", "Type", "String", "Description", "a=b"), props);
+    assertFalse(sink.toString().contains("dropping it"));
   }
 
   @Test

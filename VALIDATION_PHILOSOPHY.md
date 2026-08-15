@@ -298,8 +298,25 @@ declared version" for that list, and its lenient section for the four gated rule
 
   Item 1 rests on a dependency, not a guarantee: the writer emits raw and never re-encodes, so output is
   well-formed only if the encoding was already valid when the declaration was *constructed*. That holds for
-  every parsed declaration, but not for every programmatically constructed one -- see `TODO.md`'s "Reject an
-  unquoted structural delimiter at construction" entry for the known gap.
+  every parsed declaration, and, since `InternalUtils.checkMetadataPropertyEncoding` runs unconditionally at
+  every `VcfMetadata.Builder` `addXxx`/`replaceXxx` call site, for every programmatically constructed one too
+  -- see the originated-vs-carried-forward paragraph below for the one place this still legitimately diverges
+  (a value this library did not originate, warned about, and is only re-emitting).
+
+  **Originated content vs. carried-forward content is a fourth axis, layered on top of this one, and it is
+  what makes `checkMetadataPropertyEncoding`'s construction-time throw and `VcfWriter`'s
+  `checkMetadataPropertyEncodingForWrite` diagnostics-mode warn two different answers to the same question
+  rather than a contradiction.** Both share one classifier, `InternalUtils.findEncodingProblems` -- the rule
+  for what counts as a problem exists once -- but a value this library is about to *originate* (build via
+  public construction) is held to `AGENTS.md`'s absolute floor: if bcftools would discard or choke on it, this
+  library must refuse to build it, so every problem throws. A value this library is merely *carrying forward*
+  (read from a file, warned about, and echoed by the default write path or by `validateBeforeWrite()`) was
+  already invalid before this library touched it; re-emitting it faithfully is this library doing its job, not
+  a construction defect, so only the subset that would make the *file* (not just the one declaration)
+  unreadable by bcftools (`EncodingProblem.unreadableOutput`) still throws -- everything else warns and
+  preserves the value unchanged. `##contig=<ID=1,a-b=v>`, `AGENTS.md`'s own worked example, is exactly this:
+  bcftools discards the declaration but reads the rest of the file fine, so construction refuses to originate
+  it, while `validateBeforeWrite()` warns and re-emits it unchanged when it arrived via parsing.
 - A class or method's `@RestrictedApi`/`@hidden` disclaimer (e.g. `InternalUtils`, `VcfMetadata.validateAlt`,
   `VcfFloat.parse(String, VcfWarnings)`) is the identical kind of documentation-only signal: no ErrorProne
   plugin is configured in this codebase, so nothing enforces it at compile time or runtime either. It is a

@@ -11,6 +11,51 @@ its own result regardless, so a version-mismatch failure there is a flag to read
 carefully, not a reason they didn't run. Fuller reasoning for each entry lives in `VCF_SPEC_AMBIGUITIES.md`
 unless noted otherwise.
 
+## Source reference: the htslib functions this library's header grammar depends on
+
+**On an upgrade, diff the source too, not only the test results.** `BcftoolsDependencyTest` can only fail on a
+behavior some entry below already anticipated. A source diff also surfaces changes to cases nobody thought to
+test -- which is how the header tokenizer's real grammar was established in the first place (see `AGENTS.md`'s
+"A probe is not a grammar").
+
+htslib source is checked out at **`~/Dev/htslib`**, pinned to the installed version:
+
+| | |
+|---|---|
+| tag | `1.23.1` |
+| commit | `d1a2a873552a4fb8c30b3a77620c5f8bef7a7143` |
+
+Re-clone at the *new* tag before diffing; reading a different version than the installed binary documents a
+grammar nobody is running.
+
+These five functions in `vcf.c` are the ones this library's metadata attribute-list grammar was derived from.
+Each is fingerprinted by **function boundary rather than line number**, so the check survives unrelated edits
+elsewhere in the file and does not rot the way a line citation does:
+
+| function | governs | sha256 (first 16) |
+|---|---|---|
+| `bcf_hdr_parse_line` | the entire `##KEY=<...>` tokenizer: name grammar `[A-Za-z_][A-Za-z0-9_.]*`, the space-skip before a value, `"` vs `[` delimiting, the `nopen` bracket-depth counter, warn-vs-error | `e8c0ff70219d93c5` |
+| `is_escaped` | whether `\"`/`\]` closes a delimited value (backslash run, mod 2) | `1e1d410b6fedc29f` |
+| `bcf_hrec_set_val` | that a quoted value is stored **with** its delimiters — nothing is ever unquoted | `e1de8df770c872fc` |
+| `_bcf_hrec_format` | that re-emission is **reconstructed from parsed pairs**, not echoed — which is what makes re-emitted bytes admissible evidence about the parse | `e43c331df68ca9ca` |
+| `bcf_hrec_check` | which declaration types get ID validation at all (CTG/INFO/FMT only; never FILTER or generic `BCF_HL_STR`) | `8ed68eab6b78d0fe` |
+
+Recompute all five:
+
+```bash
+cd ~/Dev/htslib
+for f in '^bcf_hrec_t \*bcf_hdr_parse_line' '^static inline int is_escaped' \
+         '^int bcf_hrec_set_val' '^static int _bcf_hrec_format' '^static int bcf_hrec_check'; do
+  printf '%-34s %s\n' "$f" "$(sed -n "/$f/,/^}/p" vcf.c | sha256sum | cut -c1-16)"
+done
+```
+
+**A changed hash is not a failure — it is a prompt to re-read.** Diff that function against the pinned commit
+and decide whether the change touches anything this library relies on. If it does, re-derive the affected rows
+of the behavior tables per `BEHAVIOR_TABLE_STANDARD.md` (predictions from source first, then measure), update
+the entry below, and record the new hash here. A hash that changes with no behavioral consequence still gets
+updated, with a one-line note saying why it did not matter.
+
 Coverage here is best-effort, not exhaustive -- new entries should be added as new bcftools-informed decisions
 are made. The one exception is the "Round-trip-critical" section below: every decision in that category MUST be
 listed and covered, since a regression there means this library could emit VCF that bcftools itself cannot read
@@ -50,6 +95,15 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
   (`[W::bcf_hrec_check] Invalid contig name: "*chr"`) but still exits 0 and preserves the declaration for a
   **leading** asterisk, which is the boundary the control test pins.
 
+### Unterminated bracket value in a metadata attribute
+- Test: `BcftoolsDependencyTest#testUnterminatedBracketValueBcftoolsHardErrors`
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Unquoted metadata attribute value: malformed bracket vs. `<`/`>`/`;`"
+  entry. `InternalUtils.checkMetadataPropertyEncoding`/`checkMetadataPropertyEncodingForWrite` both throw for
+  this shape (construction AND `validateBeforeWrite()`), since it is the one malformed-value shape that makes
+  the ENTIRE file unreadable (`[E::bcf_hdr_parse_line] Missing ']' in header line`, exit 255) rather than
+  merely dropping one declaration -- if this library ever originated one, bcftools could not read the file
+  back at all.
+
 ## Other bcftools-dependent decisions
 
 (best-effort coverage, not exhaustive)
@@ -61,6 +115,31 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
 ### Malformed attribute inside a metadata declaration's `<...>` list
 - Test: `BcftoolsDependencyTest#testMalformedMetadataAttributeBcftoolsDropsDeclarationAndContinues`
 - Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Malformed attribute inside a metadata declaration's `<...>` list" entry
+
+### Metadata attribute name outside the construction-time allowlist
+- Test: `BcftoolsDependencyTest#testMetadataAttributeNameOutsideAllowlistBcftoolsDropsDeclarationSilently`
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Metadata attribute NAME grammar (construction-time allowlist)" entry
+
+### Bracket value with trailing junk (closed but malformed)
+- Test: `BcftoolsDependencyTest#testBracketValueWithTrailingJunkBcftoolsDropsDeclarationSilently`
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Unquoted metadata attribute value: malformed bracket vs. `<`/`>`/`;`"
+  entry. Unlike the unterminated-bracket shape indexed under Round-trip-critical above, this shape leaves the
+  rest of the file readable (exit 0, just the one declaration dropped), so `checkMetadataPropertyEncodingForWrite`
+  still throws for it -- it is grouped with the unterminated shape under the same
+  `EncodingProblem.unreadableOutput=true`, not with the merely-lossy `<`/`>` shapes below.
+
+### Unescaped `<`/`>` in an unquoted metadata attribute value
+- Test: `BcftoolsDependencyTest#testUnescapedLessThanInMetadataValueBcftoolsMisparsesButSurvives`,
+  `#testUnescapedGreaterThanInMetadataValueBcftoolsTruncatesDeclaration`
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Unquoted metadata attribute value: malformed bracket vs. `<`/`>`/`;`"
+  entry. Both shapes leave the file readable (exit 0) -- a garbled but present declaration for `<`, a silently
+  truncated one for `>` -- which is why `checkMetadataPropertyEncodingForWrite` warns rather than throws here.
+
+### Unescaped `;` in an unquoted metadata attribute value is not structural
+- Test: `BcftoolsDependencyTest#testUnescapedSemicolonInMetadataValueBcftoolsTreatsAsOrdinaryContent`
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Unquoted metadata attribute value: malformed bracket vs. `<`/`>`/`;`"
+  entry. Confirms `InternalUtils.findEncodingProblems` is right to have no `;` branch at all: bcftools' own
+  scanner never special-cases `;` in this grammar either.
 
 ### `##FORMAT`/`##INFO` declaration ID grammar vs. `##FILTER`/`##SAMPLE`/`##ALT`
 - Test: `BcftoolsDependencyTest#testFormatDeclarationIdRejectsAsteriskButFilterAccepts`

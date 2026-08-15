@@ -10,7 +10,6 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import com.google.errorprone.annotations.RestrictedApi;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.tuple.Pair;
 import org.jspecify.annotations.Nullable;
 
 
@@ -218,6 +217,17 @@ public class InternalUtils {
   // hardening, not a fix for a distinct observed bug.
   public static final Pattern CIGAR_PATTERN = Pattern.compile("\\*|(?:[0-9]++[MIDNSHPX=])++");
 
+  /**
+   * Grammar for a metadata declaration's attribute NAME. The VCF spec states none -- VCFv4.3.tex:117 gives
+   * only "the value is itself a comma-separated list of key=value pairs, enclosed within `<' and `>'
+   * characters", leaving `key' an undefined nonterminal (identically in 4.2/4.4/4.5) -- so per AGENTS.md's
+   * Decision Hierarchy bcftools governs. htslib 1.23.1 `vcf.c:695' carries this exact regex as a comment
+   * above its scanner: "^[A-Za-z_][0-9A-Za-z_.]*$". A name outside it makes bcftools discard the whole
+   * declaration, so we must not originate one.
+   */
+  public static final Pattern METADATA_ATTRIBUTE_NAME_PATTERN =
+      Pattern.compile("^[A-Za-z_][0-9A-Za-z_.]*$");
+
   private static final String RESTRICTED_API_EXPLANATION =
       "Internal helper; public only because Java requires it for cross-package use within this library. Not "
           + "part of this library's supported public API and may change or be removed without notice.";
@@ -273,80 +283,189 @@ public class InternalUtils {
     return false;
   }
 
-  static Map<String, String> extractPropertiesFromLine(String value, VcfWarnings warnings) {
-    if (hasUnbalancedQuotes(value)) {
-      // reproduces test/vcf/{4.1,4.2}/failed/failed_meta_001.vcf (##CauseOfFailure=Description contains
-      // non-escaped quotes). Checked on the raw, unsplit string rather than per-attribute after splitTopLevel:
-      // an unescaped quote can make splitTopLevel itself mis-split at the wrong comma (its open/close toggle
-      // flips on every unescaped '"', so a stray one can make a comma meant to stay inside a value look
-      // top-level), so checking post-split could miss or misattribute the very problem being detected here.
-      warnings.warn("Metadata declaration attribute list \"{}\" contains an unescaped quote, making attribute " +
-          "boundaries ambiguous; parsing it best-effort", value);
-    }
-    // split on top-level commas (those not inside a double-quoted value); splitTopLevel preserves escaped characters
-    return extractProperties(splitTopLevel(value, ',').toArray(new String[0]), warnings);
+  /** One {@code name=value} pair from a metadata declaration's attribute list. */
+  record Attribute(String name, String rawValue) {}
+
+  /** @return index of the first {@code ,} at or after {@code from}, or {@code s.length()} if none. */
+  private static int indexOfComma(String s, int from) {
+    int i = s.indexOf(',', Math.min(from, s.length()));
+    return i < 0 ? s.length() : i;
   }
 
   /**
-   * @return Whether {@code value} has an odd number of unescaped {@code "} characters. An odd count means
-   * {@link #splitTopLevel} would finish with its internal {@code inQuotes} toggle left {@code true}, guaranteeing
-   * some quote is unmatched and making attribute boundaries ambiguous. An even count does not guarantee all quotes
-   * are correctly paired (e.g., two separate stray quotes in different attributes can cancel out to an even total);
-   * this is a best-effort heuristic, not a per-attribute validation. Respects the same {@code \\}/{@code \"} escape
-   * convention as {@link #splitTopLevel} and {@link #unquote}, so a properly-escaped inner quote is not miscounted.
+   * @return index of the first {@code target} at or after {@code from} that is not preceded by an odd run of
+   * {@code \}, or {@code -1} if none. The backslash run is counted no further back than {@code floor}, which
+   * is the value's first byte -- matching htslib's {@code is_escaped(p, q)}, which counts from the value
+   * start rather than the whole line.
    */
-  private static boolean hasUnbalancedQuotes(String value) {
-    int unescapedQuoteCount = 0;
-    for (int i = 0; i < value.length(); i++) {
-      char c = value.charAt(i);
-      if (c == '\\' && i + 1 < value.length() && (value.charAt(i + 1) == '\\' || value.charAt(i + 1) == '"')) {
-        i++; // skip the escaped character, matching splitTopLevel's own escape handling
-      } else if (c == '"') {
-        unescapedQuoteCount++;
-      }
-    }
-    return unescapedQuoteCount % 2 != 0;
-  }
-
-  // public only because ~57 test call sites (InfoMetadataTest,
-  // FormatMetadataTest, IdDescriptionMetadataTest, VcfMetadataTest, ContigMetadataTest) call this directly
-  // to build a Map<String,String> from "key=value" arrays -- its only PRODUCTION caller is
-  // extractPropertiesFromLine, in this same class
-  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
-  public static Map<String, String> extractProperties(String[] props, VcfWarnings warnings) {
-    Map<String, String> map = new LinkedHashMap<>();
-    for (String prop : props) {
-      Pair<String, String> pair;
-      try {
-        pair = splitProperty(prop);
-      } catch (VcfFormatException e) {
-        // Warn and drop just this one malformed attribute rather than aborting the whole metadata declaration
-        // (previously: rethrew, which propagated uncaught out of VcfParser.parseMetadata() and aborted the
-        // entire file over one cosmetic header defect). AGENTS.md's Parser Validation Policy lists metadata
-        // declarations among the fields this parser is lenient about; confirmed live against bcftools 1.23.1
-        // (htslib 1.23.1) that it never aborts the whole file for this -- it drops the one malformed
-        // declaration and continues (exit 0). This drops only the offending attribute, not the whole
-        // declaration: every downstream metadata constructor's lenient (Map, VcfWarnings) path already warns
-        // rather than throws for a missing required attribute (e.g. InfoMetadata.init()'s warnIfMissing(TYPE,
-        // ...)), so a declaration left short one attribute here is already a supported, tested state.
-        //
-        // hts-specs' own conformance suite disagrees with this leniency for one narrow sub-case -- an
-        // unescaped comma inside an unquoted ID splitting it into two bogus top-level attributes --
-        // test/vcf/{4.1,4.2}/failed/failed_meta_contig_002.vcf (##CauseOfFailure=contig ID contains a comma,
-        // ##contig=<ID=1,A,length=123456>) and test/vcf/{4.1,4.2}/failed/failed_meta_alt_007.vcf
-        // (##CauseOfFailure=The ALT ID contains a comma, ##ALT=<ID=DEL:A,B,Description="...">) are both marked
-        // failed/ for this exact shape. This decision still sides with bcftools: this project's own leniency
-        // philosophy (AGENTS.md's "'Strict' in this project means structural correctness... not eager rejection
-        // of every semantic VCF violation") treats an unquoted comma inside an ID as a semantic grammar defect,
-        // not the structural kind this library hard-rejects for -- see VCF_SPEC_AMBIGUITIES.md's "Malformed
-        // attribute inside a metadata declaration's <...> list" entry for the full reasoning. Only splitProperty's
-        // own VcfFormatException is caught here (never a broader RuntimeException): a bug elsewhere in
-        // splitTopLevel must still surface as a real crash, not get silently reported as "could not parse this
-        // attribute".
-        warnings.warn("Could not parse metadata attribute \"{}\" ({}); dropping it", prop, e.getMessage());
+  private static int indexOfUnescaped(String s, char target, int from, int floor) {
+    for (int i = from; i < s.length(); i++) {
+      if (s.charAt(i) != target) {
         continue;
       }
-      if (map.containsKey(pair.getKey())) {
+      int backslashes = 0;
+      for (int k = i - 1; k >= floor && s.charAt(k) == '\\'; k--) {
+        backslashes++;
+      }
+      if (backslashes % 2 == 0) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  /**
+   * Strips leading and trailing ASCII {@code 0x20} only. Deliberately NOT {@link String#trim()}, which also
+   * strips tab, CR and LF -- htslib skips exactly {@code ' '} on both sides of a name
+   * ({@code while ( *q && *q==' ' ) { p++; q++; }} at vcf.c:694, and
+   * {@code while ( *q && *q==' ' ) { q++; m++; }} at vcf.c:703), so trimming a tab here would silently rename an
+   * attribute the reference implementation would have rejected outright.
+   */
+  private static String stripAsciiSpaces(String s) {
+    int start = 0;
+    int end = s.length();
+    while (start < end && s.charAt(start) == ' ') {
+      start++;
+    }
+    while (end > start && s.charAt(end - 1) == ' ') {
+      end--;
+    }
+    return s.substring(start, end);
+  }
+
+  /**
+   * The outcome of {@link #parseOneAttribute}: either a successfully parsed {@link Attribute}, or {@code null}
+   * if none could be extracted (already warned) -- plus the index immediately after this attribute (past its
+   * separating comma, if {@code commaIsSeparator}), for a multi-attribute caller to resume scanning from.
+   */
+  private record AttributeParseResult(@Nullable Attribute attribute, int nextIndex) {}
+
+  /**
+   * @return the index at which the current attribute must end: the next {@code ,} (or {@code s.length()} if
+   * none), when {@code commaIsSeparator}; otherwise {@code s.length()}, since {@code s} is then already exactly
+   * one attribute and a {@code ,} inside it is ordinary content.
+   */
+  private static int attributeLimit(String s, int from, boolean commaIsSeparator) {
+    return commaIsSeparator ? indexOfComma(s, from) : s.length();
+  }
+
+  /**
+   * Parses one {@code name=value} pair starting at {@code s.charAt(i)}, implementing bcftools' splitting
+   * grammar (htslib 1.23.1 {@code bcf_hdr_parse_line}). A value's form is decided by its first byte after the
+   * optional space skip: {@code "} quoted, {@code [} bracket, otherwise literal. A quote or bracket anywhere
+   * else is an ordinary byte and protects nothing.
+   *
+   * <p>This deliberately does NOT enforce bcftools' name-validity rule -- see the design spec's "Precisely
+   * which grammar, on which surface" table. The parse path accepts a superset and preserves it.
+   *
+   * @param commaIsSeparator {@code true} when {@code s} is an attribute LIST (a {@code ,} ends this attribute
+   * and starts the next, so the name scan and every value-boundary search below stop at it); {@code false}
+   * when {@code s} is already exactly one attribute (a {@code ,} is ordinary content, and the name scan runs
+   * to the first {@code =} only). {@link #tokenizeAttributeList} passes {@code true}; {@link #parseAttribute}
+   * passes {@code false}. Every other rule here is shared between the two callers.
+   */
+  private static AttributeParseResult parseOneAttribute(String s, int i, boolean commaIsSeparator,
+      VcfWarnings warnings) {
+    int n = s.length();
+    int limit = attributeLimit(s, i, commaIsSeparator);
+    int nameEnd = i;
+    while (nameEnd < limit && s.charAt(nameEnd) != '=') {
+      nameEnd++;
+    }
+    if (nameEnd >= limit) {
+      warnings.warn("Metadata attribute \"{}\" has no '='; dropping it", s.substring(i, Math.min(nameEnd, n)));
+      return new AttributeParseResult(null, limit + 1);
+    }
+    String name = stripAsciiSpaces(s.substring(i, nameEnd));
+    int idx = nameEnd + 1;
+    if (name.isEmpty()) {
+      warnings.warn("Metadata attribute has an empty name; dropping it");
+      int end = attributeLimit(s, idx, commaIsSeparator);
+      return new AttributeParseResult(null, end + 1);
+    }
+    while (idx < n && s.charAt(idx) == ' ') {
+      idx++;
+    }
+    int valueStart = idx;
+    char first = idx < n ? s.charAt(idx) : '\0';
+    String rawValue;
+    int nextIndex;
+    if (first == '"' || first == '[') {
+      char closer = first == '"' ? '"' : ']';
+      int close = indexOfUnescaped(s, closer, valueStart + 1, valueStart);
+      if (close >= 0) {
+        rawValue = s.substring(valueStart, close + 1);
+        int end = attributeLimit(s, close + 1, commaIsSeparator);
+        if (end > close + 1) {
+          warnings.warn("Metadata attribute \"{}\" has trailing content \"{}\" after its closing "
+              + "delimiter; discarding it", name, s.substring(close + 1, end));
+        }
+        nextIndex = end + 1;
+      } else {
+        int end = attributeLimit(s, valueStart, commaIsSeparator);
+        String content = s.substring(valueStart, end);
+        warnings.warn("Metadata attribute \"{}\" has an unterminated {}; recovering best-effort",
+            name, first == '"' ? "quoted value" : "bracket value");
+        // An unterminated '[' is the one branch that re-encodes rather than preserving input bytes:
+        // bcftools exits 255 on a header line containing one, and AGENTS.md's floor forbids emitting a
+        // file bcftools cannot read at all, even for carried-forward content.
+        rawValue = first == '"' ? content : quote(content);
+        nextIndex = end + 1;
+      }
+    } else {
+      int end = attributeLimit(s, valueStart, commaIsSeparator);
+      // leading 0x20 was already consumed before valueStart, so this only strips the trailing run
+      rawValue = stripAsciiSpaces(s.substring(valueStart, end));
+      if (rawValue.indexOf('<') >= 0 || rawValue.indexOf('>') >= 0 || containsUnescapedQuote(rawValue)) {
+        warnings.warn("Metadata attribute \"{}\" has an unquoted value \"{}\" containing a character "
+            + "bcftools treats as structural; preserving it", name, rawValue);
+      }
+      nextIndex = end + 1;
+    }
+    return new AttributeParseResult(new Attribute(name, rawValue), nextIndex);
+  }
+
+  /**
+   * Splits a metadata declaration's attribute list into {@code name=value} pairs -- see {@link
+   * #parseOneAttribute} for the shared per-attribute grammar this loops over with {@code commaIsSeparator =
+   * true}.
+   *
+   * @param innerText the attribute list WITHOUT the surrounding {@code <} and {@code >}
+   */
+  static List<Attribute> tokenizeAttributeList(String innerText, VcfWarnings warnings) {
+    List<Attribute> attributes = new ArrayList<>();
+    int n = innerText.length();
+    if (n == 0) {
+      return attributes;
+    }
+    boolean trailingSeparator = innerText.charAt(n - 1) == ',';
+    int i = 0;
+    while (i < n) {
+      AttributeParseResult result = parseOneAttribute(innerText, i, true, warnings);
+      if (result.attribute() != null) {
+        attributes.add(result.attribute());
+      }
+      i = result.nextIndex();
+    }
+    if (trailingSeparator) {
+      warnings.warn("Metadata attribute list has an empty trailing attribute; dropping it");
+    }
+    return attributes;
+  }
+
+  static Map<String, String> extractPropertiesFromLine(String value, VcfWarnings warnings) {
+    return foldAttributes(tokenizeAttributeList(value, warnings), warnings);
+  }
+
+  /**
+   * Folds tokenized attributes into the {@code Map} the model consumes. Owns the duplicate-name rule -- warn
+   * and keep last -- which was previously in {@code extractProperties}; see BCFTOOLS_VERSION_DEPENDENCIES.md.
+   * A plain map fold would keep last but silently lose the warning.
+   */
+  private static Map<String, String> foldAttributes(List<Attribute> attributes, VcfWarnings warnings) {
+    Map<String, String> properties = new LinkedHashMap<>();
+    for (Attribute attribute : attributes) {
+      if (properties.containsKey(attribute.name())) {
         // Keeping the LAST value here is deliberate and differs from every other duplicate-key case in this
         // codebase (which keep the first) -- this handles a duplicate ATTRIBUTE within one metadata declaration's
         // own <ID=...,Number=...,...> structure, a different scenario from a duplicate declaration ID across
@@ -359,53 +478,48 @@ public class InternalUtils {
         // silently coerces the same non-numeric value to the missing sentinel. vcf_validator 0.10.2 rejects this
         // case outright, but per this project's tie-breaker hierarchy its stricter structural-field behavior is
         // non-authoritative when it disagrees with bcftools.
-        warnings.warn("Metadata declaration contains duplicate attribute \"{}\"; keeping the last value", pair.getKey());
+        warnings.warn("Metadata declaration contains duplicate attribute \"{}\"; keeping the last value",
+            attribute.name());
       }
-      map.put(pair.getKey(), pair.getValue());
+      properties.put(attribute.name(), attribute.rawValue());
     }
-    return map;
+    return properties;
   }
 
   /**
-   * Splits a property into a key-value pair.
-   * @param prop In the form "key=value"
+   * Parses ONE already-delimited attribute. The caller's boundary is authoritative, so a {@code ,} in
+   * {@code attribute} is ordinary content rather than a separator, and the name runs to the first {@code =}
+   * only. Every other rule -- ASCII-space trimming, leading-byte classification, escape handling, junk-after-close
+   * recovery -- is shared with {@link #tokenizeAttributeList} via {@link #parseOneAttribute}.
+   *
+   * <p><b>Null contract:</b> NEVER returns {@code null} for a {@code null} {@code attribute} -- that is a caller
+   * bug and must keep crashing with a raw {@code NullPointerException} ({@link InternalUtils} is exempt from this
+   * library's public-API {@code VcfFormatException} null-rejection policy; see AGENTS.md's Public API
+   * Null-Safety Policy). {@code null} is returned only to mean "this attribute was unparseable and has already
+   * been warned about; drop it."
+   *
+   * @return the parsed attribute, or {@code null} if it has no {@code =} or an empty name (warned)
    */
-  static Pair<String, String> splitProperty(String prop) {
-    List<String> parts = splitTopLevel(prop, '=');
-    if (parts.size() != 2) {
-      throw new VcfFormatException("There were " + (parts.size() - 1) + " equals signs for: " + prop);
-    }
-    return Pair.of(parts.get(0), parts.get(1));
+  static @Nullable Attribute parseAttribute(String attribute, VcfWarnings warnings) {
+    return parseOneAttribute(attribute, 0, false, warnings).attribute();
   }
 
-  /**
-   * Splits {@code s} on top-level occurrences of {@code delim} — those not inside a double-quoted substring. Only
-   * {@code \\} and {@code \"} are recognized escape sequences (per the VCF spec; matches {@link #unquote}): {@code \"}
-   * does not toggle quoting and {@code \\} is a literal backslash, and both are preserved verbatim in the output. A
-   * backslash before any other character (or at the end of the string) has no special meaning and does not consume or
-   * protect the following character, so a delimiter or quote immediately after it is still recognized.
-   */
-  private static List<String> splitTopLevel(String s, char delim) {
-    List<String> parts = new ArrayList<>();
-    StringBuilder cur = new StringBuilder();
-    boolean inQuotes = false;
-    for (int i = 0; i < s.length(); i++) {
-      char c = s.charAt(i);
-      if (c == '\\' && i + 1 < s.length() && (s.charAt(i + 1) == '\\' || s.charAt(i + 1) == '"')) {
-        cur.append(c).append(s.charAt(i + 1));
-        i++;
-      } else if (c == '"') {
-        inQuotes = !inQuotes;
-        cur.append(c);
-      } else if (c == delim && !inQuotes) {
-        parts.add(cur.toString());
-        cur.setLength(0);
-      } else {
-        cur.append(c);
+  // public only because 122 test call sites (InfoMetadataTest, FormatMetadataTest, IdDescriptionMetadataTest,
+  // VcfMetadataTest, ContigMetadataTest) call this directly to build a Map<String,String> from "key=value"
+  // arrays -- it has ZERO production callers now that extractPropertiesFromLine calls
+  // foldAttributes(tokenizeAttributeList(...)) directly instead of routing through this method; this is now a
+  // purely test-facing surface, kept @RestrictedApi/public for those 122 call sites' sake, not for any
+  // internal caller
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
+  public static Map<String, String> extractProperties(String[] props, VcfWarnings warnings) {
+    List<Attribute> attributes = new ArrayList<>(props.length);
+    for (String prop : props) {
+      Attribute attribute = parseAttribute(prop, warnings);
+      if (attribute != null) {
+        attributes.add(attribute);
       }
     }
-    parts.add(cur.toString());
-    return parts;
+    return foldAttributes(attributes, warnings);
   }
 
   /**
@@ -1187,38 +1301,138 @@ public class InternalUtils {
 
   /**
    * Rejects a metadata property whose key or value would corrupt the {@code <key=value,...>} attribute list it is
-   * emitted into. This is the single implementation behind both the construction-time check in
-   * {@code VcfMetadata.Builder} and the write-time check in {@code VcfWriter.validateMetadataProperties}; two
-   * independent copies of a predicate this subtle drift.
+   * emitted into, or that bcftools would discard/refuse entirely. This is the CONSTRUCTION-time entry point --
+   * every public add/replace route in {@code VcfMetadata.Builder} calls it, and every problem the shared
+   * {@link #findEncodingProblems} classifier finds throws immediately, since originated content must never reach
+   * the header in a form bcftools cannot parse or would silently drop (AGENTS.md's "bcftools is asymmetric
+   * evidence" -- that absolute floor applies to originated content). See
+   * {@link #checkMetadataPropertyEncodingForWrite} for the parallel {@code validateBeforeWrite()} entry point,
+   * which instead warns for a problem that leaves the file merely semantically non-compliant but still
+   * bcftools-readable, since that route's content may be carried-forward (parsed, not originated) rather than
+   * something this call is creating.
    * <p>
-   * See STRUCTURAL_DELIMITER_HANDLING.md for the verified corruption matrix, including why an unescaped quote is
-   * the most destructive of the three and why its damage is position-dependent.
+   * See STRUCTURAL_DELIMITER_HANDLING.md for the verified corruption matrix.
    *
-   * @throws VcfFormatException if a key is null/empty, or contains {@code ,}, {@code =}, or any {@code "}
-   * (escaped or not), or if an unquoted value contains {@code ,}, {@code =}, or an unescaped {@code "}
+   * @throws VcfFormatException for any problem {@link #findEncodingProblems} finds: an invalid property name, a
+   * malformed bracket value, or an unquoted value containing {@code ,}, {@code <}, {@code >}, an unescaped
+   * {@code "}, or leading/trailing space
    */
   static void checkMetadataPropertyEncoding(String kind, Map<String, String> properties) {
+    for (EncodingProblem problem : findEncodingProblems(kind, properties)) {
+      throw new VcfFormatException(problem.message());
+    }
+  }
+
+  /**
+   * The {@code validateBeforeWrite()} entry point: the write-time counterpart to
+   * {@link #checkMetadataPropertyEncoding}, sharing its {@link #findEncodingProblems} classifier so the two
+   * routes cannot drift about what counts as a problem. Throws only for a problem
+   * {@link EncodingProblem#unreadableOutput()} marks -- for one of two distinct reasons, not one: see that
+   * flag's own Javadoc. Every other problem is warned to {@code warnings} and the value is preserved
+   * unchanged: this is the carried-forward case AGENTS.md's own worked example describes
+   * (##contig=<ID=1,a-b=v> read from a file, warned about, and re-emitted, rather than something this write
+   * call originated).
+   */
+  static void checkMetadataPropertyEncodingForWrite(String kind, Map<String, String> properties,
+      VcfWarnings warnings) {
+    for (EncodingProblem problem : findEncodingProblems(kind, properties)) {
+      if (problem.unreadableOutput()) {
+        throw new VcfFormatException(problem.message());
+      }
+      warnings.warn("{}", problem.message());
+    }
+  }
+
+  /**
+   * A problem found by {@link #findEncodingProblems}. {@code unreadableOutput} marks the ones that throw at
+   * write time too ({@link #checkMetadataPropertyEncodingForWrite}), and it groups two genuinely different
+   * reasons under one flag, not one reason with two examples:
+   * <ul>
+   *   <li>The unterminated-bracket shape (no closing {@code ]} at all) throws because bcftools genuinely
+   *   cannot read the file at all (measured: exit 255) -- the absolute floor {@code AGENTS.md}'s Writer
+   *   Validation and Round-Trip Policy states, which a warn branch would violate.</li>
+   *   <li>The unquoted comma and the bracket-with-trailing-junk shapes throw for a weaker, different reason.
+   *   Measured, bcftools merely discards the one declaration for these (exit 0) -- the same outcome an
+   *   invalid attribute name only warns for -- but the attribute-list tokenizer can never produce either
+   *   shape as a STORED value on the parse path (a comma always ends an unquoted value there; trailing
+   *   content after a bracket's close is always split off and warned about separately, never merged into
+   *   the stored value), so throwing here harms no carried-forward content and costs nothing.</li>
+   * </ul>
+   */
+  private record EncodingProblem(String message, boolean unreadableOutput) {}
+
+  /**
+   * The single classifier {@link #checkMetadataPropertyEncoding} and {@link #checkMetadataPropertyEncodingForWrite}
+   * both call, so the rule for what counts as a problem exists once rather than as two copies free to drift.
+   * <p>
+   * <b>Why this dereferences {@code value} without a null check -- an ordering invariant, not an oversight.</b>
+   * {@code BaseMetadata.validateProperties} ({@code BaseMetadata.java:141-158}) rejects both a null key and a
+   * null value with {@code VcfFormatException}, and it always runs FIRST on both routes into this method: at
+   * construction, the declaration object is built -- running {@code validateProperties} via the Map constructor
+   * every parsed declaration uses -- before {@code checkMetadataPropertyEncoding} runs; at write time,
+   * {@code VcfWriter.validateKeyedMetadataEntries} calls {@code entry.validate()} before the write-mode call
+   * reaches here. So the package-private {@code BaseMetadata.trustedMutableProperties()} bypass cannot deliver a
+   * null value here -- it is caught one layer up, with a better message that names the property. The
+   * {@code name == null} check below is kept anyway -- it costs nothing and matches this method's own defensive
+   * style -- but do NOT add a null-VALUE branch; it would only duplicate {@code validateProperties}' error with a
+   * worse one. If a new entry point into this method is ever added, re-check that it still runs after an
+   * equivalent null check, or a clean {@code VcfFormatException} becomes a raw {@code NullPointerException}.
+   */
+  private static List<EncodingProblem> findEncodingProblems(String kind, Map<String, String> properties) {
+    List<EncodingProblem> problems = new ArrayList<>();
     for (Map.Entry<String, String> property : properties.entrySet()) {
-      String propertyName = property.getKey();
-      // Any '"' in a NAME is rejected, escaped or not -- unlike a VALUE, where a properly escaped quote inside
-      // a quoted string is legal and common (VCFv4.3.tex line 119 gives the grammar as
-      // "##key=<key=value,key=value,...>" and states no character set for the inner key, so the spec is
-      // silent; per AGENTS.md's Decision Hierarchy bcftools governs). bcftools 1.23.1 (htslib 1.23.1) refuses
-      // the whole header line for a\"b, a\"b\" and "ab" alike -- all three produce
-      // "[E::bcf_hdr_parse_line] Could not parse the header line" and the declaration is dropped -- while
-      // accepting an escaped quote inside a quoted value. This library round-trips the escaped-name forms
-      // cleanly on its own, so an internal round-trip test cannot detect this; see
-      // BCFTOOLS_VERSION_DEPENDENCIES.md.
-      if (propertyName == null || propertyName.isEmpty() || propertyName.contains(",") ||
-          propertyName.contains("=") || propertyName.contains("\"")) {
-        throw new VcfFormatException(kind + " metadata contains an invalid property name: " + property.getKey());
+      String name = property.getKey();
+      if (name == null || !METADATA_ATTRIBUTE_NAME_PATTERN.matcher(name).matches()) {
+        // bcftools discards the declaration but still reads the file, so this is warn-at-write:
+        // ##contig=<ID=1,a-b=v> is AGENTS.md's own worked example of carried-forward content.
+        problems.add(new EncodingProblem(
+            kind + " metadata has an invalid property name: " + name, false));
+        continue;
       }
       String value = property.getValue();
-      if (!isQuoted(value) && (value.contains(",") || value.contains("=") || containsUnescapedQuote(value))) {
-        throw new VcfFormatException(kind + " metadata property " + propertyName +
-            " contains an unquoted structural delimiter");
+      if (isQuoted(value)) {
+        continue;
+      }
+      if (value.startsWith("[")) {
+        if (!isWellFormedBracketValue(value)) {
+          // Two different reasons converge on the same throw -- see EncodingProblem's own Javadoc. An
+          // unterminated bracket ('[abc', no closing ']' at all) makes bcftools exit 255: the file becomes
+          // genuinely unreadable, the absolute floor. A bracket that DOES close but has junk after it
+          // ('[a]b]') only makes bcftools exit 0 and drop the one declaration -- the same outcome an invalid
+          // name only warns for -- but the tokenizer can never produce this exact shape as a stored value on
+          // the parse path either (trailing content after a bracket's close is always split off and warned
+          // about separately, never merged into the stored value), so throwing costs nothing here too.
+          problems.add(new EncodingProblem(
+              kind + " metadata property " + name + " has a malformed bracket value", true));
+        }
+        continue;
+      }
+      if (value.indexOf(',') >= 0) {
+        // bcftools merely discards the declaration at exit 0 for this (the same outcome the invalid-name
+        // case above only warns for), but the tokenizer can never produce a STORED literal value containing
+        // a comma -- an unquoted value always terminates at the first one -- so no carried-forward content
+        // is harmed by throwing, and the check costs nothing. See EncodingProblem's own Javadoc.
+        problems.add(new EncodingProblem(
+            kind + " metadata property " + name + " contains an unquoted comma", true));
+        continue;
+      }
+      if (value.indexOf('<') >= 0 || value.indexOf('>') >= 0 || containsUnescapedQuote(value)
+          || value.startsWith(" ") || value.endsWith(" ")) {
+        problems.add(new EncodingProblem(kind + " metadata property " + name
+            + " contains an unquoted structural delimiter or layout whitespace", false));
       }
     }
+    return problems;
+  }
+
+  /**
+   * @return whether {@code value} is a well-formed bracket value: it starts with {@code [} and its FIRST
+   * unescaped {@code ]} is its last character. Deliberately calls the same {@link #indexOfUnescaped} the
+   * tokenizer uses, so construction and parsing cannot disagree about where a bracket value ends -- the exact
+   * divergence this whole change exists to remove.
+   */
+  private static boolean isWellFormedBracketValue(String value) {
+    return indexOfUnescaped(value, ']', 1, 0) == value.length() - 1;
   }
 
   static boolean isQuoted(String value) {
@@ -1242,14 +1456,16 @@ public class InternalUtils {
 
   /**
    * @return whether {@code value} contains a {@code "} not preceded by an escaping {@code \} (the same escape
-   * convention {@link InternalUtils}'s top-level splitter uses). {@link #isQuoted} already rejects a value that starts
-   * and ends with {@code "} but isn't validly escaped in between, but a value can also contain a stray, unescaped
-   * {@code "} without looking quoted at all (no leading/trailing {@code "}) and without containing {@code ,} or
-   * {@code =} either, so this must be checked independently of both. Left unrejected, such a value would flip the
-   * writer's top-level "inside a quoted value" tracking state when re-read, potentially misaligning every property
-   * that follows it in the same declaration. Verified live: a value of {@code "abc"def"} followed by another
-   * property in the same declaration fails to re-parse at all ({@code VcfFormatException}), not just producing a
-   * different value than intended.
+   * convention {@link #tokenizeAttributeList} and {@link #parseAttribute} use for a value's own closing quote).
+   * {@link #isQuoted} already rejects a value that starts and ends with {@code "} but isn't validly escaped in
+   * between, but a value can also contain a stray, unescaped {@code "} without looking quoted at all (no
+   * leading/trailing {@code "}) and without containing {@code ,} or {@code =} either, so this must be checked
+   * independently of both. Left unrejected, such a value would truncate at the first unescaped {@code "} it
+   * contains when the declaration is later re-read (the attribute-list tokenizer finds a quoted value's closing
+   * delimiter by position, not by unbalanced-quote parity), warning and discarding everything after that quote
+   * up to the next attribute boundary -- silently losing part of the value the caller supplied, even though (per
+   * {@code STRUCTURAL_DELIMITER_HANDLING.md}) a *following* attribute is no longer misaligned or swallowed the
+   * way it once was under this library's retired two-pass splitter.
    */
   static boolean containsUnescapedQuote(String value) {
     for (int i = 0; i < value.length(); i++) {

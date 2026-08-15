@@ -197,6 +197,33 @@ every occurrence after the first when that sample is read or written -- now with
 `VcfSample.properties()`), rather than the prior silent last-wins overwrite. Two empty keys are not "duplicates"
 for rejection purposes, but they are still a data-loss case in practice.
 
+## A different kind of "empty": a metadata attribute-list value
+
+Every row above is about a VCF **data line** field (`ID`/`FILTER`/`ALT`/`INFO`/a sample value). A `##KEY=<...>`
+metadata declaration's own attribute list has a distinct set of empty shapes, handled by
+`InternalUtils.tokenizeAttributeList`/`InternalUtils.parseAttribute` (sharing one per-attribute grammar via
+`parseOneAttribute`; see `STRUCTURAL_DELIMITER_HANDLING.md` for the surrounding delimiter rules) rather than by
+any of the record-line checks above. These are not bcftools/vcf_validator comparison rows the way the table
+above is -- they document this library's own tokenizer, verified directly against `AttributeListTokenizerTest`.
+
+| Form | Example | Result | Warning |
+|---|---|---|---|
+| Empty bracket value | `x=[]` | kept as `[]` (an empty bracket list is a value in its own right, not "missing") | none |
+| Empty quoted value | `Description=""` | kept as `""` | none |
+| Empty unquoted value | `x=` | kept as `""` (an empty string, not normalized to `.` -- unlike a record-line field, an attribute-list value has no positional-index hazard to protect) | none |
+| Empty attribute list | `##INFO=<>` | zero attributes -- not even the trailing-separator check runs, since there is no content to have a trailing separator | none |
+| A zero-length attribute from a **doubled** separator | `ID=c1,,length=999` | the empty interior attribute is dropped; `ID`/`length` are unaffected | `Metadata attribute "" has no '='; dropping it` |
+| A zero-length attribute from a **trailing** separator | `ID=c1,length=999,` | the empty trailing attribute is dropped; `ID`/`length` are unaffected | `Metadata attribute list has an empty trailing attribute; dropping it` |
+
+The first four rows are not really "empty-field" cases at all in the sense the rest of this document uses the
+term: each is a *value* that happens to be zero characters long but is still a **complete, well-formed**
+attribute (a name followed by `=` followed by nothing, or by an empty quoted/bracketed pair) -- there is no
+missing-value sentinel to substitute, because the value legitimately *is* empty, the same way `Description=""`
+already means "the description is the empty string," not "no description was given." Only the last two rows
+are genuinely analogous to the rest of this document: a delimiter produced a gap with no value on either side
+of it, and that gap is dropped (matching the position-independent-list strategy above, since an attribute
+list has no positional index for anything else to reference into) rather than substituted.
+
 ## Where this is implemented
 
 - `InternalUtils.dropEmptyEntries` / `InternalUtils.fillEmptyEntriesWithDot` — the two shared normalization
@@ -293,3 +320,8 @@ for rejection purposes, but they are still a data-loss case in practice.
   decisions treat as invalid, so `validateBeforeWrite()` rejects it as structurally unparseable rather than
   merely warning. See `VCF_SPEC_AMBIGUITIES.md`'s "`##pedigreeDB`/`##assembly` bracket-wrapped values colliding
   with attribute-list grammar" entry for the bcftools evidence behind the bracket-collision half of this rule.
+- `InternalUtils.tokenizeAttributeList`/`InternalUtils.parseAttribute` (via the shared `parseOneAttribute`) --
+  the "A different kind of 'empty'" section above's own implementation: an empty bracket/quoted/unquoted value
+  is kept as-is (it is a complete, well-formed value, not a gap), while a zero-length attribute produced by a
+  doubled or trailing separator is dropped with a warning, distinguishing the two wordings ("has no '='" for
+  an interior gap, "empty trailing attribute" for a trailing one).

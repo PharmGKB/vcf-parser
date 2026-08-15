@@ -161,6 +161,7 @@ public class VcfWriter implements Closeable {
     // declare the same version -- reintroducing the bug this task removes).
     if (m_validateBeforeWrite) {
       validateMetadata(metadata);
+      validateMetadataPropertyEncodings(metadata);
       checkSampleMetadataMatchesChromColumns(metadata);
     }
 
@@ -488,8 +489,6 @@ public class VcfWriter implements Closeable {
         throw new VcfFormatException("PEDIGREE metadata contains a null entry");
       }
       pedigree.validate();
-      Map<String, String> properties = pedigree.getPropertiesRaw();
-      validateMetadataProperties("PEDIGREE", properties);
       // getPropertyUnquoted, not properties.get("ID") (raw): this is the write-time mirror of
       // VcfMetadata.Builder.addPedigree's own blank-ID/dedupe check, so it must unquote first for the same
       // reason -- see that method's comment and AGENTS.md's "Unquoting before internal use" policy.
@@ -636,8 +635,6 @@ public class VcfWriter implements Closeable {
         assert context != null; // validateMetadata only runs from writeHeader/writeLine, after the context exists
         VcfMetadata.validateAlt(idDescriptionMetadata, context);
       }
-      Map<String, String> properties = entry.getPropertiesRaw();
-      validateMetadataProperties(kind, properties);
       // getPropertyUnquoted, not properties.get("ID") (raw): the map key this is compared against below is
       // itself the unquoted ID (see this method's own Javadoc), so a quoted-but-otherwise-unchanged ID (e.g.
       // ID="A" stored under key "A") must not be reported as drifted just because it still contains its own
@@ -667,13 +664,39 @@ public class VcfWriter implements Closeable {
     }
   }
 
-  // Kept as a thin delegate rather than deleted: this is validateBeforeWrite()'s diagnostics pass, and after
-  // the construction-time check lands it remains the net for the two routes that still bypass that check:
-  // BaseMetadata.trustedMutableProperties() (a test-only bypass), and VcfParser's own addXxxTrusted/
-  // object-taking routes, which deliberately store parser-recovered content (e.g. an unescaped quote) this
-  // check would otherwise reject -- see STRUCTURAL_DELIMITER_HANDLING.md's "Why the parse path is exempt".
+  /**
+   * Runs the write-time metadata-property encoding check once per header rather than once per record. Called
+   * only from {@link #writeHeader} -- the same hoist {@link #buildHeaderLines} already got, and for the same
+   * reason: {@link VcfMetadata} is immutable, so this check's result cannot change between calls. This became
+   * load-bearing, not just an optimization, once {@link InternalUtils#checkMetadataPropertyEncodingForWrite}
+   * stopped throwing on the first problem it finds (an invalid property name now warns instead) -- left running
+   * from {@link #validateMetadata} (called from every {@link #writeLine} too), a bad name would now warn
+   * (bad properties) x (declarations) x (records) times on a large VCF instead of once. This remains the net
+   * for the two routes that bypass the construction-time check: {@code BaseMetadata.trustedMutableProperties()}
+   * (a test-only bypass), and {@code VcfParser}'s own {@code addXxxTrusted}/object-taking routes, which
+   * deliberately store parser-recovered content (e.g. an unescaped quote) the construction-time check would
+   * otherwise reject -- see STRUCTURAL_DELIMITER_HANDLING.md's "Why the parse path is exempt".
+   */
+  private void validateMetadataPropertyEncodings(VcfMetadata metadata) {
+    validateMetadataPropertiesForEntries("INFO", metadata.getInfo().values());
+    validateMetadataPropertiesForEntries("FILTER", metadata.getFilters().values());
+    validateMetadataPropertiesForEntries("FORMAT", metadata.getFormats().values());
+    validateMetadataPropertiesForEntries("ALT", metadata.getAlts().values());
+    validateMetadataPropertiesForEntries("contig", metadata.getContigs().values());
+    validateMetadataPropertiesForEntries("SAMPLE", metadata.getSamples().values());
+    validateMetadataPropertiesForEntries("PEDIGREE", metadata.getPedigrees());
+  }
+
+  private void validateMetadataPropertiesForEntries(String kind, Collection<? extends BaseMetadata> entries) {
+    for (BaseMetadata entry : entries) {
+      // validateMetadata() runs before this method (see writeHeader()) and already throws on a null entry, so
+      // every entry reached here is guaranteed non-null.
+      validateMetadataProperties(kind, entry.getPropertiesRaw());
+    }
+  }
+
   private void validateMetadataProperties(String kind, Map<String, String> properties) {
-    InternalUtils.checkMetadataPropertyEncoding(kind, properties);
+    InternalUtils.checkMetadataPropertyEncodingForWrite(kind, properties, m_warnings);
   }
 
   private void validateInfo(VcfMetadata metadata, VcfPosition position, VcfVersion recordVersion) {

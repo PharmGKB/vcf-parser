@@ -1390,12 +1390,19 @@ public class VcfWriterTest {
   // construction path rejects a null key/value, so the header-building path no longer re-checks.
 
   @Test
-  public void testValidateBeforeWriteRejectsUnescapedQuoteInMetadataValue() throws Exception {
+  public void testValidateBeforeWriteWarnsAboutUnescapedQuoteInMetadataValue() throws Exception {
     // a value that isn't validly quoted (isQuoted() is false) but also contains no ',' or '=' previously slipped
-    // through unrejected. Verified live: a value of "abc"def" (embedded unescaped '"', no comma/equals) followed
-    // by another property in the same declaration doesn't just misparse -- it fails to parse entirely
-    // (VcfFormatException) once re-read, because the stray '"' flips the reader's "inside a quoted value" state
-    // for everything that follows.
+    // through unrejected, then (until InternalUtils.findEncodingProblems' construction/write-mode split) threw
+    // unconditionally in validateBeforeWrite() too. Verified live: a value of "abc"def" (embedded unescaped
+    // '"', no comma/equals), if written and then re-read, truncates at the first unescaped '"' it contains (the
+    // attribute-list tokenizer finds a quoted value's closing delimiter by position, not by unbalanced-quote
+    // parity) -- silently losing the "def\"" tail the caller supplied, even though the following BBBB property
+    // below is unaffected. That loss is real but leaves the file readable (unlike an unquoted comma or a
+    // malformed bracket value, which findEncodingProblems marks unreadableOutput), so this is now the
+    // warn-not-throw branch: this construction path (a direct InfoMetadata(Map) constructor, then the
+    // object-taking addInfo route) is exempt from the construction-time throw the same way parser-recovered
+    // content is -- see STRUCTURAL_DELIMITER_HANDLING.md's "Why the parse path is exempt" -- so
+    // validateBeforeWrite() is the only place left to detect this at all.
     Map<String, String> props = new LinkedHashMap<>();
     props.put("ID", "X");
     props.put("Description", "\"d\"");
@@ -1406,7 +1413,21 @@ public class VcfWriterTest {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
 
-    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      assertTrue(appender.anyMessageContains("unquoted structural delimiter"));
+      assertThat(sw.toString(), containsString("AAAA=\"abc\"def\""));
+      assertThat(sw.toString(), containsString("BBBB=\"has,a,comma\""));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
   }
 
   @Test

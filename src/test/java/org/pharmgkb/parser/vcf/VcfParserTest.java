@@ -2,6 +2,7 @@ package org.pharmgkb.parser.vcf;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
@@ -2009,9 +2010,13 @@ public class VcfParserTest {
         .build()) {
       parser.parse();
     }
-    // the data line after the malformed declaration was reached -- the file parse did not abort
+    // the data line after the malformed declaration was reached -- the file parse did not abort. Wording
+    // updated for the attribute-list tokenizer (InternalUtils.tokenizeAttributeList): the interior double comma
+    // now produces a zero-length attribute detected directly by the tokenizer's own name scan, rather than by
+    // extractProperties catching a downstream VcfFormatException and wrapping it as "Could not parse metadata
+    // attribute".
     assertEquals(1, positions.size());
-    assertTrue(Files.readString(warningsFile).contains("Could not parse metadata attribute"));
+    assertTrue(Files.readString(warningsFile).contains("Metadata attribute \"\" has no '='; dropping it"));
     InfoMetadata af = metadataHolder[0].getInfo().get("AF");
     assertNotNull(af);
     assertEquals("1", af.getNumber());
@@ -2742,6 +2747,25 @@ public class VcfParserTest {
     // by construction rather than by choice, and looping would only assert the same thing three times.
     String vcf = "\uFEFF##fileformat=VCFv4.2\n" + UNGATED_RULE_HEADER;
     assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
+  }
+
+  @Test
+  void bracketValuesSurviveParsing() throws Exception {
+    VcfMetadata[] holder = new VcfMetadata[1];
+    try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+        VcfParserTest.class.getResourceAsStream("/metadata_brackets.vcf")))) {
+      new VcfParser.Builder().fromReader(reader).parseWith(new VcfLineParser() {
+        @Override
+        public void parseLine(VcfMetadata metadata, VcfRecord record) {}
+        @Override
+        public void parseMetadata(VcfMetadata metadata) {
+          holder[0] = metadata;
+        }
+      }).build().parse();
+    }
+    assertEquals("[WholeGenome, Exome]", holder[0].getContigs().get("c1").getPropertyRaw("x"));
+    assertEquals("999", holder[0].getContigs().get("c1").getPropertyRaw("length"));
+    assertEquals("[a, b]", holder[0].getSamples().get("s1").getPropertyRaw("Assay"));
   }
 
 }

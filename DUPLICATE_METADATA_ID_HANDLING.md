@@ -21,6 +21,18 @@ when the same `ID` is declared twice for the same type within one file — the s
 - **bcftools**, the reference implementation most of the ecosystem treats as canonical, keeps the **first**
   declaration and silently drops each duplicate — no warning, no error — again for every one of the six types.
 
+> **Measurement hazard: never probe this with `##FILTER=<ID=PASS,...>`.** htslib injects
+> `##FILTER=<ID=PASS,Description="All filters passed">` into the header *before* parsing the file
+> (`~/Dev/htslib` `vcf.c`, in `bcf_hdr_parse`), so a file's own `PASS` declaration is always already a
+> duplicate and is always the one dropped — even when the file declares it exactly once. Measured: a file
+> with no `##FILTER` at all still shows that line in `bcftools view -h`, and a file declaring
+> `##FILTER=<ID=PASS,Description="MY OWN TEXT">` shows htslib's wording, not its own. A first-wins result
+> obtained that way would be an artifact of the injection rather than evidence about duplicate handling.
+> The first-wins finding above is **not** affected: it was re-confirmed on a non-`PASS` ID
+> (`##FILTER=<ID=q10,...>` declared twice keeps the first), which isolates the behaviour from the
+> injection. See `AGENTS.md`'s "A probe is not a grammar" for why the carrier you choose is part of the
+> measurement.
+
 hts-specs' own `test/vcf/{4.1,4.2}/passed/passed_meta_contig.vcf` fixture declares `##contig=<ID=1>` and then
 `##contig=<ID=1,length=123456>`, and is expected to parse successfully — direct confirmation that this is not a
 structural violation. Rejecting the file outright would make `vcf-parser` reject input that hts-specs' own

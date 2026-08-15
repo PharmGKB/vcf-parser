@@ -32,7 +32,7 @@ before assuming it generalizes to a similar-looking case.
 | Topic | Decision | Status |
 |---|---|---|
 | Duplicate attribute within one metadata declaration | Keep last (matches bcftools) | ✅ |
-| Malformed attribute inside a metadata declaration's `<...>` list | Warn and drop just that attribute (matches bcftools; more lenient than two hts-specs `failed/` fixtures) | ✅ |
+| Malformed attribute inside a metadata declaration's `<...>` list | Warn and drop just that attribute (matches bcftools; more lenient than two hts-specs `failed/` fixtures) -- an unquoted `=` in a value is no longer one of the malformed shapes this covers; see below | ✅ |
 | Whitespace in `##FILTER`/`##SAMPLE` declaration IDs | Reject (bcftools's silence is a coverage gap) | ✅ |
 | `##FORMAT`/`##INFO` ID grammar vs. `##FILTER`/`##SAMPLE`/`##ALT` | Stricter grammar for FORMAT/INFO only | ✅ |
 | `"1000G"` legacy INFO tag-name exception | Allowed (matches bcftools) | ✅ |
@@ -43,6 +43,8 @@ before assuming it generalizes to a similar-looking case.
 | Generic metadata property with an empty value | Drop (deliberately stricter than bcftools) | ✅ |
 | `##pedigreeDB`/`##assembly` bracket-wrapped values colliding with attribute-list grammar | Reject when empty or no `=` inside the brackets; accept when it contains `=` | ✅ |
 | A literal `%` in a metadata declaration ID | No code change; existing `##ALT`/`##FILTER`/`##SAMPLE` looser-grammar decision stands despite vcf_validator flagging `%` in `##FILTER`/`##SAMPLE` | ✅ |
+| Metadata attribute NAME grammar (construction-time allowlist) | `^[A-Za-z_][0-9A-Za-z_.]*$` (matches bcftools); throw at construction, warn at `validateBeforeWrite()` | ✅ |
+| Unquoted metadata attribute value: malformed bracket vs. `<`/`>`/`;` | Throw (both modes) for an unquoted comma or malformed bracket value; warn at `validateBeforeWrite()` only for `<`/`>`/`"`/space; no check for `;` (bcftools gives it no special meaning here) | ✅ |
 | FORMAT declared but zero sample columns | Reject (both tools agree) | ✅ |
 | Empty sample name in `#CHROM` header | Reject (both tools agree) | ✅ |
 | CHROM contiguity / POS ordering within a CHROM block | Warn, don't reject (neither tool rejects it) | ✅ |
@@ -78,18 +80,29 @@ came first. vcf_validator rejects this case outright, but per the tie-breaker hi
 structural-field reading is non-authoritative here.
 
 **Decision:** keep the last value (the opposite of every other duplicate-key case in this codebase, which
-keep the first), with a warning. Implemented in `InternalUtils.extractProperties`.
+keep the first), with a warning. Implemented in `InternalUtils.foldAttributes`, shared by
+`extractPropertiesFromLine` (real parsing) and `extractProperties` (the test-facing array-based entry point).
 
 ### Malformed attribute inside a metadata declaration's `<...>` list
 
 A comma-delimited attribute that doesn't split into exactly one `key=value` pair (a stray/trailing/interior
-comma producing an empty attribute, a bare token with no `=` at all, or an unquoted value that happens to
-contain `=`) previously made `InternalUtils.extractProperties` rethrow unconditionally, aborting the entire
-file parse over one malformed attribute in one declaration — contradicting `AGENTS.md`'s own Parser Validation
-Policy, which lists metadata declarations among the fields this parser is lenient about. Confirmed live
-against bcftools 1.23.1 (htslib 1.23.1): it never aborts the whole file for this — it drops the one malformed
-*declaration* and continues (`[E::bcf_hdr_parse_line] Could not parse the header line`, exit 0); the
-unquoted-`=`-in-value shape is accepted completely silently, no warning at all.
+comma producing an empty attribute, or a bare token with no `=` at all) previously made
+`InternalUtils.extractProperties` rethrow unconditionally, aborting the entire file parse over one malformed
+attribute in one declaration — contradicting `AGENTS.md`'s own Parser Validation Policy, which lists metadata
+declarations among the fields this parser is lenient about. Confirmed live against bcftools 1.23.1 (htslib
+1.23.1): it never aborts the whole file for this — it drops the one malformed *declaration* and continues
+(`[E::bcf_hdr_parse_line] Could not parse the header line`, exit 0).
+
+**Update (attribute-list tokenizer):** a third shape used to belong in this same paragraph -- an unquoted
+value that happens to contain `=` -- but no longer does, since the retired two-pass `splitTopLevel`/
+`splitProperty` pair (which found *every* top-level `=` and rejected the whole attribute unless there were
+exactly two) was replaced by `InternalUtils.tokenizeAttributeList`/`parseAttribute`, whose name scan stops at
+the *first* `=` only, so a second one is ordinary value content. This is not a reversal of the decision below;
+it makes this shape's behavior match bcftools *more* closely, not less: bcftools already accepted this shape
+"completely silently, no warning at all" (as this entry stated even before this change), and this shape now
+does too -- it parses cleanly, with no warning, rather than warning and dropping. Pinned by
+`InternalUtilsTest#testExtractPropertiesTreatsEmbeddedEqualsSignInValueAsOrdinaryContent` and
+`AttributeListTokenizerTest#anEqualsSignInAValueIsOrdinary`.
 
 hts-specs' own conformance suite disagrees with unconditional leniency for one narrow sub-case: an unescaped
 comma inside an unquoted ID, splitting it into two bogus top-level attributes.
@@ -109,7 +122,9 @@ treats an unquoted comma inside an ID as a semantic grammar defect, not the stru
 rejects for. Every downstream metadata constructor's lenient `(Map, VcfWarnings)` path already warns rather
 than throws for a missing required attribute (e.g. `InfoMetadata.init()`'s `warnIfMissing(TYPE, ...)`), so a
 declaration left short one attribute by this drop was already a supported, tested state before this decision.
-Implemented in `InternalUtils.extractProperties`.
+Implemented in `InternalUtils.tokenizeAttributeList`/`parseAttribute` (via the shared `parseOneAttribute`) for
+real parsing; `InternalUtils.extractProperties` is now only the test-facing array-based entry point sharing
+the same underlying grammar.
 
 ### Whitespace in `##FILTER`/`##SAMPLE` declaration IDs
 
@@ -270,6 +285,86 @@ in `##FORMAT`/`##INFO` IDs via the stricter tag-name grammar — unchanged by th
 future agent who runs vcf_validator against a `%`-containing `##FILTER`/`##SAMPLE` ID and sees it flagged
 "invalid" doesn't treat that as a fresh finding: vcf_validator's own inconsistency here, unsupported by any
 hts-specs fixture for those three types, is not treated as controlling, per the tie-breaker hierarchy.
+
+### Metadata attribute NAME grammar (construction-time allowlist)
+
+`VCFv4.3.tex` line 117 states a structured declaration's value is "a comma-separated list of key=value pairs,
+enclosed within `<' and `>' characters" but never gives `key` (the attribute NAME) a character-set grammar of
+its own — silent, identically in 4.2/4.4/4.5. Per `AGENTS.md`'s Decision Hierarchy, bcftools governs. htslib
+1.23.1 `vcf.c:695` carries the exact grammar as a comment directly above its own name-scanning code —
+`^[A-Za-z_][0-9A-Za-z_.]*$` — confirmed by reading the scanner immediately below the comment, which walks
+`isalpha_c(*q) || *q=='_'` for the first character and `isalnum_c(*q) || *q=='_' || *q=='.'` for the rest
+(`vcf.c:696-699`). Confirmed live: `##contig=<ID=1,a-b=v,length=100>` makes bcftools discard the WHOLE
+declaration (`[E::bcf_hdr_parse_line] Could not parse the header line`) while the file itself stays readable
+(exit 0, every other declaration and every data line still emitted) — the exact `AGENTS.md` worked example for
+carried-forward content.
+
+**Decision:** `InternalUtils.METADATA_ATTRIBUTE_NAME_PATTERN` enforces this same regex. Construction
+(`InternalUtils.checkMetadataPropertyEncoding`, all 25 `VcfMetadata.Builder` call sites) throws for a name
+outside it, since originated content must never reach the header in a form bcftools silently discards.
+`validateBeforeWrite()`'s counterpart (`checkMetadataPropertyEncodingForWrite`) only warns, since the file
+stays readable and this route's content may be carried-forward (parsed, not originated) rather than
+originated by the write call itself — the parse path does not enforce this allowlist at all, matching this
+library's general policy of preserving recoverable input. Tests:
+`MetadataPropertyEncodingTest#constructionRejectsANameOutsideTheAllowlist`/
+`#constructionAcceptsSpecConformantNames`/`#aNameOutsideTheAllowlistSurvivesParsing`,
+`BcftoolsDependencyTest#testMetadataAttributeNameOutsideAllowlistBcftoolsDropsDeclarationSilently`.
+
+### Unquoted metadata attribute value: malformed bracket vs. `<`/`>`/`;`
+
+Once a value isn't quoted (`"..."`/`[...]`), htslib 1.23.1's unquoted-value scan (`vcf.c:730-733`, inside
+`bcf_hdr_parse_line`) checks exactly three characters: `<` increments its `nopen` bracket-nesting counter, `>`
+decrements it (closing the whole declaration early if it reaches zero), and `,` ends the value only while
+`nopen==1`. No other character — including `;` — is special to it at all.
+
+Confirmed live (bcftools 1.23.1):
+- An unescaped `<` (`##contig=<ID=1,description=a<b,length=100>`) makes the scan look past this declaration's
+  own closing `>` for a nonexistent match, producing `[W::bcf_hdr_parse_line] Incomplete header line, trying
+  to proceed anyway` — file stays readable (exit 0), declaration garbled but not lost.
+- An unescaped `>` (`##contig=<ID=1,description=a>b,length=100>`) closes the declaration early, producing
+  `[W::bcf_hdr_parse_line] Dropped trailing junk from header line ...` and truncating the declaration to
+  `##contig=<ID=1,description=a>` — file stays readable, `length` silently lost.
+- An unquoted `,` still truncates the value at the comma (unchanged from before this task).
+- A malformed bracket value has two distinguishable but equally lossy sub-shapes: `[a=b` (no closing `]` at
+  all) makes the WHOLE FILE unreadable (`[E::bcf_hdr_parse_line] Missing ']' in header line`, exit 255);
+  `[a]b]`/`[a] junk` (closes, but has non-comma junk before the next attribute) makes bcftools drop just the
+  one declaration, file otherwise readable (exit 0, same outcome as the name-allowlist entry above).
+- An unescaped `;` (`##contig=<ID=1,length=100,description=a;b>`) round-trips completely unchanged, with no
+  warning at all — confirming there is no bcftools leniency around `;` in this grammar to replicate. (This is
+  unrelated to the very different, and unaffected, `;`-separated-codes grammar this library enforces elsewhere
+  for reserved `FORMAT`/`FT` and the `FILTER` column — see `InternalUtils.checkFilterLikeValue` — a different
+  field's own value grammar, not this declaration-attribute-list grammar; it must not be mistaken for
+  precedent here.)
+
+**Decision:** `InternalUtils.findEncodingProblems` sorts these into `EncodingProblem.unreadableOutput=true`
+(throws at both construction and `validateBeforeWrite()`) or `=false` (throws at construction only; warns at
+`validateBeforeWrite()`) -- but `unreadableOutput=true` is not one reason, it is two, and only one of its
+three members earns it on file-readability grounds:
+- **The unterminated bracket** throws because the file genuinely becomes unreadable (exit 255) -- the
+  absolute floor a warn branch would violate.
+- **The unquoted comma and the bracket-with-trailing-junk sub-shape** throw for a weaker, different reason:
+  measured, each only makes bcftools discard the one declaration (exit 0) -- the SAME outcome the invalid-name
+  case below only warns for -- but the attribute-list tokenizer can never produce either shape as a stored
+  value on the parse path (an unquoted value always terminates at its first comma; trailing content after a
+  bracket's close is always split off and warned about separately, never merged into the stored value), so
+  throwing here harms no carried-forward content and costs nothing. They are grouped with the unterminated
+  shape under the same flag for that reason, not because bcftools treats all three alike (see
+  `InternalUtils.isWellFormedBracketValue` and `EncodingProblem`'s own Javadoc).
+- `unreadableOutput=false` (throws at construction only; warns at `validateBeforeWrite()`): an invalid
+  attribute name, an unescaped `<`/`>`, an unescaped `"`, and leading/trailing space -- each of these DOES
+  leave the file readable, and (unlike the comma/bracket-junk shapes) the tokenizer CAN produce some of them
+  on the parse path (a bad name and an unescaped `<`/`>`/`"` all parse and round-trip today), so warning is
+  the only option that does not regress carried-forward content.
+- No check at all: `;` — bcftools gives it no special meaning in this grammar, and neither does this library.
+
+Tests: `MetadataPropertyEncodingTest#constructionAcceptsABracketValueAndRejectsAMalformedOne`/
+`#bracketWellFormednessUsesTheSameEscapeRuleAsTheTokenizer`/
+`#constructionRejectsAngleBracketsAndLayoutWhitespaceInALiteralValue`/`#constructionAcceptsAnEqualsSignInAValue`,
+`BcftoolsDependencyTest#testUnterminatedBracketValueBcftoolsHardErrors`/
+`#testBracketValueWithTrailingJunkBcftoolsDropsDeclarationSilently`/
+`#testUnescapedLessThanInMetadataValueBcftoolsMisparsesButSurvives`/
+`#testUnescapedGreaterThanInMetadataValueBcftoolsTruncatesDeclaration`/
+`#testUnescapedSemicolonInMetadataValueBcftoolsTreatsAsOrdinaryContent`.
 
 ## Data-line / record structure
 

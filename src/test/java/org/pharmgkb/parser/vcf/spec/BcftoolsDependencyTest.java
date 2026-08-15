@@ -556,5 +556,103 @@ class BcftoolsDependencyTest {
             + result.output());
   }
 
+  @Test
+  void testMetadataAttributeNameOutsideAllowlistBcftoolsDropsDeclarationSilently() throws IOException, InterruptedException {
+    // AGENTS.md's own worked example for InternalUtils.METADATA_ATTRIBUTE_NAME_PATTERN: bcftools discards the
+    // WHOLE declaration for an attribute name outside ^[A-Za-z_][0-9A-Za-z_.]*$, but the file itself stays
+    // readable (exit 0, every other declaration and every data line still emitted) -- why
+    // checkMetadataPropertyEncodingForWrite warns rather than throws for this case
+    String vcf = "##fileformat=VCFv4.2\n##contig=<ID=1,a-b=v,length=100>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n1\t1\t.\tA\tT\t.\t.\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("Could not parse the header line"), result.output());
+    // line-based, not a substring .contains() check: the error message above ITSELF quotes the whole
+    // offending "##contig=..." line verbatim for diagnostics, so a plain .contains("##contig=") would match
+    // that quoted text and pass even if no such line were actually emitted as real output
+    assertFalse(result.output().lines().anyMatch(line -> line.startsWith("##contig=")), result.output());
+  }
+
+  @Test
+  void testUnterminatedBracketValueBcftoolsHardErrors() throws IOException, InterruptedException {
+    // round-trip-critical: InternalUtils.isWellFormedBracketValue's whole reason to throw (not merely warn) at
+    // write time -- a bracket value with no closing ']' before end of line makes bcftools abort the ENTIRE
+    // file, unlike every other malformed shape in this class, which bcftools recovers from at exit 0
+    String vcf = "##fileformat=VCFv4.2\n##contig=<ID=1,length=100,x=[a=b>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n1\t1\t.\tA\tT\t.\t.\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertTrue(result.exitCode() != 0 && result.output().contains("Missing ']' in header line"),
+        "Expected a fatal missing-']' error, got: " + result.output());
+  }
+
+  @Test
+  void testBracketValueWithTrailingJunkBcftoolsDropsDeclarationSilently() throws IOException, InterruptedException {
+    // the OTHER malformed-bracket shape InternalUtils.isWellFormedBracketValue rejects: a bracket value that
+    // DOES close, but is followed by non-comma junk before the next attribute (or the declaration's own '>').
+    // Unlike the unterminated case above, bcftools survives this at exit 0 -- but drops the whole declaration,
+    // the same non-fatal-but-silent-loss outcome as the invalid-name case above, which is why
+    // InternalUtils.EncodingProblem groups both malformed-bracket shapes under the same unreadableOutput=true
+    // rather than distinguishing "hard error" from "silent drop"
+    String vcf = "##fileformat=VCFv4.2\n##contig=<ID=1,length=100,x=[a]b]>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n1\t1\t.\tA\tT\t.\t.\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("Could not parse the header line"), result.output());
+    // line-based for the same reason as testMetadataAttributeNameOutsideAllowlistBcftoolsDropsDeclarationSilently
+    assertFalse(result.output().lines().anyMatch(line -> line.startsWith("##contig=")), result.output());
+  }
+
+  @Test
+  void testUnescapedSemicolonInMetadataValueBcftoolsTreatsAsOrdinaryContent() throws IOException, InterruptedException {
+    // confirms this library correctly does NOT treat ';' as structural in an unquoted metadata attribute value:
+    // htslib 1.23.1's bcf_hdr_parse_line only special-cases '<', '>', and ',' while scanning an unquoted value
+    // (vcf.c:730-733) -- ';' is never checked, so it is ordinary content, exactly as this library's own
+    // InternalUtils.findEncodingProblems treats it (no branch for ';' at all). Not to be confused with the
+    // UNRELATED ';'-separated-codes grammar this library enforces for reserved FORMAT/FT and the FILTER column
+    // (InternalUtils.checkFilterLikeValue) -- that is a different field's own value grammar, not this
+    // declaration-attribute-list grammar, and must not be mistaken for precedent here.
+    String vcf = "##fileformat=VCFv4.2\n##contig=<ID=1,length=100,description=a;b>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n1\t1\t.\tA\tT\t.\t.\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("description=a;b"), result.output());
+    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+  }
+
+  @Test
+  void testUnescapedLessThanInMetadataValueBcftoolsMisparsesButSurvives() throws IOException, InterruptedException {
+    // one of the "</> truncation shapes" InternalUtils.findEncodingProblems marks unreadableOutput=false (warn,
+    // not throw, at write time): an unescaped '<' inside an unquoted value increments bcf_hdr_parse_line's own
+    // `nopen` bracket-nesting counter (vcf.c:730, "if ( *q=='<' ) nopen++;"), which can make it scan past this
+    // declaration's own closing '>' looking for a matching close that never legitimately arrives. The file
+    // still reads (exit 0) -- just with a warning and a garbled declaration -- which is why this is warn-at-
+    // write rather than throw-at-write, unlike the malformed-bracket shapes above.
+    String vcf = "##fileformat=VCFv4.2\n##contig=<ID=1,description=a<b,length=100>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n1\t1\t.\tA\tT\t.\t.\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("Incomplete header line"), result.output());
+  }
+
+  @Test
+  void testUnescapedGreaterThanInMetadataValueBcftoolsTruncatesDeclaration() throws IOException, InterruptedException {
+    // the other "</> truncation shape": an unescaped '>' inside an unquoted value decrements bcf_hdr_parse_line's
+    // `nopen` counter (vcf.c:731, "if ( *q=='>' ) nopen--;"), which can prematurely reach 0 and close the whole
+    // declaration early. The file still reads (exit 0), but the declaration is silently truncated -- confirming
+    // why this shape is also warn-at-write, not throw-at-write, same as the '<' case above
+    String vcf = "##fileformat=VCFv4.2\n##contig=<ID=1,description=a>b,length=100>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n1\t1\t.\tA\tT\t.\t.\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("Dropped trailing junk"), result.output());
+    // line-based, not a substring .contains() check: the warning above ITSELF quotes the whole original
+    // (untruncated) line for diagnostics, so a plain .contains("length=100") would match that quoted text
+    // even though the real, truncated "##contig=" line emitted below it never mentions "length" at all
+    assertTrue(result.output().lines().anyMatch(line -> line.equals("##contig=<ID=1,description=a>")),
+        result.output());
+    assertFalse(result.output().lines().anyMatch(line -> line.startsWith("##contig=") && line.contains("length")),
+        result.output());
+  }
+
   private record BcftoolsResult(int exitCode, String output) {}
 }

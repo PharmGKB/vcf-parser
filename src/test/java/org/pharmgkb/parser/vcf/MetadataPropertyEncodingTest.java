@@ -4,7 +4,9 @@ import java.io.BufferedReader;
 import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -14,6 +16,8 @@ import org.pharmgkb.parser.vcf.spec.WarnCapturingAppender;
 import org.slf4j.LoggerFactory;
 
 import static org.pharmgkb.parser.vcf.TestUtils.LENIENT_CONTEXT;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -31,18 +35,25 @@ class MetadataPropertyEncodingTest {
   }
 
   private static LinkedHashMap<String, String> contigProps(String assembly) {
+    return contigProps(assembly, ContigMetadata.ASSEMBLY);
+  }
+
+  private static LinkedHashMap<String, String> contigProps(String value, String name) {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put(IdMetadata.ID, "1");
-    map.put(ContigMetadata.ASSEMBLY, assembly);
+    map.put(name, value);
     return map;
   }
 
   @Test
   void testAddMapRejectsEachUnquotedDelimiter() {
-    // the three verified corruption modes: comma truncates, '=' deletes the attribute, an unescaped quote
-    // absorbs every following attribute
+    // the three verified corruption modes: comma truncates, an unquoted '<'/'>' collides with the surrounding
+    // attribute-list's own opening/closing delimiter, and an unescaped quote absorbs every following attribute.
+    // '=' is no longer probed here -- checkMetadataPropertyEncoding no longer rejects it in an unquoted value;
+    // see testAddTypedRejectsAnAngleBracketInTheId's history for why '=' was the original probe and why it
+    // stopped isolating this check.
     assertThrows(VcfFormatException.class, () -> builder().addContig(contigProps("a,b")));
-    assertThrows(VcfFormatException.class, () -> builder().addContig(contigProps("a=b")));
+    assertThrows(VcfFormatException.class, () -> builder().addContig(contigProps("a<b")));
     assertThrows(VcfFormatException.class, () -> builder().addContig(contigProps("a\"b")));
   }
 
@@ -53,6 +64,51 @@ class MetadataPropertyEncodingTest {
     assertDoesNotThrow(() -> builder().addContig(contigProps("\"a,b\"")));
     assertDoesNotThrow(() -> builder().addContig(contigProps("\"a=b\"")));
     assertDoesNotThrow(() -> builder().addContig(contigProps("B36")));
+  }
+
+  @Test
+  void constructionRejectsANameOutsideTheAllowlist() {
+    assertThrows(VcfFormatException.class, () -> builder().addContig(contigProps("v", "a-b")));
+    assertThrows(VcfFormatException.class, () -> builder().addContig(contigProps("v", "1abc")));
+    assertThrows(VcfFormatException.class, () -> builder().addContig(contigProps("v", "a b")));
+  }
+
+  @Test
+  void constructionAcceptsSpecConformantNames() {
+    // Name_1 comes from the spec's own ##PEDIGREE example, VCFv4.3.tex:287
+    builder().addContig(contigProps("v", "Name_1"));
+    builder().addContig(contigProps("v", "_x.y1"));
+  }
+
+  @Test
+  void constructionAcceptsABracketValueAndRejectsAMalformedOne() {
+    builder().addContig(contigProps("[WholeGenome, Exome]"));   // VCFv4.3.tex:273's own shape
+    // '[a=b' makes bcftools exit 255 -- the file becomes unreadable, so we must never originate it
+    assertThrows(VcfFormatException.class, () -> builder().addContig(contigProps("[a=b")));
+    assertThrows(VcfFormatException.class, () -> builder().addContig(contigProps("[a]b]")));
+    assertThrows(VcfFormatException.class, () -> builder().addContig(contigProps("[a] junk")));
+  }
+
+  @Test
+  void bracketWellFormednessUsesTheSameEscapeRuleAsTheTokenizer() {
+    // these must agree with AttributeListTokenizerTest#escapedDelimitersDoNotClose -- one shared scanner
+    builder().addContig(contigProps("[]"));
+    builder().addContig(contigProps("[a\\]b]"));   // odd run: the first ']' is escaped, the last closes
+    builder().addContig(contigProps("[a\\\\]"));   // even run: escaped backslash, so ']' closes
+  }
+
+  @Test
+  void constructionAcceptsAnEqualsSignInAValue() {
+    // c1=x is a spec-conformant contig name (VCFv4.3.tex:262) that the old predicate rejected
+    builder().addContig(contigProps("c1=x"));
+  }
+
+  @Test
+  void constructionRejectsAngleBracketsAndLayoutWhitespaceInALiteralValue() {
+    assertThrows(VcfFormatException.class, () -> builder().addContig(contigProps("a<b")));
+    assertThrows(VcfFormatException.class, () -> builder().addContig(contigProps("a>b")));
+    assertThrows(VcfFormatException.class, () -> builder().addContig(contigProps("abc ")));
+    assertThrows(VcfFormatException.class, () -> builder().addContig(contigProps(" abc")));
   }
 
   @Test
@@ -92,22 +148,21 @@ class MetadataPropertyEncodingTest {
   }
 
   @Test
-  void testAddTypedRejectsAnEqualsSignInTheId() {
-    // ID is stored raw too (IdMetadata's typed constructor ends in putPropertyRaw(ID, id)), and the probe
-    // character is chosen for durability rather than for today's behavior. Under this file's LENIENT_CONTEXT
-    // NEITHER a comma nor a non-leading '=' throws today: IdMetadata's comma check and ContigMetadata's
-    // charset/leading-'=' checks all route through BaseMetadata.warnOrThrow, which throws only when
-    // !isLenient() (BaseMetadata.java:112-117) and merely warns here. So either probe would isolate the new
-    // check as things stand. '=' is used because it stays unambiguous if this test is ever moved to
-    // STRICT_CONTEXT: there, a comma in an ID IS rejected by IdMetadata's own check, and for contig also by
-    // InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN, so a comma assertThrows would pass with this whole
-    // change reverted. That pattern matches 13 characters -- backslash, comma, double quote, backtick, single
-    // quote, the two parentheses, the two braces, the two square brackets, and the two angle brackets --
-    // deliberately described here rather than re-quoted, since the Java string literal's escaping makes a
-    // copied regex easy to transcribe wrong. '=' is not among them, and ContigMetadata rejects only a LEADING
-    // '=' (ContigMetadata.java:87), so a non-leading '=' isolates the new check under both contexts.
+  void testAddTypedRejectsAnAngleBracketInTheId() {
+    // ID is stored raw too (IdMetadata's typed constructor ends in putPropertyRaw(ID, id)). The probe used to
+    // be a non-leading '=', chosen for durability under a hypothetical STRICT_CONTEXT: '=' is not among the 13
+    // characters InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN rejects (backslash, comma, double quote,
+    // backtick, single quote, the two parentheses, the two braces, the two square brackets, and the two angle
+    // brackets -- described here rather than re-quoted, since the Java string literal's escaping makes a copied
+    // regex easy to transcribe wrong), and ContigMetadata rejects only a LEADING '=' (ContigMetadata.java:87).
+    // checkMetadataPropertyEncoding no longer rejects '=' in an unquoted value at all, so '<' replaces it here.
+    // '<' IS one of those 13 characters, so this probe no longer isolates the check under a hypothetical
+    // STRICT_CONTEXT the way '=' once did -- under this file's actual LENIENT_CONTEXT it still isolates cleanly,
+    // because ContigMetadata's own charset check routes through BaseMetadata.warnOrThrow, which only warns
+    // (rather than throws) when isLenient() (BaseMetadata.java:112-117); confirmed by temporarily widening the
+    // predicate to accept '<' and re-running this test, which then failed with no other check taking its place.
     assertThrows(VcfFormatException.class,
-        () -> builder().addContig("a=b", 100L, null, null, null, null, null));
+        () -> builder().addContig("a<b", 100L, null, null, null, null, null));
   }
 
   @Test
@@ -312,19 +367,20 @@ class MetadataPropertyEncodingTest {
   @Test
   void testEveryPublicTypedAddRouteRejectsAnUnquotedDelimiter() {
     // Six kinds; PEDIGREE has no typed route at all (no fixed schema -- see PedigreeMetadata's Javadoc).
-    // The probe is '=' in the ID, because ID is the ONLY raw-stored typed argument shared by all six: the
+    // The probe is '<' in the ID, because ID is the ONLY raw-stored typed argument shared by all six: the
     // typed constructors route Description (and INFO's Source/Version, and contig's species) through
-    // putAndQuoteProperty, which quotes unconditionally, so a delimiter there is legitimately safe. '=' rather
-    // than a comma -- see testAddTypedRejectsAnEqualsSignInTheId for the full reasoning; briefly, both work
-    // under this file's lenient context, but only '=' also isolates the new check under a strict one.
+    // putAndQuoteProperty, which quotes unconditionally, so a delimiter there is legitimately safe. '<' replaces
+    // the original '=' probe -- see testAddTypedRejectsAnAngleBracketInTheId for the full reasoning; briefly,
+    // '=' no longer throws unconditionally from checkMetadataPropertyEncoding, and '<' does isolate this check
+    // under this file's lenient context (confirmed by temporarily widening the predicate and re-running).
     record TypedRoute(String kind, Consumer<VcfMetadata.Builder> call) {}
     TypedRoute[] routes = {
-        new TypedRoute("ALT", b -> b.addAlt("a=b", "d")),
-        new TypedRoute("INFO", b -> b.addInfo("a=b", "d", InfoType.String, "1", null, null)),
-        new TypedRoute("FILTER", b -> b.addFilter("a=b", "d")),
-        new TypedRoute("FORMAT", b -> b.addFormat("a=b", "d", "1", FormatType.String)),
-        new TypedRoute("contig", b -> b.addContig("a=b", 100L, null, null, null, null, null)),
-        new TypedRoute("SAMPLE", b -> b.addSample("a=b", "d")),
+        new TypedRoute("ALT", b -> b.addAlt("a<b", "d")),
+        new TypedRoute("INFO", b -> b.addInfo("a<b", "d", InfoType.String, "1", null, null)),
+        new TypedRoute("FILTER", b -> b.addFilter("a<b", "d")),
+        new TypedRoute("FORMAT", b -> b.addFormat("a<b", "d", "1", FormatType.String)),
+        new TypedRoute("contig", b -> b.addContig("a<b", 100L, null, null, null, null, null)),
+        new TypedRoute("SAMPLE", b -> b.addSample("a<b", "d")),
     };
     for (TypedRoute r : routes) {
       assertThrows(VcfFormatException.class, () -> r.call().accept(builder()),
@@ -357,8 +413,12 @@ class MetadataPropertyEncodingTest {
   @Test
   void testRejectsEveryInvalidKeyShape() {
     // a"b: an unescaped quote in the NAME is checked the same way as in the value, via the shared
-    // containsUnescapedQuote helper -- see testAnUnescapedQuoteInAPropertyNameCorruptsTheFollowingAttributes for
-    // the corruption this closes
+    // containsUnescapedQuote helper. bcftools 1.23.1 refuses the whole header line for a name like this (see
+    // testRejectsEveryQuoteBearingPropertyName below); this construction-time check keeps this library's own
+    // output from producing a declaration bcftools cannot read back, independent of whether this library's
+    // own parser can re-read it cleanly (see
+    // testAnUnescapedQuoteInAPropertyNameNoLongerCorruptsFollowingAttributes for the parse-time behavior this
+    // once also guarded against).
     for (String badKey : new String[] {"", "bad,key", "bad=key", "a\"b"}) {
       LinkedHashMap<String, String> map = new LinkedHashMap<>();
       map.put(IdMetadata.ID, "1");
@@ -369,14 +429,19 @@ class MetadataPropertyEncodingTest {
   }
 
   @Test
-  void testAnUnescapedQuoteInAPropertyNameCorruptsTheFollowingAttributes() throws Exception {
-    // proves WHY a quote-bearing property name must be rejected: parsing "##contig=<ID=1,a"b=v,length=100>"
-    // flips splitTopLevel's "inside a quoted value" toggle at the stray quote in the name, so everything from
-    // that point on -- the rest of "a"b", "=v", the comma, and the whole "length=100" attribute -- is absorbed
-    // rather than split. Verified live: the re-parsed contig has only ID; both "a\"b" and "length" are gone.
+  void testAnUnescapedQuoteInAPropertyNameNoLongerCorruptsFollowingAttributes() throws Exception {
+    // regression guard for the fix, not the bug: the retired two-pass splitter (whole-list split on top-level
+    // comma, THEN each part split on top-level '=') tracked one "inside a quoted value" toggle across the
+    // WHOLE declaration, so a stray '"' in a NAME flipped it and every delimiter after that point -- the rest
+    // of "a"b", "=v", the comma, and the whole "length=100" attribute -- was absorbed into one value instead of
+    // being split. The attribute-list tokenizer (InternalUtils.tokenizeAttributeList, via parseOneAttribute)
+    // has no such shared toggle: each attribute's own boundary is found independently, and (per
+    // AttributeListTokenizerTest#onlyALeadingDelimiterQuotes) a non-leading quote protects nothing, so "a\"b"
+    // is ordinary NAME content. All three attributes now parse correctly; a quote-bearing NAME is still only
+    // rejected at construction time (see testRejectsEveryQuoteBearingPropertyName below), never during parsing.
     VcfMetadata metadata = parseHeader("##contig=<ID=1,a\"b=v,length=100>").metadata();
     ContigMetadata contig = metadata.getContigs().get("1");
-    assertEquals(Map.of(IdMetadata.ID, "1"), contig.getPropertiesRaw());
+    assertEquals(Map.of(IdMetadata.ID, "1", "a\"b", "v", "length", "100"), contig.getPropertiesRaw());
   }
 
   @Test
@@ -432,9 +497,13 @@ class MetadataPropertyEncodingTest {
   // ---- generic ##key=value properties: a deliberately DIFFERENT grammar ----
   // VcfParser splits a generic line at line.indexOf("=") (VcfParser.java:550-555) -- the FIRST occurrence --
   // taking everything after it as the value. So an '=' in the NAME shifts the split point and corrupts, while
-  // an '=' or ',' in the VALUE is harmless. This is NOT the same mechanism as InternalUtils.splitProperty,
-  // which rejects a second '=' outright; keeping these tests beside the structured ones above is deliberate,
-  // so the two grammars' different delimiters stay visible rather than looking like an inconsistency.
+  // an '=' or ',' in the VALUE is harmless. This happens to now AGREE with the structured attribute-list
+  // grammar's own treatment of a second '=' (InternalUtils.parseAttribute's name scan also stops at the first
+  // '=' only, taking the rest as the value) -- but the two grammars are still not the same mechanism: a
+  // structured attribute's value is also bounded by an unescaped ',' (the attribute-list separator) and by
+  // quote/bracket-quoting rules this generic, line-level grammar has no equivalent of at all. Keeping these
+  // tests beside the structured ones above is deliberate, so the two grammars' different delimiter sets stay
+  // visible rather than looking like an inconsistency.
 
   @Test
   void testAddRawPropertyRejectsAnEqualsSignInTheName() {
@@ -482,19 +551,34 @@ class MetadataPropertyEncodingTest {
   private record RecoveredCase(String declaration, String recoveredDescription, String... warningFragments) {}
 
   private static final RecoveredCase[] RECOVERED_QUOTE_CASES = {
-      // a stray quote inside a quoted value: kept verbatim, quotes and all
-      new RecoveredCase("##FILTER=<ID=q10,Description=\"a\"b\">", "\"a\"b\"",
-          "contains an unescaped quote"),
-      // an unquoted value ending in a quote: warns TWICE -- the shared unescaped-quote warning plus
-      // Description's own "should be quoted but was". Pinning both is what keeps a later change from
+      // a stray, non-leading quote inside a quoted value closes it at that position (the attribute-list
+      // tokenizer finds a value's closing delimiter by POSITION, not by unbalanced-quote parity): the
+      // recovered value is the well-formed "\"a\"", and the remaining "b\"" is trailing content, warned about
+      // and discarded rather than absorbed
+      new RecoveredCase("##FILTER=<ID=q10,Description=\"a\"b\">", "\"a\"",
+          "trailing content"),
+      // an unquoted value ending in a quote: warns TWICE -- the tokenizer's own "structural character" warning
+      // plus Description's own "should be quoted but was". Pinning both is what keeps a later change from
       // silencing one of them unnoticed.
       new RecoveredCase("##FILTER=<ID=q10,Description=ab\">", "ab\"",
-          "contains an unescaped quote", "should be quoted but was"),
-      // non-final quote, the important one: Description ABSORBS the following ",Source=\"s\"" wholesale, so
-      // the recovered value carries both a comma and an '=' -- precisely what the new check rejects. There is
-      // no Source key in the result at all. This is the case that proves the parse path must stay exempt.
+          "structural", "should be quoted but was"),
+      // the important one: Description's opening quote never finds a closing quote before the next comma, so
+      // recovery searches the WHOLE remainder of the line (AttributeListTokenizerTest's own
+      // aClosingDelimiterIsSearchedForAcrossTheWholeRemainder) and finds Source's OWN opening quote instead --
+      // swallowing ",Source=" wholesale into Description's value, which ends up carrying both a comma and an
+      // '=' (precisely what the construction-time check rejects). There is no Source key in the result at all.
+      // This is the case that proves the parse path must stay exempt.
+      new RecoveredCase("##INFO=<ID=XX,Number=1,Type=String,Description=\"ab,Source=\"s\">",
+          "\"ab,Source=\"", "trailing content"),
+      // the fixed variant of the case above: a LEADING quote that DOES find its own closing quote before the
+      // next comma (unlike the unclosed-quote case above) no longer swallows anything at all. This is the
+      // original probe this suite used before the attribute-list tokenizer existed -- it used to demonstrate
+      // Description swallowing ",Source=\"s\"" wholesale (the old two-pass splitter's toggle-based defect,
+      // see STRUCTURAL_DELIMITER_HANDLING.md's historical severity-ranking section) -- and now demonstrates the
+      // fix instead: Description still truncates at its own closing quote (the same "b\"" trailing-content
+      // recovery as the first case above), but Source is recovered fully intact, not swallowed.
       new RecoveredCase("##INFO=<ID=XX,Number=1,Type=String,Description=\"a\"b\",Source=\"s\">",
-          "\"a\"b\",Source=\"s\"", "contains an unescaped quote"),
+          "\"a\"", "trailing content"),
   };
 
   private record ParsedHeader(VcfMetadata metadata, WarnCapturingAppender warnings) {}
@@ -600,6 +684,126 @@ class MetadataPropertyEncodingTest {
         Map<String, String> after = recoveredDeclarationOf(reparser.getMetadata()).getPropertiesRaw();
         assertEquals(before, after, "write/re-parse was not a fixed point for: " + c.declaration());
       }
+    }
+  }
+
+  // ---- the construction-vs-diagnostics split: throw at construction, warn (except when unreadable) at write ----
+
+  @Test
+  void diagnosticsModeEmitsTheNameWarningExactlyOnce() throws Exception {
+    // Pins Step 7's hoist: validateMetadataPropertyEncodings() runs once from writeHeader(), not once per
+    // writeLine() -- a header-only write already exercises writeHeader(), so a regression that left the pass
+    // wired into the per-record path would still need at least one writeLine() call to double-count; this test
+    // still catches the more common regression, an accidental duplicate call within writeHeader() itself.
+    VcfMetadata md = parseHeader("##contig=<ID=c1,a-b=v,length=999>").metadata();
+    Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      StringWriter out = new StringWriter();
+      new VcfWriter.Builder().validateBeforeWrite().toWriter(new PrintWriter(out)).build().writeHeader(md);
+      assertEquals(1, appender.countMessagesContaining("invalid property name"));
+      assertThat(out.toString(), containsString("a-b=v"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void diagnosticsModeWarnsRatherThanThrowingOnCarriedForwardContent() throws Exception {
+    // ##contig=<ID=1,a-b=v> is AGENTS.md's worked example of content we preserve and re-emit.
+    // parseHeader (this file's own helper, above) returns a ParsedHeader record (metadata(), warnings()) and
+    // declares `throws Exception`. Do not treat it as returning VcfMetadata directly.
+    VcfMetadata md = parseHeader("##contig=<ID=c1,a-b=v,length=999>").metadata();
+    StringWriter out = new StringWriter();
+    new VcfWriter.Builder().validateBeforeWrite().toWriter(new PrintWriter(out)).build().writeHeader(md);
+    assertThat(out.toString(), containsString("a-b=v"));
+  }
+
+  @Test
+  void diagnosticsModeStillThrowsWhenOutputWouldBeUnreadable() throws Exception {
+    // The tokenizer can never PRODUCE a bare "[a=b" -- an unterminated bracket is requoted at parse time
+    // (Task 1). So the only route to this state is the package-private BaseMetadata#trustedMutableProperties()
+    // bypass (BaseMetadata.java:134), which is what this library's other writer-defence tests use.
+    VcfMetadata md = parseHeader("##contig=<ID=c1,length=999>").metadata();
+    md.getContigs().get("c1").trustedMutableProperties().put("x", "[a=b");
+    assertThrows(VcfFormatException.class, () ->
+        new VcfWriter.Builder().validateBeforeWrite().toWriter(new PrintWriter(new StringWriter())).build()
+            .writeHeader(md));
+  }
+
+  @Test
+  void aNameOutsideTheAllowlistSurvivesParsing() throws Exception {
+    VcfMetadata md = parseHeader("##contig=<ID=c1,a-b=v,length=999>").metadata();
+    assertEquals("v", md.getContigs().get("c1").getPropertyRaw("a-b"));
+  }
+
+  @Test
+  void diagnosticsModeWarnsRatherThanThrowingOnAnUnquotedAngleBracket() throws Exception {
+    // Pins the '<'/'>' warn-at-write cell against a regression that flips it to unreadableOutput=true (throw).
+    // This exact declaration parses and writes cleanly today, and bcftools reads the result at exit 0 (the
+    // declaration is truncated, not the file rejected -- see
+    // BcftoolsDependencyTest#testUnescapedGreaterThanInMetadataValueBcftoolsTruncatesDeclaration), so throwing
+    // here would regress carried-forward content with nothing left to catch it. Control: flipping '<'/'>' to
+    // unreadableOutput=true in InternalUtils.findEncodingProblems must make this fail.
+    VcfMetadata md = parseHeader("##contig=<ID=c1,x=a>b,length=999>").metadata();
+    Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      StringWriter out = new StringWriter();
+      assertDoesNotThrow(() ->
+          new VcfWriter.Builder().validateBeforeWrite().toWriter(new PrintWriter(out)).build().writeHeader(md));
+      assertTrue(appender.anyMessageContains("unquoted structural delimiter"));
+      assertThat(out.toString(), containsString("x=a>b"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void diagnosticsModeEmitsTheNameWarningOncePerHeaderNotOncePerRecord() throws Exception {
+    // diagnosticsModeEmitsTheNameWarningExactlyOnce (above) writes only a header, so it cannot see a regression
+    // that put validateMetadataPropertyEncodings(metadata) back inside validateMetadata() (called from every
+    // writeLine() too) -- a header-only write would show exactly one warning either way, regression or not.
+    // This test writes two data records after the header and asserts the warning still appears exactly once.
+    // Control: reintroducing a validateMetadataPropertyEncodings(metadata) call inside VcfWriter.writeLine's
+    // validateBeforeWrite() branch must make this fail (three occurrences total instead of one).
+    String vcf = "##fileformat=VCFv4.2\n##contig=<ID=c1,a-b=v,length=999>\n"
+        + "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        + "c1\t1\t.\tA\tT\t.\t.\t.\n"
+        + "c1\t2\t.\tA\tT\t.\t.\t.\n";
+    List<VcfRecord> records = new ArrayList<>();
+    VcfMetadata[] metadataHolder = new VcfMetadata[1];
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder().fromReader(reader).parseWith((md, rec) -> {
+           metadataHolder[0] = md;
+           records.add(rec);
+         }).build()) {
+      parser.parse();
+    }
+    VcfMetadata metadata = metadataHolder[0];
+    assertEquals(2, records.size());
+
+    Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      StringWriter out = new StringWriter();
+      VcfWriter writer = new VcfWriter.Builder().validateBeforeWrite().toWriter(new PrintWriter(out)).build();
+      writer.writeHeader(metadata);
+      for (VcfRecord record : records) {
+        writer.writeLine(metadata, record.getPosition(), record.getSamples());
+      }
+      assertEquals(1, appender.countMessagesContaining("invalid property name"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
     }
   }
 }
