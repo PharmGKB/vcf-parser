@@ -425,6 +425,28 @@ public class InternalUtilsTest {
   }
 
   @Test
+  public void testCheckReservedFormatConstraintsFtThrowsUnderStrictForEachViolationShape() {
+    // a null checkWarnings means strict: each of FT's three warn-only violations (empty code, whitespace in a
+    // code, PASS/'.' combined with another code) must throw VcfFormatException instead. Whitespace and
+    // PASS-combined throw with the exact same text as the lenient warning; the empty-code case's strict
+    // message omits the lenient path's appended "; dropping it" clause, since strict mode never drops anything
+    VcfFormatException empty = assertThrows(VcfFormatException.class,
+        () -> InternalUtils.checkReservedFormatConstraints("FT", "q10;;q20", VcfVersion.V4_2, null));
+    assertTrue(empty.getMessage().contains("contains an empty filter code"));
+
+    VcfFormatException whitespace = assertThrows(VcfFormatException.class,
+        () -> InternalUtils.checkReservedFormatConstraints("FT", "q10 q20", VcfVersion.V4_2, null));
+    assertTrue(whitespace.getMessage().contains("contains whitespace in filter code"));
+
+    VcfFormatException combined = assertThrows(VcfFormatException.class,
+        () -> InternalUtils.checkReservedFormatConstraints("FT", "PASS;q10", VcfVersion.V4_2, null));
+    assertTrue(combined.getMessage().contains("combines PASS or '.' with other filter codes"));
+
+    // valid values still don't throw under strict
+    assertEquals("PASS", InternalUtils.checkReservedFormatConstraints("FT", "PASS", VcfVersion.V4_2, null));
+  }
+
+  @Test
   public void testCheckReservedFormatConstraintsPsWarnsButDoesNotThrow() {
     // PS must be a non-negative 32-bit integer, but that constraint isn't expressible through its declared
     // Type=Integer (which maps to a 64-bit Long), so it's checked separately; this is non-structural sample
@@ -438,18 +460,89 @@ public class InternalUtilsTest {
   }
 
   @Test
+  public void testCheckReservedFormatConstraintsPsThrowsUnderStrict() {
+    // a null checkWarnings means strict: the same out-of-range PS value that only warns above must throw
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> InternalUtils.checkReservedFormatConstraints("PS", "-5", VcfVersion.V4_2, null));
+    assertTrue(e.getMessage().contains("is not a non-negative 32-bit integer"));
+    // a valid value still doesn't throw under strict
+    assertEquals("0", InternalUtils.checkReservedFormatConstraints("PS", "0", VcfVersion.V4_2, null));
+  }
+
+  @Test
+  public void testConvertPropertyPhaseSetThrowsUnderStrictContext() {
+    // end-to-end: convertProperty(ReservedProperty, ...) must actually thread its computed checkWarnings into
+    // checkReservedFormatConstraints, not just the internal helper tested directly above
+    VcfFormatException e = assertThrows(VcfFormatException.class, () -> InternalUtils.convertProperty(
+        ReservedFormatProperty.PhaseSet, "-5", VcfContext.strict("VCFv4.2")));
+    assertTrue(e.getMessage().contains("is not a non-negative 32-bit integer"));
+  }
+
+  @Test
   public void testConvertPropertyPhaseSetPreservesOutOfRangeValue() {
     // the typed accessor still returns the parsed Long even when it violates PS's non-negative-32-bit constraint,
     // consistent with the "warn and preserve" policy for non-structural sample content
-    Long value = InternalUtils.convertProperty(ReservedFormatProperty.PhaseSet, "-5", VcfVersion.V4_2, VcfWarnings.DEFAULT);
+    Long value = InternalUtils.convertProperty(ReservedFormatProperty.PhaseSet, "-5",
+        VcfContext.lenient("VCFv4.2", VcfWarnings.DEFAULT));
     assertEquals(-5L, value);
+  }
+
+  @Test
+  void testCheckInteger32BitRangeWarnsOnOverflowUnderLenientContext() {
+    StringWriter sink = new StringWriter();
+    InternalUtils.checkInteger32BitRange("INT", 2147483648L, new VcfWarnings(sink));
+    assertTrue(sink.toString().contains("outside the 32-bit signed range"));
+  }
+
+  @Test
+  void testCheckInteger32BitRangeThrowsOnOverflowUnderStrictContext() {
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> InternalUtils.checkInteger32BitRange("INT", 2147483648L, null));
+    assertTrue(e.getMessage().contains("outside the 32-bit signed range"));
+  }
+
+  @Test
+  void testCheckInteger32BitRangeWarnsOnUnderflowUnderLenientContext() {
+    StringWriter sink = new StringWriter();
+    InternalUtils.checkInteger32BitRange("INT", -2147483649L, new VcfWarnings(sink));
+    assertTrue(sink.toString().contains("outside the 32-bit signed range"));
+  }
+
+  @Test
+  void testCheckInteger32BitRangeWarnsOnReservedSentinelUnderLenientContext() {
+    // VCFv4.3.tex:103/:1710 -- the eight values -2^31 through -2^31+7 are BCF-reserved sentinels, not a
+    // magnitude overflow (they ARE representable as signed 32-bit integers)
+    for (long sentinel = -2147483648L; sentinel <= -2147483641L; sentinel++) {
+      StringWriter sink = new StringWriter();
+      InternalUtils.checkInteger32BitRange("INT", sentinel, new VcfWarnings(sink));
+      assertTrue(sink.toString().contains("BCF-reserved sentinel"),
+          "Expected a reserved-sentinel warning for " + sentinel + ", got: " + sink);
+    }
+  }
+
+  @Test
+  void testCheckInteger32BitRangeThrowsOnReservedSentinelUnderStrictContext() {
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> InternalUtils.checkInteger32BitRange("INT", -2147483648L, null));
+    assertTrue(e.getMessage().contains("BCF-reserved sentinel"));
+  }
+
+  @Test
+  void testCheckInteger32BitRangeDoesNothingForAnOrdinaryInRangeValue() {
+    StringWriter sink = new StringWriter();
+    InternalUtils.checkInteger32BitRange("INT", 5L, new VcfWarnings(sink));
+    assertEquals("", sink.toString());
+    assertDoesNotThrow(() -> InternalUtils.checkInteger32BitRange("INT", -5L, null));
+    assertDoesNotThrow(() -> InternalUtils.checkInteger32BitRange("INT", Integer.MAX_VALUE, null));
+    assertDoesNotThrow(() -> InternalUtils.checkInteger32BitRange("INT", Integer.MIN_VALUE + 8L, null));
   }
 
   @Test
   public void testConvertPropertyFilterDropsEmptyCodes() {
     // unlike PS, the typed FT accessor returns a normalized value: an empty semicolon-separated code is dropped,
     // matching the "warn and drop" convention used for FILTER's own empty entries
-    String value = InternalUtils.convertProperty(ReservedFormatProperty.Filter, "q10;;q20", VcfVersion.V4_2, VcfWarnings.DEFAULT);
+    String value = InternalUtils.convertProperty(ReservedFormatProperty.Filter, "q10;;q20",
+        VcfContext.lenient("VCFv4.2", VcfWarnings.DEFAULT));
     assertEquals("q10;q20", value);
   }
 
@@ -458,7 +551,8 @@ public class InternalUtilsTest {
     // end-to-end regression test: convertProperty(ReservedProperty, ...) must return null, matching this
     // library's established null-means-absent contract, not "" -- see
     // testCheckReservedFormatConstraintsFtAllEmptyCodesNormalizesToMissingValueSentinel for the underlying fix
-    String value = InternalUtils.convertProperty(ReservedFormatProperty.Filter, ";;", VcfVersion.V4_2, VcfWarnings.DEFAULT);
+    String value = InternalUtils.convertProperty(ReservedFormatProperty.Filter, ";;",
+        VcfContext.lenient("VCFv4.2", VcfWarnings.DEFAULT));
     assertNull(value);
   }
 
@@ -509,6 +603,17 @@ public class InternalUtilsTest {
   }
 
   @Test
+  public void testCheckReservedInfoConstraintsAlleleFrequencyThrowsUnderStrict() {
+    // a null checkWarnings means strict: the same out-of-range AF value that only warns above must throw
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> InternalUtils.checkReservedInfoConstraints("AF", "-0.01", VcfVersion.V4_2, null));
+    assertTrue(e.getMessage().contains("does not lie in the interval [0, 1]"));
+    // a valid value, and the NaN/Inf exemptions, still don't throw under strict
+    InternalUtils.checkReservedInfoConstraints("AF", "0.5", VcfVersion.V4_2, null);
+    InternalUtils.checkReservedInfoConstraints("AF", "NaN", VcfVersion.V4_2, null);
+  }
+
+  @Test
   public void testCheckReservedInfoConstraintsAlleleFrequencyDoesNotHangOnPathologicallyLongValue() {
     // regression test: checkUnitInterval used to call `new BigDecimal(value)` with no length bound --
     // BigDecimal/BigInteger's decimal-string parsing is quadratic in digit count, so an attacker-controlled
@@ -540,7 +645,7 @@ public class InternalUtilsTest {
     root.addAppender(appender);
     try {
       List<VcfFloat> value = InternalUtils.convertProperty(ReservedInfoProperty.AlleleFrequency, "1.",
-          VcfVersion.V4_2, VcfWarnings.DEFAULT);
+          VcfContext.lenient("VCFv4.2", VcfWarnings.DEFAULT));
       assertEquals(1, appender.countMessagesContaining("does not match the VCF Float grammar"));
       assertEquals(0, appender.countMessagesContaining("does not lie in the interval"));
       assertEquals(1, value.size());
@@ -555,8 +660,28 @@ public class InternalUtilsTest {
   public void testConvertPropertyAlleleCountPreservesNegativeValue() {
     // the typed accessor still returns the parsed value even when it violates AC's non-negative constraint,
     // consistent with the "warn and preserve" policy for non-structural INFO content
-    List<Long> value = InternalUtils.convertProperty(ReservedInfoProperty.AlleleCount, "-5", VcfVersion.V4_2, VcfWarnings.DEFAULT);
+    List<Long> value = InternalUtils.convertProperty(ReservedInfoProperty.AlleleCount, "-5",
+        VcfContext.lenient("VCFv4.2", VcfWarnings.DEFAULT));
     assertEquals(List.of(-5L), value);
+  }
+
+  @Test
+  public void testCheckReservedInfoConstraintsAlleleCountThrowsUnderStrict() {
+    // a null checkWarnings means strict: the same negative AC value that only warns under lenient must throw
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> InternalUtils.checkReservedInfoConstraints("AC", "-5", VcfVersion.V4_2, null));
+    assertTrue(e.getMessage().contains("is a negative number"));
+    // a valid value still doesn't throw under strict
+    InternalUtils.checkReservedInfoConstraints("AC", "5", VcfVersion.V4_2, null);
+  }
+
+  @Test
+  public void testConvertPropertyAlleleCountThrowsUnderStrictContext() {
+    // end-to-end: convertProperty(ReservedProperty, ...) must actually thread its computed checkWarnings into
+    // checkReservedInfoConstraints, not just the internal helper tested directly above
+    VcfFormatException e = assertThrows(VcfFormatException.class, () -> InternalUtils.convertProperty(
+        ReservedInfoProperty.AlleleCount, "-5", VcfContext.strict("VCFv4.2")));
+    assertTrue(e.getMessage().contains("is a negative number"));
   }
 
   @Test
@@ -632,12 +757,23 @@ public class InternalUtilsTest {
   }
 
   @Test
+  public void testCheckReservedFormatConstraintsGenotypePosteriorThrowsUnderStrictWhenVersionGateApplies() {
+    // a null checkWarnings means strict: the same out-of-range GP value that only warns above must throw, but
+    // only once the 4.3+ version gate is in force -- under <=4.2 the range check doesn't apply at all, so it
+    // must not throw there either
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> InternalUtils.checkReservedFormatConstraints("GP", "5.0", VcfVersion.V4_3, null));
+    assertTrue(e.getMessage().contains("does not lie in the interval [0, 1]"));
+    InternalUtils.checkReservedFormatConstraints("GP", "5.0", VcfVersion.V4_2, null); // <=4.2: no check, no throw
+  }
+
+  @Test
   public void testConvertPropertyGenotypePosteriorPreservesOutOfRangeValueUnder43() {
     // the typed accessor still returns the parsed VcfFloat even when it violates GP's 4.3+ [0, 1] constraint,
     // consistent with the "warn and preserve" policy for non-structural sample content; also confirms the
     // renamed ReservedFormatProperty.GenotypePosterior constant plumbs through convertProperty end to end
     List<VcfFloat> value = InternalUtils.convertProperty(ReservedFormatProperty.GenotypePosterior, "5.0",
-        VcfVersion.V4_3, VcfWarnings.DEFAULT);
+        VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT));
     assertEquals(1, value.size());
     assertEquals(0, value.get(0).getValue().compareTo(new java.math.BigDecimal("5.0")));
   }
@@ -679,11 +815,24 @@ public class InternalUtilsTest {
   }
 
   @Test
+  public void testCheckReservedInfoConstraintsCigarThrowsUnderStrict() {
+    // a null checkWarnings means strict: the same grammar-invalid CIGAR value that only warns above must throw
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> InternalUtils.checkReservedInfoConstraints("CIGAR", "123MYCIGAR", VcfVersion.V4_2, null));
+    assertTrue(e.getMessage().contains("does not match the expected CIGAR grammar"));
+    // a valid value, and the "no value"/missing-value cases, still don't throw under strict
+    InternalUtils.checkReservedInfoConstraints("CIGAR", "8M2I4M1D3M", VcfVersion.V4_2, null);
+    InternalUtils.checkReservedInfoConstraints("CIGAR", null, VcfVersion.V4_2, null);
+    InternalUtils.checkReservedInfoConstraints("CIGAR", ".", VcfVersion.V4_2, null);
+  }
+
+  @Test
   public void testConvertPropertyCigarPreservesInvalidValue() {
     // the typed accessor still returns the raw value even when it violates CIGAR's grammar, consistent with the
     // "warn and preserve" policy for non-structural INFO content -- there's nothing to normalize since CIGAR's
     // declared Type=String passes any value through unchanged
-    List<String> value = InternalUtils.convertProperty(ReservedInfoProperty.Cigar, "123MYCIGAR", VcfVersion.V4_2, VcfWarnings.DEFAULT);
+    List<String> value = InternalUtils.convertProperty(ReservedInfoProperty.Cigar, "123MYCIGAR",
+        VcfContext.lenient("VCFv4.2", VcfWarnings.DEFAULT));
     assertEquals(List.of("123MYCIGAR"), value);
   }
 
@@ -714,7 +863,8 @@ public class InternalUtilsTest {
     appender.start();
     root.addAppender(appender);
     try {
-      InternalUtils.convertProperty(new FakeInfoIdReservedProperty(), "-5", VcfVersion.V4_2, VcfWarnings.DEFAULT);
+      InternalUtils.convertProperty(new FakeInfoIdReservedProperty(), "-5",
+          VcfContext.lenient("VCFv4.2", VcfWarnings.DEFAULT));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -771,7 +921,8 @@ public class InternalUtilsTest {
     root.addAppender(appender);
     String result;
     try {
-      result = InternalUtils.convertProperty(new FakeFormatIdReservedProperty(), "PASS;other", VcfVersion.V4_2, VcfWarnings.DEFAULT);
+      result = InternalUtils.convertProperty(new FakeFormatIdReservedProperty(), "PASS;other",
+          VcfContext.lenient("VCFv4.2", VcfWarnings.DEFAULT));
       assertFalse(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -790,7 +941,8 @@ public class InternalUtilsTest {
     appender.start();
     root.addAppender(appender);
     try {
-      InternalUtils.convertProperty(ReservedFormatProperty.Filter, "PASS;other", VcfVersion.V4_2, VcfWarnings.DEFAULT);
+      InternalUtils.convertProperty(ReservedFormatProperty.Filter, "PASS;other",
+          VcfContext.lenient("VCFv4.2", VcfWarnings.DEFAULT));
       assertTrue(appender.hasWarnOrHigher());
     } finally {
       root.detachAppender(appender);
@@ -1107,17 +1259,45 @@ public class InternalUtilsTest {
     String gle = "0:-75.22,1:-223.42,0/0:-323.03";
     StringWriter sink42 = new StringWriter();
     Object under42 = InternalUtils.convertProperty(
-        ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy, gle, VcfVersion.V4_2,
-        new VcfWarnings(sink42));
+        ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy, gle,
+        VcfContext.lenient("VCFv4.2", new VcfWarnings(sink42)));
     assertEquals(gle, under42);
     assertEquals("", sink42.toString());
 
     StringWriter sink43 = new StringWriter();
     Object under43 = InternalUtils.convertProperty(
-        ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy, gle, VcfVersion.V4_3,
-        new VcfWarnings(sink43));
+        ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy, gle,
+        VcfContext.lenient("VCFv4.3", new VcfWarnings(sink43)));
     assertNull(under43);
     assertTrue(sink43.toString().contains("FORMAT GLE is not a reserved key under VCF 4.3"));
+  }
+
+  @Test
+  void testConvertPropertyReservedInfoWarnsOnIntegerOverflowUnderLenientContext() {
+    StringWriter sink = new StringWriter();
+    VcfContext lenient = VcfContext.lenient("VCFv4.2", new VcfWarnings(sink));
+    Long value = InternalUtils.convertProperty(ReservedInfoProperty.Depth, "2147483648", lenient);
+    assertEquals(2147483648L, value);
+    assertTrue(sink.toString().contains("outside the 32-bit signed range"));
+  }
+
+  @Test
+  void testConvertPropertyReservedInfoThrowsOnIntegerOverflowUnderStrictContext() {
+    VcfContext strict = VcfContext.strict("VCFv4.2");
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> InternalUtils.convertProperty(ReservedInfoProperty.Depth, "2147483648", strict));
+    assertTrue(e.getMessage().contains("outside the 32-bit signed range"));
+  }
+
+  @Test
+  void testConvertPropertyReservedFormatPsWarnsTwiceForAReservedSentinelValue() {
+    // accepted overlap -- see checkInteger32BitRange's own Javadoc
+    StringWriter sink = new StringWriter();
+    VcfContext lenient = VcfContext.lenient("VCFv4.2", new VcfWarnings(sink));
+    Long value = InternalUtils.convertProperty(ReservedFormatProperty.PhaseSet, "-2147483648", lenient);
+    assertEquals(-2147483648L, value);
+    assertTrue(sink.toString().contains("not a non-negative 32-bit integer"));
+    assertTrue(sink.toString().contains("BCF-reserved sentinel"));
   }
 
   @Test

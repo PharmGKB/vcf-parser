@@ -125,8 +125,8 @@ decision, run under both a 4.2-declared and a 4.3-declared header and asserted i
 | INFO flag (no `=`) | `DB;DP=10` | Fine, as expected | Valid | Fine, unaffected | `DB;DP=10` (unchanged) |
 | GT allele (`:`-separated by `/` or `\|`) | `0/` | **Hard error** (exit code 8: "Couldn't read GT data: value not a number or '.'") | Valid | Warn + substitute `.` (deliberate divergence, see note below) | `0/.` |
 | Reserved list-typed FORMAT value (e.g. `HQ`) | `1,2,` | Warns ("Extreme FORMAT/HQ value ... set to missing") and substitutes `.` | Valid | Warn + substitute `.` (`null` in the returned list) | n/a (read-side conversion only) |
-| Reserved `FORMAT/FT` value | `q10;;q20` | Silent passthrough, no warning (FT is an opaque String to bcftools; it has no knowledge of `FT`'s reserved grammar) | Valid | Warn + drop (read-side only, like the row above) | n/a (read-side conversion only) |
-| Reserved `FORMAT/FT` value, all codes empty | `;;` | Silent passthrough, no warning (same reasoning as above) | Valid | Warn + drop every code, then normalize to `.` (see note below) | n/a (read-side conversion only) |
+| Reserved `FORMAT/FT` value | `q10;;q20` | Silent passthrough, no warning (FT is an opaque String to bcftools; it has no knowledge of `FT`'s reserved grammar) | Valid | Warn + drop under a lenient `VcfContext`; throws `VcfFormatException` under a strict one (this check runs lazily on typed access, not at sample construction, so it is not one of the construction-time checks the introduction above names) -- see `VALIDATION_REFERENCE.md`'s FT/PS bullet | n/a (read-side conversion only) |
+| Reserved `FORMAT/FT` value, all codes empty | `;;` | Silent passthrough, no warning (same reasoning as above) | Valid | Warn + drop every code, then normalize to `.`, under a lenient `VcfContext`; throws on the first empty code under a strict one (see note below and the row above) | n/a (read-side conversion only) |
 | Generic metadata property (`##reference=`, `##assembly=`, `##pedigreeDB=`, or any other) | `##reference=` | Silent passthrough, no warning (verified for `reference`/`assembly`/`pedigreeDB`) | Invalid | Warn + drop the entire property entry | Line omitted entirely |
 
 The INFO flag row is included as a contrast, not an empty-field case: a flag key with no `=` sign (e.g. `DB`) is
@@ -208,7 +208,8 @@ above is -- they document this library's own tokenizer, verified directly agains
 
 | Form | Example | Result | Warning |
 |---|---|---|---|
-| Empty bracket value | `x=[]` | kept as `[]` (an empty bracket list is a value in its own right, not "missing") | none |
+| Empty bracket value (`##META`'s `Values` attribute only -- the only attribute `[...]` is a quoting form for at all, see `VCF_SPEC_AMBIGUITIES.md`'s "General bracket-list quoting beyond `##META`'s `Values`" entry) | `##META=<ID=A,Values=[]>` | kept as `[]` (an empty bracket list is a value in its own right, not "missing") | none |
+| Empty bracket-*looking* value on any other attribute | `x=[]` | `[`/`]` are ordinary unquoted-literal characters here, not a quoting form -- kept as the literal string `[]` | `Metadata attribute "x" has an unquoted value "[]" containing a character bcftools treats as structural; preserving it` |
 | Empty quoted value | `Description=""` | kept as `""` | none |
 | Empty unquoted value | `x=` | kept as `""` (an empty string, not normalized to `.` -- unlike a record-line field, an attribute-list value has no positional-index hazard to protect) | none |
 | Empty attribute list | `##INFO=<>` | zero attributes -- not even the trailing-separator check runs, since there is no content to have a trailing separator | none |
@@ -268,13 +269,21 @@ list has no positional index for anything else to reference into) rather than su
   eager constructor's/`validate()`'s empty-*value* gap is instead addressed one layer down, at the
   reserved-property typed-conversion step -- see `InternalUtils.convertProperty` below.
 - `VcfParser`'s per-sample value parsing — warns and substitutes `.` for an empty sample value.
-- `InternalUtils.convertProperty(Class<?>, String, boolean, VcfWarnings)` — for a list-typed value, warns and
-  substitutes `.` (`null`) for an empty entry in a reserved property's comma-separated value; for a scalar
-  (non-list) value, likewise warns and substitutes `.` (`null`) for an empty (but non-`"."`) value -- **except**
-  `Boolean.class` (a `Flag`-typed reserved property), whose empty string is a distinct, pre-existing "present"
-  encoding (see `VcfPosition.info()`'s bare-flag case above), not "missing"; that case is deliberately left
-  alone; separately, warns and drops an empty semicolon-separated code in a reserved `FORMAT/FT` value
-  (`InternalUtils.checkReservedFormatConstraints`). Fixes `VcfPosition.getInfo(ReservedInfoProperty)`'s
+- `InternalUtils.convertProperty(Class<?>, String, boolean, VcfWarnings, VcfWarnings)` (the read-path
+  overload, used by reserved and non-reserved typed reads alike) — for a list-typed value, substitutes `.`
+  (`null`) for an empty entry in a comma-separated value; for a scalar (non-list) value, likewise substitutes
+  `.` (`null`) for an empty (but non-`"."`) value -- **except** `Boolean.class` (a `Flag`-typed reserved
+  property), whose empty string is a distinct, pre-existing "present" encoding (see `VcfPosition.info()`'s
+  bare-flag case above), not "missing"; that case is deliberately left alone. Both branches are
+  `isLenient()`-aware: warns under a lenient `VcfContext`, throws `VcfFormatException` under a strict one,
+  matching `VcfPosition`'s own construction-time checks' treatment of the analogous empty-entry condition.
+  `InternalUtils.convertNonEmptyProperty` is the write-path counterpart `VcfWriter` calls instead -- it has no
+  empty-value branch at all (every `VcfWriter` call site already substitutes or skips an empty value before
+  reaching it), so an empty value can never reach this class from the writer, and there is no Writer
+  Validation Policy always-warn case to reconcile here the way there is for the five reserved-key content
+  checks. Separately, warns and drops an empty semicolon-separated code in a reserved `FORMAT/FT` value under a
+  lenient `VcfContext` (`InternalUtils.checkReservedFormatConstraints`, delegating to `checkFilterLikeValue`),
+  throwing `VcfFormatException` under a strict one. Fixes `VcfPosition.getInfo(ReservedInfoProperty)`'s
   handling of an empty value for a scalar reserved key (e.g. `DP`, `AA`) reached via the eager constructor or a
   live `getInfo()` mutation: previously this either raw-crashed the typed conversion (a numeric key) or
   silently returned `""` instead of `null` (a `String`-typed key), with zero warnings either way.

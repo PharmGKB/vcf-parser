@@ -11,6 +11,7 @@ import java.util.regex.Pattern;
 import com.google.errorprone.annotations.RestrictedApi;
 import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.helpers.MessageFormatter;
 
 
 /**
@@ -750,13 +751,12 @@ public class InternalUtils {
    *   <li>A List of any of the above types</li>
    * </ul>
    *
-   * @param version the record's resolved VCF version (see {@link VcfContext#getVersion()}), passed as its own
-   * argument -- never a {@link VcfContext} -- so a caller can never read it off the wrong context (e.g. a
-   * writer's own diagnostics context instead of the record's). Read here to reject
-   * {@link ReservedFormatProperty#GenotypeLikelihoodsOfHeterogenousPloidy GLE} under VCFv4.3+ (see below), and
-   * passed on to {@link #checkReservedFormatConstraints}/{@link #checkReservedInfoConstraints} for their own
-   * version-gated rules. Any such check must dispatch via {@code version.isAtLeast(VcfVersion.V4_3)} (see
-   * {@link VcfVersion#isAtLeast}), never a string or ordinal comparison on {@link VcfVersion}.
+   * @param context the record's resolved {@link VcfContext}. Its {@link VcfContext#getVersion() version} is read
+   * here to reject {@link ReservedFormatProperty#GenotypeLikelihoodsOfHeterogenousPloidy GLE} under VCFv4.3+ (see
+   * below), and passed on to {@link #checkReservedFormatConstraints}/{@link #checkReservedInfoConstraints} for
+   * their own version-gated rules. Any such check must dispatch via {@code version.isAtLeast(VcfVersion.V4_3)}
+   * (see {@link VcfVersion#isAtLeast}), never a string or ordinal comparison on {@link VcfVersion}. Its
+   * {@link VcfContext#isLenient() leniency} gates the general 32-bit range check below.
    * @return {@code null}, after warning, when {@code key} is
    * {@link ReservedFormatProperty#GenotypeLikelihoodsOfHeterogenousPloidy GLE} and {@code version} is VCFv4.3 or
    * later: VCFv4.3 removed that key (VCFv4.3.tex line 2168, "Removed unused and ill-defined GLE FORMAT tag"), so
@@ -766,16 +766,29 @@ public class InternalUtils {
    * silence would be indistinguishable from an absent value.
    */
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
-  public static @Nullable <T> T convertProperty(ReservedProperty key, @Nullable String value, VcfVersion version,
-      VcfWarnings warnings) {
+  public static @Nullable <T> T convertProperty(ReservedProperty key, @Nullable String value, VcfContext context) {
+    VcfVersion version = context.getVersion();
+    VcfWarnings warnings = context.getWarnings();
+    // isLenient()-aware, shared by every reserved-key content check below (checkReservedFormatConstraints/
+    // checkReservedInfoConstraints and, further down, the general 32-bit range check): null means strict
+    // (throws VcfFormatException), non-null means lenient (warns to it) -- the same null-means-strict internal
+    // convention VcfPosition's own content checks already use. Never fires differently for a parsed file
+    // (VcfParser only ever builds a lenient VcfContext), only for a caller who manually builds a strict-context
+    // position/sample and then reads a bad value.
+    VcfWarnings checkWarnings = context.isLenient() ? warnings : null;
     // FT/PS are FORMAT-only reserved IDs, and AC/AN/DP/END/MQ0/NS/AF are INFO-only reserved IDs (see each
     // check's own Javadoc) -- a future reserved key on the other side whose ID happens to collide must not get
     // the wrong side's semantics applied
     String normalized = value;
+    // Also drives the range-check label below, so a key reserved on both sides (e.g. DP) doesn't produce an
+    // ambiguous warning -- matches the "INFO "/"FORMAT " prefix every sibling call site already uses
+    // (VcfPosition, VcfSample, VcfWriter).
+    String rangeCheckLabelPrefix = "";
     if (key instanceof ReservedFormatProperty) {
       // Placed here, with the FORMAT dispatch, rather than in VcfSample.getProperty(ReservedFormatProperty):
       // that method delegates to this one, so one check here covers both routes, and this method is itself
       // public, so a guard there alone would leave this route open.
+      rangeCheckLabelPrefix = "FORMAT ";
       if (key == ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy &&
           version.isAtLeast(VcfVersion.V4_3)) {
         warnings.warn("FORMAT GLE is not a reserved key under VCF {} (VCFv4.3 removed it); ignoring this " +
@@ -784,17 +797,23 @@ public class InternalUtils {
             version.getId());
         return null;
       }
-      normalized = checkReservedFormatConstraints(key.getId(), value, version, warnings);
+      normalized = checkReservedFormatConstraints(key.getId(), value, version, checkWarnings);
     } else if (key instanceof ReservedInfoProperty) {
-      checkReservedInfoConstraints(key.getId(), value, version, warnings);
+      rangeCheckLabelPrefix = "INFO ";
+      checkReservedInfoConstraints(key.getId(), value, version, checkWarnings);
     }
-    return convertProperty(key.getType(), normalized, key.isList(), warnings);
+    // The general 32-bit range check, gated on the key's own declared Type -- see checkInteger32BitRange's
+    // own Javadoc for why FORMAT/PS is deliberately not excluded. Reuses the same checkWarnings computed above.
+    if (normalized != null && key.getType() == Long.class) {
+      checkInteger32BitRange(rangeCheckLabelPrefix + key.getId(), normalized, key.isList(), checkWarnings);
+    }
+    return convertProperty(key.getType(), normalized, key.isList(), warnings, checkWarnings);
   }
 
   /**
-   * Warns if {@code value} violates a constraint a target VCF specification version places on a reserved FORMAT
-   * key beyond its declared {@code Type} -- constraints that generic {@code Type}-based conversion can't express.
-   * Currently:
+   * Warns or throws if {@code value} violates a constraint a target VCF specification version places on a
+   * reserved FORMAT key beyond its declared {@code Type} -- constraints that generic {@code Type}-based
+   * conversion can't express. Currently:
    * <ul>
    *   <li>{@link ReservedFormatProperty#Filter FT} must be {@code PASS}, {@code .}, or a semicolon-separated list of
    *   codes, each containing no whitespace, and {@code PASS}/{@code .} may not be combined with other codes -- the
@@ -810,28 +829,35 @@ public class InternalUtils {
    *   AF}; see that method's own Javadoc.</li>
    * </ul>
    *
-   * @return the value to use for subsequent type conversion: unchanged, except for FT, whose empty
-   * semicolon-separated codes are dropped -- the same "warn and drop" convention already used for an empty entry in
-   * FILTER (FT's grammar is explicitly modeled on FILTER's) and every other position-independent list in this
-   * library. If every code was dropped this way, returns {@code "."} (this library's established missing-value
-   * sentinel) rather than an empty string, matching every other "reduces to nothing" case in this library. A
-   * caller that only wants the validation side effect (e.g. a writer in diagnostics mode, which preserves raw
-   * content rather than rewriting it) may discard the return value.
+   * @return the value to use for subsequent type conversion: unchanged, except for FT under a lenient
+   * {@code checkWarnings}, whose empty semicolon-separated codes are dropped -- the same "warn and drop"
+   * convention already used for an empty entry in FILTER (FT's grammar is explicitly modeled on FILTER's) and
+   * every other position-independent list in this library. If every code was dropped this way, returns
+   * {@code "."} (this library's established missing-value sentinel) rather than an empty string, matching
+   * every other "reduces to nothing" case in this library. Under a strict (null) {@code checkWarnings}, an
+   * empty code throws instead of being dropped, so this return value is never reached in that case. A caller
+   * that only wants the validation side effect (e.g. a writer in diagnostics mode, which preserves raw content
+   * rather than rewriting it) may discard the return value.
    *
    * @param version the record's resolved VCF version, passed as its own argument -- never a {@link VcfContext} --
    * so there is nothing here to read a version off but the value the caller explicitly supplied. See
-   * {@link #convertProperty(ReservedProperty, String, VcfVersion, VcfWarnings)}'s own {@code version} doc for the
+   * {@link #convertProperty(ReservedProperty, String, VcfContext)}'s own {@code context} doc for the
    * {@code isAtLeast} dispatch idiom this method's GP branch uses.
+   * @param checkWarnings {@code null} means strict (throws {@link VcfFormatException} on the first violation
+   * found); non-null means lenient (warns to it and keeps checking) -- the same null-means-strict convention
+   * {@link #checkInteger32BitRange} and {@link VcfPosition}'s own content checks already use. A caller that
+   * always wants a warning regardless of the record's own strict/lenient origin (e.g. {@link VcfWriter}'s
+   * always-warn diagnostics mode) passes a non-null instance unconditionally.
    */
   static @Nullable String checkReservedFormatConstraints(String key, @Nullable String value, VcfVersion version,
-      VcfWarnings warnings) {
+      @Nullable VcfWarnings checkWarnings) {
     if (value == null || value.equals(".")) {
       return value;
     }
     if (key.equals(ReservedFormatProperty.Filter.getId())) {
-      return checkFilterLikeValue(key, value, warnings);
+      return checkFilterLikeValue(key, value, checkWarnings);
     } else if (key.equals(ReservedFormatProperty.PhaseSet.getId())) {
-      checkNonNegative32BitInteger(key, value, warnings);
+      checkNonNegative32BitInteger(key, value, checkWarnings);
     } else if (key.equals(ReservedFormatProperty.GenotypePosterior.getId()) && version.isAtLeast(VcfVersion.V4_3)) {
       // per-element, not a scalar parse of the whole comma-delimited value: GP is Number=G and list-shaped, but
       // both callers hand this method the entire value before any splitting of their own -- VcfWriter's
@@ -840,24 +866,33 @@ public class InternalUtils {
       // convertProperty(Class<?>, ...) it calls next. A scalar BigDecimal parse of e.g. "0.2,5.0,0.8" would throw
       // and be treated as "not a number at all" (see checkUnitInterval), silently skipping the whole check.
       for (String element : value.split(",", -1)) {
-        checkUnitInterval("FORMAT", key, element, warnings);
+        checkUnitInterval("FORMAT", key, element, checkWarnings);
       }
     }
     return value;
   }
 
-  private static String checkFilterLikeValue(String key, String value, VcfWarnings warnings) {
+  private static String checkFilterLikeValue(String key, String value, @Nullable VcfWarnings checkWarnings) {
     String[] codes = value.split(";", -1);
     List<String> kept = new ArrayList<>(codes.length);
     boolean hasPassOrMissing = false;
     for (String code : codes) {
       if (code.isEmpty()) {
-        warnings.warn("FORMAT {} value \"{}\" contains an empty filter code (VCF does not allow zero-length " +
-            "fields); dropping it", key, value);
+        // deliberately not warnOrThrow: unlike this method's other two checks, the two branches' messages
+        // genuinely differ (lenient appends "; dropping it", since only that branch actually drops the code),
+        // so a single shared pattern can't express both
+        String message = "FORMAT " + key + " value \"" + value + "\" contains an empty filter code (VCF does " +
+            "not allow zero-length fields)";
+        if (checkWarnings != null) {
+          checkWarnings.warn(message + "; dropping it");
+        } else {
+          throw new VcfFormatException(message);
+        }
         continue;
       }
       if (containsWhitespace(code)) {
-        warnings.warn("FORMAT {} value \"{}\" contains whitespace in filter code \"{}\"", key, value, code);
+        warnOrThrow(checkWarnings, "FORMAT {} value \"{}\" contains whitespace in filter code \"{}\"", key, value,
+            code);
       }
       if (code.equals("PASS") || code.equals(".")) {
         hasPassOrMissing = true;
@@ -872,7 +907,7 @@ public class InternalUtils {
     // test/vcf/4.2/failed/failed_body_filter_000.vcf, ##CauseOfFailure=FILTER contains missing in addition to a
     // value); FT is documented as sharing FILTER's own grammar, so the same distinction applies here.
     if (hasPassOrMissing && new HashSet<>(kept).size() > 1) {
-      warnings.warn("FORMAT {} value \"{}\" combines PASS or '.' with other filter codes", key, value);
+      warnOrThrow(checkWarnings, "FORMAT {} value \"{}\" combines PASS or '.' with other filter codes", key, value);
     }
     if (kept.isEmpty()) {
       // every code was empty and dropped above; "." is this codebase's established missing-value sentinel for
@@ -888,7 +923,7 @@ public class InternalUtils {
     return String.join(";", kept);
   }
 
-  private static void checkNonNegative32BitInteger(String key, String value, VcfWarnings warnings) {
+  private static void checkNonNegative32BitInteger(String key, String value, @Nullable VcfWarnings checkWarnings) {
     long parsed;
     try {
       parsed = Long.parseLong(value);
@@ -897,7 +932,97 @@ public class InternalUtils {
       return;
     }
     if (parsed < 0 || parsed > Integer.MAX_VALUE) {
-      warnings.warn("FORMAT {} value \"{}\" is not a non-negative 32-bit integer", key, value);
+      warnOrThrow(checkWarnings, "FORMAT {} value \"{}\" is not a non-negative 32-bit integer", key, value);
+    }
+  }
+
+  private static final long RESERVED_SENTINEL_LOW = Integer.MIN_VALUE;
+  private static final long RESERVED_SENTINEL_HIGH = Integer.MIN_VALUE + 7L;
+
+  /**
+   * Warns or throws if {@code parsed} violates VCFv4.3.tex's general 32-bit Integer constraint --
+   * {@code VCFv4.3.tex:100} ("Integer (32-bit, signed)") and {@code :103} ("the values from -2^31 to
+   * -2^31+7 cannot be stored in the binary version and therefore are disallowed in both VCF and BCF");
+   * identical text at {@code VCFv4.4.tex:100}/{@code :103}, shifted to {@code VCFv4.5.tex:98}/{@code :101}.
+   * {@code VCFv4.2.tex} states no general bound (only {@link #checkNonNegative32BitInteger}'s narrower,
+   * {@code PS}-specific rule at {@code VCFv4.2.tex:230}) -- this check is applied unconditionally regardless
+   * of declared version anyway, since it is not a case where the *meaning* of Integer genuinely differs
+   * across versions, only whether the spec bothered to state it.
+   * <p>
+   * Two spec-distinct problems, both from the same {@code :103} sentence, get distinct messages: a plain
+   * magnitude violation (not representable as any 32-bit signed integer at all), and a value that IS
+   * representable but collides with one of the eight BCF-reserved sentinel bit patterns
+   * ({@code VCFv4.3.tex:1708}/{@code :1710}: {@code 0x80000000}-{@code 0x80000007}, interpreted as a BCF
+   * missing-value sentinel, an END_OF_VECTOR marker, or reserved for future use).
+   * <p>
+   * Deliberately not excluded for {@code FORMAT/PS}: its own {@link #checkNonNegative32BitInteger} already
+   * flags every value this check would too (any negative value, which covers every reserved sentinel and
+   * any underflow) -- the only overlap is a {@code PS} value that is itself a reserved sentinel or overflows
+   * past {@code Integer.MAX_VALUE}. Under a lenient {@code VcfContext} this produces two warnings for one
+   * input, accepted, matching this codebase's existing "multiple independent checks warn separately about the
+   * same defect" pattern (see {@code WONT_FIX.md}). Under a strict one, {@link #checkNonNegative32BitInteger}
+   * runs first (see {@link #convertProperty(ReservedProperty, String, VcfContext)}'s dispatch order) and
+   * throws before this check ever runs, so the caller sees only its "is not a non-negative 32-bit integer"
+   * message, never this one's more specific "collides with a BCF-reserved sentinel value" -- both are true of
+   * the same value, and first-violation-wins matches every other check in this class.
+   *
+   * @param checkWarnings {@code null} means strict (throws {@link VcfFormatException}); non-null means
+   * lenient (warns to it) -- the same null-means-strict internal convention {@link VcfPosition}'s own content
+   * checks already use.
+   */
+  static void checkInteger32BitRange(String label, long parsed, @Nullable VcfWarnings checkWarnings) {
+    if (parsed > Integer.MAX_VALUE || parsed < Integer.MIN_VALUE) {
+      warnOrThrow(checkWarnings, "{} value \"{}\" is outside the 32-bit signed range", label, parsed);
+    } else if (parsed >= RESERVED_SENTINEL_LOW && parsed <= RESERVED_SENTINEL_HIGH) {
+      warnOrThrow(checkWarnings, "{} value \"{}\" collides with a BCF-reserved sentinel value and must not be " +
+          "used", label, parsed);
+    }
+  }
+
+  /**
+   * {@link #checkInteger32BitRange(String, long, VcfWarnings)}, absorbing the split-on-comma loop every one of
+   * its five call sites previously hand-copied: gate on a {@code Long}-typed field, split {@code rawValue} on
+   * {@code ,} when it is list-shaped, parse each element, check it, and silently swallow a
+   * {@link NumberFormatException} (the generic {@code Type} conversion each caller runs right after already
+   * reports "not a number at all" on its own). {@code label} is the only input that ever varied between the
+   * five copies -- it drifted at one of them for several fix-loop rounds during the plan that first added
+   * this check, since no single call site's review saw two copies at once to notice.
+   *
+   * @param isList whether {@code rawValue} is a comma-joined list (the caller's own {@code key.isList()}/
+   * declared-{@code Number} decision) or a single scalar value already isolated by the caller (e.g.
+   * {@link VcfWriter}'s two write-side callers, which iterate their own already-split value list one element
+   * at a time and always pass {@code false} here).
+   * @param checkWarnings see {@link #checkInteger32BitRange(String, long, VcfWarnings)}'s own doc.
+   */
+  static void checkInteger32BitRange(String label, String rawValue, boolean isList, @Nullable VcfWarnings checkWarnings) {
+    String[] elements = isList ? rawValue.split(",", -1) : new String[] {rawValue};
+    for (String element : elements) {
+      try {
+        checkInteger32BitRange(label, Long.parseLong(element), checkWarnings);
+      } catch (NumberFormatException e) {
+        // not a number at all; the generic Long conversion the caller runs right after reports this on its own
+      }
+    }
+  }
+
+  /**
+   * Warns to {@code checkWarnings}, using SLF4J placeholder-style {@code pattern}/{@code args}, if it is
+   * non-null (lenient); throws {@link VcfFormatException} with the same formatted message if it is {@code null}
+   * (strict). A third implementation of the same shape, alongside {@link BaseMetadata#warnOrThrow} and
+   * {@code VcfMetadata}'s own private static {@code warnOrThrow(VcfContext, ...)} -- all three use the
+   * identical warn-or-throw-with-{@code MessageFormatter.arrayFormat} pattern, but this one takes an
+   * already-resolved {@code checkWarnings} value directly rather than a {@code VcfContext}, because every
+   * caller here already made that strict-vs-lenient decision before reaching this method (see
+   * {@link #convertProperty(ReservedProperty, String, VcfContext)}'s own {@code checkWarnings} derivation) --
+   * unlike the other two, which each hold their own {@code VcfContext}/{@code m_context} field to derive
+   * strictness from directly. That difference is what lets {@link VcfWriter} force always-warn independently
+   * of the written object's own context by simply never passing {@code null} here.
+   */
+  private static void warnOrThrow(@Nullable VcfWarnings checkWarnings, String pattern, Object... args) {
+    if (checkWarnings != null) {
+      checkWarnings.warn(pattern, args);
+    } else {
+      throw new VcfFormatException(MessageFormatter.arrayFormat(pattern, args).getMessage());
     }
   }
 
@@ -914,8 +1039,9 @@ public class InternalUtils {
       ReservedInfoProperty.MappingQualityZeroCount.getId(), ReservedInfoProperty.NumberOfSamples.getId());
 
   /**
-   * Warns if {@code value} violates a constraint that a reserved INFO key's own description implies beyond its
-   * declared {@code Type} -- constraints that generic {@code Type}-based conversion can't express. Currently:
+   * Warns or throws if {@code value} violates a constraint that a reserved INFO key's own description implies
+   * beyond its declared {@code Type} -- constraints that generic {@code Type}-based conversion can't express.
+   * Currently:
    * <ul>
    *   <li>{@link ReservedInfoProperty#AlleleCount AC}, {@link ReservedInfoProperty#AlleleNumber AN},
    *   {@link ReservedInfoProperty#Depth DP}, {@link ReservedInfoProperty#End END},
@@ -935,25 +1061,30 @@ public class InternalUtils {
    *
    * @param version the record's resolved VCF version, passed as its own argument -- never a {@link VcfContext} --
    * so there is nothing here to read a version off but the value the caller explicitly supplied. See
-   * {@link #convertProperty(ReservedProperty, String, VcfVersion, VcfWarnings)}'s own {@code version} doc for the
+   * {@link #convertProperty(ReservedProperty, String, VcfContext)}'s own {@code context} doc for the
    * {@code isAtLeast} dispatch idiom a future version-gated rule here must use. Not yet read by this method.
+   * @param checkWarnings {@code null} means strict (throws {@link VcfFormatException} on the first violation
+   * found); non-null means lenient (warns to it and keeps checking every remaining element) -- the same
+   * null-means-strict convention {@link #checkInteger32BitRange} and {@link VcfPosition}'s own content checks
+   * already use. A caller that always wants a warning regardless of the record's own strict/lenient origin
+   * (e.g. {@link VcfWriter}'s always-warn diagnostics mode) passes a non-null instance unconditionally.
    */
   static void checkReservedInfoConstraints(String key, @Nullable String value, VcfVersion version,
-      VcfWarnings warnings) {
+      @Nullable VcfWarnings checkWarnings) {
     if (value == null || value.equals(".")) {
       return;
     }
     if (NON_NEGATIVE_INTEGER_INFO_KEYS.contains(key)) {
       for (String element : value.split(",", -1)) {
-        checkNonNegativeInteger(key, element, warnings);
+        checkNonNegativeInteger(key, element, checkWarnings);
       }
     } else if (key.equals(ReservedInfoProperty.AlleleFrequency.getId())) {
       for (String element : value.split(",", -1)) {
-        checkUnitInterval("INFO", key, element, warnings);
+        checkUnitInterval("INFO", key, element, checkWarnings);
       }
     } else if (key.equals(ReservedInfoProperty.Cigar.getId())) {
       for (String element : value.split(",", -1)) {
-        checkCigarGrammar(element, warnings);
+        checkCigarGrammar(element, checkWarnings);
       }
     }
     // TODO: SVLEN and CN (INFO's CopyNumberOfSegment) each gain a 4.4+-only reserved-key Number/Type change
@@ -965,7 +1096,7 @@ public class InternalUtils {
     // change for this method.
   }
 
-  private static void checkNonNegativeInteger(String key, String value, VcfWarnings warnings) {
+  private static void checkNonNegativeInteger(String key, String value, @Nullable VcfWarnings checkWarnings) {
     if (value.isEmpty() || value.equals(".")) {
       // an empty entry or the missing-value sentinel is reported elsewhere; not this check's concern
       return;
@@ -978,7 +1109,7 @@ public class InternalUtils {
       return;
     }
     if (parsed < 0) {
-      warnings.warn("INFO {} value \"{}\" is a negative number", key, value);
+      warnOrThrow(checkWarnings, "INFO {} value \"{}\" is a negative number", key, value);
     }
   }
 
@@ -986,7 +1117,8 @@ public class InternalUtils {
   // of checkReservedInfoConstraints's (AF) or checkReservedFormatConstraints's (GP, under 4.3+) two callers
   // this is, matching every other field-specific message in this class (e.g. checkNonNegativeInteger's own
   // hardcoded "INFO", checkNonNegative32BitInteger's own hardcoded "FORMAT")
-  private static void checkUnitInterval(String fieldType, String key, String value, VcfWarnings warnings) {
+  private static void checkUnitInterval(String fieldType, String key, String value,
+      @Nullable VcfWarnings checkWarnings) {
     if (value.isEmpty() || value.equals(".")) {
       return;
     }
@@ -1013,18 +1145,18 @@ public class InternalUtils {
       return;
     }
     if (decimal.compareTo(BigDecimal.ZERO) < 0 || decimal.compareTo(BigDecimal.ONE) > 0) {
-      warnings.warn(fieldType + " {} value \"{}\" does not lie in the interval [0, 1]", key, value);
+      warnOrThrow(checkWarnings, "{} {} value \"{}\" does not lie in the interval [0, 1]", fieldType, key, value);
     }
   }
 
-  private static void checkCigarGrammar(String value, VcfWarnings warnings) {
+  private static void checkCigarGrammar(String value, @Nullable VcfWarnings checkWarnings) {
     if (value.isEmpty() || value.equals(".")) {
       // an empty entry or the missing-value sentinel is reported elsewhere; not this check's concern
       return;
     }
     if (!CIGAR_PATTERN.matcher(value).matches()) {
-      warnings.warn("INFO CIGAR value \"{}\" does not match the expected CIGAR grammar (a lone '*', or one or " +
-          "more <length><operation> pairs, operation one of MIDNSHPX=)", value);
+      warnOrThrow(checkWarnings, "INFO CIGAR value \"{}\" does not match the expected CIGAR grammar (a lone " +
+          "'*', or one or more <length><operation> pairs, operation one of MIDNSHPX=)", value);
     }
   }
 
@@ -1234,20 +1366,42 @@ public class InternalUtils {
   }
 
   /**
-   * Shared type-dispatch plumbing behind the {@link ReservedProperty}/{@link FormatType}/{@link InfoType}
-   * overloads above -- not public API in its own right. Unlike those three (each driven by a real,
-   * caller-supplied domain concept -- a reserved key, or a metadata declaration's own {@code Type}), this
-   * takes a raw {@link Class}, which {@link #convertElement} only supports for a fixed, closed set of six
-   * types and throws {@link VcfFormatException} for anything else -- so it can't actually serve a caller
-   * with a genuinely custom type the way its signature suggests. Callers wanting to convert a custom,
-   * non-reserved property's raw value should do their own conversion instead.
+   * Shared type-dispatch plumbing behind the {@link ReservedProperty} overload above and the two read-side
+   * typed accessors that resolve a non-reserved key's declared {@code Type} themselves ({@code
+   * VcfPosition.getInfo(VcfMetadata, String)}, {@code VcfSample.getProperty(VcfPosition, VcfMetadata,
+   * String)}) -- not public API in its own right. Unlike a caller-supplied domain concept (a reserved key, or
+   * a metadata declaration's own {@code Type}), this takes a raw {@link Class}, which {@link #convertElement}
+   * only supports for a fixed, closed set of six types and throws {@link VcfFormatException} for anything
+   * else -- so it can't actually serve a caller with a genuinely custom type the way its signature suggests.
+   * Callers wanting to convert a custom, non-reserved property's raw value should do their own conversion
+   * instead.
+   * <p>
+   * This is the read-path variant specifically: {@code checkWarnings} is {@code @Nullable} and
+   * {@code isLenient()}-aware for the empty-value substitution below (warns under a lenient
+   * {@code VcfContext}, throws {@link VcfFormatException} under a strict one), matching {@code VcfPosition}'s
+   * own construction-time checks' treatment of the analogous empty-entry condition for ID/ALT/FILTER/FORMAT
+   * sub-field lists. {@link #convertNonEmptyProperty} is the write-path counterpart, used by every
+   * {@link VcfWriter} call site -- see its own Javadoc for why an empty value never reaches this class from
+   * the writer at all, and is therefore never a case this method's own read-path callers need to reconcile
+   * with the Writer Validation Policy's always-warn rule.
+   *
+   * @param warnings the caller's real, always-non-null warnings destination -- forwarded to
+   * {@link #convertElement}, which needs a real sink of its own for a warning unrelated to this method's
+   * empty-value dispatch (e.g. {@link VcfFloat#parse}'s "does not match the VCF Float grammar" warning, which
+   * stays unconditional regardless of strict/lenient, exactly as before this method took a {@code
+   * checkWarnings} parameter at all).
+   * @param checkWarnings {@code null} means strict (throws on an empty value); non-null means lenient (warns
+   * to it) -- always either {@code null} or reference-equal to {@code warnings}, never a third, independent
+   * instance; kept as its own parameter, rather than derived from {@code warnings} here, because only the
+   * caller's own {@code VcfContext} knows whether it's strict or lenient.
    */
   // public only because VcfSample needs to convert
-  // a raw Class<?> for non-reserved FORMAT keys the same way ReservedProperty and FormatType overloads above do.
+  // a raw Class<?> for non-reserved FORMAT keys the same way the ReservedProperty overload above does.
   // @RestrictedApi marks this as public solely for that reason, not as real external API.
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   @SuppressWarnings("unchecked")
-  public static @Nullable <T> T convertProperty(Class<?> clas, @Nullable String value, boolean isList, VcfWarnings warnings) {
+  public static @Nullable <T> T convertProperty(Class<?> clas, @Nullable String value, boolean isList,
+      VcfWarnings warnings, @Nullable VcfWarnings checkWarnings) {
     if (value == null || ".".equals(value)) {
       return null;
     }
@@ -1265,12 +1419,9 @@ public class InternalUtils {
       if (value.isEmpty() && clas != Boolean.class) {
         // this shared method has no key/field-name context to report (see its own Javadoc: it serves callers
         // as different as a reserved-property getter and a generic declared-Type conversion) -- the expected
-        // Java type is the only identifying detail available here. Every direct caller of this scalar branch
-        // that already has its own generic "contains an empty value" warning (VcfWriter's validateInfoValue/
-        // validateFormatValue) skips calling this method at all for an empty value, specifically to avoid
-        // this context-free line firing as a redundant second warning for the same defect.
-        warnings.warn("Value of type {} is an empty entry (VCF does not allow zero-length fields); treating " +
-            "it as the missing value '.'", clas.getSimpleName());
+        // Java type is the only identifying detail available here.
+        warnOrThrow(checkWarnings, "Value of type {} is an empty entry (VCF does not allow zero-length " +
+            "fields); treating it as the missing value '.'", clas.getSimpleName());
         return null;
       }
       // an unchecked cast to this method's own unbounded generic type parameter T is erased to a no-op by javac
@@ -1291,14 +1442,41 @@ public class InternalUtils {
     // other list-typed property's genuine "." entry.
     for (String part : value.split(",", -1)) {
       if (part.isEmpty()) {
-        warnings.warn("List value \"{}\" contains an empty entry (VCF does not allow zero-length fields); " +
-            "treating it as the missing value '.'", value);
+        warnOrThrow(checkWarnings, "List value \"{}\" contains an empty entry (VCF does not allow zero-length " +
+            "fields); treating it as the missing value '.'", value);
         list.add(null);
       } else {
         list.add(convertElement(clas, part, warnings));
       }
     }
     return (T) list;
+  }
+
+  /**
+   * {@link #convertProperty(Class, String, boolean, VcfWarnings, VcfWarnings)}'s write-path counterpart: used only by
+   * {@link VcfWriter}'s own "just test whether this value converts" probes (the two direct {@code
+   * validateInfoValue}/{@code validateFormatValue} call sites, and the two reached via the {@link FormatType}/
+   * {@link InfoType} overloads below, both of which delegate here rather than the read-path overload). Every
+   * one of those four call sites already substitutes {@code "."} or skips an empty value before ever reaching
+   * a conversion call, so unlike the read-path overload, {@code value} being empty here is never a real VCF
+   * content case to warn or throw about -- it is this library's own bug if it happens, not a caller's, so it
+   * is an assertion failure ({@link IllegalArgumentException}), not a recoverable content check. This is what
+   * makes "an empty value never reaches this class from the writer" true by construction rather than merely
+   * documented: a future accidental removal of one of those four guards fails loudly here instead of silently
+   * reintroducing the isLenient()-dispatch question this method's split from the read-path overload exists to
+   * keep separate.
+   */
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
+  @SuppressWarnings("unchecked")
+  public static @Nullable <T> T convertNonEmptyProperty(Class<?> clas, @Nullable String value, VcfWarnings warnings) {
+    if (value == null || ".".equals(value)) {
+      return null;
+    }
+    if (value.isEmpty() && clas != Boolean.class) {
+      throw new IllegalArgumentException("convertNonEmptyProperty called with an empty value for " + clas +
+          " -- every caller must substitute or skip an empty value before reaching this method");
+    }
+    return (T) convertElement(clas, value, warnings);
   }
 
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
@@ -1317,8 +1495,11 @@ public class InternalUtils {
     }
   }
 
+  // delegates to convertNonEmptyProperty, not the read-path convertProperty(Class, ...) overload: this
+  // overload's only caller is VcfWriter's own "just test" probe, which has already substituted "." for an
+  // empty value before reaching here -- see convertNonEmptyProperty's own Javadoc.
   static @Nullable <T> T convertProperty(FormatType type, @Nullable String value, VcfWarnings warnings) {
-    return convertProperty(toJavaType(type), value, false, warnings);
+    return convertNonEmptyProperty(toJavaType(type), value, warnings);
   }
 
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
@@ -1339,8 +1520,11 @@ public class InternalUtils {
     }
   }
 
+  // delegates to convertNonEmptyProperty, not the read-path convertProperty(Class, ...) overload: this
+  // overload's only production caller is VcfWriter's own "just test" probe, which has already substituted
+  // "." for an empty value before reaching here -- see convertNonEmptyProperty's own Javadoc.
   static @Nullable <T> T convertProperty(InfoType type, @Nullable String value, VcfWarnings warnings) {
-    return convertProperty(toJavaType(type), value, false, warnings);
+    return convertNonEmptyProperty(toJavaType(type), value, warnings);
   }
 
   private static @Nullable Object convertElement(Class<?> clas, @Nullable String value, VcfWarnings warnings) {

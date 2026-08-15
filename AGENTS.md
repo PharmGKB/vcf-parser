@@ -181,6 +181,19 @@ here. The rest of this section states the concrete per-shape rules that follow f
   the counterexample that shows where the line falls: it looks like a `Builder` configuration setter, but its
   value is written verbatim into the output as `##fileformat`, so it is VCF content and takes
   `VcfFormatException`.
+- A third category sits between the two above: a parameter that is itself VCF content, but supplied as a
+  required read-time collaborator a lookup method needs to resolve its answer, not content being validated
+  for correctness or the key being looked up. `VcfSample.getProperty(VcfPosition position, VcfMetadata
+  metadata, String key)`'s `position`/`metadata` and `VcfPosition.getInfo(VcfMetadata metadata, String id)`'s
+  `metadata` are this category: each read resolves its version and warnings destination from that argument,
+  so a `null` there gives the method nothing to resolve against -- not a well-formed "not present" answer to
+  defer, the way a `null` `key`/`id` is. Both reject `null` with a raw `NullPointerException` via
+  `Preconditions.checkNotNull`, the same mechanism as the caller-configuration bullet above, for a different
+  reason (the value's role in the call, not its provenance) -- see `VALIDATION_PHILOSOPHY.md`'s "How the
+  principles interact" for the distinction. `key`/`id` themselves remain covered by the lookup-by-key bullet
+  above (null-tolerant, matching the `String`-keyed sibling); both implementations check `key`/`id` for `null`
+  first, so a caller passing `null` for both arguments together gets the null-tolerant `null` return, not the
+  NPE -- the NPE fires only when a real `key`/`id` is paired with a missing collaborator.
 - A class or method explicitly documented as not part of this library's supported public API is exempt from
   this policy's null-rejection requirement -- currently `InternalUtils` (renamed from `VcfUtils`; most of its
   members are `public` only because Java has no cross-package-within-a-library visibility modifier),

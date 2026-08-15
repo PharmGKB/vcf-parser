@@ -62,8 +62,8 @@ before assuming it generalizes to a similar-looking case.
 | Percent-encoding field scope, and the eight-sequence limit | INFO/FORMAT/structured-attribute values only, not ID/FILTER/keys/IDs/ALT; decode only the eight tabled sequences | ✅ |
 | INFO value containing a bare `=` | Warn, don't throw (matches bcftools) | ✅ |
 | Duplicate INFO key within one record | Warn, keep first occurrence (matches bcftools) | ✅ |
-| Negative/out-of-range values for reserved INFO keys `AC`/`AN`/`DP`/`END`/`MQ0`/`NS`/`AF` | Warn (vcf_validator-sourced; bcftools silent) | ✅ |
-| CIGAR grammar (SAM compliance) | Warn on violation (vcf_validator-sourced; bcftools silent) | ✅ |
+| Negative/out-of-range values for reserved INFO keys `AC`/`AN`/`DP`/`END`/`MQ0`/`NS`/`AF` | Warn in lenient mode, throw in strict mode (vcf_validator-sourced; bcftools silent) | ✅ |
+| CIGAR grammar (SAM compliance) | Warn in lenient mode, throw in strict mode (vcf_validator-sourced; bcftools silent) | ✅ |
 | `FORMAT="."` meaning no per-sample fields | Accept (matches bcftools) | ✅ |
 | Data-line FORMAT key fails tag-name grammar | Warn (lenient), throw (strict/direct construction) -- matches bcftools | ✅ |
 | Undeclared `##FORMAT` `Number` attribute | Treat as `Number=.` uniformly regardless of `Type` (matches bcftools) | ✅ |
@@ -847,7 +847,10 @@ bounds verified). bcftools is silent on all seven.
 
 **Decision:** warn on violation (vcf_validator-sourced, since bcftools offers no signal either way).
 Implemented in `InternalUtils.checkReservedInfoConstraints`, reachable from both the read path
-(`VcfPosition.getInfo(ReservedInfoProperty)`) and `VcfWriter.validateInfoValue`.
+(`VcfPosition.getInfo(ReservedInfoProperty)`) and `VcfWriter.validateInfoValue`. The read path is
+`isLenient()`-aware: warns under a lenient `VcfContext`, throws `VcfFormatException` under a strict one,
+matching `VALIDATION_PHILOSOPHY.md`'s universal `isLenient()` dispatch; the write path always warns,
+regardless of the written object's own strict/lenient origin, per `AGENTS.md`'s Writer Validation Policy.
 
 ### CIGAR grammar (SAM compliance)
 
@@ -859,7 +862,11 @@ text ("value is not an alphanumeric string compliant with the SAM specification"
 `(length, operation)` pairs). bcftools is silent on both.
 
 **Decision:** warn on violation, cited as a vcf_validator-sourced convention, not overstated as
-spec-mandated. Implemented in `InternalUtils.checkReservedInfoConstraints` (CIGAR-specific branch).
+spec-mandated. Implemented in `InternalUtils.checkReservedInfoConstraints` (CIGAR-specific branch). The
+read path is `isLenient()`-aware: warns under a lenient `VcfContext`, throws `VcfFormatException` under a
+strict one, matching `VALIDATION_PHILOSOPHY.md`'s universal `isLenient()` dispatch; the write path always
+warns, regardless of the written object's own strict/lenient origin, per `AGENTS.md`'s Writer Validation
+Policy.
 
 ### `FORMAT="."` meaning no per-sample fields
 

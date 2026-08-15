@@ -1904,6 +1904,82 @@ public class VcfParserTest {
 
   @Tag("hts-specs")
   @Test
+  void testHtsSpecsIntegerOverflowFixtureWarnsOnTypedAccess() throws IOException {
+    // A non-reserved INFO key's declared Type=Integer is only checked against the general 32-bit signed range
+    // (InternalUtils.checkInteger32BitRange) lazily, when the new metadata-aware accessor
+    // (VcfPosition.getInfo(VcfMetadata, String)) is actually used -- this fixture's own ##CauseOfFailure= is
+    // "INFO integer overflow" (INT=2147483648, one past Integer.MAX_VALUE).
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.3/failed/failed_body_info_integer_overflow.vcf"))
+        .parseWith((metadata, record) -> record.getPosition().getInfo(metadata, "INT"))
+        .build()) {
+      parser.parse();
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(appender.anyMessageContains("outside the 32-bit signed range"),
+        () -> "failed_body_info_integer_overflow.vcf should have warned about the out-of-range INT value");
+  }
+
+  @Tag("hts-specs")
+  @Test
+  void testHtsSpecsIntegerUnderflowFixtureWarnsOnTypedAccess() throws IOException {
+    // Same mechanism as testHtsSpecsIntegerOverflowFixtureWarnsOnTypedAccess above, at the negative bound --
+    // this fixture's own ##CauseOfFailure= is "INFO integer overflow" (INT=-2147483649, one below
+    // Integer.MIN_VALUE).
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.3/failed/failed_body_info_integer_underflow.vcf"))
+        .parseWith((metadata, record) -> record.getPosition().getInfo(metadata, "INT"))
+        .build()) {
+      parser.parse();
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(appender.anyMessageContains("outside the 32-bit signed range"),
+        () -> "failed_body_info_integer_underflow.vcf should have warned about the out-of-range INT value");
+  }
+
+  @Tag("hts-specs")
+  @Test
+  void testHtsSpecsIntegerReservedSentinelFixtureWarnsOnTypedAccess() throws IOException {
+    // Same mechanism as testHtsSpecsIntegerOverflowFixtureWarnsOnTypedAccess above, but for the eight BCF-reserved
+    // sentinel values (Integer.MIN_VALUE through Integer.MIN_VALUE + 7) rather than out-of-range values -- this
+    // fixture's own ##CauseOfFailure= is "INFO integer reserved value".
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.3/failed/failed_body_info_integer_reserved.vcf"))
+        .parseWith((metadata, record) -> record.getPosition().getInfo(metadata, "INT"))
+        .build()) {
+      parser.parse();
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(appender.anyMessageContains("BCF-reserved sentinel"),
+        () -> "failed_body_info_integer_reserved.vcf should have warned about the reserved sentinel INT value");
+  }
+
+  @Tag("hts-specs")
+  @Test
   void testHtsSpecsInvalidCigarValueFixturesWarnOnTypedAccess() throws IOException {
     // CIGAR's grammar is only checked lazily, when the typed accessor is actually used (same mechanism as
     // testHtsSpecsNegativeReservedInfoValueFixturesWarnOnTypedAccess above) -- neither fixture declares a

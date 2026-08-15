@@ -40,12 +40,31 @@ One shape implements principles 1 and 2, uniformly:
 
 - **`VcfContext.isLenient()` as the single strict/lenient signal** (`VcfPosition`'s content checks,
   `BaseMetadata.warnOrThrow` and therefore every declaration's `init()`, `VcfMetadata`'s private
-  `warnOrThrow`/`warnIfDuplicate` helpers, `VcfMetadata.validateAlt`): a single shared check consults the
-  context that created the object -- strict throws, lenient warns to that context's own `VcfWarnings`.
-  Inside `VcfPosition` and `InternalUtils.dropEmptyEntries`/`fillEmptyEntriesWithDot` this is still *carried*
-  as a `@Nullable VcfWarnings` parameter whose `null` means strict, but that is now an internal calling
-  convention between those private helpers, not a caller-visible signal: `VcfPosition` derives it from
-  `context.isLenient()` at the top of its constructor.
+  `warnOrThrow`/`warnIfDuplicate` helpers, `VcfMetadata.validateAlt`, and `InternalUtils.convertProperty
+  (ReservedProperty, String, VcfContext)`'s reserved-key content checks -- `checkInteger32BitRange`,
+  `checkNonNegativeInteger`, `checkUnitInterval`, `checkCigarGrammar`, `checkNonNegative32BitInteger`, and
+  `checkFilterLikeValue`): a single shared check consults the context that created the object -- strict
+  throws, lenient warns to that context's own `VcfWarnings`. `checkInteger32BitRange` has two further,
+  independent dispatch sites of its own, for the two *non-reserved*-key Integer-typed read paths --
+  `VcfPosition.getInfo(VcfMetadata, String)` and `VcfSample.getProperty(VcfPosition, VcfMetadata, String)` --
+  each deriving `m_context.isLenient() ? m_warnings : null` locally rather than through `convertProperty`,
+  since a non-reserved key's declared `Type` comes from its own `##INFO`/`##FORMAT` declaration, not a
+  `ReservedProperty` constant. `InternalUtils.convertProperty(Class, String, boolean, VcfWarnings,
+  VcfWarnings)` -- the shared type-conversion plumbing behind every one of those read paths -- reuses
+  whichever `checkWarnings` its own caller already derived for its two empty-value substitution branches
+  (an empty scalar or list-entry value); `InternalUtils.convertNonEmptyProperty` is its write-path
+  counterpart, with no empty-value branch at all, since every `VcfWriter` call site already substitutes or
+  skips an empty value before ever reaching a conversion call -- see that method's own Javadoc for why this
+  makes "unreachable from the writer" true by construction rather than something that has to be traced by
+  hand at each call site. Inside `VcfPosition` and `InternalUtils`'s own
+  `dropEmptyEntries`/`fillEmptyEntriesWithDot` and the six reserved-key content checks just named, this is
+  still *carried* as a `@Nullable VcfWarnings` parameter whose `null` means strict, but that is now an
+  internal calling convention between those private helpers, not a caller-visible signal: `VcfPosition`
+  derives it from `context.isLenient()` at the top of its constructor, and `convertProperty` derives it once,
+  near the top of its own body, and threads that single value through every one of the six checks (and,
+  unconditionally non-null, into `VcfWriter`'s own always-warn diagnostics-mode calls to
+  `checkReservedFormatConstraints`/`checkReservedInfoConstraints` and its two direct
+  `checkInteger32BitRange` calls, none of which ever see a `null`).
 
 **The input shape never decides strictness.** A declaration class still has two constructors -- a typed
 `(id, description, ...)` one and a `Map`-based one -- but they differ only in input format: the typed one
@@ -104,12 +123,15 @@ explicitly downward -- deliberately never read off `VcfWriter`'s own `m_context`
 diagnostics state rebuilt on every `writeHeader()` and never reference-identical to the context that built the
 data.
 
-**Version and warnings sink travel as separate arguments, never as one object.**
-`InternalUtils.convertProperty(ReservedProperty, ...)`, `checkReservedFormatConstraints` and
-`checkReservedInfoConstraints` each take a `VcfVersion` and a `VcfWarnings`, not a `VcfContext`. They are
-independent concerns -- on the write path the version comes from the record while the warnings go to the
-writer's own sink -- so there is deliberately nothing in scope inside those helpers to read a version off but
-the value the caller explicitly supplied.
+**Version and warnings sink travel as separate arguments, never as one object -- with one exception, for a
+reason specific to that one caller.** `checkReservedFormatConstraints` and `checkReservedInfoConstraints` each
+take a `VcfVersion` and a `@Nullable VcfWarnings`, not a `VcfContext`. They are independent concerns -- on the
+write path the version comes from the record while the warnings go to the writer's own sink -- so there is
+deliberately nothing in scope inside those helpers to read a version off but the value the caller explicitly
+supplied. `InternalUtils.convertProperty(ReservedProperty, String, VcfContext)` is the one exception: it takes
+a full `VcfContext` because it is the one place that also needs `isLenient()` itself (to derive the
+`checkWarnings` value it then threads into both of the methods above and into `checkInteger32BitRange`), not
+just the version and a warnings sink -- see its own Javadoc.
 
 **The `isAtLeast` discipline.** Every version gate is written `version.isAtLeast(VcfVersion.V4_3)` (or its
 negation), never a string comparison against the declared `##fileformat` and never a raw ordinal comparison. A
@@ -194,14 +216,17 @@ declared version" for that list, and its lenient section for the five gated rule
   (e.g. an empty sub-field name) now warns once per contiguous block of
   identical FORMAT text, not once per record, since a cache hit skips re-emitting that warning too.
 - **`VcfMetadata`/`Builder`**: covered in "How principles 1 and 2 are dispatched" above.
-- **`VcfSample`**: not part of that dispatch at all -- `VcfContext.newSample` and `newTrustedSample` already
-  only throw (a null or mismatched-size key/value list, or -- outside `newTrustedSample` -- a structural
-  delimiter in a key/value), never warn, so there is no throw-vs-warn choice to make at construction for this
-  class. Every warn site it does have is post-construction -- `validate()`'s empty-value normalization,
-  `properties()`'s duplicate-FORMAT-key handling, and the deferred typed-read diagnostics in
-  `getProperty(VcfPosition, VcfMetadata, String)`, `getGenotype(VcfPosition)` and
-  `containsProperty(ReservedFormatProperty)`. (No count is asserted, deliberately: the list has grown since it
-  was first written down as two.) `newTrustedSample` is a principle-3 case, not principle 1/2: it skips
+- **`VcfSample`**: not part of *construction-time* dispatch at all -- `VcfContext.newSample` and
+  `newTrustedSample` already only throw (a null or mismatched-size key/value list, or -- outside
+  `newTrustedSample` -- a structural delimiter in a key/value), never warn, so there is no throw-vs-warn
+  choice to make at construction for this class. Every check it has is post-construction instead --
+  `validate()`'s empty-value normalization and `properties()`'s duplicate-FORMAT-key handling always warn,
+  regardless of context, but `getProperty(VcfPosition, VcfMetadata, String)` and `getGenotype(VcfPosition)`
+  (which reads `GT` through it) are `isLenient()`-aware like any other deferred content check -- warns under a
+  lenient `VcfContext`, throws under a strict one, for a `Type` mismatch, an out-of-32-bit-range Integer value,
+  or an empty value -- so "post-construction" is not the same claim as "always warns." `containsProperty
+  (ReservedFormatProperty)` remains warn-only, unaffected. (No count is asserted, deliberately: the list has
+  grown since it was first written down as two.) `newTrustedSample` is a principle-3 case, not principle 1/2: it skips
   the structural-delimiter check entirely (rather than warning in place of throwing) for `VcfParser`'s own
   already-guaranteed-clean input, and is package-private so no external caller can reach it -- see its own
   Javadoc for the measured cost this avoids.
@@ -261,6 +286,20 @@ declared version" for that list, and its lenient section for the five gated rule
   `null` regardless of a parameter's declared type -- a public constructor, static factory, or method must
   defend against that itself rather than relying on the annotation. `AGENTS.md`'s Public API Null-Safety
   Policy states the concrete per-shape rules this produces.
+- **A required read-time collaborator is a third raw-`NullPointerException` category, distinct from
+  caller-configuration even though both use the identical mechanism.** `AGENTS.md`'s Null-Safety Policy names
+  two categories for a raw NPE: a `Builder`'s caller-configuration parameter (never VCF content -- a `Path`,
+  a `Reader`, a `VcfWarnings`, a `VcfContext`), and content explicitly exempted from the public-API surface
+  entirely (`@RestrictedApi`). `VcfSample.getProperty(VcfPosition position, VcfMetadata metadata, String
+  key)`'s `position`/`metadata` and `VcfPosition.getInfo(VcfMetadata metadata, String id)`'s `metadata` fit
+  neither: they *are* VCF content, and the method is fully public. What earns them the same raw-NPE treatment
+  is a different property -- the read resolves its version and its warnings destination from that argument,
+  so a `null` there isn't a well-formed "not present" input the way a `null` `key`/`id` is (which correctly
+  returns `null`, per the lookup-by-key bullet in `AGENTS.md`'s policy); it is the method having nothing to
+  resolve the answer against at all, the same shape as a `Builder` missing its caller-configuration. The
+  distinction that matters is the argument's *role in the call* (a required collaborator vs. the thing being
+  looked up or validated), not whether it happens to be VCF content -- content-vs-configuration alone would
+  wrongly predict `VcfFormatException` here.
 - **Unquoting before internal use is a third axis, distinct from both principles 1/2 and from null-safety
   above.** A `BaseMetadata` property's value may be wrapped in a quoted-string encoding (`ID="foo"`); `getPropertyUnquoted`
   is the only accessor that strips it, `getPropertyRaw` never does. Every comparison or validation this

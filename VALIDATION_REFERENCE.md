@@ -81,7 +81,10 @@ The parser rejects a file whose structure or mandatory record fields are invalid
 - A sample with more sub-fields than its `FORMAT` declares (trailing sub-fields may be dropped, but not added).
 - A malformed or out-of-range `GT` allele index looked up through `VcfSample.getGenotype(VcfPosition)` (or
   `MemoryMappedVcfDataStore`'s `getGenotypeForId`/`getGenotypeAtLocus`, which delegate to it), or a failed
-  conversion when a typed value is requested.
+  conversion when a typed value is requested. An empty (but present) `GT` value under a strict `VcfContext`
+  also throws here, for the same `isLenient()`-aware reason as every other reserved/non-reserved typed read's
+  empty-value substitution below -- `getGenotype` reads `GT` through `getProperty(ReservedFormatProperty)`,
+  which shares that dispatch; under a lenient `VcfContext` an empty `GT` still returns `null`, unchanged.
 - A key or value set through `BaseMetadata`'s, `VcfSample`'s, or `VcfMetadata`'s mutators (e.g. a `Description`, a
   sample's `GT` value, or an `##assembly` line) containing a line terminator. VCFv4.3.tex line 81 ("non-printable
   characters U+0000--U+0008, U+000B--U+000C, U+000E--U+001F are disallowed") and line 82 ("Line separators must
@@ -251,7 +254,7 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   standalone object before it is ever added to a builder: without it, a caller could construct one under one
   `VcfContext` and add it to a `VcfMetadata.Builder` built under a different one, silently routing that
   declaration's own future validation (e.g. a re-run of `validate()`) to the wrong `VcfWarnings` sink than the
-  metadata object it now lives in uses. See `VALIDATION_PHILOSOPHY.md:64`
+  metadata object it now lives in uses. See `VALIDATION_PHILOSOPHY.md:82`
   ("A declaration built under one context cannot be moved into a metadata object built under another by any
   route (see `VcfMetadata.checkSameContext`)").
 - `VcfContext.newRecord` throws `VcfFormatException` if its position or any of its samples was created under a
@@ -265,13 +268,17 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   is only well-defined if there is exactly one. (It is deliberately not `VcfWriter`'s own `m_context`: that is
   writer-local diagnostics state, rebuilt on every `writeHeader()` and never reference-identical to the context
   that built the data.)
-- `VcfSample.getProperty(VcfPosition, VcfMetadata, String)` throws `VcfFormatException` if `position` or
-  `metadata` was created under a different `VcfContext` instance than the sample, for the same reason: the read
-  resolves its version and its warnings sink from the sample's own context, which is meaningless if the three
-  disagree. Checked before the property lookup, so a mismatch does not depend on whether the requested key
-  happens to have a value. This is a separate axis from the method's null tolerance -- a `null` `key`,
-  `position` or `metadata` still returns `null` rather than throwing (see `AGENTS.md`'s Public API Null-Safety
-  Policy).
+- `VcfSample.getProperty(VcfPosition, VcfMetadata, String)` and `VcfPosition.getInfo(VcfMetadata, String)` both
+  throw `VcfFormatException` if `position`/`metadata` (whichever the method takes) was created under a
+  different `VcfContext` instance than the receiver, for the same reason: the read resolves its version and
+  its warnings sink from the receiver's own context, which is meaningless if they disagree. Checked before the
+  property lookup, so a mismatch does not depend on whether the requested key happens to have a value. This is
+  a separate axis from the method's null tolerance: `key`/`id` still returns `null` (matching the plain
+  `getProperty(String)`/`getInfo(String)` sibling's "not present" contract), but `position`/`metadata` reject
+  `null` with a raw `NullPointerException` instead -- a deliberate exception to `AGENTS.md`'s Public API
+  Null-Safety Policy's general rule, since these two arguments are VCF content used as a read-time collaborator
+  rather than content being validated for correctness itself; see `TODO.md`'s "Document a third Public API
+  Null-Safety Policy category" entry for the full reasoning.
 - `VcfWriter.Builder.targetFileFormat(String)` throws `VcfFormatException` from `writeHeader` if it names a
   different VCF version than the metadata declares, before emitting any output: this library implements no
   cross-version conversion, so emitting that declaration would advertise a version the data does not conform
@@ -431,16 +438,46 @@ is a structural failure and still throws -- see the strict section above):
   `VcfWriter.Builder.validateBeforeWrite()`. VCFv4.2.tex line 230 gives `PS` its own `Type` as "Non-negative
   32-bit Integer"; VCFv4.3.tex generalizes this to every Integer value (line 100, "Integer (32-bit, signed)";
   line 103, the values −2³¹ through −2³¹+7 are disallowed in VCF and BCF alike -- verbatim at VCFv4.4.tex lines
-  100/103, VCFv4.5.tex lines 98/101). Applied via `InternalUtils.checkNonNegative32BitInteger` for `PS`. See
-  "Rules applied at every declared version" below for the known gap in checking this bound for other
-  Integer-typed values.
+  100/103, VCFv4.5.tex lines 98/101). Applied via `InternalUtils.checkFilterLikeValue` for `FT` and
+  `checkNonNegative32BitInteger` for `PS`. Both are `isLenient()`-aware on the read side (warns under a lenient
+  `VcfContext`, throws `VcfFormatException` under a strict one, matching the dispatch `VALIDATION_PHILOSOPHY.md`
+  documents as the universal contract); the write side always warns, regardless of the written object's own
+  strict/lenient origin, per `AGENTS.md`'s Writer Validation Policy. See the next bullet for the general 32-bit
+  range check that now covers every other Integer-typed value.
+- Any Integer-typed INFO/FORMAT value (reserved or not) that is not representable as a 32-bit signed integer,
+  or that collides with one of the eight BCF-reserved sentinel bit patterns (`VCFv4.3.tex:1708`/`:1710`,
+  `0x80000000`-`0x80000007`): checked by `InternalUtils.checkInteger32BitRange`, applied unconditionally
+  regardless of declared version for the same reason as `PS` above (VCFv4.2.tex states no general bound, but
+  this is not a case where Integer's *meaning* differs across versions, only whether the spec bothered to
+  state it). Wired into every Integer-typed read path -- `InternalUtils.convertProperty` for a reserved
+  INFO/FORMAT key, `VcfSample.getProperty(VcfPosition, VcfMetadata, String)` for a non-reserved FORMAT key, and
+  `VcfPosition.getInfo(VcfMetadata, String)` for a non-reserved INFO key (this last accessor's addition is what
+  makes a non-reserved INFO key's declared `Type=Integer` checkable via a metadata-aware typed getter at all,
+  the same role `getInfo(ReservedInfoProperty)` already played for a reserved key) -- and into both write-side
+  diagnostic paths, `VcfWriter.validateInfoValue`/`validateFormatValue`. The read side is `isLenient()`-aware
+  (warns under a lenient `VcfContext`, throws `VcfFormatException` under a strict one) -- this matches the
+  dispatch `VALIDATION_PHILOSOPHY.md` documents as the universal contract, which every other reserved-key
+  content check in this section (`FT`/`PS` above, `GP` and `AC`/`AN`/`DP`/`END`/`MQ0`/`NS`/`AF`/`CIGAR` below)
+  now also follows; the write side always warns, regardless of the written object's own
+  strict/lenient origin, per `AGENTS.md`'s Writer Validation Policy. Deliberately not excluded for `FORMAT/PS`:
+  `checkNonNegative32BitInteger` above already flags every value this check would too, so under a lenient
+  `VcfContext` a reserved-sentinel or overflowing `PS` value produces two warnings for one input -- accepted,
+  matching this codebase's existing "multiple independent checks warn separately about the same defect"
+  pattern (see `WONT_FIX.md`). Under a strict one, `checkNonNegative32BitInteger` runs first and throws
+  before this check ever runs, so the caller sees only its message, never this check's more specific
+  BCF-reserved-sentinel one. Closes the
+  hts-specs conformance gap covered by `failed_body_info_integer_overflow.vcf`/`_underflow.vcf`/`_reserved.vcf`
+  -- see `HTS_SPECS_BASELINE_STATUS.md`'s "INFO reserved/non-reserved Integer value outside the 32-bit signed
+  range" entry and `VcfParserTest`'s three `testHtsSpecsInteger*FixtureWarnsOnTypedAccess` tests.
 - A reserved `FORMAT/GP` value outside the interval `[0, 1]`, but **only under VCFv4.3 and later** -- VCFv4.3
   redefined `GP` from VCFv4.2's phred-scaled encoding to a 0-1 probability (VCFv4.3.tex line 491; see
   `ReservedFormatProperty.GenotypePosterior`'s own comment for the full citation), so no range check applies
   under VCFv4.2 and earlier, where any `Float` is a legitimate phred value. `GP` is `Number=G` and list-shaped,
   so each comma-separated element is checked independently, reusing the same unit-interval helper (and its two
   exemptions, a special `VcfFloat` value and an overlong value) as `INFO/AF` below. Checked both when a typed
-  value is requested and by `VcfWriter.Builder.validateBeforeWrite()`.
+  value is requested and by `VcfWriter.Builder.validateBeforeWrite()`; the read side is `isLenient()`-aware
+  (warns under a lenient `VcfContext`, throws `VcfFormatException` under a strict one, once the version gate
+  above is satisfied) like every other reserved-key content check in this section, the write side always warns.
 - A read of the **removed** reserved key `GLE` under VCFv4.3 or later. VCFv4.3 removed it (VCFv4.3.tex line
   2168, "Removed unused and ill-defined GLE FORMAT tag"; present as a reserved key at VCFv4.1.tex line 208 and
   VCFv4.2.tex line 225), so from VCFv4.3 `GLE` has no reserved status at all: it is classified as an ordinary
@@ -624,7 +661,8 @@ appendix:
   above.
 - Contig/CHROM character set -- see the `CHROM` character-set bullet in "File and record structure" above.
 - Spaces in INFO values -- see the `INFO` value bullet in "File and record structure" above.
-- Integer is 32-bit signed (`PS`) -- see the `FORMAT/PS` bullet in "INFO/FORMAT/sample value content" above.
+- Integer is 32-bit signed -- see the `FORMAT/PS` bullet and the general 32-bit range check bullet directly
+  after it in "INFO/FORMAT/sample value content" above.
 - Non-printable characters and line separators -- see the line-terminator bullet in "File and record structure"
   above.
 - Zero-length fields are not allowed -- see the empty-entry paragraph in "Other lenient behavior" above, and
@@ -634,21 +672,17 @@ appendix:
 - UTF-8, and no byte order mark -- see the new UTF-8/BOM bullet at the top of "File and record structure"
   above.
 
-Three of these are unimplemented rules of the VCFv4.3 target, not merely gaps relative to a later version:
+Two of these are unimplemented rules of the VCFv4.3 target, not merely gaps relative to a later version:
 
 - A data-line INFO *key* is checked for whitespace and `;`/`=` but is not matched against
   `InternalUtils.INFO_PATTERN`, so a key like `1BAD` is accepted. No fixture in the 4.3 corpus demands this; it
   remains unimplemented.
-- No general 32-bit Integer range check exists for any Integer-typed INFO/FORMAT value other than `PS`; typed
-  access returns a Java `long`, so e.g. `2147483648` in a declared `Type=Integer` field converts without a
-  diagnostic. This is the one gap with fixture pressure: three hts-specs 4.3 fixtures now demand it --
-  `failed_body_info_integer_overflow.vcf`, `failed_body_info_integer_underflow.vcf`, and
-  `failed_body_info_integer_reserved.vcf` -- see `HTS_SPECS_BASELINE_STATUS.md`'s "INFO reserved/non-reserved
-  Integer value outside the 32-bit signed range" entry. It remains unimplemented pending that work.
 - The wider C0 control-character range (VCFv4.3.tex line 81) is not scanned outside the specific
   tab/LF/CR/vertical-tab/form-feed checks named above, so a NUL or other C0 control elsewhere in a value
   survives undetected. No fixture in the 4.3 corpus demands this; it remains unimplemented.
 
-Do not treat this re-framing as an implementation trigger for the first and third gaps -- neither has 4.3
-fixture pressure and both stay unimplemented; only the second is tracked as deferred work (see
-`HTS_SPECS_BASELINE_STATUS.md`).
+Do not treat this re-framing as an implementation trigger for either gap -- neither has 4.3 fixture pressure
+and both stay unimplemented. (Formerly the second entry in this list, the general 32-bit Integer range check
+did have fixture pressure and has since been implemented and removed from this list -- see the general 32-bit
+range check bullet in "INFO/FORMAT/sample value content" above and `HTS_SPECS_BASELINE_STATUS.md`'s "INFO
+reserved/non-reserved Integer value outside the 32-bit signed range" entry.)

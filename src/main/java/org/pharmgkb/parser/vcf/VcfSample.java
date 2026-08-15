@@ -280,7 +280,7 @@ public final class VcfSample {
     if (key == null) {
       return null;
     }
-    return InternalUtils.convertProperty(key, getProperty(key.getId()), m_context.getVersion(), m_warnings);
+    return InternalUtils.convertProperty(key, getProperty(key.getId()), m_context);
   }
 
   /**
@@ -304,14 +304,24 @@ public final class VcfSample {
    * @param <T> the type {@code key}'s declared {@code Type} specifies if it (or, for a non-reserved key, its
    * {@code ##FORMAT} declaration's {@code Number}) is not list-shaped; otherwise {@code List<V>} where {@code V}
    * is that type
+   * @throws NullPointerException if {@code position} or {@code metadata} is {@code null} -- both are required
+   * read-time collaborators, not content being looked up (unlike {@code key}, which is null-tolerant, matching
+   * {@link #getProperty(String)}'s "not present" contract); see {@code AGENTS.md}'s Public API Null-Safety
+   * Policy for the distinction
    * @throws VcfFormatException if {@code position} or {@code metadata} was built under a different
-   * {@link VcfContext} than this sample, or if the raw value's {@code Type} does not match {@code key}'s declared
-   * type
+   * {@link VcfContext} than this sample; if the raw value's {@code Type} does not match {@code key}'s declared
+   * type; if a declared {@code Type=Integer} value is not representable as a 32-bit signed integer or collides
+   * with a BCF-reserved sentinel value (see {@link InternalUtils#checkInteger32BitRange}); or if the raw value
+   * is an empty (but non-{@code "."}) entry and this sample was built under a strict {@link VcfContext} (under
+   * a lenient one, an empty value instead returns {@code null} -- see
+   * {@link InternalUtils#convertProperty(Class, String, boolean, VcfWarnings, VcfWarnings)})
    */
   public @Nullable <T> T getProperty(VcfPosition position, VcfMetadata metadata, String key) {
-    if (key == null || position == null || metadata == null) {
+    if (key == null) {
       return null;
     }
+    Preconditions.checkNotNull(position, "position must not be null");
+    Preconditions.checkNotNull(metadata, "metadata must not be null");
     // Structural, not this method's null tolerance above -- a different axis (AGENTS.md's Public API
     // Null-Safety Policy): a read assembled from a position/metadata built under a different VcfContext than
     // this sample has no unambiguous resolved version or warnings destination, so this throws rather than
@@ -414,21 +424,33 @@ public final class VcfSample {
     // always sets a real value, and the non-reserved branch just substituted "." for an absent declaration.
     String valueToConvert = (!isList && pieces.length > 1) ? pieces[0] : rawValue;
     if (reserved != null) {
-      return InternalUtils.convertProperty(reserved, valueToConvert, version, m_warnings);
+      return InternalUtils.convertProperty(reserved, valueToConvert, m_context);
     }
     FormatType formatType = format.getType();
     Class<?> type = formatType == null ? String.class : InternalUtils.toJavaType(formatType);
-    return InternalUtils.convertProperty(type, valueToConvert, isList, m_warnings);
+    // isLenient()-aware, shared by both the range check below and convertProperty's own empty-value
+    // substitution -- see InternalUtils.convertProperty(Class, String, boolean, VcfWarnings, VcfWarnings)'s
+    // own Javadoc for why an empty value is isLenient()-gated here but not on VcfWriter's write side.
+    VcfWarnings checkWarnings = m_context.isLenient() ? m_warnings : null;
+    if (type == Long.class) {
+      InternalUtils.checkInteger32BitRange("FORMAT " + key, valueToConvert, isList, checkWarnings);
+    }
+    return InternalUtils.convertProperty(type, valueToConvert, isList, m_warnings, checkWarnings);
   }
 
   /**
    * Interprets this sample's {@code GT} value against {@code position}'s alleles, resolving each allele index to
    * its actual REF/ALT base string and preserving per-boundary phasing identity ({@code |} vs {@code /}).
    *
-   * @return {@code null} if {@code GT} is absent or empty, or is entirely missing (e.g. {@code "."} or
-   * {@code "./."})
+   * @return {@code null} if {@code GT} is absent, or is entirely missing (e.g. {@code "."} or {@code "./."}) --
+   * an empty (but present) {@code GT} value returns {@code null} the same way under a lenient {@link VcfContext},
+   * but throws under a strict one; see the next {@code @throws}
    * @throws VcfFormatException if an allele index is not a number, or is out of range (0..{@code
-   * position.getAltBases().size()}, inclusive)
+   * position.getAltBases().size()}, inclusive); also thrown, instead of the {@code null} return above, for an
+   * empty (but present) {@code GT} value under a strict {@link VcfContext} -- this method reads {@code GT}
+   * through {@link #getProperty(ReservedFormatProperty)}, whose {@code isLenient()}-aware empty-value handling
+   * (see {@link InternalUtils#convertProperty(Class, String, boolean, VcfWarnings, VcfWarnings)}) applies here
+   * too
    */
   public @Nullable Genotype getGenotype(VcfPosition position) {
     // matches getProperty(VcfPosition, VcfMetadata, String)'s and VcfPosition.getInfo(ReservedInfoProperty)'s

@@ -812,9 +812,16 @@ public class VcfWriter implements Closeable {
         continue;
       }
       try {
-        InternalUtils.convertProperty(type, value, false, m_warnings);
+        InternalUtils.convertNonEmptyProperty(type, value, m_warnings);
       } catch (VcfFormatException e) {
         m_warnings.warn("INFO {} value {} is not of type {}", key, value, type.getSimpleName());
+      }
+      // validateBeforeWrite()'s own policy is warn-always for semantically-non-compliant-but-safe content,
+      // regardless of the written object's own strict/lenient origin -- see AGENTS.md's Writer Validation
+      // Policy and checkInteger32BitRange's own Javadoc. isList=false: value is already one element of the
+      // outer values list above, not a comma-joined whole.
+      if (type == Long.class) {
+        InternalUtils.checkInteger32BitRange("INFO " + key, value, false, m_warnings);
       }
     }
   }
@@ -875,10 +882,18 @@ public class VcfWriter implements Closeable {
         continue;
       }
       try {
-        InternalUtils.convertProperty(type, element, false, m_warnings);
+        InternalUtils.convertNonEmptyProperty(type, element, m_warnings);
       } catch (VcfFormatException e) {
         m_warnings.warn("FORMAT {} for sample #{} value {} is not of type {}", key, sampleIndex, element,
             type.getSimpleName());
+      }
+      // validateBeforeWrite()'s own policy is warn-always for semantically-non-compliant-but-safe content,
+      // regardless of the written object's own strict/lenient origin -- see AGENTS.md's Writer Validation
+      // Policy and checkInteger32BitRange's own Javadoc. isList=false: element is already one element of the
+      // outer values array above, not a comma-joined whole.
+      if (type == Long.class) {
+        InternalUtils.checkInteger32BitRange("FORMAT " + key + " for sample #" + sampleIndex, element, false,
+            m_warnings);
       }
     }
   }
@@ -1010,10 +1025,11 @@ public class VcfWriter implements Closeable {
           if (value.isEmpty()) {
             // the isEmptyValueList/multi-value branches below already warn appropriately for an empty value
             // (in whichever form applies to this key's Type/declaration state) and substitute "." on write;
-            // this "just test" type-conversion probe has nothing meaningful to check for an empty value, and
-            // (since InternalUtils.convertProperty now itself warns on an empty scalar value) would otherwise
-            // emit a redundant, context-free second warning for the same defect this loop's own catch block
-            // isn't even equipped to describe usefully here (an empty value isn't "not of type X").
+            // this "just test" type-conversion probe has nothing meaningful to check for an empty value. This
+            // guard is now load-bearing, not just avoiding a redundant warning: the probe below delegates to
+            // InternalUtils.convertProperty(InfoType, ...), which routes to convertNonEmptyProperty and throws
+            // IllegalArgumentException for an empty value -- removing this guard would crash the writer, not
+            // merely double-warn.
             continue;
           }
           Integer number = null;

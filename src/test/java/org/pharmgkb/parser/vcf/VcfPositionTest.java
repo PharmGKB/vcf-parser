@@ -1111,10 +1111,13 @@ public class VcfPositionTest {
     // reached convertElement() directly for a scalar reserved key -- for DP (Long-typed), that raw-crashed the
     // typed conversion with a confusing "Expected integer; got " VcfFormatException instead of the graceful
     // null this library's missing-value convention specifies everywhere else, even though EMPTY_FIELD_HANDLING's
-    // "invalid content silently accepted" floor is squarely triggered here.
+    // "invalid content silently accepted" floor is squarely triggered here. Lenient context, not strict: an
+    // empty value now throws under strict (InternalUtils.convertProperty's own isLenient()-aware dispatch) --
+    // this test is about the substitution itself, covered separately for strict by
+    // testGetInfoReservedInfoPropertyEmptyValueThrowsUnderStrictContext below.
     ListMultimap<String, String> info = ArrayListMultimap.create();
     info.put("DP", "");
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, info, null, -1);
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, info, null, -1);
     Long dp = position.getInfo(ReservedInfoProperty.Depth);
     assertNull(dp);
   }
@@ -1123,12 +1126,57 @@ public class VcfPositionTest {
   public void testGetInfoReservedPropertyTreatsEmptyValueAsMissingForScalarStringKey() {
     // same defect, worse symptom for a String-typed scalar reserved key (AA): convertElement() for String is a
     // no-op passthrough, so the empty value doesn't throw -- it silently returns "" instead of null, violating
-    // the "absent -> null" contract every other reserved-property getter in this class follows
+    // the "absent -> null" contract every other reserved-property getter in this class follows. Lenient
+    // context, not strict -- see the sibling numeric-key test above for why.
     ListMultimap<String, String> info = ArrayListMultimap.create();
     info.put("AA", "");
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, info, null, -1);
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, info, null, -1);
     String aa = position.getInfo(ReservedInfoProperty.AncestralAllele);
     assertNull(aa);
+  }
+
+  @Test
+  public void testGetInfoReservedInfoPropertyEmptyValueThrowsUnderStrictContext() {
+    // end-to-end: a position built under a strict VcfContext must throw VcfFormatException, not warn-and-
+    // substitute, when a reserved key's value is empty -- InternalUtils.convertProperty(Class, String,
+    // boolean, VcfWarnings, VcfWarnings)'s empty-value branches are isLenient()-aware, matching VcfPosition's
+    // own construction-time checks' treatment of the analogous empty-entry condition
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("DP", "");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, info, null, -1);
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> position.getInfo(ReservedInfoProperty.Depth));
+    assertTrue(ex.getMessage().contains("is an empty entry"));
+  }
+
+  @Test
+  public void testGetInfoReservedInfoPropertyAlleleCountThrowsUnderStrictContext() {
+    // end-to-end: a position built under a strict VcfContext must throw VcfFormatException when a negative AC
+    // value is read via the public getInfo(ReservedInfoProperty) route -- InternalUtilsTest's own strict-throw
+    // coverage for checkNonNegativeInteger only exercises checkReservedInfoConstraints/convertProperty
+    // (ReservedProperty, ...) directly, not this actual call path
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("AC", "-5");
+    VcfPosition position = STRICT_CONTEXT.newPosition("1", 100, null, "A", List.of("T"), null, null, info, null, -1);
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> position.getInfo(ReservedInfoProperty.AlleleCount));
+    assertTrue(ex.getMessage().contains("is a negative number"));
+  }
+
+  @Test
+  public void testGetInfoTwoArgThrowsOnBcfReservedSentinelUnderStrictContextForNonReservedKey() {
+    // end-to-end coverage for checkInteger32BitRange's "BCF-reserved sentinel" message specifically (distinct
+    // from the "outside the 32-bit signed range" overflow message already covered end-to-end elsewhere in this
+    // class) -- a non-reserved key avoids FORMAT/PS's own checkNonNegative32BitInteger, which would otherwise
+    // shadow this message by throwing its own "not a non-negative 32-bit integer" first (see
+    // VcfSampleTest.testGetPropertyReservedFormatPropertyPhaseSetThrowsFirstViolationOnlyUnderStrictContext)
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2")
+        .addInfo("INT", "custom integer", InfoType.Integer, "1", null, null).build();
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("INT", "-2147483648");
+    VcfPosition position = STRICT_CONTEXT.newPosition("1", 100, null, "A", List.of("T"), null, null, info, null, -1);
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> position.getInfo(metadata, "INT"));
+    assertTrue(ex.getMessage().contains("BCF-reserved sentinel"));
   }
 
   @Test
@@ -1142,6 +1190,121 @@ public class VcfPositionTest {
     VcfPosition position = STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, info, null, -1);
     Boolean h2 = position.getInfo(ReservedInfoProperty.Hapmap2);
     assertEquals(Boolean.TRUE, h2);
+  }
+
+  @Test
+  public void testGetInfoTwoArgReturnsNullForNullId() {
+    VcfContext ctx = VcfContext.lenient("VCFv4.2", VcfWarnings.DEFAULT);
+    VcfMetadata metadata = new VcfMetadata.Builder(ctx).setFileFormat("VCFv4.2").build();
+    VcfPosition position = ctx.newPosition("1", 100, null, "A", List.of("T"), null, null, null, null, -1);
+    assertNull(position.getInfo(metadata, null));
+  }
+
+  @Test
+  public void testGetInfoTwoArgThrowsNpeForNullMetadata() {
+    VcfContext ctx = VcfContext.lenient("VCFv4.2", VcfWarnings.DEFAULT);
+    VcfPosition position = ctx.newPosition("1", 100, null, "A", List.of("T"), null, null, null, null, -1);
+    assertThrows(NullPointerException.class, () -> position.getInfo(null, "AC"));
+  }
+
+  @Test
+  public void testGetInfoTwoArgThrowsForMetadataBuiltUnderADifferentContext() {
+    VcfContext ctx1 = VcfContext.lenient("VCFv4.2", VcfWarnings.DEFAULT);
+    VcfContext ctx2 = VcfContext.lenient("VCFv4.2", VcfWarnings.DEFAULT);
+    VcfMetadata metadata = new VcfMetadata.Builder(ctx2).setFileFormat("VCFv4.2").build();
+    VcfPosition position = ctx1.newPosition("1", 100, null, "A", List.of("T"), null, null, null, null, -1);
+    assertThrows(VcfFormatException.class, () -> position.getInfo(metadata, "AC"));
+  }
+
+  @Test
+  public void testGetInfoTwoArgResolvesReservedKeyCanonicalType() {
+    VcfContext ctx = VcfContext.lenient("VCFv4.2", VcfWarnings.DEFAULT);
+    VcfMetadata metadata = new VcfMetadata.Builder(ctx).setFileFormat("VCFv4.2").build();
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("DP", "10");
+    VcfPosition position = ctx.newPosition("1", 100, null, "A", List.of("T"), null, null, info, null, -1);
+    Long value = position.getInfo(metadata, "DP");
+    assertEquals(10L, value);
+  }
+
+  @Test
+  public void testGetInfoTwoArgResolvesNonReservedKeyDeclaredType() {
+    VcfContext ctx = VcfContext.lenient("VCFv4.2", VcfWarnings.DEFAULT);
+    VcfMetadata metadata = new VcfMetadata.Builder(ctx).setFileFormat("VCFv4.2")
+        .addInfo("INT", "custom integer", InfoType.Integer, "1", null, null).build();
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("INT", "5");
+    VcfPosition position = ctx.newPosition("1", 100, null, "A", List.of("T"), null, null, info, null, -1);
+    Long value = position.getInfo(metadata, "INT");
+    assertEquals(5L, value);
+  }
+
+  @Test
+  public void testGetInfoTwoArgWarnsOnOverflowUnderLenientContextForNonReservedKey() {
+    StringWriter sink = new StringWriter();
+    VcfContext ctx = VcfContext.lenient("VCFv4.2", new VcfWarnings(sink));
+    VcfMetadata metadata = new VcfMetadata.Builder(ctx).setFileFormat("VCFv4.2")
+        .addInfo("INT", "custom integer", InfoType.Integer, "1", null, null).build();
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("INT", "2147483648");
+    VcfPosition position = ctx.newPosition("1", 100, null, "A", List.of("T"), null, null, info, null, -1);
+    Long value = position.getInfo(metadata, "INT");
+    assertEquals(2147483648L, value);
+    assertTrue(sink.toString().contains("outside the 32-bit signed range"));
+  }
+
+  @Test
+  public void testGetInfoTwoArgWarnsOnReservedSentinelForNonReservedKey() {
+    StringWriter sink = new StringWriter();
+    VcfContext ctx = VcfContext.lenient("VCFv4.2", new VcfWarnings(sink));
+    VcfMetadata metadata = new VcfMetadata.Builder(ctx).setFileFormat("VCFv4.2")
+        .addInfo("INT", "custom integer", InfoType.Integer, "1", null, null).build();
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("INT", "-2147483648");
+    VcfPosition position = ctx.newPosition("1", 100, null, "A", List.of("T"), null, null, info, null, -1);
+    Long value = position.getInfo(metadata, "INT");
+    assertEquals(-2147483648L, value);
+    assertTrue(sink.toString().contains("BCF-reserved sentinel"));
+  }
+
+  @Test
+  public void testGetInfoTwoArgThrowsOnOverflowUnderStrictContextForNonReservedKey() {
+    VcfContext ctx = VcfContext.strict("VCFv4.2");
+    VcfMetadata metadata = new VcfMetadata.Builder(ctx).setFileFormat("VCFv4.2")
+        .addInfo("INT", "custom integer", InfoType.Integer, "1", null, null).build();
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("INT", "2147483648");
+    VcfPosition position = ctx.newPosition("1", 100, null, "A", List.of("T"), null, null, info, null, -1);
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> position.getInfo(metadata, "INT"));
+    assertTrue(ex.getMessage().contains("outside the 32-bit signed range"));
+  }
+
+  @Test
+  public void testGetInfoReservedInfoPropertyAlleleFrequencyThrowsUnderStrictContext() {
+    // end-to-end: a position built under a strict VcfContext must throw VcfFormatException when an
+    // out-of-[0,1]-range AF value is read via the public getInfo(ReservedInfoProperty) route --
+    // InternalUtilsTest's own strict-throw coverage for checkUnitInterval only exercises the package-private
+    // checkReservedInfoConstraints helper directly, not this actual call path
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("AF", "-0.01");
+    VcfPosition position = STRICT_CONTEXT.newPosition("1", 100, null, "A", List.of("T"), null, null, info, null, -1);
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> position.getInfo(ReservedInfoProperty.AlleleFrequency));
+    assertTrue(ex.getMessage().contains("does not lie in the interval [0, 1]"));
+  }
+
+  @Test
+  public void testGetInfoReservedInfoPropertyCigarThrowsUnderStrictContext() {
+    // end-to-end: a position built under a strict VcfContext must throw VcfFormatException when a
+    // grammar-invalid CIGAR value is read via the public getInfo(ReservedInfoProperty) route --
+    // InternalUtilsTest's own strict-throw coverage for checkCigarGrammar only exercises the package-private
+    // checkReservedInfoConstraints helper directly, not this actual call path
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("CIGAR", "123MYCIGAR");
+    VcfPosition position = STRICT_CONTEXT.newPosition("1", 100, null, "A", List.of("T"), null, null, info, null, -1);
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> position.getInfo(ReservedInfoProperty.Cigar));
+    assertTrue(ex.getMessage().contains("does not match the expected CIGAR grammar"));
   }
 
   @Test

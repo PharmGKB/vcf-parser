@@ -1094,7 +1094,102 @@ public final class VcfPosition {
       value = sf_commaJoiner.join(list);
     }
     try {
-      return InternalUtils.convertProperty(key, value, m_context.getVersion(), m_warnings);
+      return InternalUtils.convertProperty(key, value, m_context);
+    } catch (VcfFormatException ex) {
+      if (m_lineNumber >= 0) {
+        ex.addMetadata(m_lineNumber, "data");
+      }
+      throw ex;
+    }
+  }
+
+  /**
+   * Returns the value for {@code id} converted to the type its {@link ReservedInfoProperty} declares, or --
+   * for a non-reserved key -- the type its {@code ##INFO} declaration in {@code metadata} specifies. Unlike
+   * {@link #getInfo(ReservedInfoProperty)}, this also resolves a non-reserved key's declared {@code Number}/
+   * {@code Type} the way {@link VcfSample#getProperty(VcfPosition, VcfMetadata, String)} already does for
+   * {@code FORMAT} -- mirroring that method's shape, minus its ploidy/{@code GT} logic, since INFO has no
+   * per-sample concept ({@link #getInfo(ReservedInfoProperty)} already documents this: "no reserved INFO key
+   * declares Number=G, so ploidy is always null here").
+   *
+   * @param <T> the type {@code id}'s declared {@code Type} specifies if it (or, for a non-reserved key, its
+   * {@code ##INFO} declaration's {@code Number}) is not list-shaped; otherwise {@code List<V>} where {@code V}
+   * is that type
+   * @throws NullPointerException if {@code metadata} is {@code null} -- a required read-time collaborator,
+   * not content being looked up (unlike {@code id}, which is null-tolerant, matching {@link #getInfo(String)}'s
+   * "not present" contract); see {@code AGENTS.md}'s Public API Null-Safety Policy for the distinction
+   * @throws VcfFormatException if {@code metadata} was built under a different {@link VcfContext} than this
+   * position; if the raw value's {@code Type} does not match {@code id}'s declared type; if a declared
+   * {@code Type=Integer} value is not representable as a 32-bit signed integer or collides with a BCF-reserved
+   * sentinel value (see {@link InternalUtils#checkInteger32BitRange}); or if the raw value is an empty (but
+   * non-{@code "."}) entry and this position was built under a strict {@link VcfContext} (under a lenient one,
+   * an empty value instead returns {@code null} -- see
+   * {@link InternalUtils#convertProperty(Class, String, boolean, VcfWarnings, VcfWarnings)})
+   */
+  public @Nullable <T> T getInfo(VcfMetadata metadata, String id) {
+    if (id == null) {
+      return null;
+    }
+    Preconditions.checkNotNull(metadata, "metadata must not be null");
+    if (metadata.getContext() != m_context) {
+      throw new VcfFormatException("getInfo() was given metadata created under a different VcfContext " +
+          "than this position; the read would have no unambiguous version or warnings destination");
+    }
+    List<String> list = info().get(id);
+    if (list.isEmpty()) {
+      return null;
+    }
+    ReservedInfoProperty reserved = ReservedInfoProperty.fromId(id);
+    InfoMetadata declared = null;
+    String number;
+    boolean isList;
+    if (reserved != null) {
+      number = reserved.getExpectedNumber();
+      isList = reserved.isList();
+    } else {
+      declared = metadata.getInfo().get(id);
+      if (declared == null) {
+        m_warnings.warn("INFO {} has no metadata declaration; cannot determine its Number/Type", id);
+        return null;
+      }
+      number = declared.getNumber();
+      if (number == null) {
+        number = ".";
+      }
+      isList = !number.equals("0") && !number.equals("1");
+    }
+    String value;
+    if (!isList && list.size() > 1) {
+      m_warnings.warn("INFO {} has {} value(s), but Number={} requires {}", id, list.size(), number, number);
+      value = list.get(0);
+    } else {
+      if (isList && !(list.size() == 1 && list.get(0).equals("."))) {
+        InternalUtils.warnIfWrongCardinality("INFO " + id, number, list.size(), getAltBases().size(), null,
+            m_warnings);
+      }
+      value = sf_commaJoiner.join(list);
+    }
+    if (reserved != null) {
+      try {
+        return InternalUtils.convertProperty(reserved, value, m_context);
+      } catch (VcfFormatException ex) {
+        if (m_lineNumber >= 0) {
+          ex.addMetadata(m_lineNumber, "data");
+        }
+        throw ex;
+      }
+    }
+    InfoType infoType = declared.getType();
+    Class<?> type = infoType == null ? String.class : InternalUtils.toJavaType(infoType);
+    // isLenient()-aware, shared by both the range check below and convertProperty's own empty-value
+    // substitution -- see InternalUtils.convertProperty(Class, String, boolean, VcfWarnings, VcfWarnings)'s
+    // own Javadoc for why an empty value is isLenient()-gated here but not on VcfWriter's write side.
+    VcfWarnings checkWarnings = m_context.isLenient() ? m_warnings : null;
+    try {
+      if (type == Long.class) {
+        InternalUtils.checkInteger32BitRange("INFO " + id, value, isList, checkWarnings);
+      }
+      return InternalUtils.convertProperty(type, value, isList, m_warnings, checkWarnings);
     } catch (VcfFormatException ex) {
       if (m_lineNumber >= 0) {
         ex.addMetadata(m_lineNumber, "data");

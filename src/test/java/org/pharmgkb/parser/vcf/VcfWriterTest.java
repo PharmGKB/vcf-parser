@@ -24,8 +24,10 @@ import org.junit.jupiter.api.io.TempDir;
 import org.pharmgkb.parser.vcf.spec.FailingWriter;
 
 import static org.pharmgkb.parser.vcf.TestUtils.LENIENT_CONTEXT;
+import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -1908,6 +1910,71 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteWarnsOnOutOfRangeIntegerInfoValueRegardlessOfStrictContext() throws Exception {
+    // even data built under a STRICT context only warns here -- validateBeforeWrite()'s own policy for
+    // semantically-non-compliant-but-safe content is warn-always, independent of the object's own isLenient()
+    VcfContext strict = VcfContext.strict("VCFv4.2");
+    InfoMetadata info = new InfoMetadata(strict, "INT", "d", InfoType.Integer, "1", null, null);
+    VcfMetadata metadata = new VcfMetadata.Builder(strict).setFileFormat("VCFv4.2").addInfo(info).build();
+    ListMultimap<String, String> positionInfo = ArrayListMultimap.create();
+    positionInfo.put("INT", "2147483648");
+    VcfPosition position = strict.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        positionInfo, null, -1);
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    writer.writeHeader(metadata);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertDoesNotThrow(() -> writer.writeLine(metadata, position, Collections.emptyList()));
+      assertTrue(appender.anyMessageContains("outside the 32-bit signed range"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testValidateBeforeWriteWarnsOnOutOfRangeIntegerFormatValueRegardlessOfStrictContext() throws Exception {
+    // FORMAT-side sibling of testValidateBeforeWriteWarnsOnOutOfRangeIntegerInfoValueRegardlessOfStrictContext
+    // above: even data built under a STRICT context only warns here -- validateBeforeWrite()'s own policy for
+    // semantically-non-compliant-but-safe content is warn-always, independent of the object's own isLenient()
+    VcfContext strict = VcfContext.strict("VCFv4.2");
+    FormatMetadata customFormat = new FormatMetadata(strict, "CUSTOM", "d", "1", FormatType.Integer);
+    VcfMetadata metadata = new VcfMetadata.Builder(strict).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .addFormat(customFormat)
+        .build();
+    VcfPosition position = strict.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("CUSTOM"), -1);
+    VcfSample sample = strict.newSample(new LinkedHashMap<>(Map.of("CUSTOM", "2147483648")));
+
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    writer.writeHeader(metadata);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertDoesNotThrow(() -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
+      assertTrue(appender.anyMessageContains("FORMAT CUSTOM for sample #0"));
+      assertTrue(appender.anyMessageContains("outside the 32-bit signed range"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testValidateBeforeWriteWarnsButPreservesInvalidFtValue() throws Exception {
     // FT's grammar mirrors the FILTER column (PASS/./semicolon-separated codes, no code combined with PASS or '.'),
     // but that constraint isn't expressible through FT's declared Type=String, so it's checked separately; being
@@ -1926,6 +1993,43 @@ public class VcfWriterTest {
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     writer.writeHeader(metadata);
     writer.writeLine(metadata, position, Collections.singletonList(sample));
+    assertTrue(sw.toString().contains("PASS;q10"));
+  }
+
+  @Test
+  public void testValidateBeforeWriteWarnsRatherThanThrowsForStrictContextSampleWithInvalidFtValue() throws Exception {
+    // FORMAT-side sibling of testValidateBeforeWriteWarnsRatherThanThrowsForStrictContextRecordWithNegativeAcValue:
+    // FT (checkFilterLikeValue) is the one of the five isLenient()-aware checks that both throws AND has a
+    // normalizing return value the writer deliberately discards -- metadata/position/sample are built under
+    // STRICT_CONTEXT specifically to prove validateFormatValue's own checkReservedFormatConstraints call still
+    // only warns and preserves raw content for a strict-context record, never throws, matching AGENTS.md's
+    // Writer Validation Policy ("the write side always warns").
+    FormatMetadata ft = new FormatMetadata(STRICT_CONTEXT, ReservedFormatProperty.Filter.getId(), "d", "1",
+        FormatType.String);
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .addFormat(ft)
+        .build();
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        null, List.of("FT"), -1);
+    VcfSample sample = STRICT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("FT", "PASS;q10")));
+
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    writer.writeHeader(metadata);
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertDoesNotThrow(() -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
+      assertTrue(appender.anyMessageContains("combines PASS or '.' with other filter codes"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
     assertTrue(sw.toString().contains("PASS;q10"));
   }
 
@@ -2119,6 +2223,43 @@ public class VcfWriterTest {
     root.addAppender(appender);
     try {
       writer.writeLine(metadata, position, Collections.emptyList());
+      assertTrue(appender.anyMessageContains("INFO AC value \"-1\" is a negative number"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(sw.toString().contains("AC=-1"));
+  }
+
+  @Test
+  public void testValidateBeforeWriteWarnsRatherThanThrowsForStrictContextRecordWithNegativeAcValue() throws Exception {
+    // InternalUtils.checkReservedInfoConstraints (and its four siblings, plus checkFilterLikeValue) became
+    // isLenient()-aware on the READ side; the write side must stay unaffected regardless of the written
+    // record's own strict/lenient origin, per AGENTS.md's Writer Validation Policy ("the write side always
+    // warns"). metadata/position are built under STRICT_CONTEXT specifically to prove that: VcfWriter's own
+    // validateInfoValue passes its own m_warnings (always non-null) to checkReservedInfoConstraints regardless
+    // of what context produced the record being written, so this must still warn and preserve the value, not
+    // throw, even though reading AC via position.getInfo(ReservedInfoProperty.AlleleCount) on this same
+    // strict-context position would throw (see InternalUtilsTest's end-to-end strict tests).
+    InfoMetadata ac = new InfoMetadata(STRICT_CONTEXT, ReservedInfoProperty.AlleleCount.getId(), "d", InfoType.Integer,
+        "A", null, null);
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").addInfo(ac).build();
+    ListMultimap<String, String> positionInfo = ArrayListMultimap.create();
+    positionInfo.put("AC", "-1");
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
+        positionInfo, null, -1);
+
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    writer.writeHeader(metadata);
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeLine(metadata, position, Collections.emptyList()); // must not throw
       assertTrue(appender.anyMessageContains("INFO AC value \"-1\" is a negative number"));
     } finally {
       root.detachAppender(appender);

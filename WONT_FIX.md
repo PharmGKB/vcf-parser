@@ -545,8 +545,10 @@ to same-code repetition.
 
 **Decision: won't fix; deliberate, narrower scope than full FILTER/FT grammar parity.** `checkFilterLikeValue`
 already diverges from `checkFilters` in enforcement style for good, previously-established reasons: FT is
-non-structural sample content (warns, never throws, unlike FILTER's own structural floor for the `.`-combined
-case), and bcftools 1.23.1 treats `FT` as an opaque `String` with no knowledge of its own reserved grammar
+non-structural sample content (`isLenient()`-gated -- warns under a lenient `VcfContext`, throws under a
+strict one -- unlike FILTER's own structural floor for the `.`-combined case, which throws unconditionally
+regardless of context; see `VALIDATION_REFERENCE.md`'s FT/PS bullet), and bcftools 1.23.1 treats `FT` as an
+opaque `String` with no knowledge of its own reserved grammar
 (verified live: `FT=q10;q10` round-trips silently, no warning) -- FT duplicate-code detection was never
 implemented to begin with, independent of this fix. This fix's scope was narrowly the misleading wording of
 one specific warning (firing for same-code repetition when its own text implies a genuinely different code is
