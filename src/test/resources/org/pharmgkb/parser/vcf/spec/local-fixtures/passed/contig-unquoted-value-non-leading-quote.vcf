@@ -1,0 +1,7 @@
+##fileformat=VCFv4.3
+##contig=<ID=1,assembly=a"b,length=100>
+##Authority=VCFv4.3.tex:173: "Double-quote character must be escaped with backslash \ and backslash as \\." is the spec's only escaping mechanism; a non-leading, unescaped quote is not itself a quoting form. bcftools 1.23.1 (htslib 1.23.1 vcf.c:711-736's unquoted-value scan special-cases only '<', '>', and ',') accepts assembly=a"b unchanged, exit 0, no warning or error to stderr -- measured live via bcftools view -h on 2026-08-15.
+##Authority=vcf_validator 0.10.2 disagrees with bcftools here: it reports this file invalid, "Line 2: Error in contig metadata.", apparently rejecting any embedded unescaped '"' in an unquoted attribute value outright. Neither known 0.10.2 token-capture defect applies (the value has no backslash-escaped quote, so the token-parity defect's blast radius is not in play), so this is a genuine tool disagreement, not a defect artifact. Per AGENTS.md's Decision Hierarchy, bcftools remains the tie-breaker, since it is the acceptance-side authority this library's round-trip safety depends on -- measured live via vcf_validator -i <file> -r summary,text on 2026-08-15.
+##ExpectWarnContains=containing a character bcftools treats as structural
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+1	1	.	A	T	.	.	.

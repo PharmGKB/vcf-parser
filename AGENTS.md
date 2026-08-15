@@ -289,6 +289,12 @@ Two further opt-in tasks are excluded from `test` (network access or an external
 - Put reusable VCF inputs in `src/test/resources` and load them through the existing test utilities.
 - VCF delimiters are significant: preserve literal tabs, empty fields, header ordering, and line structure in fixtures.
 - Cover successful parsing, accepted-with-warning recovery, deferred validation, and structural rejection as applicable. For parser-to-writer changes, add a round-trip test showing that accepted input can be written and parsed again without column loss or delimiter corruption.
+- This project also maintains its own locally-authored VCF conformance fixture corpus, hts-specs style, under
+  `src/test/resources/org/pharmgkb/parser/vcf/spec/local-fixtures/{passed,failed}/` (exercised by
+  `LocalFixtureConformanceTest`, with each fixture's expectation declared inline via the header-comment keys
+  documented on `LocalFixtureMetadata`). Every fixture must carry at least one `##Authority=` line citing an
+  external authority (spec text, a tool version, an upstream hts-specs fixture) for its expected behavior --
+  never "this is what this library does."
 
 ### Release Files
 

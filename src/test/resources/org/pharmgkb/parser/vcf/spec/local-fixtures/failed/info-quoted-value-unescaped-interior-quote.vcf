@@ -1,0 +1,10 @@
+##fileformat=VCFv4.3
+##CauseOfFailure=INFO Description value has an unescaped interior quote, closing the quoted value early
+##Authority=VCFv4.3.tex:173: "Double-quote character must be escaped with backslash \ and backslash as \\." bcftools 1.23.1 (htslib 1.23.1 vcf.c:707-736,783-789: the quoted-value scan closes at the first unescaped '"', then the next attribute-name scan lands one character short of the true next token because the outer loop unconditionally skips what it assumes is a consumed delimiter, landing on the stray trailing '"' and hitting the malformed_line branch) drops the WHOLE declaration with "Could not parse the header line", file stays readable -- measured live via bcftools view -h on 2026-08-15: exit 0, the ##INFO line is absent from output.
+##Authority=vcf_validator 0.10.2 also reports this file invalid, "Line 7: Metadata description string is not valid.", corroborating the failed/ classification independently of bcftools' own reason (bcftools drops the whole declaration; vcf_validator instead flags the malformed Description string as a description-syntax error) -- measured live via vcf_validator -i <file> -r summary,text on 2026-08-15.
+##ExpectParser=warn
+##ExpectWarnContains=has trailing content
+##INFO=<ID=XX,Number=1,Type=String,Description="a"b">
+##contig=<ID=1,length=100>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+1	1	.	A	T	.	.	.

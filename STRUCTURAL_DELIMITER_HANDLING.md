@@ -61,7 +61,9 @@ across the whole declaration, and no longer reproduces either defect: re-measure
   content once the name's first `=` has been consumed, the same rule
   `AttributeListTokenizerTest#anEqualsSignInAValueIsOrdinary` pins.
 - `a"b` now re-parses as `assembly=a"b` in full, `md5` and `taxonomy` both intact -- only a warning fires
-  ("...containing a character bcftools treats as structural; preserving it").
+  ("...containing a character bcftools treats as structural; preserving it"). Pinned by
+  `local-fixtures/passed/contig-unquoted-value-non-leading-quote.vcf`, which also records bcftools 1.23.1's
+  own silent acceptance of the same value as its `##Authority=`.
 
 Only the `a,b` row still reproduces exactly as measured: `assembly` still truncates to `a` at the comma (a
 comma is still the one character with no escaping mechanism in an unquoted value), though the leftover `b`
@@ -528,7 +530,7 @@ reader who only remembers the old behavior isn't left to wonder whether it silen
 | `addRawProperty(name, value)` | `,` in `name` (e.g. `"bad,name"`) | succeeds (control: proves the structured comma rule was not applied to the generic grammar) |
 | `addRawProperty(name, value)` | `=` in `value` (e.g. `"a=b"`) | succeeds; round-trips through default write + re-parse unchanged |
 | `addRawProperty(name, value)` | `,` in `value` (e.g. `"a,b"`) | succeeds; round-trips through default write + re-parse unchanged |
-| Parse `Description="a"b"` (unescaped quote inside a quoted value) | -- | parses; warns "trailing content ... discarding it" for the leftover `b"`; recovers `Description` as the well-formed `"a"` -- the value closes at the first unescaped `"` by position, not by unbalanced-quote parity |
+| Parse `Description="a"b"` (unescaped quote inside a quoted value) | -- | parses; warns "trailing content ... discarding it" for the leftover `b"`; recovers `Description` as the well-formed `"a"` -- the value closes at the first unescaped `"` by position, not by unbalanced-quote parity. Pinned by `local-fixtures/failed/info-quoted-value-unescaped-interior-quote.vcf`, which also records bcftools 1.23.1's own divergence (drops the whole declaration instead) as its `##Authority=`. |
 | Parse `Description=ab"` (unquoted value ending in a quote) | -- | parses; warns **both** "...containing a character bcftools treats as structural; preserving it" and "should be quoted but was"; recovers `Description` as `ab"` in full (the value is literal since its first byte isn't `"` or `[`, so nothing truncates) |
 | Parse `Description="ab,Source="s"` (leading, unclosed quote) | -- | parses; warns "trailing content ... discarding it" for the leftover `s"`; recovers `Description` as `"ab,Source="` -- absorbing the comma and the `=` by matching `Source`'s own opening quote as its closing one; no `Source` key in the result at all |
 | `parsed.toBuilder().build()` for any of the three parses above | -- | succeeds, with the identical recovered raw properties -- the object-taking overloads' exemption is what makes this possible |

@@ -710,5 +710,41 @@ class BcftoolsDependencyTest {
         result.output());
   }
 
+  @Test
+  void testContigUnquotedValueNonLeadingQuoteBcftoolsAcceptsSilently() throws IOException, InterruptedException {
+    // pins local-fixtures/passed/contig-unquoted-value-non-leading-quote.vcf's ##Authority= citation: a
+    // non-leading, unescaped '"' in an unquoted attribute value is ordinary content to bcftools too --
+    // htslib 1.23.1's bcf_hdr_parse_line (vcf.c:711-736) only special-cases '<', '>', and ',' while scanning
+    // an unquoted value, never '"'. Measured live: exit 0, no warning/error, the value echoed unchanged.
+    String vcf = "##fileformat=VCFv4.3\n##contig=<ID=1,assembly=a\"b,length=100>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n1\t1\t.\tA\tT\t.\t.\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("##contig=<ID=1,assembly=a\"b,length=100>"), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
+  }
+
+  @Test
+  void testInfoQuotedValueUnescapedInteriorQuoteBcftoolsDropsDeclaration() throws IOException, InterruptedException {
+    // pins local-fixtures/failed/info-quoted-value-unescaped-interior-quote.vcf's ##Authority= citation: an
+    // unescaped '"' inside a quoted attribute value closes the value early (htslib 1.23.1's
+    // bcf_hdr_parse_line, vcf.c:711-736 quoted-value scan), then the next attribute-name scan lands one
+    // character short of the true next token -- the outer loop's "p = ++q" unconditionally skips what it
+    // assumes is a consumed delimiter, landing on the stray trailing '"' and hitting vcf.c:704's
+    // malformed_line branch. bcftools drops the WHOLE declaration but the file stays readable. This library
+    // instead recovers Description as the well-formed "a" and warns, discarding the trailing content -- see
+    // STRUCTURAL_DELIMITER_HANDLING.md's Reference table, the "Parse Description=\"a\"b\"" row.
+    String vcf = "##fileformat=VCFv4.3\n" +
+        "##INFO=<ID=XX,Number=1,Type=String,Description=\"a\"b\">\n" +
+        "##contig=<ID=1,length=100>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n1\t1\t.\tA\tT\t.\t.\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("Could not parse the header line"), result.output());
+    // line-based, not a substring .contains() check: the error message above ITSELF quotes the whole
+    // offending "##INFO=..." line verbatim for diagnostics, so a plain .contains("##INFO=") would match that
+    // quoted text and pass even if no such line were actually emitted as real output
+    assertFalse(result.output().lines().anyMatch(line -> line.startsWith("##INFO=")), result.output());
+  }
+
   private record BcftoolsResult(int exitCode, String output) {}
 }

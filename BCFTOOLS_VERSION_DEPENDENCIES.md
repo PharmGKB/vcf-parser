@@ -133,6 +133,17 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
   parses and writes the example above through this library's own pipeline and pipes the real output through
   bcftools to confirm it stays readable.
 
+### Unescaped '"' in a metadata attribute value
+- Test: `BcftoolsDependencyTest#testContigUnquotedValueNonLeadingQuoteBcftoolsAcceptsSilently`,
+  `#testInfoQuotedValueUnescapedInteriorQuoteBcftoolsDropsDeclaration`
+- Reasoning: `STRUCTURAL_DELIMITER_HANDLING.md`'s "This did not change what `VcfMetadata.Builder` accepts"
+  passage (the `a"b` row) and its Reference table's `Description="a"b"` row, plus
+  `local-fixtures/passed/contig-unquoted-value-non-leading-quote.vcf` and
+  `local-fixtures/failed/info-quoted-value-unescaped-interior-quote.vcf`. The passed/ fixture's case is
+  round-trip-critical: bcftools' silent acceptance of an unquoted value's non-leading, unescaped `"`
+  (`assembly=a"b`) is exactly what makes this library's own byte-identical re-emission of that value safe --
+  if a future bcftools started rejecting or mangling it, that round trip would break.
+
 ## Other bcftools-dependent decisions
 
 (best-effort coverage, not exhaustive)
