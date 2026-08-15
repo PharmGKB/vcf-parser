@@ -447,9 +447,10 @@ public class VcfParser implements Closeable {
             }
           }
         }
-        // sampleFormat/values are always produced above by splitting on ':'/tab and padding with ".", so they can
-        // never contain a structural delimiter -- see VcfContext.newTrustedSample()'s own Javadoc for the
-        // measured cost this skips and why it's safe only for this exact call site.
+        // sampleFormat/values are always produced above by splitting on ':'/tab and padding with "." -- safe
+        // for newTrustedSample's skipped check EXCEPT for a legacy GLE value's own internal ':', which that
+        // check independently exempts anyway -- see VcfContext.newTrustedSample()'s own Javadoc for the full
+        // reasoning, the measured cost this skips, and why it's safe only for this exact call site.
         samples.add(context.newTrustedSample(sampleFormat, values));
       }
 

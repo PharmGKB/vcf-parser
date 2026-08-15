@@ -683,3 +683,27 @@ since it too depends on the same bypass to trigger post-header-write.
 caller using that bypass deliberately gains no real protection from a later re-check, since the header is
 already flushed by then. Revisit if `trustedMutableProperties()`'s package-private scope is ever widened,
 or if a real (non-test) route to mutate an already-constructed `VcfMetadata` is ever reintroduced.
+
+## A missing trailing newline at end of file is not detected
+
+hts-specs' VCF 4.3 `failed/` conformance corpus has five fixtures (`failed_body_no_newline_000.vcf` through
+`_004.vcf`) whose only documented `##CauseOfFailure=` is the absence of a trailing newline at end of file.
+This library parses all five without any warning or error.
+
+`VcfParser` reads every record via `BufferedReader.readLine()` (`VcfParser.java:110`, `:137`, `:274`), whose
+contract strips whatever line terminator it found before returning a line's content, and returns the final
+line's content identically whether or not that line was actually terminated. By the time this library sees a
+line, "ended with `\n`" and "ended right at EOF with no terminator at all" are indistinguishable through this
+API.
+
+**Decision: won't fix.** Detecting this would mean giving up `BufferedReader.readLine()` -- the parser's hot
+per-record read path -- for a lower-level, hand-rolled line-boundary scan, purely to observe an artifact with
+no practical consequence: bcftools itself does not warn or fail on a missing final newline either (confirmed
+live, bcftools 1.23.1, exit 0, no diagnostic naming the newline). The cost (restructuring a
+performance-sensitive read path) is judged not to be worth the benefit (flagging something no downstream tool
+cares about). See `HTS_SPECS_BASELINE_STATUS.md`'s "New 4.3-only `parser-throw-or-warn` clusters" table, "No
+newline at end of file" row, for these five fixtures' baseline status.
+
+Revisit if a future streaming-read redesign already needs to move `VcfParser` off `readLine()` for an
+unrelated reason, at which point detecting this becomes close to free, or if a concrete downstream consumer
+turns up that specifically needs to know whether the source file was properly terminated.

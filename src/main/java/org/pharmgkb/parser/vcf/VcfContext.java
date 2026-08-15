@@ -262,8 +262,21 @@ public final class VcfContext {
 
   /**
    * Internal fast path for {@code VcfParser}'s own per-record sample splitting. Skips the
-   * structural-delimiter scan and the defensive copies the plain factory performs, safe only because the
-   * keys/values are produced by splitting on {@code ':'}/tab and can never contain a delimiter.
+   * structural-delimiter scan ({@link VcfSample#checkNoStructuralDelimiter}) and the defensive copies the plain
+   * factory performs.
+   * <p>
+   * Safe for tab, and for {@code ':'} in a key, unconditionally: both are produced by splitting {@code
+   * VcfParser}'s own tab-delimited line on {@code ':'}/tab, so neither can appear in what results. Safe for
+   * {@code ':'} in a VALUE is narrower, not absolute: {@code VcfParser.toSampleValues}'s legacy (pre-4.3) GLE
+   * splitter deliberately returns one value element containing an internal {@code ':'} for a well-formed GLE
+   * value (its own {@code genotype:likelihood} pairs use {@code ':'} as ordinary content, not a sub-field
+   * separator) -- so "can never contain a delimiter" is not literally true for that one value. This is still
+   * safe only because the check being skipped, {@link VcfSample#checkNoStructuralDelimiter}, has its own
+   * independent exemption for the identical case (a pre-4.3 {@code GLE} key's value is allowed a {@code ':'}) --
+   * skipping the check produces the same accept decision running it would have. This is a second, separate
+   * invariant this factory depends on, not a corollary of the first: if that exemption is ever narrowed or
+   * removed from {@code checkNoStructuralDelimiter} without a matching change here, this factory would start
+   * silently admitting a value the un-skipped check would then reject.
    * <p>
    * Package-private, not public-with-{@code @RestrictedApi}: that annotation is documentation-only here, so
    * visibility is what actually enforces the restriction.
