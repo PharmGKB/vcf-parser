@@ -230,8 +230,11 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
   rule is version-independent.
 
 ### Duplicate metadata declaration ID (seven keyed types)
-- Test: `BcftoolsDependencyTest#testDuplicateContigIdBcftoolsKeepsFirst` (representative; not every declaration
-  type is independently re-verified here)
+- Test: `BcftoolsDependencyTest#testDuplicateContigIdBcftoolsKeepsFirst`,
+  `#testDuplicateInfoIdBcftoolsKeepsFirst`, `#testDuplicateFormatIdBcftoolsKeepsFirst`,
+  `#testDuplicateFilterIdBcftoolsKeepsFirst`, `#testDuplicateAltIdBcftoolsKeepsFirst`,
+  `#testDuplicateSampleIdBcftoolsKeepsFirst`, `#testDuplicateMetaIdBcftoolsKeepsFirst` (all seven keyed types
+  are independently re-verified)
 - Reasoning: `DUPLICATE_METADATA_ID_HANDLING.md` (its own reference table is the fuller source of truth)
 
 ### FORMAT declared but zero sample columns

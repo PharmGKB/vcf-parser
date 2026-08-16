@@ -1,0 +1,12 @@
+##fileformat=VCFv4.3
+##contig=<ID=chr1,length=1000000>
+##PEDIGREE=<ID=,Name_0=G0-A>
+##PEDIGREE=<ID=,Name_0=G0-B>
+##CauseOfFailure=VCFv4.3.tex line 121: "All structured lines require an ID which must be unique within their type" -- both ##PEDIGREE lines have an empty ID= attribute, which VCFv4.3+ requires be present. Classified failed/ to demonstrate the CURRENT, VCFv4.3+ rule, in contrast to VCFv4.2 (see the sibling passed/pedigree-duplicate-*-id.vcf fixtures, whose grammar has no ID attribute at all).
+##ExpectParser=warn
+##Authority=VCFv4.3.tex line 121 (quoted above); see DUPLICATE_METADATA_ID_HANDLING.md's "Missing or empty ID" section's eighth-type paragraph for the full construction/write-time rule this fixture exercises: at VCFv4.3+, an absent or blank ##PEDIGREE ID warns "has no ID" but is KEPT (not dropped as a duplicate), unlike the seven Map-backed keyed types.
+##Authority=bcftools 1.23.1 (htslib 1.23.1), which is version-independent here (bcf_hdr_parse_line never consults ##fileformat), keeps the FIRST ##PEDIGREE=<ID=,Name_0=G0-A> declaration and drops the duplicate, exit 0, no warning -- BcftoolsDependencyTest#testPedigreeEmptyIdDuplicatesBcftoolsKeepsFirst pins this live measurement; re-confirmed directly via bcftools view -h on 2026-08-16. This library deliberately diverges from bcftools at VCFv4.3+ (keeping both, per the spec-grounded ID requirement) rather than replicating bcftools's dedupe-an-empty-ID-like-any-other-shared-value behavior -- see this fixture's other ##Authority= line and DUPLICATE_METADATA_ID_HANDLING.md's "The empty-ID= row is version-split" paragraph. BcftoolsDependencyTest#testPedigreeEmptyIdDuplicatesBcftoolsKeepsFirst's own probe uses ##fileformat=VCFv4.2 (bcftools's behavior doesn't depend on it, but this library's does), which is why this fixture cannot cite it as also demonstrating this library's own VCFv4.3+ behavior directly.
+##Authority=vcf_validator 0.10.2 reports this file invalid -- "Line 3: Metadata ID contains a character different from alphanumeric, dot, underscore, dash and plus." (and identically for line 4) -- measured live via vcf_validator -i <file> -r summary,text on 2026-08-16.
+##ExpectWarnContains=has no ID
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	.

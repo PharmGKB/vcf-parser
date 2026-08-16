@@ -1,0 +1,11 @@
+##fileformat=VCFv4.3
+##SAMPLE=<Description="test",Genomes=Germline>
+##contig=<ID=chr1,length=1000000>
+##CauseOfFailure=VCFv4.3.tex line 121: "All structured lines require an ID which must be unique within their type, i.e., within all the meta-information lines with the same `##key=` prefix." -- this ##SAMPLE declaration has no ID attribute at all, which VCFv4.3+ requires be present.
+##ExpectParser=warn
+##Authority=VCFv4.3.tex line 121 (quoted above); see DUPLICATE_METADATA_ID_HANDLING.md's "Missing or empty ID" section: at add time, vcf-parser warns and drops such a declaration in full, for all seven keyed types (never stored, unlike a duplicate-ID-when-present) -- confirmed here against this library's own actual behavior, not assumed from the bcftools column below, which is silent for this type.
+##Authority=bcftools 1.23.1 (htslib 1.23.1) keeps the declaration unchanged with NO warning at all, exit 0 -- BcftoolsDependencyTest#testSampleMissingIdBcftoolsKeepsSilently pins this live measurement; re-confirmed directly via bcftools view -h on 2026-08-16. ##SAMPLE isn't part of BCF's binary dictionary encoding, so htslib never validates its ID at all -- vcf-parser deliberately diverges from bcftools here, per the spec-grounded ID requirement (VCFv4.3.tex line 121). Deliberate probe-shape difference: that test's own inline probe declares only ##SAMPLE=<Genomes=Germline>, without the Description="test" attribute this fixture carries. The attribute is kept here because dropping it makes this library emit an unrelated extra warning (SAMPLE required metadata property "Description" is missing, verified live) that has nothing to do with the ID condition under test; bcftools is indifferent to it, so the cited measurement still transfers.
+##ExpectWarnContains=SAMPLE required metadata property "ID" is missing
+##ExpectWarnContains=SAMPLE metadata declaration has no ID and cannot be stored; dropped:
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	.

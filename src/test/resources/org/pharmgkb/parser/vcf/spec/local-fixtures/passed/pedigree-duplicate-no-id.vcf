@@ -1,0 +1,9 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr1,length=1000000>
+##PEDIGREE=<Name_0=G0-A,Name_1=G1-A>
+##PEDIGREE=<Name_0=G0-B,Name_1=G1-A>
+##Authority=VCFv4.2.tex line 152's ##PEDIGREE grammar (##PEDIGREE=<Name_0=G0-ID,...,Name_N=GN-ID>) has no mandatory ID attribute at all -- see DUPLICATE_METADATA_ID_HANDLING.md's "##PEDIGREE: a conditional case" section.
+##Authority=bcftools 1.23.1 (htslib 1.23.1) keeps BOTH ##PEDIGREE lines unchanged, exit 0, no warning, since neither declares an ID to dedupe on -- BcftoolsDependencyTest#testPedigreeNoIdDuplicatesBcftoolsKeepsBoth pins this live measurement (that probe uses two byte-identical PEDIGREE lines; this fixture varies Name_0 between them to also demonstrate they are two distinct, independently-kept declarations, not a single line read twice); re-confirmed directly via bcftools view -h on 2026-08-16.
+##Authority=vcf_validator 0.10.2 reports this file valid -- measured live via vcf_validator -i <file> -r summary,text on 2026-08-16.
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	.

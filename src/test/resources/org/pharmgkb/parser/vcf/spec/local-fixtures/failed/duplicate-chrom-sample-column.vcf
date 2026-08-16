@@ -1,0 +1,9 @@
+##fileformat=VCFv4.3
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##contig=<ID=chr1,length=1000000>
+##CauseOfFailure=Two identical #CHROM sample-column names ('S1' twice). Unlike a duplicate declaration ID (see the passed/duplicate-*-id.vcf fixtures), a #CHROM sample column is positional -- VcfMetadata.getSampleIndex(id) resolves a name via m_columns.indexOf(id) -- so a duplicate name would make the second column's data permanently unreachable by name and silently misdirect any name-based lookup to the first column's data instead, a real data-integrity hazard no duplicate declaration ID has. See DUPLICATE_METADATA_ID_HANDLING.md's "Reference table" section, whose closing table contrasts a duplicate declaration ID with a duplicate #CHROM sample-column name, for the full reasoning.
+##ExpectParser=throw
+##Authority=bcftools 1.23.1 (htslib 1.23.1) hard-errors on this file: "[E::bcf_hdr_add_sample_len] Duplicated sample name 'S1'", "could not parse header", non-zero exit -- BcftoolsDependencyTest#testDuplicateChromSampleColumnNameBcftoolsHardErrors pins this live measurement; re-confirmed directly via bcftools view on 2026-08-16.
+##Authority=vcf_validator 0.10.2 reports this file invalid -- "Line 8: The header line has 1 repeated sample names. Please remove these names from the header line and the data lines: S1." (the line number is this fixture's own #CHROM line, i.e. relative to this file's actual header-comment count, not a fixed offset) -- measured live via vcf_validator -i <file> -r summary,text on 2026-08-16.
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	S1	S1
+chr1	1	rs1	A	T	.	PASS	.	GT	0/1	0/1

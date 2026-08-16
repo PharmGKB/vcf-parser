@@ -266,6 +266,23 @@ class BcftoolsDependencyTest {
   }
 
   @Test
+  void testPedigreeRealIdDuplicatesBcftoolsKeepsFirst() throws IOException, InterruptedException {
+    // DUPLICATE_METADATA_ID_HANDLING.md's PEDIGREE table row 2 (two ##PEDIGREE lines sharing a real ID):
+    // completes the two tests above (no-ID keeps both, empty-ID keeps first) with the third case -- a
+    // present, non-blank ID. Measured live: bcftools keeps the first declaration and drops the duplicate,
+    // same as the empty-ID case, exit 0, no warning.
+    String vcf = "##fileformat=VCFv4.2\n##PEDIGREE=<ID=P1,Name_0=A>\n##PEDIGREE=<ID=P1,Name_0=B>\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    long count = result.output().lines().filter(line -> line.startsWith("##PEDIGREE=")).count();
+    assertEquals(1, count, result.output());
+    assertTrue(result.output().contains("##PEDIGREE=<ID=P1,Name_0=A>"), result.output());
+    assertFalse(result.output().contains("Name_0=B"), result.output());
+  }
+
+  @Test
   void testMetaMissingIdBcftoolsKeepsSilently() throws IOException, InterruptedException {
     // deliberate divergence: vcf-parser warns and drops an ID-less ##META (DUPLICATE_METADATA_ID_HANDLING.md's
     // "Missing or empty ID" section -- the required-ID rule is version-independent for ##META), but bcftools
@@ -280,14 +297,311 @@ class BcftoolsDependencyTest {
 
   @Test
   void testDuplicateContigIdBcftoolsKeepsFirst() throws IOException, InterruptedException {
-    // representative case from DUPLICATE_METADATA_ID_HANDLING.md; that doc's own table is the fuller reference
-    // covering all six keyed declaration types
+    // one of seven per-type cases from DUPLICATE_METADATA_ID_HANDLING.md's reference table; the other six
+    // keyed declaration types each have their own dedicated case below
     String vcf = "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1>\n##contig=<ID=chr1,length=999>\n" +
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
     BcftoolsResult result = runBcftools(vcf, "view", "-h");
     assertEquals(0, result.exitCode(), result.output());
     assertTrue(result.output().contains("##contig=<ID=chr1,length=1>"), result.output());
     assertFalse(result.output().contains("length=999"), result.output());
+  }
+
+  @Test
+  void testDuplicateInfoIdBcftoolsKeepsFirst() throws IOException, InterruptedException {
+    // completes DUPLICATE_METADATA_ID_HANDLING.md's reference table for ##INFO: two declarations sharing an
+    // ID, differing only in Description, mirroring testDuplicateContigIdBcftoolsKeepsFirst's shape. Measured
+    // live: keeps first, drops duplicate, no warning, exit 0 -- matching the table's existing hypothesis.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##INFO=<ID=DP,Number=1,Type=Integer,Description=\"depth v1\">\n" +
+        "##INFO=<ID=DP,Number=1,Type=Integer,Description=\"depth v2\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("##INFO=<ID=DP,Number=1,Type=Integer,Description=\"depth v1\">"),
+        result.output());
+    assertFalse(result.output().contains("depth v2"), result.output());
+  }
+
+  @Test
+  void testDuplicateFormatIdBcftoolsKeepsFirst() throws IOException, InterruptedException {
+    // completes DUPLICATE_METADATA_ID_HANDLING.md's reference table for ##FORMAT, same shape as the ##INFO
+    // case above. Measured live: keeps first, drops duplicate, no warning, exit 0.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"depth v1\">\n" +
+        "##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"depth v2\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"depth v1\">"),
+        result.output());
+    assertFalse(result.output().contains("depth v2"), result.output());
+  }
+
+  @Test
+  void testDuplicateFilterIdBcftoolsKeepsFirst() throws IOException, InterruptedException {
+    // completes DUPLICATE_METADATA_ID_HANDLING.md's reference table for ##FILTER. Deliberately uses ID=q10,
+    // NOT ID=PASS -- see the doc's own "Measurement hazard" note: htslib injects its own
+    // ##FILTER=<ID=PASS,...> before parsing the file, so a PASS-keyed probe would always show the first
+    // declaration dropped as an artifact of that injection, not of this duplicate-ID rule. Measured live:
+    // keeps first, drops duplicate, no warning, exit 0.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##FILTER=<ID=q10,Description=\"qual below 10 v1\">\n" +
+        "##FILTER=<ID=q10,Description=\"qual below 10 v2\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("##FILTER=<ID=q10,Description=\"qual below 10 v1\">"), result.output());
+    assertFalse(result.output().contains("qual below 10 v2"), result.output());
+  }
+
+  @Test
+  void testDuplicateAltIdBcftoolsKeepsFirst() throws IOException, InterruptedException {
+    // completes DUPLICATE_METADATA_ID_HANDLING.md's reference table for ##ALT. Uses ID=DEL, a valid
+    // structural-variant code, so the probe doesn't also trip VcfMetadata.validateAlt's own ID check.
+    // Measured live: keeps first, drops duplicate, no warning, exit 0.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##ALT=<ID=DEL,Description=\"Deletion v1\">\n" +
+        "##ALT=<ID=DEL,Description=\"Deletion v2\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("##ALT=<ID=DEL,Description=\"Deletion v1\">"), result.output());
+    assertFalse(result.output().contains("Deletion v2"), result.output());
+  }
+
+  @Test
+  void testDuplicateSampleIdBcftoolsKeepsFirst() throws IOException, InterruptedException {
+    // completes DUPLICATE_METADATA_ID_HANDLING.md's reference table for ##SAMPLE, varying the non-ID
+    // attribute Genomes= between the two declarations. Measured live: keeps first, drops duplicate, no
+    // warning, exit 0.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##SAMPLE=<ID=S1,Genomes=Germline>\n" +
+        "##SAMPLE=<ID=S1,Genomes=Somatic>\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("##SAMPLE=<ID=S1,Genomes=Germline>"), result.output());
+    assertFalse(result.output().contains("Somatic"), result.output());
+  }
+
+  @Test
+  void testDuplicateMetaIdBcftoolsKeepsFirst() throws IOException, InterruptedException {
+    // completes DUPLICATE_METADATA_ID_HANDLING.md's reference table for ##META. Declares ##fileformat=VCFv4.3
+    // because that is the first version in which ##META exists as a structured declaration type at all -- a
+    // statement about this library's semantics, NOT a bcftools requirement: bcf_hdr_parse_line never consults
+    // ##fileformat (htslib 1.23.1 vcf.c), and testMetaMissingIdBcftoolsKeepsSilently above declares VCFv4.2
+    // for the same ##META shape and passes. Varies Values= between the two declarations, otherwise mirroring
+    // that test's own ##META probe shape. Measured live: keeps first, drops duplicate, no warning, exit 0.
+    String vcf = "##fileformat=VCFv4.3\n" +
+        "##META=<ID=Assay,Type=String,Number=.,Values=[A, B]>\n" +
+        "##META=<ID=Assay,Type=String,Number=.,Values=[C, D]>\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("##META=<ID=Assay,Type=String,Number=.,Values=[A, B]>"), result.output());
+    assertFalse(result.output().contains("Values=[C, D]"), result.output());
+  }
+
+  @Test
+  void testAltMissingIdBcftoolsKeepsSilently() throws IOException, InterruptedException {
+    // DUPLICATE_METADATA_ID_HANDLING.md's "Missing or empty ID" bcftools/vcf_validator table, ##ALT row:
+    // ##ALT isn't part of BCF's binary dictionary encoding, so htslib never validates its ID at all. Measured
+    // live: kept verbatim, no warning, exit 0.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##ALT=<Description=\"test\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
+    assertTrue(result.output().contains("##ALT=<Description=\"test\">"), result.output());
+  }
+
+  @Test
+  void testSampleMissingIdBcftoolsKeepsSilently() throws IOException, InterruptedException {
+    // DUPLICATE_METADATA_ID_HANDLING.md's table, ##SAMPLE row: same reasoning as ##ALT above -- ##SAMPLE isn't
+    // part of BCF's dictionary either. Measured live: kept verbatim, no warning, exit 0.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##SAMPLE=<Genomes=Germline>\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
+    assertTrue(result.output().contains("##SAMPLE=<Genomes=Germline>"), result.output());
+  }
+
+  @Test
+  void testFilterMissingIdBcftoolsSilentlyDrops() throws IOException, InterruptedException {
+    // DUPLICATE_METADATA_ID_HANDLING.md's table, ##FILTER row: ##FILTER IS part of BCF's dictionary, so a
+    // missing ID invalidates the whole declaration -- but unlike ##INFO/##FORMAT/##contig below, bcftools drops
+    // it with NO warning at all. Measured live: exit 0, no warning, declaration absent from output.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##FILTER=<Description=\"test\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
+    assertFalse(result.output().contains("##FILTER=<Description=\"test\">"), result.output());
+  }
+
+  @Test
+  void testInfoMissingIdBcftoolsWarnsAndDrops() throws IOException, InterruptedException {
+    // DUPLICATE_METADATA_ID_HANDLING.md's table, ##INFO row: ##INFO IS part of BCF's dictionary, so a missing
+    // ID invalidates the whole declaration. Measured live: "[W::bcf_hrec_check] Missing ID attribute in one or
+    // more header lines", declaration dropped, exit 0.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##INFO=<Number=1,Type=Integer,Description=\"test\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("Missing ID attribute"), result.output());
+    assertFalse(result.output().contains("##INFO=<Number=1,Type=Integer,Description=\"test\">"), result.output());
+  }
+
+  @Test
+  void testFormatMissingIdBcftoolsWarnsAndDrops() throws IOException, InterruptedException {
+    // DUPLICATE_METADATA_ID_HANDLING.md's table, ##FORMAT row: same shape as ##INFO above -- ##FORMAT is also
+    // part of BCF's dictionary. Measured live: "Missing ID attribute" warning, declaration dropped, exit 0.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##FORMAT=<Number=1,Type=Integer,Description=\"test\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("Missing ID attribute"), result.output());
+    assertFalse(result.output().contains("##FORMAT=<Number=1,Type=Integer,Description=\"test\">"), result.output());
+  }
+
+  @Test
+  void testContigMissingIdBcftoolsWarnsAndDrops() throws IOException, InterruptedException {
+    // DUPLICATE_METADATA_ID_HANDLING.md's table, ##contig row: same shape again -- ##contig is also part of
+    // BCF's dictionary. Measured live: "Missing ID attribute" warning, declaration dropped, exit 0. Note this
+    // probe has no *other* resolvable ##contig line for chr1 (the missing-ID declaration under test is the
+    // only one), unlike the six sibling probes above/below which always add a second, well-formed
+    // ##contig=<ID=chr1,...> line so the CHROM column resolves -- bcftools does not require that here.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##contig=<length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("Missing ID attribute"), result.output());
+    assertFalse(result.output().contains("##contig=<length=1000000>"), result.output());
+  }
+
+  @Test
+  void testAltEmptyIdBcftoolsKeepsVerbatim() throws IOException, InterruptedException {
+    // DUPLICATE_METADATA_ID_HANDLING.md's table, ##ALT row: unlike the missing-ID case above, this exercises
+    // ID= present but empty. Measured live: kept verbatim (ID=, unchanged), no warning, exit 0.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##ALT=<ID=,Description=\"test\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
+    assertTrue(result.output().contains("##ALT=<ID=,Description=\"test\">"), result.output());
+  }
+
+  @Test
+  void testSampleEmptyIdBcftoolsKeepsVerbatim() throws IOException, InterruptedException {
+    // DUPLICATE_METADATA_ID_HANDLING.md's table, ##SAMPLE row: same shape as ##ALT above. Measured live: kept
+    // verbatim, no warning, exit 0.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##SAMPLE=<ID=,Genomes=Germline>\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
+    assertTrue(result.output().contains("##SAMPLE=<ID=,Genomes=Germline>"), result.output());
+  }
+
+  @Test
+  void testFilterEmptyIdBcftoolsKeepsVerbatim() throws IOException, InterruptedException {
+    // DUPLICATE_METADATA_ID_HANDLING.md's table, ##FILTER row: contrast case for
+    // testFilterMissingIdBcftoolsSilentlyDrops above -- an empty ID= is, inconsistently, tolerated even though
+    // a wholly missing ID is not. Measured live: kept verbatim, no warning, exit 0.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##FILTER=<ID=,Description=\"test\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
+    assertTrue(result.output().contains("##FILTER=<ID=,Description=\"test\">"), result.output());
+  }
+
+  @Test
+  void testInfoEmptyIdBcftoolsWarnsAndKeeps() throws IOException, InterruptedException {
+    // DUPLICATE_METADATA_ID_HANDLING.md's table, ##INFO row: contrast case for
+    // testInfoMissingIdBcftoolsWarnsAndDrops above -- an empty ID= warns but is kept, rather than being
+    // dropped. Measured live: "[W::bcf_hrec_check] Invalid tag name: \"\"", declaration kept verbatim, exit 0.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##INFO=<ID=,Number=1,Type=Integer,Description=\"test\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("Invalid tag name"), result.output());
+    assertTrue(result.output().contains("##INFO=<ID=,Number=1,Type=Integer,Description=\"test\">"), result.output());
+  }
+
+  @Test
+  void testFormatEmptyIdBcftoolsWarnsAndKeeps() throws IOException, InterruptedException {
+    // DUPLICATE_METADATA_ID_HANDLING.md's table, ##FORMAT row: same shape as ##INFO above. Measured live:
+    // "Invalid tag name" warning, declaration kept verbatim, exit 0.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##FORMAT=<ID=,Number=1,Type=Integer,Description=\"test\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("Invalid tag name"), result.output());
+    assertTrue(result.output().contains("##FORMAT=<ID=,Number=1,Type=Integer,Description=\"test\">"),
+        result.output());
+  }
+
+  @Test
+  void testContigEmptyIdBcftoolsWarnsAndKeeps() throws IOException, InterruptedException {
+    // DUPLICATE_METADATA_ID_HANDLING.md's table, ##contig row: contrast case for
+    // testContigMissingIdBcftoolsWarnsAndDrops above -- an empty ID= warns but is kept. Measured live:
+    // "[W::bcf_hrec_check] Invalid contig name: \"\"", declaration kept verbatim, exit 0.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##contig=<ID=,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("Invalid contig name"), result.output());
+    assertTrue(result.output().contains("##contig=<ID=,length=1000000>"), result.output());
+  }
+
+  @Test
+  void testMetaEmptyIdBcftoolsKeepsVerbatim() throws IOException, InterruptedException {
+    // DUPLICATE_METADATA_ID_HANDLING.md's table, ##META row: same reasoning as ##ALT/##SAMPLE above -- ##META
+    // isn't part of BCF's binary dictionary encoding either, so htslib never validates its ID at all.
+    // Declares ##fileformat=VCFv4.3 because that is the first version in which ##META exists as a structured
+    // declaration type at all -- a statement about this library's semantics, NOT a bcftools requirement:
+    // bcf_hdr_parse_line never consults ##fileformat (htslib 1.23.1 vcf.c), and
+    // testMetaMissingIdBcftoolsKeepsSilently above declares VCFv4.2 for the same ##META shape and passes.
+    // Measured live: kept verbatim, no warning, exit 0.
+    String vcf = "##fileformat=VCFv4.3\n" +
+        "##META=<ID=,Type=String,Number=.,Values=[A, B]>\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
+    assertTrue(result.output().contains("##META=<ID=,Type=String,Number=.,Values=[A, B]>"), result.output());
   }
 
   @Test

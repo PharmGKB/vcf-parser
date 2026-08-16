@@ -1,0 +1,11 @@
+##fileformat=VCFv4.3
+##ALT=<Description="test">
+##contig=<ID=chr1,length=1000000>
+##CauseOfFailure=VCFv4.3.tex line 121: "All structured lines require an ID which must be unique within their type, i.e., within all the meta-information lines with the same `##key=` prefix." -- this ##ALT declaration has no ID attribute at all, which VCFv4.3+ requires be present.
+##ExpectParser=warn
+##Authority=VCFv4.3.tex line 121 (quoted above); see DUPLICATE_METADATA_ID_HANDLING.md's "Missing or empty ID" section: at add time, vcf-parser warns and drops such a declaration in full, for all seven keyed types (never stored, unlike a duplicate-ID-when-present) -- confirmed here against this library's own actual behavior, not assumed from the bcftools column below, which is silent for this type.
+##Authority=bcftools 1.23.1 (htslib 1.23.1) keeps the declaration unchanged with NO warning at all, exit 0 -- BcftoolsDependencyTest#testAltMissingIdBcftoolsKeepsSilently pins this live measurement; re-confirmed directly via bcftools view -h on 2026-08-16. ##ALT isn't part of BCF's binary dictionary encoding, so htslib never validates its ID at all -- vcf-parser deliberately diverges from bcftools here, per the spec-grounded ID requirement (VCFv4.3.tex line 121).
+##ExpectWarnContains=ALT required metadata property "ID" is missing
+##ExpectWarnContains=ALT metadata declaration has no ID and cannot be stored; dropped:
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	.

@@ -1,0 +1,11 @@
+##fileformat=VCFv4.3
+##FILTER=<Description="test">
+##contig=<ID=chr1,length=1000000>
+##CauseOfFailure=VCFv4.3.tex line 121: "All structured lines require an ID which must be unique within their type, i.e., within all the meta-information lines with the same `##key=` prefix." -- this ##FILTER declaration has no ID attribute at all, which VCFv4.3+ requires be present.
+##ExpectParser=warn
+##Authority=VCFv4.3.tex line 121 (quoted above); see DUPLICATE_METADATA_ID_HANDLING.md's "Missing or empty ID" section: at add time, vcf-parser warns and drops such a declaration in full, for all seven keyed types (never stored, unlike a duplicate-ID-when-present). This file's own "##FILTER warns even though bcftools doesn't" section names this exact type: vcf-parser warns here even though bcftools itself is silent for the missing-ID case, matching this project's established more-vocal-than-bcftools convention.
+##Authority=bcftools 1.23.1 (htslib 1.23.1) silently drops the declaration with NO warning at all, exit 0 -- BcftoolsDependencyTest#testFilterMissingIdBcftoolsSilentlyDrops pins this live measurement; re-confirmed directly via bcftools view -h on 2026-08-16. Unlike ##INFO/##FORMAT/##contig, bcftools gives no diagnostic whatsoever here even though ##FILTER IS part of BCF's dictionary -- vcf-parser deliberately diverges by warning.
+##ExpectWarnContains=FILTER required metadata property "ID" is missing
+##ExpectWarnContains=FILTER metadata declaration has no ID and cannot be stored; dropped:
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	.

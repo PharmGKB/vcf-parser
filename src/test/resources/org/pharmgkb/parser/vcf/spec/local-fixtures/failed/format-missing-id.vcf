@@ -1,0 +1,11 @@
+##fileformat=VCFv4.3
+##FORMAT=<Number=1,Type=Integer,Description="test">
+##contig=<ID=chr1,length=1000000>
+##CauseOfFailure=VCFv4.3.tex line 121: "All structured lines require an ID which must be unique within their type, i.e., within all the meta-information lines with the same `##key=` prefix." -- this ##FORMAT declaration has no ID attribute at all, which VCFv4.3+ requires be present.
+##ExpectParser=warn
+##Authority=VCFv4.3.tex line 121 (quoted above); see DUPLICATE_METADATA_ID_HANDLING.md's "Missing or empty ID" section: at add time, vcf-parser warns and drops such a declaration in full, for all seven keyed types (never stored, unlike a duplicate-ID-when-present).
+##Authority=bcftools 1.23.1 (htslib 1.23.1) warns "[W::bcf_hrec_check] Missing ID attribute in one or more header lines" and drops the declaration, exit 0 -- BcftoolsDependencyTest#testFormatMissingIdBcftoolsWarnsAndDrops pins this live measurement; re-confirmed directly via bcftools view -h on 2026-08-16. ##FORMAT IS part of BCF's binary dictionary encoding, so bcftools itself already rejects a missing ID here too -- vcf-parser's warn-and-drop is not a divergence from bcftools for this particular type.
+##ExpectWarnContains=FORMAT required metadata property "ID" is missing
+##ExpectWarnContains=FORMAT metadata declaration has no ID and cannot be stored; dropped:
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	.

@@ -1,0 +1,11 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr1,length=1000000>
+##PEDIGREE=<ID=P1,Name_0=A>
+##PEDIGREE=<ID=P1,Name_0=B>
+##Authority=DUPLICATE_METADATA_ID_HANDLING.md's "##PEDIGREE: a conditional case" section: bcftools dedupes ##PEDIGREE by ID whenever a line happens to declare one, the same rule as the seven keyed types, applied to an optional rather than mandatory key.
+##Authority=bcftools 1.23.1 (htslib 1.23.1) keeps the first ##PEDIGREE=<ID=P1,Name_0=A> declaration and silently drops the duplicate, exit 0, no warning -- BcftoolsDependencyTest#testPedigreeRealIdDuplicatesBcftoolsKeepsFirst pins this live measurement; re-confirmed directly via bcftools view -h on 2026-08-16.
+##Authority=vcf_validator 0.10.2 reports this file valid -- measured live via vcf_validator -i <file> -r summary,text on 2026-08-16.
+##ExpectWarnContains=keeping the first declaration
+##RoundTripDivergenceReason=VcfMetadata.Builder.addPedigree() drops the second, duplicate ##PEDIGREE declaration when it detects the shared ID (DUPLICATE_METADATA_ID_HANDLING.md's "##PEDIGREE: a conditional case" section); the writer then emits only the surviving first declaration, so the round trip is not byte-identical even though it is semantically equivalent -- verified live during authoring: only the second ##PEDIGREE line ("Name_0=B") is missing from the written output.
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	.

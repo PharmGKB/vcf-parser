@@ -1,0 +1,11 @@
+##fileformat=VCFv4.3
+##SAMPLE=<ID=,Description="test",Genomes=Germline>
+##contig=<ID=chr1,length=1000000>
+##CauseOfFailure=VCFv4.3.tex line 121: "All structured lines require an ID which must be unique within their type, i.e., within all the meta-information lines with the same `##key=` prefix." -- this ##SAMPLE declaration's ID= attribute is present but empty, which VCFv4.3+'s ID requirement is not satisfied by either. See DUPLICATE_METADATA_ID_HANDLING.md's "Empty/whitespace ID is a deliberate stricter-than-bcftools choice" section: vcf-parser treats an empty ID= the same as a missing one, a deliberate editorial decision no spec version addresses.
+##ExpectParser=warn
+##Authority=VCFv4.3.tex line 121 (quoted above), plus DUPLICATE_METADATA_ID_HANDLING.md's "Empty/whitespace ID is a deliberate stricter-than-bcftools choice" section for why an empty ID is treated identically to a missing one even though bcftools itself does not (see below).
+##Authority=bcftools 1.23.1 (htslib 1.23.1) keeps the declaration verbatim with NO warning at all, exit 0 -- BcftoolsDependencyTest#testSampleEmptyIdBcftoolsKeepsVerbatim pins this live measurement; re-confirmed directly via bcftools view -h on 2026-08-16. ##SAMPLE isn't part of BCF's binary dictionary encoding, so htslib never validates its ID at all -- vcf-parser deliberately diverges from bcftools here, per the spec-grounded ID requirement (VCFv4.3.tex line 121). Deliberate probe-shape difference: that test's own inline probe declares only ##SAMPLE=<ID=,Genomes=Germline>, without the Description="test" attribute this fixture carries. The attribute is kept here because dropping it makes this library emit an unrelated extra warning (SAMPLE required metadata property "Description" is missing, verified live) that has nothing to do with the ID condition under test; bcftools is indifferent to it, so the cited measurement still transfers.
+##ExpectWarnContains=SAMPLE metadata ID is blank
+##ExpectWarnContains=SAMPLE metadata declaration has no ID and cannot be stored; dropped:
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	.

@@ -1,0 +1,11 @@
+##fileformat=VCFv4.3
+##contig=<ID=chr1,length=1000000>
+##SAMPLE=<ID=S1,Genomes=Germline>
+##SAMPLE=<ID=S1,Genomes=Somatic>
+##Authority=hts-specs' own test/vcf/{4.1,4.2}/passed/passed_meta_contig.vcf fixture declares ##contig=<ID=1> then ##contig=<ID=1,length=123456> and is expected to parse successfully -- direct precedent that a duplicate declaration ID is not a structural violation in the spec's own conformance suite, extended here to ##SAMPLE per DUPLICATE_METADATA_ID_HANDLING.md's "Why this warns instead of throwing" section (the same rule applies uniformly across all seven keyed declaration types).
+##Authority=bcftools 1.23.1 (htslib 1.23.1) keeps the first ##SAMPLE=<ID=S1,Genomes=Germline> declaration and silently drops the duplicate, exit 0, no warning -- BcftoolsDependencyTest#testDuplicateSampleIdBcftoolsKeepsFirst pins this live measurement; re-confirmed directly via bcftools view -h on 2026-08-16.
+##Authority=vcf_validator 0.10.2 reports this file valid -- measured live via vcf_validator -i <file> -r summary,text on 2026-08-16.
+##ExpectWarnContains=keeping the first declaration
+##RoundTripDivergenceReason=VcfMetadata.Builder.addSample() drops the second, duplicate ##SAMPLE declaration when it detects the shared ID (DUPLICATE_METADATA_ID_HANDLING.md's reference table); the writer then emits only the surviving first declaration, so the round trip is not byte-identical even though it is semantically equivalent -- verified live during authoring: only the second ##SAMPLE line ("Somatic") is missing from the written output. ##contig is placed before ##SAMPLE in this fixture (unlike the bcftools probe's own line order) specifically so this is the only divergence -- VcfWriter.buildHeaderLines() always emits contig before SAMPLE regardless of input order, and placing them the other way around would additionally reorder the surviving lines, conflating two separate behaviors in one fixture.
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	.

@@ -1,0 +1,11 @@
+##fileformat=VCFv4.3
+##META=<Type=String,Number=.,Values=[A, B]>
+##contig=<ID=chr1,length=1000000>
+##CauseOfFailure=VCFv4.3.tex line 121: "All structured lines require an ID which must be unique within their type, i.e., within all the meta-information lines with the same `##key=` prefix." -- this ##META declaration has no ID attribute at all. ##META's own required-ID rule is unconditional/version-independent (it has no pre-4.3 form at all), unlike ##PEDIGREE, whose own rule is version-gated -- see DUPLICATE_METADATA_ID_HANDLING.md's "Missing ID is spec-grounded" section.
+##ExpectParser=warn
+##Authority=VCFv4.3.tex line 121 (quoted above); see DUPLICATE_METADATA_ID_HANDLING.md's "Missing or empty ID" section: at add time, vcf-parser warns and drops such a declaration in full, for all seven keyed types (never stored, unlike a duplicate-ID-when-present) -- confirmed here against this library's own actual behavior, not assumed from the bcftools column below, which is silent for this type. ##fileformat=VCFv4.3 is required since ##META doesn't exist as a structured declaration type before VCFv4.3.
+##Authority=bcftools 1.23.1 (htslib 1.23.1) keeps the declaration unchanged with NO warning at all, exit 0 -- BcftoolsDependencyTest#testMetaMissingIdBcftoolsKeepsSilently pins this live measurement; re-confirmed directly via bcftools view -h on 2026-08-16. ##META isn't part of BCF's binary dictionary encoding, so htslib never validates its ID at all -- vcf-parser deliberately diverges from bcftools here, per the spec-grounded ID requirement (VCFv4.3.tex line 121).
+##ExpectWarnContains=META required metadata property "ID" is missing
+##ExpectWarnContains=META metadata declaration has no ID and cannot be stored; dropped:
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	.

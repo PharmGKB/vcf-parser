@@ -657,7 +657,7 @@ public class VcfWriter implements Closeable {
       }
       // VCFv4.3.tex line 121 ("All structured lines require an ID...") makes ID mandatory for all seven keyed
       // types; VCFv4.2 doesn't use the word "required" but its own templates for the six pre-4.3 types show ID
-      // unconditionally first -- same guidance IdMetadata's own constructor already cites (IdMetadata.java:20-21;
+      // unconditionally first -- same guidance IdMetadata's own constructor already cites (IdMetadata.java:39-40;
       // see DUPLICATE_METADATA_ID_HANDLING.md) -- so an entirely-missing ID (id == null) is just as much a drift
       // from the map key as a changed one, and is also caught by !mapKey.equals(id) below.
       if (!mapKey.equals(id)) {
