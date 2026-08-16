@@ -1,0 +1,12 @@
+##fileformat=VCFv4.3
+##CauseOfFailure=FILTER column has an interior empty entry between two ';'s ("q10;;q20"), a zero-length field
+##Authority=VCFv4.3.tex:39: "Zero length fields are not allowed, a dot (``.'') must be used instead."
+##Authority=bcftools 1.23.1 warns "FILTER '' is not defined in the header" but keeps the FILTER value unchanged, exit 0 -- confirmed live via bcftools view on 2026-08-15, matching BcftoolsDependencyTest#testEmptyFilterEntryInteriorBcftoolsWarnsButKeepsValue (see that method for the exact invocation).
+##Authority=vcf_validator 0.10.2 reports this file invalid: "Line 12: Filter is not a single dot or a semicolon-separated list of strings." -- measured live via vcf_validator -i <file> -r summary,text on 2026-08-16.
+##ExpectParser=warn
+##ExpectWarnContains=FILTER contains an empty entry
+##FILTER=<ID=q10,Description="qual below 10">
+##FILTER=<ID=q20,Description="qual below 20">
+##contig=<ID=chr1,length=1000000>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	q10;;q20	.

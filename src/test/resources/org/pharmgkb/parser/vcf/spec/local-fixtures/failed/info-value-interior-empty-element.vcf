@@ -1,0 +1,11 @@
+##fileformat=VCFv4.3
+##CauseOfFailure=INFO value has an interior empty element between two ','s ("XD=1,,2"), a zero-length field
+##Authority=VCFv4.3.tex:39: "Zero length fields are not allowed, a dot (``.'') must be used instead."
+##Authority=bcftools 1.23.1 silently substitutes "." for the interior empty element ("XD=1,,2" -> "XD=1,.,2"), no warning, exit 0 -- confirmed live via bcftools view on 2026-08-15, matching BcftoolsDependencyTest#testInfoValueInteriorEmptyElementBcftoolsSubstitutesDot (that test declares the reserved key AD with Number=3; this fixture uses the non-reserved test key XD instead, to avoid an unrelated "INFO AD has Number '3' but the reserved definition expects 'R'" warning from this library's own reserved-INFO-arity check confounding this fixture's own citation below -- bcftools's behavior on the empty entry itself is unaffected by this key choice, confirmed live).
+##Authority=vcf_validator 0.10.2 reports this file invalid: "Line 11: INFO XD does not match the meta specification Type=Integer. XD=1,,2." -- measured live via vcf_validator -i <file> -r summary,text on 2026-08-15.
+##ExpectParser=warn
+##ExpectWarnContains=INFO value for key "XD" contains an empty entry
+##INFO=<ID=XD,Number=3,Type=Integer,Description="Allelic depth (test key)">
+##contig=<ID=chr1,length=1000000>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	XD=1,,2

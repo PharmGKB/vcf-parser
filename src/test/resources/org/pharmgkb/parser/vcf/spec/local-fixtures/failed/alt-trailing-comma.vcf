@@ -1,0 +1,11 @@
+##fileformat=VCFv4.3
+##CauseOfFailure=ALT column has a trailing empty entry ("T,"), a zero-length field
+##Authority=VCFv4.3.tex:39: "Zero length fields are not allowed, a dot (``.'') must be used instead."
+##Authority=VCFv4.3.tex:350: ALT's own grammar lists a MISSING value "." (no variant) as one of the options for "these alleles" -- the same comma-separated list this fixture's trailing gap sits in.
+##Authority=bcftools 1.23.1 silently substitutes "." for the trailing empty entry ("T," -> "T,."), no warning, exit 0 -- confirmed live via bcftools view on 2026-08-15, matching BcftoolsDependencyTest#testTrailingEmptyAltEntryBcftoolsSubstitutesDot (see that method for the exact invocation).
+##Authority=vcf_validator 0.10.2 reports this file invalid: "Line 11: Alternate is not a single dot or a comma-separated list of bases." -- measured live via vcf_validator -i <file> -r summary,text on 2026-08-15.
+##ExpectParser=warn
+##ExpectWarnContains=ALT contains an empty entry
+##contig=<ID=chr1,length=1000000>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T,	.	PASS	.

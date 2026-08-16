@@ -188,7 +188,11 @@ class LocalFixtureConformanceTest {
     WarnCapturingAppender appender = new WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    try (VcfParser parser = new VcfParser.Builder().fromFile(file).parseWith((md, record) -> { }).build()) {
+    // DeferredValidationLineParser, not a no-op lambda: several checks (e.g. VcfPosition.getInfo()'s
+    // empty-entry/empty-key handling) are deferred to a getter and never fire from parse() alone -- see that
+    // class's own Javadoc for the prior warning-count regression a no-op callback caused.
+    try (VcfParser parser = new VcfParser.Builder().fromFile(file).parseWith(new DeferredValidationLineParser())
+        .build()) {
       parser.parse();
     } finally {
       root.detachAppender(appender);
@@ -234,7 +238,8 @@ class LocalFixtureConformanceTest {
     root.addAppender(appender);
     boolean threw = false;
     try {
-      try (VcfParser parser = new VcfParser.Builder().fromFile(file).parseWith((md, record) -> { }).build()) {
+      try (VcfParser parser = new VcfParser.Builder().fromFile(file).parseWith(new DeferredValidationLineParser())
+          .build()) {
         parser.parse();
       } catch (VcfFormatException e) {
         threw = true;

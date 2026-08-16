@@ -1,0 +1,8 @@
+##fileformat=VCFv4.3
+##contig=<ID=chr1,length=1000000,x=[]>
+##Authority=All four VCF spec versions this library targets or accepts (VCFv4.2-VCFv4.5) are silent on whether a metadata attribute-list value may be an empty bracket-looking literal -- confirmed by reading each version's Meta-information-lines subsection directly (VCFv4.2.tex:56; VCFv4.3.tex:105/VCFv4.4.tex:105/VCFv4.5.tex:103); see EMPTY_FIELD_HANDLING.md's "A different kind of 'empty': a metadata attribute-list value" section for the full silence analysis.
+##Authority=InternalUtils.parseOneAttribute (verified by AttributeListTokenizerTest) treats a leading '[' outside ##META's Values attribute as ordinary unquoted-literal content, not a quoting form -- see VCF_SPEC_AMBIGUITIES.md's "General bracket-list quoting beyond `##META`'s `Values`" entry for why this scoping decision was made. The value is kept as the literal string "[]" and a warning fires because '[' is a character bcftools treats as structural elsewhere.
+##Authority=bcftools 1.23.1 accepts this unchanged, no warning, exit 0 -- confirmed live via bcftools view -h on 2026-08-15.
+##ExpectWarnContains=containing a character bcftools treats as structural
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	.

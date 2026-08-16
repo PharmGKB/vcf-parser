@@ -1,0 +1,10 @@
+##fileformat=VCFv4.3
+##CauseOfFailure=##contig's attribute list has a trailing empty attribute after a ',' ("ID=chr1,length=1000000,"), which bcftools itself cannot parse
+##Authority=All four VCF spec versions this library targets or accepts (VCFv4.2-VCFv4.5) are silent on whether a trailing ',' inside an attribute list may produce an empty attribute -- confirmed by reading each version's Meta-information-lines subsection directly; see EMPTY_FIELD_HANDLING.md's "A different kind of 'empty'" section, whose own text states this row is "genuinely analogous to the rest of this document" even though the spec never states it for this specific context.
+##Authority=bcftools 1.23.1 cannot parse this declaration at all and discards the entire ##contig line: "[E::bcf_hdr_parse_line] Could not parse the header line: ``##contig=<ID=chr1,length=1000000,>''", exit 0 (the file itself stays readable) -- confirmed live via bcftools view -h on 2026-08-15, matching VCF_SPEC_AMBIGUITIES.md's "Malformed attribute inside a metadata declaration's `<...>` list" entry's own bcftools measurement of this exact shape. This library deliberately diverges: InternalUtils.tokenizeAttributeList (verified by AttributeListTokenizerTest) drops only the one empty trailing attribute and keeps the rest of the declaration ("ID=chr1,length=1000000" survives), per AGENTS.md's Parser Validation Policy leniency for metadata declarations -- see that VCF_SPEC_AMBIGUITIES.md entry for the full reasoning behind this decision.
+##Authority=vcf_validator 0.10.2 reports this file invalid: "Line 8: Error in contig metadata." -- measured live via vcf_validator -i <file> -r summary,text on 2026-08-15.
+##ExpectParser=warn
+##ExpectWarnContains=Metadata attribute list has an empty trailing attribute
+##contig=<ID=chr1,length=1000000,>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	.

@@ -1,0 +1,11 @@
+##fileformat=VCFv4.3
+##CauseOfFailure=INFO value has a trailing empty element after a ',' ("XD=1,2,"), a zero-length field
+##Authority=VCFv4.3.tex:39: "Zero length fields are not allowed, a dot (``.'') must be used instead."
+##Authority=bcftools 1.23.1 silently substitutes "." for the trailing empty element ("XD=1,2," -> "XD=1,2,."), no warning, exit 0 -- confirmed live via bcftools view on 2026-08-15, matching BcftoolsDependencyTest#testInfoValueTrailingEmptyElementBcftoolsSubstitutesDot (that test declares the reserved key AD with Number=3; this fixture uses the non-reserved test key XD instead, for the same reserved-arity-noise reason given in info-value-interior-empty-element.vcf's own Authority above -- bcftools's behavior on the empty entry itself is unaffected by this key choice, confirmed live).
+##Authority=vcf_validator 0.10.2 reports this file invalid: "Line 11: INFO XD does not match the meta specification Number=3 (expected 3 value(s)). XD=1,2,." -- measured live via vcf_validator -i <file> -r summary,text on 2026-08-15. This is the EMPTY_FIELD_HANDLING.md-documented vcf_validator asymmetry applied to a Number that does NOT match the post-trailing-drop element count (2 real elements against a declared Number=3, unlike the main reference table's own "AD=1,2," example, which uses AD's native Number=R=2 arity and is tolerated) -- see that document's "AD=1,2," row and its own explanatory paragraph.
+##ExpectParser=warn
+##ExpectWarnContains=INFO value for key "XD" contains an empty entry
+##INFO=<ID=XD,Number=3,Type=Integer,Description="Allelic depth (test key)">
+##contig=<ID=chr1,length=1000000>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	XD=1,2,

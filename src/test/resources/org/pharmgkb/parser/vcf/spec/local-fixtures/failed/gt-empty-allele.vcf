@@ -1,0 +1,11 @@
+##fileformat=VCFv4.3
+##CauseOfFailure=Sample #1's GT value has an empty allele after a '/' ("0/" under FORMAT GT), a zero-length field
+##Authority=VCFv4.3.tex:39: "Zero length fields are not allowed, a dot (``.'') must be used instead."
+##Authority=bcftools 1.23.1 HARD-ERRORS on this input: "[E::vcf_parse_format_fill5] Couldn't read GT data: value not a number or '.'", exit code 8 -- confirmed live via bcftools view on 2026-08-15, matching BcftoolsDependencyTest#testEmptyGtAlleleBcftoolsHardErrors (see that method for the exact invocation). This hard error is the cited authority's verdict that decides this fixture's directory. This library's own choice deliberately diverges from it (warns and substitutes '.' rather than rejecting): AGENTS.md's Parser Validation Policy classifies sample values as a deliberately permissive category independent of any single tool's behavior, and splitting "0/" by '/' creates no structural ambiguity -- see EMPTY_FIELD_HANDLING.md's GT row for the full reasoning behind this documented, deliberate divergence.
+##Authority=vcf_validator 0.10.2 reports this file valid -- but NOT because it ignores GT: it has an allele-index check with an interior-vs-trailing asymmetry, and this fixture probes the trailing placement. Measured live via vcf_validator -i <file> -r summary,text on 2026-08-16 against this fixture and several one-token edits of it: a leading or interior empty allele ("/1", "0//1", "0/|1") is reported invalid with "Line 11: Allele index must not be empty.", while a trailing one ("0/", "0|", "0/1/") is reported valid; the control "0/1" is valid. HTS_SPECS_BASELINE_STATUS.md's "GT contains an interior empty allele between two adjacent separators" row records the same message from hts-specs' own failed_body_format_004.vcf/_006.vcf. So this fixture's directory is decided by the bcftools hard error above, not by vcf_validator's verdict.
+##ExpectParser=warn
+##ExpectWarnContains=contains an empty allele
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##contig=<ID=chr1,length=1000000>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	s1
+chr1	1	rs1	A	T	.	PASS	.	GT	0/

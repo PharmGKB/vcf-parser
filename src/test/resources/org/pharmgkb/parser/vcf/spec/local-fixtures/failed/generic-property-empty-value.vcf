@@ -1,0 +1,11 @@
+##fileformat=VCFv4.3
+##CauseOfFailure=Generic metadata property has an empty value ("##reference="), a zero-length field
+##Authority=VCFv4.3.tex:39: "Zero length fields are not allowed, a dot (``.'') must be used instead."
+##Authority=bcftools 1.23.1 silently PRESERVES this generic property unchanged in the header ("##reference=" round-trips through bcftools view -h unmodified), no warning, exit 0 -- confirmed live via bcftools view on 2026-08-15, matching BcftoolsDependencyTest#testGenericPropertyEmptyValueBcftoolsPreservesButWeAreStricter (see that method for the exact invocation). This library deliberately diverges and drops the property with a warning instead, stricter than bcftools -- see EMPTY_FIELD_HANDLING.md's generic-metadata-property row and VcfMetadata.isEmptyMetadataValue's own comment for the full reasoning.
+##Authority=vcf_validator 0.10.2 reports this file invalid: "Line 8: Error in meta-data section." -- measured live via vcf_validator -i <file> -r summary,text on 2026-08-15.
+##ExpectParser=warn
+##ExpectWarnContains=has an empty value and was dropped
+##reference=
+##contig=<ID=chr1,length=1000000>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	.

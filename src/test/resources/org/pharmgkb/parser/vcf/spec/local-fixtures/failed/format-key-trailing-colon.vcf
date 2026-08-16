@@ -1,0 +1,12 @@
+##fileformat=VCFv4.3
+##CauseOfFailure=FORMAT column has a trailing empty sub-field name ("GT:DP:"), a zero-length field
+##Authority=VCFv4.3.tex:39: "Zero length fields are not allowed, a dot (``.'') must be used instead."
+##Authority=bcftools 1.23.1 warns "is not defined in the header" and "Invalid tag name" but keeps the FORMAT column text unchanged, exit 0 -- confirmed live via bcftools view on 2026-08-15, matching BcftoolsDependencyTest#testFormatKeyEmptyEntryTrailingBcftoolsWarnsAndKeepsAsIs (see that method for the exact invocation).
+##Authority=vcf_validator 0.10.2 reports this file invalid: "Line 12: Format does not start with a letter/underscore followed by alphanumeric/underscore/dot characters." -- measured live via vcf_validator -i <file> -r summary,text on 2026-08-15.
+##ExpectParser=warn
+##ExpectWarnContains=FORMAT contains an empty sub-field name
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">
+##contig=<ID=chr1,length=1000000>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	s1
+chr1	1	rs1	A	T	.	PASS	.	GT:DP:	0/1:30:.

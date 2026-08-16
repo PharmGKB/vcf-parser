@@ -254,8 +254,7 @@ the source spelled it with quotes. Drafted as an upstream hts-specs issue in the
 generic metadata line unchanged (confirmed live: `##reference=` round-trips through `bcftools view -h`
 verbatim, no warning) — a deliberate choice to be stricter than bcftools here. Full reasoning (the `VCFv4.3.tex`
 line 39 citation, and why this row's drop-the-whole-line behavior differs from every other empty-field row) and
-implementation pointer live in `EMPTY_FIELD_HANDLING.md`'s "Generic metadata property" row and the paragraph
-following its reference table.
+implementation pointer live in `EMPTY_FIELD_HANDLING.md`'s Row 23 ("Generic metadata property").
 
 ### `##pedigreeDB`/`##assembly` bracket-wrapped values colliding with attribute-list grammar
 

@@ -1,0 +1,12 @@
+##fileformat=VCFv4.3
+##CauseOfFailure=INFO column has an interior empty top-level entry between two ';'s ("DP=10;;AF=0.5"), a zero-length field
+##Authority=VCFv4.3.tex:39: "Zero length fields are not allowed, a dot (``.'') must be used instead."
+##Authority=bcftools 1.23.1 silently drops the empty entry ("DP=10;;AF=0.5" -> "DP=10;AF=0.5"), no warning, exit 0 -- confirmed live via bcftools view on 2026-08-15, matching BcftoolsDependencyTest#testInfoEmptyTopLevelEntryInteriorBcftoolsSilentlyDrops (see that method for the exact invocation; AF is declared Number=A here rather than that test's Number=1, to avoid an unrelated vcf_validator "Number is not A" warning on the reserved AF key confounding this fixture's own citation below -- bcftools's behavior on the empty entry itself is unaffected by this Number choice, confirmed live).
+##Authority=vcf_validator 0.10.2 reports this file invalid: "Line 12: Info key is not a sequence of alphanumeric and/or punctuation characters." -- measured live via vcf_validator -i <file> -r summary,text on 2026-08-15.
+##ExpectParser=warn
+##ExpectWarnContains=INFO contains an empty entry
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Depth">
+##INFO=<ID=AF,Number=A,Type=Float,Description="Allele freq">
+##contig=<ID=chr1,length=1000000>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	DP=10;;AF=0.5

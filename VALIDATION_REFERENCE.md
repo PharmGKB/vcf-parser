@@ -81,7 +81,12 @@ The parser rejects a file whose structure or mandatory record fields are invalid
 - A sample with more sub-fields than its `FORMAT` declares (trailing sub-fields may be dropped, but not added).
 - A malformed or out-of-range `GT` allele index looked up through `VcfSample.getGenotype(VcfPosition)` (or
   `MemoryMappedVcfDataStore`'s `getGenotypeForId`/`getGenotypeAtLocus`, which delegate to it), or a failed
-  conversion when a typed value is requested. An empty (but present) `GT` value under a strict `VcfContext`
+  conversion when a typed value is requested. **Scope note:** this covers a *non-empty* allele token only --
+  `VcfSample.parseAlleleIndex` throws for a token that isn't parseable as an `int`, or that is negative or
+  greater than `position.getAltBases().size()`, and it is never reached for a zero-length token, which
+  `getGenotype`'s own preceding branch handles instead. A zero-length allele token warns unconditionally on
+  both contexts -- see the `GT` bullet in "INFO/FORMAT/sample value content" below. An empty (but present)
+  whole `GT` value under a strict `VcfContext`
   also throws here, for the same `isLenient()`-aware reason as every other reserved/non-reserved typed read's
   empty-value substitution below -- `getGenotype` reads `GT` through `getProperty(ReservedFormatProperty)`,
   which shares that dispatch; under a lenient `VcfContext` an empty `GT` still returns `null`, unchanged.
@@ -428,6 +433,21 @@ is a structural failure and still throws -- see the strict section above):
 - INFO, FILTER, FORMAT, and sample content that is semantically malformed but can be preserved or normalized safely.
 - A non-numeric `QUAL`: the column itself is still well-formed, so this is treated as the missing value rather than
   a structural failure.
+- A **zero-length allele token inside an otherwise non-empty `GT` value** (e.g. `0/`, `/1`, `0//1`): warned
+  ("GT \"{}\" contains an empty allele (VCF does not allow zero-length fields); treating it as the missing
+  value '.'") and substituted with `.` in the returned `Genotype`, leaving the sample's own stored `GT` text
+  unchanged. **This one is not `isLenient()`-aware:** `VcfSample.getGenotype`'s empty-allele branch calls
+  `m_warnings.warn(...)` directly, never `warnOrThrow`, so it warns and recovers under a **strict**
+  `VcfContext` too -- deliberately, and pinned by
+  `VcfSampleTest.testGetGenotypeEmptyAlleleWarnsRatherThanThrowsUnderAStrictContext`. Dropping the token
+  instead would silently change the call's ploidy, so `.` is substituted to preserve every allele's position
+  (`GT` indexes into `ALT` positionally: `VCFv4.2.tex` line 217 / `VCFv4.3.tex` line 493 / `VCFv4.4.tex` line
+  516 / `VCFv4.5.tex` line 615, "The allele values are 0 for the reference allele (what is in the REF field),
+  1 for the first allele listed in ALT, 2 for the second allele list in ALT and so on."). This is a narrower
+  scope than the strict section's `GT` bullet above, which covers a non-empty malformed/out-of-range index and
+  a wholly-empty `GT` value; see `EMPTY_FIELD_HANDLING.md`'s row 19 for the full evidence, including bcftools
+  1.23.1's own divergence (it hard-errors, exit code 8) and vcf_validator 0.10.2's interior-vs-trailing
+  asymmetry.
 - A data-line FORMAT sub-field name that doesn't match the required tag-name grammar (the same grammar the
   strict section above enforces at construction time, and the same one an `##INFO`/`##FORMAT` declaration
   `ID` is warned about, not rejected for, above): warned, kept as-is. Unlike the empty-sub-field-name case it

@@ -1,0 +1,11 @@
+##fileformat=VCFv4.3
+##CauseOfFailure=INFO column has a trailing empty top-level entry after a ';' ("DP=10;"), a zero-length field
+##Authority=VCFv4.3.tex:39: "Zero length fields are not allowed, a dot (``.'') must be used instead."
+##Authority=bcftools 1.23.1 silently drops the trailing empty entry ("DP=10;" -> "DP=10"), no warning, exit 0 -- confirmed live via bcftools view on 2026-08-15, matching BcftoolsDependencyTest#testInfoEmptyTopLevelEntryTrailingBcftoolsSilentlyDrops (see that method for the exact invocation).
+##Authority=vcf_validator 0.10.2 reports this file invalid: "Line 11: Info key is not a sequence of alphanumeric and/or punctuation characters." -- measured live via vcf_validator -i <file> -r summary,text on 2026-08-15.
+##ExpectParser=warn
+##ExpectWarnContains=INFO contains an empty entry
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Depth">
+##contig=<ID=chr1,length=1000000>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	DP=10;

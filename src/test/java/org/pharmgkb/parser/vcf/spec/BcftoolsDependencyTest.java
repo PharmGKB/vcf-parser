@@ -461,6 +461,315 @@ class BcftoolsDependencyTest {
   }
 
   @Test
+  void testEmptyIdEntryInteriorBcftoolsPassesThroughSilently() throws IOException, InterruptedException {
+    // confirms EMPTY_FIELD_HANDLING.md's Reference table row 1 (ID `rs1;;rs2`): bcftools does not treat the
+    // ID column's ';'-separated entries as structural at all -- the whole value is passed through byte-for-byte
+    // with no warning and exit 0, unlike this library's own warn+drop
+    String vcf = "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1;;rs2\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("\trs1;;rs2\t"), result.output());
+    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+  }
+
+  @Test
+  void testEmptyIdEntryTrailingBcftoolsPassesThroughSilently() throws IOException, InterruptedException {
+    // EMPTY_FIELD_HANDLING.md's Reference table row 2 (ID `rs3;`): same silent passthrough as the interior
+    // case above, for a trailing empty entry
+    String vcf = "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs3;\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("\trs3;\t"), result.output());
+    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+  }
+
+  @Test
+  void testEmptyFilterEntryInteriorBcftoolsWarnsButKeepsValue() throws IOException, InterruptedException {
+    // EMPTY_FIELD_HANDLING.md's Reference table row 3 (FILTER `q10;;q20`): both codes must be declared via
+    // ##FILTER first, or an undeclared-code warning would be indistinguishable from the empty-entry warning
+    // under test. bcftools warns on the empty entry specifically but keeps the FILTER value unchanged.
+    String vcf = "##fileformat=VCFv4.2\n##FILTER=<ID=q10,Description=\"qual below 10\">\n" +
+        "##FILTER=<ID=q20,Description=\"qual below 20\">\n##contig=<ID=chr1,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT\t.\tq10;;q20\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("FILTER '' is not defined in the header"), result.output());
+    assertTrue(result.output().contains("\tq10;;q20\t"), result.output());
+  }
+
+  @Test
+  void testEmptyFilterEntryTrailingBcftoolsSilentlyDrops() throws IOException, InterruptedException {
+    // EMPTY_FIELD_HANDLING.md's Reference table row 4 (FILTER `q10;`): unlike the interior case above, a
+    // trailing empty FILTER entry is dropped with NO warning at all -- measured live, this is a real
+    // asymmetry with row 3, not a transcription of the same behavior
+    String vcf = "##fileformat=VCFv4.2\n##FILTER=<ID=q10,Description=\"qual below 10\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tq10;\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertTrue(result.output().contains("\tq10\t"), result.output());
+  }
+
+  @Test
+  void testTrailingEmptyAltEntryBcftoolsSubstitutesDot() throws IOException, InterruptedException {
+    // EMPTY_FIELD_HANDLING.md's Reference table row 6 (ALT `T,`): the trailing-comma counterpart of row 5's
+    // existing interior case -- bcftools silently substitutes "." for the trailing empty entry too
+    String vcf = "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT,\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("A\tT,.\t"), result.output());
+  }
+
+  @Test
+  void testFormatKeyEmptyEntryInteriorBcftoolsWarnsAndKeepsAsIs() throws IOException, InterruptedException {
+    // EMPTY_FIELD_HANDLING.md's Reference table row 7 (FORMAT key `GT::GQ`): bcftools warns twice for the
+    // empty key (undeclared FORMAT + invalid tag name) but keeps the FORMAT column text unchanged
+    String vcf = "##fileformat=VCFv4.2\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"Genotype quality\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT::GQ\t0/1:.:30\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("is not defined in the header"), result.output());
+    assertTrue(result.output().contains("Invalid tag name"), result.output());
+    assertTrue(result.output().contains("\tGT::GQ\t"), result.output());
+  }
+
+  @Test
+  void testFormatKeyEmptyEntryTrailingBcftoolsWarnsAndKeepsAsIs() throws IOException, InterruptedException {
+    // EMPTY_FIELD_HANDLING.md's Reference table row 8 (FORMAT key `GT:DP:`): same pair of warnings as the
+    // interior case above, for a trailing empty FORMAT key entry
+    String vcf = "##fileformat=VCFv4.2\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:DP:\t0/1:30:.\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("is not defined in the header"), result.output());
+    assertTrue(result.output().contains("Invalid tag name"), result.output());
+    assertTrue(result.output().contains("\tGT:DP:\t"), result.output());
+  }
+
+  @Test
+  void testSampleValueTrailingEmptySubfieldBcftoolsSubstitutesDot() throws IOException, InterruptedException {
+    // EMPTY_FIELD_HANDLING.md's Reference table row 9 (sample value `0/1:` under FORMAT `GT:DP`): bcftools
+    // silently substitutes "." for the missing trailing DP subfield, no warning
+    String vcf = "##fileformat=VCFv4.2\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:DP\t0/1:\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertTrue(result.output().contains("\tGT:DP\t0/1:.\n") || result.output().contains("\tGT:DP\t0/1:.\r\n"),
+        result.output());
+  }
+
+  @Test
+  void testSampleValueInteriorEmptySubfieldIntegerFieldBcftoolsWarnsAndSubstitutesDot()
+      throws IOException, InterruptedException {
+    // EMPTY_FIELD_HANDLING.md's Reference table row 10 (sample value `0/1::30` under FORMAT `GT:DP:GQ`, DP
+    // declared Type=Integer): bcftools's numeric-field parser treats the empty subfield as an extreme/
+    // unparseable value and substitutes "." with its own dedicated warning, distinct from the FORMAT-key-level
+    // warnings in rows 7/8 above
+    String vcf = "##fileformat=VCFv4.2\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">\n" +
+        "##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"Genotype quality\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:DP:GQ\t0/1::30\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("Extreme FORMAT/DP value encountered and set to missing"),
+        result.output());
+    assertTrue(result.output().contains("\tGT:DP:GQ\t0/1:.:30\n"), result.output());
+  }
+
+  @Test
+  void testSampleValueInteriorEmptySubfieldStringFieldBcftoolsStoresRawNulByte()
+      throws IOException, InterruptedException {
+    // EMPTY_FIELD_HANDLING.md's Reference table row 11 (sample value `0/1::30` under FORMAT `GT:XX:GQ`, XX
+    // declared Type=String): unlike the Integer case above, bcftools's String-field parser is silent (no
+    // warning at all) and represents the empty subfield internally as a raw NUL byte (0x00), not ".". Verified
+    // byte-level via the combined stdout+stderr text containing a literal '\0' character -- a plain String
+    // .contains(".") comparison alone cannot distinguish this from a dot substitution, since both render
+    // similarly in a terminal; checking for the actual NUL byte is the only way to confirm the table's own
+    // "confirmed via cat -A" claim without relying on a separate shell invocation.
+    String vcf = "##fileformat=VCFv4.2\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##FORMAT=<ID=XX,Number=1,Type=String,Description=\"Test string field\">\n" +
+        "##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"Genotype quality\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:XX:GQ\t0/1::30\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertTrue(result.output().contains("\tGT:XX:GQ\t0/1:\0:30\n"),
+        "Expected a literal NUL byte (0x00) in place of the empty XX subfield, got: " + result.output());
+  }
+
+  @Test
+  void testInfoEmptyTopLevelEntryInteriorBcftoolsSilentlyDrops() throws IOException, InterruptedException {
+    // EMPTY_FIELD_HANDLING.md's Reference table row 12 (INFO top-level entry `DP=10;;AF=0.5`): both keys must
+    // be declared via ##INFO first, so the empty entry's drop isn't confused with an undeclared-key warning
+    String vcf = "##fileformat=VCFv4.2\n##INFO=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">\n" +
+        "##INFO=<ID=AF,Number=1,Type=Float,Description=\"Allele freq\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\tDP=10;;AF=0.5\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("\tDP=10;AF=0.5\n"), result.output());
+  }
+
+  @Test
+  void testInfoEmptyTopLevelEntryTrailingBcftoolsSilentlyDrops() throws IOException, InterruptedException {
+    // EMPTY_FIELD_HANDLING.md's Reference table row 13 (INFO top-level entry `DP=10;`): the trailing-semicolon
+    // counterpart of row 12's interior case -- bcftools silently drops the trailing empty entry too, no warning
+    String vcf = "##fileformat=VCFv4.2\n##INFO=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\tDP=10;\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertTrue(result.output().contains("\tDP=10\n"), result.output());
+  }
+
+  @Test
+  void testInfoEntryWithEmptyKeyBcftoolsSilentlyDrops() throws IOException, InterruptedException {
+    // EMPTY_FIELD_HANDLING.md's Reference table row 14 (INFO entry with an empty key `=5;DP=10`): bcftools
+    // silently drops the key-less "=5" entry entirely and keeps "DP=10", no warning and exit 0
+    String vcf = "##fileformat=VCFv4.2\n##INFO=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t=5;DP=10\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertTrue(result.output().contains("\tDP=10\n"), result.output());
+  }
+
+  @Test
+  void testInfoValueInteriorEmptyElementBcftoolsSubstitutesDot() throws IOException, InterruptedException {
+    // EMPTY_FIELD_HANDLING.md's Reference table row 15 (INFO value `AD=1,,2`): AD is declared with a fixed
+    // Number=3 matching this input's 3-element count, per the doc's own vcf_validator-asymmetry note on arity,
+    // to keep the probe unambiguous. bcftools silently substitutes "." for the interior empty element.
+    String vcf = "##fileformat=VCFv4.2\n##INFO=<ID=AD,Number=3,Type=Integer,Description=\"Allelic depth\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\tAD=1,,2\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("\tAD=1,.,2\n"), result.output());
+  }
+
+  @Test
+  void testInfoValueTrailingEmptyElementBcftoolsSubstitutesDot() throws IOException, InterruptedException {
+    // EMPTY_FIELD_HANDLING.md's Reference table row 16 (INFO value `AD=1,2,`): same fixed Number=3 as row 15
+    // above (this input is also a 3-element case: "1", "2", ""). bcftools silently substitutes "." for the
+    // trailing empty element, same as the interior case.
+    String vcf = "##fileformat=VCFv4.2\n##INFO=<ID=AD,Number=3,Type=Integer,Description=\"Allelic depth\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\tAD=1,2,\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("\tAD=1,2,.\n"), result.output());
+  }
+
+  @Test
+  void testInfoValueWhollyEmptyBcftoolsSubstitutesDot() throws IOException, InterruptedException {
+    // EMPTY_FIELD_HANDLING.md's Reference table row 17 (INFO value `AD=`): a single-element (Number=1) case,
+    // unlike rows 15/16's fixed Number=3 -- AD= splits to exactly one empty element. bcftools silently
+    // substitutes "." for the wholly-empty value.
+    String vcf = "##fileformat=VCFv4.2\n##INFO=<ID=AD,Number=1,Type=Integer,Description=\"Allelic depth\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\tAD=\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("\tAD=.\n"), result.output());
+  }
+
+  @Test
+  void testInfoFlagWithNoEqualsBcftoolsRoundTripsUnchanged() throws IOException, InterruptedException {
+    // EMPTY_FIELD_HANDLING.md's Reference table row 18 (INFO flag `DB;DP=10`, no '='): a control-shaped case,
+    // not an empty-field one -- a Flag key with no '=' at all is fine as-is. Confirms the line round-trips
+    // unchanged with no warning, contrasting with the "was this value actually empty" rows above.
+    String vcf = "##fileformat=VCFv4.2\n##INFO=<ID=DB,Number=0,Type=Flag,Description=\"dbSNP membership\">\n" +
+        "##INFO=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\tDB;DP=10\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertTrue(result.output().contains("\tDB;DP=10\n"), result.output());
+  }
+
+  @Test
+  void testEmptyGtAlleleBcftoolsHardErrors() throws IOException, InterruptedException {
+    // EMPTY_FIELD_HANDLING.md's Reference table row 19 (GT allele `0/`): unlike every other row in this table,
+    // bcftools HARD-ERRORS on an empty GT allele (exit code 8), stricter than this library's own warn +
+    // substitute "." -- a documented, deliberate divergence (see the table's own prose below this row): sample
+    // values are a deliberately permissive category under AGENTS.md's Parser Validation Policy independent of
+    // any single tool's behavior, and splitting "0/" by '/' creates no structural ambiguity. This test only
+    // confirms what bcftools itself does, not this library's differing choice.
+    String vcf = "##fileformat=VCFv4.2\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT\t0/\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertTrue(result.exitCode() != 0 && result.output().contains("Couldn't read GT data"), result.output());
+  }
+
+  @Test
+  void testReservedListFormatValueTrailingEmptyElementBcftoolsWarnsAndSubstitutesDot()
+      throws IOException, InterruptedException {
+    // EMPTY_FIELD_HANDLING.md's Reference table row 20 (reserved list-typed FORMAT value `HQ`, `1,2,`): HQ is
+    // declared with Number=2,Type=Integer per the VCF spec's Reserved Genotype Keys table. bcftools warns
+    // ("Extreme FORMAT/HQ value ... set to missing") and substitutes "." for the trailing empty element, same
+    // as an ordinary Integer-typed FORMAT field would (row 10's DP case above).
+    String vcf = "##fileformat=VCFv4.2\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##FORMAT=<ID=HQ,Number=2,Type=Integer,Description=\"Haplotype Quality\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:HQ\t0/1:1,2,\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("Extreme FORMAT/HQ value encountered and set to missing"),
+        result.output());
+    assertTrue(result.output().contains("\tGT:HQ\t0/1:1,2,.\n"), result.output());
+  }
+
+  @Test
+  void testReservedFormatFtValueInteriorEmptyCodeBcftoolsPassesThroughSilently()
+      throws IOException, InterruptedException {
+    // EMPTY_FIELD_HANDLING.md's Reference table row 21 (reserved FORMAT/FT, `q10;;q20`): FT is an opaque,
+    // String-typed key to bcftools -- it has no knowledge of FT's reserved semicolon-separated-code grammar, so
+    // the interior empty code is passed through silently, unlike a real structural field's own empty-entry
+    // handling elsewhere in this table.
+    String vcf = "##fileformat=VCFv4.2\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##FORMAT=<ID=FT,Number=1,Type=String,Description=\"Genotype filter\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:FT\t0/1:q10;;q20\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertTrue(result.output().contains("\tGT:FT\t0/1:q10;;q20\n"), result.output());
+  }
+
+  @Test
+  void testReservedFormatFtValueAllCodesEmptyBcftoolsPassesThroughSilently()
+      throws IOException, InterruptedException {
+    // EMPTY_FIELD_HANDLING.md's Reference table row 22 (reserved FORMAT/FT, all codes empty `;;`): completion of
+    // row 21 above -- same silent passthrough reasoning, for the case where every semicolon-separated code is
+    // empty rather than just one.
+    String vcf = "##fileformat=VCFv4.2\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##FORMAT=<ID=FT,Number=1,Type=String,Description=\"Genotype filter\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:FT\t0/1:;;\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertTrue(result.output().contains("\tGT:FT\t0/1:;;\n"), result.output());
+  }
+
+  @Test
   void testEmptyAltEntryBcftoolsSubstitutesDotMatchingThisLibrarysOwnChoice() throws IOException, InterruptedException {
     // confirms parity with EMPTY_FIELD_HANDLING.md's own choice: bcftools substitutes an empty ALT entry with
     // "." (T,,C -> T,.,C), and VcfPosition.checkAltBases does the same (fixed by e763eeb to substitute rather
