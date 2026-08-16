@@ -226,8 +226,8 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   unescaped quote and stores the recovered value; `Builder.addRawProperty` applies a narrower, also-
   unconditional rule instead (rejects `=` only in the generic property's *name*, since a `##key=value` line is
   re-read by splitting on the first `=` only). See
-  [`STRUCTURAL_DELIMITER_HANDLING.md`](STRUCTURAL_DELIMITER_HANDLING.md) for the full corruption matrix, the
-  severity ranking, and the parse-path exemption's rationale.
+  [`STRUCTURAL_DELIMITER_HANDLING.md`](STRUCTURAL_DELIMITER_HANDLING.md) for the Reference table's per-shape
+  throw/warn outcomes, the severity ranking, and the parse-path exemption's rationale.
 - `VcfWriter.validateBeforeWrite()`'s `validateMetadataPropertyEncodings` (run once per header, from
   `writeHeader` only) calls `InternalUtils.checkMetadataPropertyEncodingForWrite`, the write-time counterpart
   to the construction-time check above, sharing the identical `findEncodingProblems` classifier so the two

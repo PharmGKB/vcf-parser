@@ -613,8 +613,9 @@ class MetadataPropertyEncodingTest {
       // the fixed variant of the case above: a LEADING quote that DOES find its own closing quote before the
       // next comma (unlike the unclosed-quote case above) no longer swallows anything at all. This is the
       // original probe this suite used before the attribute-list tokenizer existed -- it used to demonstrate
-      // Description swallowing ",Source=\"s\"" wholesale (the old two-pass splitter's toggle-based defect,
-      // see STRUCTURAL_DELIMITER_HANDLING.md's historical severity-ranking section) -- and now demonstrates the
+      // Description swallowing ",Source=\"s\"" wholesale (the retired two-pass splitter's toggle-based
+      // defect, described in full in testAnUnescapedQuoteInAPropertyNameNoLongerCorruptsFollowingAttributes'
+      // own comment above) -- and now demonstrates the
       // fix instead: Description still truncates at its own closing quote (the same "b\"" trailing-content
       // recovery as the first case above), but Source is recovered fully intact, not swallowed.
       new RecoveredCase("##INFO=<ID=XX,Number=1,Type=String,Description=\"a\"b\",Source=\"s\">",

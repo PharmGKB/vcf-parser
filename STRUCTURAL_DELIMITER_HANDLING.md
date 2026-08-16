@@ -12,87 +12,34 @@ and a lenient context -- see "Severity: unconditional throw" below for why. It i
 replace bullet) is also unconditional, for an unrelated reason -- a missing replace target is a programming
 error, not content a warning could recover from.
 
-**Construction-time unconditionality is not the whole story any more.** The attribute-list tokenizer task
-(`InternalUtils.checkMetadataPropertyEncoding`'s Task 3) split this single predicate into a construction-time
-entry point (still unconditional -- every problem throws) and a `validateBeforeWrite()` counterpart,
-`checkMetadataPropertyEncodingForWrite`, that throws only for a problem that would make the emitted FILE
-unreadable by bcftools and warns otherwise. Both share one classifier, `InternalUtils.findEncodingProblems`,
-so they cannot disagree about what counts as a problem, only about what to do with one -- see "Path asymmetry
-closed" and the Reference table below for the specifics, and `VALIDATION_PHILOSOPHY.md`'s
-originated-vs-carried-forward paragraph for why the two routes are allowed to differ at all.
+**Construction-time unconditionality is not the whole story.** `InternalUtils.checkMetadataPropertyEncoding`
+is the construction-time entry point (still unconditional -- every problem throws), and
+`checkMetadataPropertyEncodingForWrite` is its `validateBeforeWrite()` counterpart, which throws only for a
+problem that would make the emitted FILE unreadable by bcftools and warns otherwise. Both share one classifier,
+`InternalUtils.findEncodingProblems`, so they cannot disagree about what counts as a problem, only about what
+to do with one -- see "Where write-time and construction-time checks meet" and the Reference table below for
+the specifics, and `VALIDATION_PHILOSOPHY.md`'s originated-vs-carried-forward paragraph for why the two routes
+are allowed to differ at all.
 
 ## The defect
 
 `VcfWriter` has no encoding step. `getAllProperties` (`VcfWriter.java:1201-1215`) emits each `##KEY=<...>` line
 by walking `BaseMetadata.getPropertiesRaw()` and appending every key and value **verbatim**, separated by `,`
-and `=` with no quoting and no escaping. Output is therefore well-formed only if the encoding
-was already valid when the declaration was **constructed** -- and before this check existed, construction did
-not ensure that. A caller could build a `ContigMetadata` with an `assembly` value such as `a,b`, write it on
-the default path, and silently get back something other than what was passed in.
-
-## The corruption matrix
-
-Verified empirically: constructing a `ContigMetadata` with the given `assembly` value, writing it on the
-default (non-`validateBeforeWrite()`) path, and re-parsing the output.
-
-| Value passed in | Construct | Default write | Re-parse yields | Verdict |
-|---|---|---|---|---|
-| `B36` | ok | ok | `B36` | correct |
-| `"a,b"` (quoted) | ok | ok | `"a,b"` | correct |
-| `"a=b"` (quoted) | ok | ok | `"a=b"` | correct |
-| `a,b` | ok | ok | **`a`** | silently **truncated** |
-| `a=b` | ok | ok | **attribute absent**\* | silently **deleted**\* |
-| `a"b` | ok | ok | **`a"b,md5=deadbeef,taxonomy=tx`**\* | silently **absorbs every following attribute**\* |
-| `a\nb` | **throws** | -- | -- | already correct (line terminator, see below) |
-
-The last row is not new: a line terminator (`\n`/`\r`) is already rejected at construction by
+and `=` with no quoting and no escaping. Output is therefore well-formed only if the encoding was already
+valid when the declaration was **constructed** -- construction is what guarantees that (see "Severity:
+unconditional throw" below). A line terminator (`\n`/`\r`) is separately rejected at construction by
 `InternalUtils.checkNoLineTerminator`, independent of this check -- see `VALIDATION_REFERENCE.md`'s
-line-terminator bullet. The other three "silently ..." rows were the defect that originally motivated this
-check.
+line-terminator bullet.
 
-\* **These two rows describe the retired two-pass splitter (`InternalUtils.splitTopLevel`/`splitProperty`),
-not the current re-parse mechanism.** The attribute-list tokenizer (`InternalUtils.tokenizeAttributeList`,
-`InternalUtils.parseAttribute`, sharing one per-attribute grammar via `parseOneAttribute`) that superseded it
-finds each attribute's own boundary independently rather than tracking one "inside a quoted value" toggle
-across the whole declaration, and no longer reproduces either defect: re-measured directly against
-`##contig=<ID=1,length=100,assembly=a=b,md5=deadbeef,taxonomy=tx>` and the `a"b` equivalent,
-
-- `a=b` now re-parses as `assembly=a=b` in full, with **no warning at all** -- the value's own `=` is ordinary
-  content once the name's first `=` has been consumed, the same rule
-  `AttributeListTokenizerTest#anEqualsSignInAValueIsOrdinary` pins.
-- `a"b` now re-parses as `assembly=a"b` in full, `md5` and `taxonomy` both intact -- only a warning fires
-  ("...containing a character bcftools treats as structural; preserving it"). Pinned by
-  `local-fixtures/passed/contig-unquoted-value-non-leading-quote.vcf`, which also records bcftools 1.23.1's
-  own silent acceptance of the same value as its `##Authority=`.
-
-Only the `a,b` row still reproduces exactly as measured: `assembly` still truncates to `a` at the comma (a
-comma is still the one character with no escaping mechanism in an unquoted value), though the leftover `b`
-segment now produces its own "has no '='" warning rather than the old "Could not parse metadata attribute"
-wrapper text.
-
-**This did not change what `VcfMetadata.Builder` accepts, at the time it was written.** At that point,
-`checkMetadataPropertyEncoding`'s predicate still rejected all three shapes -- `a,b`, `a=b`, and `a"b` -- at
-`addContig(Map)` and every other construction route unconditionally, and loosening it to match the tokenizer's
-improved recovery for `=` and `"` was named as a separate design decision, deliberately not made at that time.
-
-**That decision was made in Task 3 of the attribute-list tokenizer design, for `=` only.** `=` no longer
-appears anywhere in `InternalUtils.findEncodingProblems`'s classifier: an unquoted value may contain it freely,
-both at construction and at write time. `"` was NOT loosened the same way -- an unescaped `"` is still a
-problem (see the updated Reference table below), just no longer one that throws unconditionally everywhere:
-construction still throws for it, but `validateBeforeWrite()` now warns, since a non-catastrophic unescaped
-quote (one that still finds its own closing `"`, just not where the caller intended) leaves the file
-bcftools-readable, unlike an unquoted comma or a malformed bracket value.
-
-## Severity ranking: comma > everything else (current), historically unescaped quote > `=` > comma
+## Severity ranking: comma > everything else
 
 The comma's primacy over `<`/`>` below -- that an unquoted value's own comma still ends it even inside an
-angle-bracket span -- is now a recorded decision with its own entry: see `VCF_SPEC_AMBIGUITIES.md`'s "Angle
+angle-bracket span -- is a recorded decision with its own entry: see `VCF_SPEC_AMBIGUITIES.md`'s "Angle
 brackets are not a quoting form in a metadata attribute value".
 
-**Under the current attribute-list tokenizer, only a comma still genuinely loses data for an otherwise
-unquoted, single-attribute value.** Neither an unescaped `=` nor an unescaped `"` does anymore, because each
-attribute's boundary is now found independently rather than via one toggle shared across the whole
-declaration (see the corruption-matrix footnote above):
+**Under the attribute-list tokenizer, only a comma genuinely loses data for an otherwise unquoted,
+single-attribute value.** Neither an unescaped `=` nor an unescaped `"` does, because each attribute's
+boundary is found independently -- no parse state of any kind is shared across the whole declaration:
 
 - **A comma** is still the one character an unquoted value has no way to escape: `attributeLimit`'s
   comma-bounded search (`InternalUtils.java`, shared by `tokenizeAttributeList` and `parseAttribute` via
@@ -103,25 +50,17 @@ declaration (see the corruption-matrix footnote above):
 - **An unescaped `"`** only matters if it is the value's *first* byte after the optional leading-space skip
   (`AttributeListTokenizerTest#onlyALeadingDelimiterQuotes`: "a non-leading quote is an ordinary byte and
   protects nothing"). `assembly=a"b`'s quote is not leading, so the value stays entirely literal and the
-  quote is inert past a warning. A *leading* quote does still matter, though not by absorbing subsequent
-  attributes wholesale the old way: `tokenizeAttributeList`'s closing-quote search spans the *whole remainder*
+  quote is inert past a warning. A *leading* quote, and only a leading one, does still matter:
+  `tokenizeAttributeList`'s closing-quote search spans the *whole remainder*
   of the line, not just up to the next comma (the same whole-remainder search the bracket form's own version
   of this rule gets its dedicated test for, `AttributeListTokenizerTest#aMetaValuesClosingBracketIsSearchedForAcrossTheWholeRemainder`
   -- deliberate, so a `##META` example's own bracket value isn't falsely "unterminated" at its first interior
   comma; the quoted-value case shares the identical scan and has no separate test of its own). If a value opens with `"` and never finds its own closing `"` before the next
   attribute's opening `"`, that next attribute's opening quote is mistaken for the closing one, and everything
-  in between -- including that next attribute's own name and `=` -- is absorbed. This is narrower than the
-  retired splitter's defect (it requires a *leading*, unclosed quote specifically, not any non-leading one
-  anywhere in the declaration) but not eliminated; see the `Description="ab,Source="s"` case in "Why the
-  parse path is exempt" below for a live example, still guarded by `MetadataPropertyEncodingTest`'s third
-  `RecoveredCase`.
-
-**Historically (the retired two-pass splitter, `InternalUtils.splitTopLevel`/`splitProperty`), the ranking ran
-the other way and every one of the three lost data:** a comma still truncated the value the same way; an `=`
-made `splitProperty` see three parts where it required exactly two and dropped the *whole* attribute; and an
-unescaped quote anywhere (leading or not) flipped one "inside a quoted value" toggle shared across the entire
-declaration, silently absorbing every attribute after it, comma, `=`, and all. `assembly=a"b` under that
-mechanism re-parsed to keys `[ID, length, assembly]` only, with `md5`/`taxonomy` both absent entirely.
+  in between -- including that next attribute's own name and `=` -- is absorbed. This requires a *leading*,
+  unclosed quote specifically, not any non-leading one anywhere in the declaration;
+  see the `Description="ab,Source="s"` case in "Why the parse path is exempt" below for a live example,
+  guarded by `MetadataPropertyEncodingTest`'s third `RecoveredCase`.
 
 ## Brackets: a second value-quoting form, scoped to `##META`'s `Values`
 
@@ -217,56 +156,54 @@ through `warnOrThrow`. This check joins that group for two reasons:
   a genuine truncation today) -- warning at construction time and then proceeding to store the value anyway
   would fix nothing; the corruption would still happen later, at write time.
 
-**The deferred question this section used to leave open -- whether rejecting `=` and a non-leading `"` still
-made sense now that the tokenizer no longer corrupts either one -- was answered by Task 3, and the two got
-different answers.** `=` was dropped from the classifier entirely: an unquoted value may now contain it
-freely, at construction and at write time alike, since the tokenizer's own name/value split already makes it
-ordinary content with no corruption to guard against. An unescaped `"` was NOT loosened the same way -- it
-remains a problem at construction (`checkMetadataPropertyEncoding` still throws unconditionally for it) -- but
-it did stop being an *unconditional-everywhere* throw: `validateBeforeWrite()`'s counterpart now warns for it
-instead, since `InternalUtils.EncodingProblem` classifies it as not `unreadableOutput` (the file stays
-bcftools-readable even when one declaration's value is corrupted this way). See `VALIDATION_PHILOSOPHY.md`'s
+**`=` and an unescaped `"` are treated asymmetrically.** `=` does not appear in the classifier at all: an
+unquoted value may contain it freely, at construction and at write time alike, since the tokenizer's own
+name/value split already makes it ordinary content with no corruption to guard against. An unescaped `"`
+remains a problem at construction (`checkMetadataPropertyEncoding` throws unconditionally for it) but is not
+an *unconditional-everywhere* throw: `validateBeforeWrite()`'s counterpart warns for it instead, since
+`InternalUtils.EncodingProblem` classifies it as not `unreadableOutput` (the file stays bcftools-readable
+even when one declaration's value is corrupted this way). See `VALIDATION_PHILOSOPHY.md`'s
 originated-vs-carried-forward paragraph for why construction and `validateBeforeWrite()` are allowed to answer
-this differently at all, and the Reference table below for exactly which shapes still throw everywhere versus
-which now only throw at construction.
+this differently at all, and the Reference table below for exactly which shapes throw on both paths versus
+which throw at construction only.
 
 ## Where the check runs
 
 `InternalUtils.findEncodingProblems(String kind, Map<String, String> properties)`
-(`InternalUtils.java:1656-1744`) is the shared classifier, called by both `InternalUtils.
-checkMetadataPropertyEncoding` (`InternalUtils.java:1588-1592`, the construction-time entry point -- every
+(`InternalUtils.java:1679-1767`) is the shared classifier, called by both `InternalUtils.
+checkMetadataPropertyEncoding` (`InternalUtils.java:1611-1615`, the construction-time entry point -- every
 problem it finds throws) and `InternalUtils.checkMetadataPropertyEncodingForWrite`
-(`InternalUtils.java:1604-1612`, the `validateBeforeWrite()` entry point -- throws only for a problem marked
-`unreadableOutput`, warns otherwise). Since the attribute-list-tokenizer phase's Task 6, it selects a branch on
-the property value's first byte -- exactly as the tokenizer itself does (see "Brackets: a second
+(`InternalUtils.java:1627-1635`, the `validateBeforeWrite()` entry point -- throws only for a problem marked
+`unreadableOutput`, warns otherwise). It selects a branch on the property value's first byte -- exactly as the tokenizer itself does (see "Brackets: a second
 value-quoting form" above) -- then checks within it. It rejects:
 
 - a property **name** that does not match `InternalUtils.METADATA_ATTRIBUTE_NAME_PATTERN`
-  (`^[A-Za-z_][0-9A-Za-z_.]*$`, the bcftools-derived allowlist -- this also catches `null`, empty, and every
-  shape the four-check list below this paragraph used to enumerate individually, since none of `,`, `=`, or
-  `"` are in the allowlist's character set either);
+  (`^[A-Za-z_][0-9A-Za-z_.]*$`, the bcftools-derived allowlist -- one check that also covers a `null` name, an
+  empty name, and a name containing `,`, `=`, or `"`, since none of those is in the allowlist's character set
+  either);
 - a value starting with `"` (the **quoted** branch) that is not validly quoted (`InternalUtils.isQuoted`,
-  `InternalUtils.java:1760-1777`) -- and within that, one further split: a malformed value that also contains
+  `InternalUtils.java:1783-1800`) -- and within that, one further split: a malformed value that also contains
   a comma is `unreadableOutput=true` (this library's own tokenizer recovers a value with no valid closing `"`
   by scanning for the next comma rather than the value's own end, so an embedded comma silently drops
   everything after it on re-parse -- see `EncodingProblem`'s own Javadoc); a malformed value with no comma is
   `unreadableOutput=false` (bcftools itself does not hard-fail on an unterminated leading quote, only warns
   and mangles the declaration);
-- a value starting with `[` and containing no `]` anywhere (`InternalUtils.java:1707`) -- checked
+- a value starting with `[` and containing no `]` anywhere (`InternalUtils.java:1730`,
+  `if (value.startsWith("[") && value.indexOf(']', 1) < 0) {`) -- checked
   UNCONDITIONALLY, before the `##META`'s-`Values`-only gate below, since bcftools' own generic bracket
   handling still treats any leading `[` as opening a quoted span regardless of attribute/declaration type,
   and hard-fails (exit 255) if it never finds a closing `]`;
 - beyond that universal floor, a value starting with `[` on `##META`'s `Values` specifically
-  (`InternalUtils.java:1713`) that is not a well-formed bracket value (`InternalUtils.
-  isWellFormedMetaValuesBracket`, `InternalUtils.java:1756` -- its first LITERAL `]`, no escape awareness,
+  (`InternalUtils.java:1736`, `if (value.startsWith("[") && isMetaValues(kind, name)) {`) that is not a
+  well-formed bracket value (`InternalUtils.
+  isWellFormedMetaValuesBracket`, `InternalUtils.java:1779` -- its first LITERAL `]`, no escape awareness,
   must be its last character); a leading `[` on any other attribute is not bracket-checked at all past the
   universal floor -- see "Brackets: a second value-quoting form, scoped to `##META`'s `Values`" above;
 - otherwise (the **literal** branch, for a value starting with neither `"` nor `[`): an unescaped `,`, `<`,
-  `>`, or `"` -- `InternalUtils.containsUnescapedQuote` (`InternalUtils.java:1792-1802`) is the helper behind
+  `>`, or `"` -- `InternalUtils.containsUnescapedQuote` (`InternalUtils.java:1817-1827`) is the helper behind
   the last of those -- or leading/trailing space.
 
-`=` is deliberately NOT one of these (see "Severity: unconditional throw" above for why this changed in
-Task 3), and a value inside a well-formed bracket pair is not checked for any of the above at all, including
+`=` is deliberately NOT one of these (see "Severity: unconditional throw" above), and a value inside a well-formed bracket pair is not checked for any of the above at all, including
 an interior comma (matching VCFv4.3.tex's own `##META` example).
 
 **The `null`-key shape is not new here, and is not reachable through this check at all.** A `null` key is
@@ -320,9 +257,9 @@ discarding the declaration. If construction applied this check indiscriminately,
 library accepts and has always accepted, which would be a regression in the warn-and-recover contract, not a
 tightening of it.
 
-The clearest example today is narrower than it used to be (see the severity-ranking section above: a
-non-leading, non-final quote no longer absorbs anything), but a **leading, unclosed** quote still can, because
-the closing-quote search spans the whole remainder of the line rather than stopping at the next comma.
+A non-leading, non-final quote does not absorb anything (see the severity-ranking section above), but a
+**leading, unclosed** quote still can, because the closing-quote search spans the whole remainder of the line
+rather than stopping at the next comma.
 Parsing
 `##INFO=<ID=XX,Number=1,Type=String,Description="ab,Source="s">`
 recovers `Description` as `"ab,Source="` -- Description's own opening quote never finds a closing quote
@@ -337,16 +274,12 @@ there.
 This is not a new corruption introduced by writing the recovered value back out: for parsed input, the
 absorption already happened at parse time, and re-emitting the same (already-absorbed) value re-parses to the
 same absorbed state. It is stable, not progressively degrading. The genuinely new failure this check closes is
-a **caller supplying a clean value that only corrupts on the way out** -- the corruption matrix above.
+a **caller supplying a clean value that only corrupts on the way out**.
 
-**Unlike before, an empty property key is no longer reachable from parsing at all, and no longer part of what
-this exemption needs to cover.** An attribute like `,=x,` inside a declaration's attribute list used to split
-(via the retired `splitProperty`) into key `""` and value `"x"`, which `BaseMetadata.validateProperties()`
-would let through (it only rejects a `null` key, not an empty one). `InternalUtils.parseOneAttribute` (shared
-by `tokenizeAttributeList` and `parseAttribute`) now detects an empty name directly and drops the whole
-attribute with a warning ("Metadata attribute has an empty name; dropping it") before it can ever reach a
-properties map -- see `AttributeListTokenizerTest#degenerateAttributesAreDroppedIndividually`. Recorded here
-so this is not mistaken for a still-open gap.
+**An empty property key is not reachable from parsing.** `InternalUtils.parseOneAttribute` (shared by
+`tokenizeAttributeList` and `parseAttribute`) detects an empty name directly and drops the whole attribute
+with a warning ("Metadata attribute has an empty name; dropping it") before it can ever reach a properties
+map -- see `AttributeListTokenizerTest#degenerateAttributesAreDroppedIndividually`.
 
 **Two routes are covered by the exemption, and both are needed -- neither substitutes for the other:**
 
@@ -354,10 +287,11 @@ so this is not mistaken for a still-open gap.
    sibling per kind (`addAltTrusted`, `addFilterTrusted`, `addInfoTrusted`, `addFormatTrusted`,
    `addContigTrusted`, `addSampleTrusted`, `addMetaTrusted`, `addPedigreeTrusted`), each a thin wrapper that
    calls the same private `addXxx(properties, validateContent)` helper with `validateContent = false`.
-   `VcfParser.parseMetadataProperty` (`VcfParser.java:611-648`) calls these trusted variants exclusively -- see
-   the `switch` at lines 622-647 -- never the public, checked `addXxx(Map)` overloads. `VcfParser.parseMetadata`
-   (`VcfParser.java:548-595`) is the caller one level up: for a generic property it splits the whole `##`
-   line on the first `=` (`line.indexOf("=")`, line 550) and hands the two halves to `addRawProperty`, which
+   `VcfParser.parseMetadataProperty` (`VcfParser.java:612-649`) calls these trusted variants exclusively -- see
+   the `switch` at lines 623-648 -- never the public, checked `addXxx(Map)` overloads. `VcfParser.parseMetadata`
+   (`VcfParser.java:549-596`) is the caller one level up: for a generic property it splits the whole `##`
+   line on the first `=` (`VcfParser.java:551`, `int idx = line.indexOf("=");`) and hands the two halves to
+   `addRawProperty`, which
    has its own, separately-checked rule (below); for one of the eight reserved keywords it strips the
    surrounding angle brackets and delegates to `parseMetadataProperty`.
 2. **`toBuilder()`'s package-private object-taking overloads.** `VcfMetadata.toBuilder()`
@@ -387,7 +321,7 @@ content (`VcfMetadata.java:153`, `builder.addAlt(md, false);`).
 `public Builder addRawProperty(String name, String value) {` ... closing brace) is a fourth public content
 route, and it is **not** an attribute list -- there is no `<...>` and no comma-separated structure at all. A
 generic property emits `##name=value` directly, and `VcfParser.parseMetadata` re-reads it by splitting the
-whole line on the **first** `=` only (`VcfParser.java:550`, `int idx = line.indexOf("=");`). Applying the
+whole line on the **first** `=` only (`VcfParser.java:551`, `int idx = line.indexOf("=");`). Applying the
 structured rule above here would be wrong in both directions:
 
 | Shape | Re-parse | Rule |
@@ -399,10 +333,12 @@ structured rule above here would be wrong in both directions:
 
 This table is not exhaustive: a fifth shape, leading/trailing whitespace, silently corrupts too and is
 deliberately left alone. `VcfParser.parseMetadata` trims both the name and the value it derives
-(`VcfParser.java:554-555`, `line.substring(2, idx).trim()` and `line.substring(idx + 1).trim()`), so
+(`VcfParser.java:555-556`, `line.substring(2, idx).trim()` and `line.substring(idx + 1).trim()`), so
 `addRawProperty(" spaced", "v")` emits `## spaced=v` but re-parses with name `spaced`, not `" spaced"`. This is
-pre-existing behavior, unrelated to this change, and out of scope to fix here -- noted only so a future reader
-knows it was considered, not missed.
+a known gap, deliberately left unaddressed: the trim happens in `VcfParser.parseMetadata`, not in
+`addRawProperty`'s own rule, and closing it would mean deciding whether the parser should stop trimming --
+a separate question this document does not settle. Noted only so a future reader knows it was considered,
+not missed.
 
 So `addRawProperty` rejects `=` in the *name* only (`VcfMetadata.java:1428-1431`, `if (name.contains("=")) {
 throw new VcfFormatException("Raw metadata property name contains '=', ...`), with the message "Raw
@@ -410,62 +346,56 @@ metadata property name contains '=', which would shift the re-parse split point.
 
 `VcfWriter.Builder.validateBeforeWrite()` already rejects exactly this, pinned by
 `VcfWriterTest.testValidateBeforeWriteRejectsEqualsSignInRawPropertyKey`, whose own comment records the
-corruption as verified live. Making construction narrower than the writer here would have preserved the same
-default-path-vs-`validateBeforeWrite()` asymmetry this whole change exists to remove.
+corruption as verified live. Construction deliberately matches that rather than being narrower: a rule
+construction declined to enforce would let `addRawProperty` originate a name `validateBeforeWrite()` then
+rejects, leaving the default write path and `validateBeforeWrite()` disagreeing about content this library
+itself created.
 
-**No trusted variant is needed for `addRawProperty`.** `VcfParser` (`VcfParser.java:587` and `:593`, both
+**No trusted variant is needed for `addRawProperty`.** `VcfParser` (`VcfParser.java:588` and `:594`, both
 `mdBuilder.addRawProperty(propName, propValue)` -- the pre-4.3 `##META` fallthrough and the generic `default`
 case respectively) derives `propName` by splitting the line on the first `=`
 (the same mechanism the table above describes), so a parser-produced name can never itself contain a second
 `=`. Unlike the eight structured routes, this check is safe to apply to the parser unconditionally, and does.
 
-## Path asymmetry closed
+## Where write-time and construction-time checks meet
 
-Before this check existed, the two write paths disagreed about whether the same object was writable:
-`VcfWriter.Builder.validateBeforeWrite()` already rejected all three corrupting shapes via
-`VcfWriter.validateMetadataProperties`, while the default write path emitted them verbatim and lost data
-silently. This check closes that gap at the point of construction, which is the earliest point
+Construction rejects all three corrupting shapes at the point of construction, which is the earliest point
 that can see the fully-assembled declaration `VcfWriter` will later serialize -- but `VcfWriter`'s write-time
 check still has work to do: it remains the net for the two routes that reach a built `VcfMetadata` without
-ever passing through this construction-time check. One is the package-private, test-only
+ever passing through the construction-time check. One is the package-private, test-only
 `BaseMetadata.trustedMutableProperties()` bypass. The other is the parse path itself -- `VcfParser`'s own
 `addXxxTrusted`/object-taking routes (see "Why the parse path is exempt" above) deliberately skip this check so
 a parser-recovered value (e.g. a leading, unclosed quote that absorbed a later attribute's name and `=`) can
 still be stored, and that same value is exactly what `validateBeforeWrite()` is left to catch at write time.
 Neither route substitutes for the other.
 
-**"Catch" no longer means "throw" uniformly, since Task 3.** `VcfWriter.validateMetadataProperties` now calls
+**"Catch" does not mean "throw" uniformly.** `VcfWriter.validateMetadataProperties` calls
 `InternalUtils.checkMetadataPropertyEncodingForWrite`, not `checkMetadataPropertyEncoding` -- the same
 classifier (`findEncodingProblems`), but a different response to what it finds: it throws only for a problem
-marked `unreadableOutput` (an unquoted comma, a malformed bracket value, or -- added by the
-attribute-list-tokenizer phase's Task 6 -- a malformed quoted value that itself contains a comma; see
-`EncodingProblem`'s own Javadoc for why these throw for genuinely different reasons, not one shared one) and
-warns for everything else (an invalid property name, a malformed quoted value with no comma, an unescaped
-`<`/`>`/`"` in a literal value, or leading/trailing space), preserving the value unchanged either way.
+marked `unreadableOutput` (an unquoted comma, a malformed bracket value, or a malformed quoted value that
+itself contains a comma; see `EncodingProblem`'s own Javadoc for why these throw for genuinely different
+reasons, not one shared one) and warns for everything else (an invalid property name, a malformed quoted value
+with no comma, an unescaped `<`/`>`/`"` in a literal value, or leading/trailing space), preserving the value
+unchanged either way.
 
 The leading-unclosed-quote case this paragraph opened with (`Description="ab,Source="s"`, recovered as
-`Description="ab,Source="`) is, perhaps counter-intuitively, not caught at write time at all -- confirmed
-live, and not a regression from this task: `findEncodingProblems` selects its **quoted** branch for this
-value on its leading `"` (the first byte, per "Where the check runs" above), and within that branch
-`InternalUtils.isQuoted` returns `true` for it, so nothing is flagged -- exactly as the single pre-Task-3
-predicate's own leading `!isQuoted(value) && (...)` guard already did, so this value was silently unchecked
-at write time before Task 3 too. Neither refactoring the check into `findEncodingProblems`, nor later
-re-selecting its branch on the leading byte rather than on `isQuoted`'s own well-formedness (Task 6), changed
-this value's treatment -- only its surrounding code shape. The recovered value's own comma and `=` both fall
-INSIDE its start/end `"` pair with no unescaped `"` between them, so `isQuoted` sees a validly-quoted string
-and there is nothing left to flag -- and because it IS validly quoted, Task 6's new malformed-quoted-value
-comma check (which only fires when `isQuoted` returns `false`) does not apply to it either. This is not a
-silent-acceptance defect either: the parse path itself already warns for this exact input
-(pinned in `MetadataPropertyEncodingTest`'s `RECOVERED_QUOTE_CASES`), and the value is genuinely safe to
-re-emit exactly as stored (the whole point of "Why the parse path is exempt" above -- the absorption already
-happened once, at parse time, and is a fixed point on re-emission), so a check whose entire job is spotting
-encoding that would corrupt on the way OUT has nothing left to flag once the value is already wrapped in a
-syntactically valid quote pair. It is a reminder that "was this value produced by parser recovery" and "does
-this value still look encoding-unsafe" are different questions -- this check only ever answers the second
-one.
+`Description="ab,Source="`) is, perhaps counter-intuitively, not caught at write time at all:
+`findEncodingProblems` selects its **quoted** branch for this value on its leading `"` (the first byte, per
+"Where the check runs" above), and within that branch `InternalUtils.isQuoted` returns `true` for it, so
+nothing is flagged. The recovered value's own comma and `=` both fall INSIDE its start/end `"` pair with no
+unescaped `"` between them, so `isQuoted` sees a validly-quoted string and there is nothing left to flag --
+and because it IS validly quoted, the malformed-quoted-value comma check (which only fires when `isQuoted`
+returns `false`) does not apply to it either. This is not a silent-acceptance defect either: the parse path
+itself already warns for this exact input (pinned in `MetadataPropertyEncodingTest`'s `RECOVERED_QUOTE_CASES`),
+and the value is genuinely safe to re-emit exactly as stored (the whole point of "Why the parse path is
+exempt" above -- the absorption already happened once, at parse time, and is a fixed point on re-emission),
+so a check whose entire job is spotting encoding that would corrupt on the way OUT has nothing left to flag
+once the value is already wrapped in a syntactically valid quote pair. It is a reminder that "was this value
+produced by parser recovery" and "does this value still look encoding-unsafe" are different questions -- this
+check only ever answers the second one.
 
 See `VALIDATION_PHILOSOPHY.md`'s originated-vs-carried-forward paragraph for why the construction/write split
-exists at all, and this document's own Reference table above for the throws-vs-warns line, shape by shape.
+exists at all, and this document's own Reference table below for the throws-vs-warns line, shape by shape.
 
 ## Deliberately not checked
 
@@ -473,7 +403,7 @@ Three routes skip this check, each for a distinct, worth-stating reason:
 
 - **`BaseMetadata.putAndQuoteProperty`** -- quoting neutralizes every character `findEncodingProblems` checks
   for an unquoted value (`a,b` becomes `"a,b"`, safe to emit; the same holds for `<`, `>`, and leading/trailing
-  space -- `=` is not in this set at all any more, see "Severity: unconditional throw" above). It keeps its own,
+  space -- `=` is not in this set at all, see "Severity: unconditional throw" above). It keeps its own,
   separate line-terminator check, because quoting does **not** neutralize a newline the way it neutralizes a
   comma, `<`, `>`, a quote, or layout whitespace.
 - **The package-private, object-taking `addXxx(T)` overloads** (`addInfo(InfoMetadata)`,
@@ -489,70 +419,691 @@ Three routes skip this check, each for a distinct, worth-stating reason:
   contain an `=` at all. There is no way to get a rejectable name into a built `VcfMetadata` and then round-trip
   it back out through `toBuilder()`.
 - **`BaseMetadata.trustedMutableProperties()`** -- the test-only bypass this package's own tests use to
-  synthesize the malformed containers `VcfWriter`'s defensive checks are written against. Unchanged by this
-  work: `VcfWriter.validateMetadataProperties` stays as the net covering it -- and, per "Path asymmetry closed"
-  above, the parse path too, since neither route passes through this construction-time check.
+  synthesize the malformed containers `VcfWriter`'s defensive checks are written against.
+  `VcfWriter.validateMetadataProperties` is the net covering it -- and, per "Where write-time and
+  construction-time checks meet" above, the parse path too, since neither route passes through this
+  construction-time check.
 
 ## Reference table
 
-Verified via `MetadataPropertyEncodingTest`, the test class this table is drawn from. **Two rows below are
-superseded by Task 3** (marked ⚠) -- kept rather than deleted, with the new outcome recorded alongside, so a
-reader who only remembers the old behavior isn't left to wonder whether it silently changed underneath them.
+Verified via this library's own test suite -- principally `MetadataPropertyEncodingTest`, plus
+`BcftoolsDependencyTest`, `InternalUtilsTest`, `VcfWriterTest`, and the `local-fixtures/` conformance corpus.
+Each row names the specific tests and fixtures it rests on.
 
-| Route | Input | Outcome |
-|---|---|---|
-| `addContig(Map)` | `assembly=a,b` (unquoted comma) | throws (both construction and `validateBeforeWrite()` -- an unquoted comma is `unreadableOutput`) |
-| `addContig(Map)` | ⚠ `assembly=a=b` (unquoted `=`) | **was** throws; **now** succeeds -- `=` no longer appears in `findEncodingProblems`'s classifier at all, matching the attribute-list tokenizer's own name/value split |
-| `addContig(Map)` | `assembly=a"b` (unescaped quote) | throws at construction; warns (not throws) at `validateBeforeWrite()` -- not `unreadableOutput`, since the value still closes on re-parse, just not where the caller intended |
-| `addContig(Map)` | `assembly=a<b` / `assembly=a>b` (unquoted `<`/`>`) | throws at construction; warns at `validateBeforeWrite()` -- new checks Task 3 added, not `unreadableOutput` (bcftools garbles or truncates the declaration but the file stays readable) |
-| `addContig(Map)` | `assembly=[a=b` (unterminated bracket value) | throws (both modes -- UNCONDITIONALLY, before the `##META`'s-`Values`-only gate, since bcftools' generic bracket handling hard-fails on this shape regardless of attribute/declaration type; exits 255) |
-| `addContig(Map)` | `assembly=[a]b]` / `assembly=[a] junk` (bracket closes, but has trailing junk) | throws at construction (every problem throws there, regardless of severity); warns (not throws) at `validateBeforeWrite()` -- NOT `unreadableOutput` outside `##META`'s `Values` (it has a `]` somewhere, so it clears the universal floor and falls through to the generic "unquoted structural delimiter" check instead of the `Values`-only malformed-bracket check) |
-| `addContig(Map)` | `assembly=[WholeGenome, Exome]` (well-formed bracket value, i.e. WOULD be well-formed on `##META`'s `Values`) | throws (both modes -- `[` is not comma-protecting outside `Values`, so this is an ordinary unquoted comma, `unreadableOutput=true`) |
-| `addMeta(Map)` | `Values=[WholeGenome, Exome]` (well-formed bracket value) | succeeds -- the comma inside a well-formed bracket value on `##META`'s `Values` specifically is not checked at all, matching VCFv4.3.tex's own worked example. See VCF_SPEC_AMBIGUITIES.md's "General bracket-list quoting beyond `##META`'s `Values`" entry -- this is the ONE case bracket-list quoting is scoped to. |
-| `addContig(Map)` | `assembly="a,b"` (quoted) | succeeds; round-trips through default write + re-parse |
-| `addContig(Map)` | `assembly="a=b"` (quoted) | succeeds |
-| `addContig(Map)` | `assembly=B36` | succeeds |
-| `addContig(id, length, assembly, md5, species, taxonomy, url)` | `,` in `assembly`, `md5`, `taxonomy`, or `url` | throws (each is `putPropertyRaw`-stored) |
-| `addContig(...)` | `,` in `species` | succeeds; round-trips through default write + re-parse (the one contig argument routed through `putAndQuoteProperty`) |
-| `addInfo(id, description, ...)` | `,` in `description` | succeeds; round-trips through default write + re-parse (`putAndQuoteProperty`) |
-| any of the six kinds' typed `addXxx` | ⚠ `=` in `id` | **was** throws; **now** succeeds, for the same reason as the `assembly=a=b` row above |
-| any of the six kinds' typed `addXxx` | `<` in `id` (the current probe, replacing `=` above) | throws (the one raw-stored argument every typed route shares) |
-| `addContig(Map)` | `a-b`, `1abc`, or `a b` as a property NAME | throws at construction (fails `InternalUtils.METADATA_ATTRIBUTE_NAME_PATTERN`); warns (not throws) at `validateBeforeWrite()` -- bcftools drops just the one declaration, file stays readable |
-| `addContig(Map)` | `Name_1` or `_x.y1` as a property NAME | succeeds -- both match the allowlist |
-| `replaceContig(Map)` / `replaceContig(typed...)` | unquoted `,` | throws (only a comma is exercised on the replace path; `"`/name-allowlist/bracket share the identical underlying check, already proven on the `addContig` rows above) |
-| `replaceContig(Map)` | a valid replacement (e.g. `assembly=GRCh38`) after a prior valid `addContig` | succeeds |
-| `replaceInfo`/`replaceFormat` (typed) | `,` in `Number` | throws (the only other raw-stored typed field reachable without disturbing the already-stored `ID`) |
-| `addContig(Map)` | key `""`, `"bad,key"`, `"bad=key"`, or `"a\"b"` (unescaped quote) | throws (all four now fail via the name-allowlist branch rather than the old ad hoc null/empty/comma/equals/quote checks -- same outcome, different mechanism) |
-| Parse `##contig=<ID=1,a"b=v,length=100>` (unescaped quote in a property NAME) | -- | parses; re-parsed contig's properties are `{ID=1, a"b=v, length=100}`, all three intact -- the attribute-list tokenizer's name scan has no quote-mode toggle to flip, so a non-leading quote in a NAME is ordinary content the same as in a value (`AttributeListTokenizerTest#onlyALeadingDelimiterQuotes`); this is a *parsing* fix, and does not change the construction-time throw two rows below, which still rejects the same shape unconditionally |
-| Parse `##contig=<ID=1,a-b=v,length=100>` (a NAME outside the allowlist) | -- | parses; re-parsed contig's properties are `{ID=1, a-b=v, length=100}`, all three intact -- the allowlist is now enforced at parse time too (warns, leaving the attributes intact), in addition to construction (throws) and `validateBeforeWrite()` (warns), matching AGENTS.md's own worked example for carried-forward content |
-| `addContig(Map)` | key `null` (via a `LinkedHashMap`, not `Map.of`) | throws, but from `BaseMetadata.validateProperties()` *before* this check ever runs -- distinct message ("Metadata contains a null property name") |
-| `addRawProperty(name, value)` | `=` in `name` (e.g. `"bad=name"`) | throws |
-| `addRawProperty(name, value)` | `,` in `name` (e.g. `"bad,name"`) | succeeds (control: proves the structured comma rule was not applied to the generic grammar) |
-| `addRawProperty(name, value)` | `=` in `value` (e.g. `"a=b"`) | succeeds; round-trips through default write + re-parse unchanged |
-| `addRawProperty(name, value)` | `,` in `value` (e.g. `"a,b"`) | succeeds; round-trips through default write + re-parse unchanged |
-| Parse `Description="a"b"` (unescaped quote inside a quoted value) | -- | parses; warns "trailing content ... discarding it" for the leftover `b"`; recovers `Description` as the well-formed `"a"` -- the value closes at the first unescaped `"` by position, not by unbalanced-quote parity. Pinned by `local-fixtures/failed/info-quoted-value-unescaped-interior-quote.vcf`, which also records bcftools 1.23.1's own divergence (drops the whole declaration instead) as its `##Authority=`. |
-| Parse `Description=ab"` (unquoted value ending in a quote) | -- | parses; warns **both** "...containing a character bcftools treats as structural; preserving it" and "should be quoted but was"; recovers `Description` as `ab"` in full (the value is literal since its first byte isn't `"` or `[`, so nothing truncates) |
-| Parse `Description="ab,Source="s"` (leading, unclosed quote) | -- | parses; warns "trailing content ... discarding it" for the leftover `s"`; recovers `Description` as `"ab,Source="` -- absorbing the comma and the `=` by matching `Source`'s own opening quote as its closing one; no `Source` key in the result at all |
-| `parsed.toBuilder().build()` for any of the three parses above | -- | succeeds, with the identical recovered raw properties -- the object-taking overloads' exemption is what makes this possible |
+**Tier 2 evidence disclosure** (`BEHAVIOR_TABLE_STANDARD.md`'s "Preserving the evidence"): no separate probe
+script is committed for this table. Each decision-bearing row's bcftools evidence lives in its own
+`BcftoolsDependencyTest` case instead -- seven of the eight do; row 1's gap is recorded in that row -- and the
+two vcf_validator runs behind rows 3 and 30 are recorded verbatim, invocation included, in their
+`local-fixtures/` fixtures' own `##Authority=` lines.
 
-The five "round-trips through default write + re-parse" rows are not redundant with the "succeeds" rows above
-them: a change that accepted a value at construction but still corrupted it on the way out would pass every
-`assertDoesNotThrow`/`assertThrows` assertion in this table while leaving the actual defect the corruption
-matrix describes fully in place. Only the round-trip assertion proves the accept-decision was actually correct.
+Rows 1-22 cover the "structured attribute-list family" -- every route that assembles a `##KEY=<key=value,...>`
+declaration through `VcfMetadata.Builder`'s public construction (`addContig`/`addMeta`/`addInfo`/`addAlt`/
+`addFilter`/`addFormat`/`addSample`) and its `replaceXxx` counterparts, all checked by the shared
+`InternalUtils.findEncodingProblems` classifier described above (rows for `addRawProperty`'s separate grammar
+and the parse-path-only rows follow after row 22). Per `BEHAVIOR_TABLE_STANDARD.md`, each row below states:
+
+- its **probe shape** -- declaration type, attribute name, and (for the raw-header-text evidence bcftools is
+  measured against) position within the attribute list, since an unterminated value's closing search behaves
+  differently at the end of a declaration than mid-list. A decision-bearing row always states this explicitly,
+  as its own bullet. A descriptive-only row's heading already carries the route and payload and serves as its
+  probe context, so most do not repeat it as a bullet; the four descriptive-only parse-path rows
+  (23, 24, 31, 32) do state one anyway, since the exact raw header line matters there. Position does not apply to this family's
+  `addXxx(Map)`/typed construction probes themselves: `findEncodingProblems` checks each already-assembled
+  property value directly, not via a positional re-scan across attribute boundaries, so only the raw-header
+  evidence (bcftools' own tokenizer, and this library's own parser) has a "position" dimension at all;
+- a `4.2`/`4.3`/`4.4`/`4.5` spec cell, each a citation plus a verbatim quote, or the literal word `silent`;
+- a `bcftools 1.23.1` cell naming the exact diagnostic bcftools produces. Only row 3 states a `vcf_validator`
+  cell inline, pinned to the grammar its probe exercised (`vcf_validator 0.10.2 (4.3)`), because it is the one
+  row where the two tools disagree; row 30's vcf_validator run is recorded in its fixture's `##Authority=` line
+  rather than as a cell. No other row carries one: none of these rows' grammars falls into
+  `BEHAVIOR_TABLE_STANDARD.md`'s list of known version-sensitive vcf_validator divergences, and no
+  vcf_validator run exists for the rest, so a cell is omitted rather than guessed;
+- a `Public construction` and `Validated write` outcome, `VcfMetadata.Builder`'s checked `addXxx`/`replaceXxx`
+  routes and `VcfWriter.Builder.validateBeforeWrite()` respectively, named per `BEHAVIOR_TABLE_STANDARD.md`'s
+  "Naming our paths" table -- `Parse` and `Default write` do not apply to this family, since every row here
+  originates through public construction, never through the parser's exempt trusted routes (see "Why the
+  parse path is exempt" above).
+
+Each row also states whether it is **decision-bearing** (the throw/warn/accept line rests on measured
+bcftools behavior against spec-silent input) or **descriptive-only** (fully explained by a spec quote or by
+reading this library's own code, per `BEHAVIOR_TABLE_STANDARD.md`'s descriptive-only exemption) -- a
+descriptive-only row still pins its evidence and identifies its probe via its own heading (route + payload),
+but collapses the four spec columns to one sentence and does not require its own `bcftoolsDependencyTest`
+case. Row 11 (`assembly=B36`) is this
+table's control row: a plain, unambiguous value that must, and does, come back clean under every path.
+
+### Index
+
+One line per row, for scanning; each row's own sub-section below carries the citations, probe shape, and
+evidence. `Payload` is a paraphrase, not the literal probe text. (Row 15 does not exist -- see row 16.)
+
+| Row | Route | Payload | Classification | Outcome |
+|---|---|---|---|---|
+| [1](#row-1----addcontigmap----assemblyab-unquoted-comma) | `addContig(Map)` | unquoted `,` in a value | Decision-bearing | throws at construction; throws at validated write (`unreadableOutput`) |
+| [2](#row-2----addcontigmap----assemblyab-unquoted-) | `addContig(Map)` | unquoted `=` in a value | Descriptive-only | succeeds -- `=` is not checked at all |
+| [3](#row-3----addcontigmap----assemblyab-unescaped-non-leading-quote) | `addContig(Map)` | unescaped, non-leading `"` in a value | Decision-bearing | throws at construction; warns at validated write |
+| [4](#row-4----addcontigmap----assemblyab--assemblyab-unquoted-) | `addContig(Map)` | unquoted `<` or `>` in a value | Decision-bearing | throws at construction; warns at validated write |
+| [5](#row-5----addcontigmap----assemblyab-unterminated-bracket-value) | `addContig(Map)` | leading `[` with no `]` anywhere | Decision-bearing | throws at construction and at validated write (bcftools-fatal) |
+| [6](#row-6----addcontigmap----assemblyab--assemblya-junk-bracket-closes-trailing-junk) | `addContig(Map)` | bracket closes, then trailing junk | Decision-bearing | throws at construction; warns at validated write |
+| [7](#row-7----addcontigmap----assemblywholegenome-exome-well-formed-bracket-shape-outside-values) | `addContig(Map)` | well-formed bracket list outside `Values` | Decision-bearing | throws at construction and at validated write (an ordinary unquoted comma) |
+| [8](#row-8----addmetamap----valueswholegenome-exome-well-formed-bracket-value) | `addMeta(Map)` | well-formed bracket list on `Values` | Descriptive-only | succeeds -- the one scope bracket quoting applies to |
+| [9](#row-9----addcontigmap----assemblyab-quoted) | `addContig(Map)` | quoted value containing `,` | Descriptive-only | succeeds; round-trips through default write |
+| [10](#row-10----addcontigmap----assemblyab-quoted) | `addContig(Map)` | quoted value containing `=` | Descriptive-only | succeeds |
+| [11](#row-11----addcontigmap----assemblyb36-this-tables-control-row) | `addContig(Map)` | plain value (this table's control row) | Descriptive-only | succeeds on every path, no warning |
+| [12](#row-12----addcontigid-length-assembly-md5-species-taxonomy-url-----in-assemblymd5taxonomyurl) | `addContig` (typed) | `,` in `assembly`/`md5`/`taxonomy`/`url` | Descriptive-only | throws -- each is raw-stored, so each reaches row 1's check |
+| [13](#row-13----addcontig-----in-species) | `addContig` (typed) | `,` in `species` | Descriptive-only | succeeds -- `species` is auto-quoted on the way in |
+| [14](#row-14----addinfoid-description------in-description) | `addInfo` (typed) | `,` in `description` | Descriptive-only | succeeds -- `description` is auto-quoted on the way in |
+| [16](#row-16----any-of-the-six-iddescription-shaped-kinds-typed-addxxx-----in-id) | six kinds' typed `addXxx` | `<` in `id` | Descriptive-only | throws at construction (the one raw-stored shared argument) |
+| [17](#row-17----addcontigmap----a-b-1abc-or-a-b-as-a-property-name) | `addContig(Map)` | property NAME outside the allowlist | Decision-bearing | throws at construction; warns at validated write |
+| [18](#row-18----addcontigmap----name_1-or-_xy1-as-a-property-name) | `addContig(Map)` | spec-conformant property NAME | Descriptive-only | succeeds -- both match the allowlist |
+| [19](#row-19----replacecontigmap--replacecontigtyped----unquoted-) | `replaceContig` (Map + typed) | unquoted `,` in a value | Descriptive-only | throws on both replace routes |
+| [20](#row-20----replacecontigmap----a-valid-replacement-eg-assemblygrch38-after-a-prior-valid-addcontig) | `replaceContig(Map)` | a valid replacement value | Descriptive-only | succeeds |
+| [21](#row-21----replaceinforeplaceformat-typed-----in-number) | `replaceInfo`/`replaceFormat` (typed) | `,` in `Number` | Descriptive-only | throws on both |
+| [22](#row-22----addcontigmap----key--badkey-badkey-or-ab-unescaped-quote-in-a-name) | `addContig(Map)` | empty, comma-, equals-, or quote-bearing NAME | Descriptive-only | throws for all four, via the same name-allowlist branch |
+| [23](#row-23----parse-contigid1abvlength100-unescaped-non-leading-quote-in-a-property-name) | Parse | non-leading `"` in a property NAME | Descriptive-only | parses, all attributes intact; warns that the name is invalid |
+| [24](#row-24----parse-contigid1a-bvlength100-a-name-outside-the-allowlist) | Parse | NAME outside the allowlist | Descriptive-only | parses, all attributes intact; warns that the name is invalid |
+| [25](#row-25----addcontigmap----key-null-via-a-linkedhashmap-not-mapof) | `addContig(Map)` | `null` property key | Descriptive-only | throws, but from `BaseMetadata.validateProperties()` first |
+| [26](#row-26----addrawpropertyname-value-----in-name-eg-badname) | `addRawProperty` | `=` in `name` | Descriptive-only | throws at construction and at validated write |
+| [27](#row-27----addrawpropertyname-value-----in-name-eg-badname----this-familys-control-row) | `addRawProperty` | `,` in `name` (this family's control row) | Descriptive-only | succeeds -- a generic line never splits on a comma |
+| [28](#row-28----addrawpropertyname-value-----in-value-eg-ab) | `addRawProperty` | `=` in `value` | Descriptive-only | succeeds; round-trips unchanged (split on the FIRST `=`) |
+| [29](#row-29----addrawpropertyname-value-----in-value-eg-ab) | `addRawProperty` | `,` in `value` | Descriptive-only | succeeds; round-trips unchanged |
+| [30](#row-30----parse-descriptionab-unescaped-quote-inside-a-quoted-value) | Parse | unescaped `"` inside a quoted value | Decision-bearing | parses, recovers `"a"`, warns about the trailing content; bcftools instead drops the whole declaration |
+| [31](#row-31----parse-descriptionab-unquoted-value-ending-in-a-quote) | Parse | unquoted value ending in `"` | Descriptive-only | parses, recovers the value in full; warns twice |
+| [32](#row-32----parse-descriptionabsources-leading-unclosed-quote) | Parse | leading, unclosed `"` | Descriptive-only | parses, absorbs the following attribute; warns; stable on re-emission |
+| [33](#row-33----parsedtobuilderbuild-for-any-of-the-three-description-parses-above) | `toBuilder().build()` | any of rows 30-32's recovered parses | Descriptive-only | succeeds, with the identical recovered raw properties |
+
+### Row 1 -- `addContig(Map)` -- `assembly=a,b` (unquoted comma)
+
+- **Classification:** Decision-bearing, but split (per `BEHAVIOR_TABLE_STANDARD.md`'s Step 2 -- do not conflate
+  a spec-plain observation with a tool-derived severity): that an unquoted comma ends the value there is
+  spec-plain (the attribute list is comma-delimited and no version defines an escape for a literal comma); that
+  this specific truncation makes the declaration `unreadableOutput=true` (rather than merely warn-worthy, like
+  `<`/`>`/`"` below) is bcftools-measured.
+- **Probe shape:** `##contig`, attribute name `assembly`, as the sole non-`ID` attribute in the `addContig(Map)`
+  probe (no "position" dimension applies to the Map-argument probe itself, per the note above). The closest raw
+  -header-text evidence instead measures the same underlying mechanism on `##contig`'s `ID` attribute, NOT last
+  in the list (`length=1000000` follows): `##contig=<ID=chr,1,length=1000000>`.
+- **4.2:** `silent` -- VCFv4.2.tex has no general "structured meta-information line" grammar statement at all
+  (only worked examples per declaration type, e.g. `VCFv4.2.tex:69`'s `##INFO=<ID=ID,Number=number,...>`); no
+  escape mechanism for a comma in an attribute value is described anywhere in it.
+- **4.3:** `VCFv4.3.tex:117` -- "A *structured* meta-information line is similar, but the value is itself a
+  comma-separated list of key=value pairs, enclosed within `<' and `>' characters" -- states the comma
+  delimiter but defines no escape mechanism for a literal comma inside an unquoted value.
+- **4.4:** `VCFv4.4.tex:117` -- identical wording to the 4.3 citation above.
+- **4.5:** `VCFv4.5.tex:115` -- identical wording to the 4.3 citation above (line number shifts by two; text
+  unchanged).
+- **bcftools 1.23.1:** measured on the closest available shape (a comma inside `##contig`'s `ID`, not
+  `assembly`): `##contig=<ID=chr,1,length=1000000>` -> `"Could not parse the header line"`, the whole
+  declaration dropped, file otherwise readable -- the same non-fatal outcome
+  `testMetadataAttributeNameOutsideAllowlistBcftoolsDropsDeclarationSilently`/
+  `testBracketValueWithTrailingJunkBcftoolsDropsDeclarationSilently` independently confirm at `exitCode == 0`
+  for the identical diagnostic message. htslib 1.23.1's own scanner
+  (`~/Dev/htslib/vcf.c:733`, `if ( *q==',' && nopen==1 ) break;`, tag `1.23.1`) always ends an unquoted value at
+  the first unescaped comma regardless of which attribute carries it, so this generalizes from `ID` to
+  `assembly`.
+- **Evidence gap, recorded rather than papered over:** `BcftoolsDependencyTest#testContigIdCharacterSetBcftoolsRejectsCommaSameAsChromDoes`
+  is the closest existing case, but its own comment frames it around the *contig-name character-set errata*
+  (`InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN`), not around this generic attribute-value comma rule, and
+  it asserts only the output message, not `exitCode`. **No dedicated `bcftoolsDependencyTest` case exists yet
+  for a plain `assembly=a,b`-shaped unquoted comma in a non-`ID` attribute value** -- `VCF_SPEC_AMBIGUITIES.md`'s
+  own "Tests:" list for this exact decision (its "Unquoted metadata attribute value" entry) omits one too, so
+  the gap spans both documents rather than being specific to this one. Recorded here rather than filled, so
+  it is not rediscovered as a new finding.
+- **Public construction:** throws (`checkMetadataPropertyEncoding` throws for every problem, unconditionally).
+- **Validated write:** throws (`unreadableOutput=true` -- the attribute-list tokenizer can never itself produce
+  a *stored* value containing an unquoted comma, since it always terminates the value there first, so throwing
+  here can never reject carried-forward content; see `VCF_SPEC_AMBIGUITIES.md`'s "The unquoted comma throws for
+  a weaker, different reason" paragraph).
+- **Test evidence:** `MetadataPropertyEncodingTest#testAddMapRejectsEachUnquotedDelimiter` (construction).
+
+### Row 2 -- `addContig(Map)` -- `assembly=a=b` (unquoted `=`)
+
+- **Classification:** Descriptive-only -- a pure code-reading fact about `InternalUtils.findEncodingProblems`'s
+  own definition, no tool measurement needed: `=` does not appear in the classifier's literal-value branch at
+  all, matching the attribute-list tokenizer's own name/value split (the name's first `=` is already consumed
+  before the value is ever scanned, so a later `=` inside the value has nothing left to collide with).
+- **Outcome:** succeeds, at both Public construction and Validated write.
+- **Test evidence:** `MetadataPropertyEncodingTest#constructionAcceptsAnEqualsSignInAValue`.
+
+### Row 3 -- `addContig(Map)` -- `assembly=a"b` (unescaped, non-leading quote)
+
+- **Classification:** Decision-bearing -- the throw-at-construction-but-warn-at-write split rests on bcftools'
+  own measured leniency for this shape (the file stays readable), not on spec text.
+- **Probe shape:** `##contig`, attribute name `assembly`, non-leading quote (the first byte after `ID=1,` is
+  `a`, not `"`); raw-header probe: `##contig=<ID=1,assembly=a"b,length=100>` (`assembly` not last;
+  `length=100` follows).
+- **4.2:** `silent` on this exact shape; `VCFv4.2.tex:81` only states double-quote "**can** be escaped" (not
+  "must"), scoped to `Description`/`Source`/`Version` values specifically, not to an arbitrary attribute's
+  unquoted value.
+- **4.3:** `VCFv4.3.tex:173` -- "Double-quote character must be escaped with backslash $\backslash$ and
+  backslash as $\backslash\backslash$." -- the spec's only escaping mechanism, but it says nothing about a
+  *non-leading* quote in an otherwise-unquoted value, which is not "escaping" a quoted string at all.
+- **4.4:** `VCFv4.4.tex:176` -- identical wording to the 4.3 citation above.
+- **4.5:** `VCFv4.5.tex:174` -- identical wording to the 4.3 citation above.
+- **bcftools 1.23.1:** accepts `assembly=a"b` unchanged, exit 0, no warning or error to stderr -- htslib
+  1.23.1's unquoted-value scan (`vcf.c:711-736`) special-cases only `<`, `>`, and `,`, never `"`.
+- **vcf_validator 0.10.2 (4.3):** disagrees with bcftools -- reports the file invalid, `"Line 2: Error in
+  contig metadata."`, apparently rejecting any embedded unescaped `"` in an unquoted attribute value outright.
+  Neither known 0.10.2 token-capture defect applies here (no backslash-escaped quote, so the token-parity
+  defect's blast radius is not in play), so this is a genuine tool disagreement, not a defect artifact; per
+  `AGENTS.md`'s Decision Hierarchy, bcftools remains the tie-breaker.
+- **Public construction:** throws (`checkMetadataPropertyEncoding` throws for every problem).
+- **Validated write:** warns, not throws -- not `unreadableOutput`, since the value still closes on re-parse,
+  just not where the caller intended.
+- **Test/fixture evidence:** `MetadataPropertyEncodingTest#testAddMapRejectsEachUnquotedDelimiter` (construction);
+  `BcftoolsDependencyTest#testContigUnquotedValueNonLeadingQuoteBcftoolsAcceptsSilently`;
+  `local-fixtures/passed/contig-unquoted-value-non-leading-quote.vcf` (carries both tools' `##Authority=`
+  citations verbatim, measured live 2026-08-15).
+
+### Row 4 -- `addContig(Map)` -- `assembly=a<b` / `assembly=a>b` (unquoted `<`/`>`)
+
+- **Classification:** Decision-bearing -- the spec never defines escaping for `<`/`>` in an attribute value;
+  the warn-not-throw-at-write classification rests on bcftools' measured leniency (the file stays readable).
+- **Probe shape:** `##contig`, attribute name `description`, not last in the list (`length=100` follows); raw
+  -header probes: `##contig=<ID=1,description=a<b,length=100>` and `##contig=<ID=1,description=a>b,length=100>`.
+- **4.2 - 4.5:** `silent` on escaping `<`/`>` in a generic attribute value in all four versions. The only
+  angle-bracket text any version carries is scoped elsewhere and does not generalize: `VCFv4.3.tex:200`/
+  `VCFv4.4.tex:209`/`VCFv4.5.tex:258` ("ID values are case sensitive strings and must not contain whitespace,
+  commas or angle brackets") governs the **`##ALT` `ID`** field specifically, and `VCFv4.3.tex:265`/
+  `VCFv4.4.tex:279`/`VCFv4.5.tex:328` ("In particular, excluding commas facilitates parsing `##contig` lines,
+  and excluding the characters `<>[]` and initial `*` avoids clashes with symbolic alleles") governs
+  **contig names**, not a generic structured attribute's value. VCFv4.2.tex has neither of these two
+  clauses at all -- its own `##ALT` `ID` rule (`VCFv4.2.tex:105`) reads only "may not contain whitespace or
+  angle brackets" (no comma exclusion yet), and it has no contig-name character-set rule of any kind.
+- **bcftools 1.23.1:** `<` increments htslib's own `nopen` bracket-nesting counter
+  (`~/Dev/htslib/vcf.c:730`, `if ( *q=='<' ) nopen++;`), which can make it scan past the declaration's own
+  closing `>` -- measured: `##contig=<ID=1,description=a<b,length=100>` produces `"Incomplete header line"`,
+  file still reads at exit 0. `>` decrements the same counter
+  (`vcf.c:731`, `if ( *q=='>' ) nopen--;`), which can close the declaration early -- measured:
+  `##contig=<ID=1,description=a>b,length=100>` truncates the declaration to
+  `##contig=<ID=1,description=a>` with `"Dropped trailing junk from header line"`, `length` silently lost, file
+  still reads at exit 0.
+- **Public construction:** throws (`checkMetadataPropertyEncoding` throws for every problem).
+- **Validated write:** warns, not throws -- not `unreadableOutput` (bcftools garbles or truncates the
+  declaration but the file stays readable).
+- **Test evidence:** `MetadataPropertyEncodingTest#testAddMapRejectsEachUnquotedDelimiter`/
+  `#constructionRejectsAngleBracketsAndLayoutWhitespaceInALiteralValue` (construction);
+  `#diagnosticsModeWarnsRatherThanThrowingOnAnUnquotedAngleBracket` (write);
+  `BcftoolsDependencyTest#testUnescapedLessThanInMetadataValueBcftoolsMisparsesButSurvives`/
+  `#testUnescapedGreaterThanInMetadataValueBcftoolsTruncatesDeclaration`.
+
+### Row 5 -- `addContig(Map)` -- `assembly=[a=b` (unterminated bracket value)
+
+- **Classification:** Decision-bearing -- the spec has no general prose defining bracket-list quoting at all
+  outside `##META`'s own worked example (see row 8), so what an unterminated bracket does is bcftools-measured,
+  not spec-derived.
+- **Probe shape:** `##contig`, attribute name `x`, LAST attribute before the declaration's closing `>` (an
+  unterminated closing search behaves differently at the end of a declaration than mid-list -- there is
+  nothing left to swallow); raw-header probe: `##contig=<ID=1,length=100,x=[a=b>`.
+- **4.2:** `silent` -- `##META` (the only declaration type any version shows using `[...]`) does not exist as a
+  declaration type at all before VCFv4.3.
+- **4.3 - 4.5:** `silent` on error-handling for an unterminated bracket. `VCFv4.3.tex:273`
+  (`##META=<ID=Assay,Type=String,Number=.,Values=[WholeGenome, Exome]>`) and its 4.4/4.5 counterparts
+  (`VCFv4.4.tex:287`, `VCFv4.5.tex:336`) show only the well-formed shape, with no surrounding prose describing
+  the bracket form's grammar or its failure modes.
+- **bcftools 1.23.1:** a bracket value with no closing `]` before end of line makes bcftools abort the ENTIRE
+  file (`"[E::bcf_hdr_parse_line] Missing ']' in header line"`, non-zero exit) -- unlike every other malformed
+  shape in this family, which bcftools recovers from at exit 0. This is arguably bcftools' own defect, filed
+  upstream at [samtools/htslib#2065](https://github.com/samtools/htslib/issues/2065), but this library does not
+  attempt to route around it.
+- **Public construction:** throws (checked UNCONDITIONALLY, before the `##META`'s-`Values`-only gate).
+- **Validated write:** throws -- the absolute floor a warn branch would violate, since the file becomes
+  genuinely unreadable; this check runs before the `Values`-only gate for exactly that reason.
+- **Test evidence:** `MetadataPropertyEncodingTest#constructionRejectsABracketValueOutsideMetaValues`
+  (construction); `#diagnosticsModeStillThrowsWhenOutputWouldBeUnreadable` (write, reached only via the
+  package-private `trustedMutableProperties()` bypass, since the tokenizer can never itself produce this as a
+  stored value -- see "Where write-time and construction-time checks meet" above);
+  `BcftoolsDependencyTest#testUnterminatedBracketValueBcftoolsHardErrors`.
+
+### Row 6 -- `addContig(Map)` -- `assembly=[a]b]` / `assembly=[a] junk` (bracket closes, trailing junk)
+
+- **Classification:** Decision-bearing, for the same reason as row 5 -- no spec prose defines this grammar's
+  failure modes outside `##META`'s `Values`; the warn-not-throw-at-write classification is bcftools-measured.
+- **Probe shape:** `##contig`, attribute name `x`, LAST attribute before the closing `>`; raw-header probe:
+  `##contig=<ID=1,length=100,x=[a]b]>`.
+- **4.2 - 4.5:** `silent`, for the identical reasons given under row 5 (4.2: `##META` does not exist yet; 4.3-4.5:
+  the worked example shows only the well-formed shape).
+- **bcftools 1.23.1:** the bracket DOES close, but is followed by non-comma junk before the next attribute (or
+  the declaration's own `>`) -- bcftools survives this at exit 0 but drops the whole declaration
+  (`"Could not parse the header line"`), the same non-fatal-but-silent-loss outcome row 17's invalid-name case
+  gets.
+- **Public construction:** throws (every problem throws there, regardless of severity).
+- **Validated write:** warns, not throws -- NOT `unreadableOutput` outside `##META`'s `Values` (it has a `]`
+  somewhere, so it clears the universal unterminated-floor and falls through to the generic "unquoted
+  structural delimiter" check instead of the `Values`-only malformed-bracket check; on `##META`'s `Values`
+  itself, this identical shape stays `unreadableOutput=true`, since the tokenizer can never produce it as a
+  stored value there either, so the extra caution costs nothing -- see row 8).
+- **Test evidence:** `MetadataPropertyEncodingTest#constructionRejectsABracketValueOutsideMetaValues`
+  (construction); `#diagnosticsModeWarnsRatherThanThrowingOnABracketOutsideMetaValues` (write);
+  `BcftoolsDependencyTest#testBracketValueWithTrailingJunkBcftoolsDropsDeclarationSilently`.
+
+### Row 7 -- `addContig(Map)` -- `assembly=[WholeGenome, Exome]` (well-formed bracket shape, outside `Values`)
+
+- **Classification:** Decision-bearing -- whether this reduces to "an ordinary unquoted comma" outside `##META`'s
+  `Values` rests on the same bcftools-measured floor as rows 5-6: bcftools' own generic bracket handling is
+  unaffected by this library's narrower, `Values`-only quoting scope.
+- **Probe shape:** `##contig`, attribute name `assembly`, sole non-`ID` attribute (Map-argument probe -- no
+  position dimension applies, per the table intro); this is the spec's own `##META` `Values` shape
+  (`VCFv4.3.tex:273`) applied to a non-`##META`, non-`Values` attribute, which this library treats identically
+  to any other unquoted `[`-leading value once it clears the universal unterminated-bracket floor.
+- **4.2:** `silent` -- `##META`/`Values` does not exist yet, and no other version-4.2 text discusses
+  bracket-list quoting on any attribute.
+- **4.3 - 4.5:** `silent` on whether bracket-list quoting extends beyond `##META`'s `Values` to any other
+  attribute or declaration type -- the worked example (`VCFv4.3.tex:273` and its 4.4/4.5 counterparts) is
+  scoped to `##META`'s `Values` by its own placement in the `##META` subsection, and no other structured-line
+  text in any version mentions `[`/`]` at all.
+- **bcftools 1.23.1:** the regression-guard test below round-trips this exact shape through this library's own
+  parser/writer against a real bcftools binary: `##contig=<ID=c1,x=[a, b],length=999>` truncates at parse time
+  to a dangling `x=[a` (well-formed input, this library's own comma-splitting); writing it raw would produce a
+  value bcftools cannot read at all (exit 255) -- confirming the well-formed shape's interior comma is
+  bcftools-fatal once truncated outside `Values`, the reason construction rejects it unconditionally rather
+  than risk ever emitting it.
+- **Public construction:** throws (`[` is not comma-protecting outside `Values`, so this is an ordinary
+  unquoted comma).
+- **Validated write:** throws -- `unreadableOutput=true`, for the identical reason row 1's plain comma throws:
+  this library's own re-parse of a stored value at this shape would misread it.
+- **Test evidence:** `MetadataPropertyEncodingTest#constructionRejectsABracketValueOutsideMetaValues`
+  (construction); `BcftoolsDependencyTest#testNonMetaValuesBracketTruncationDoesNotManufactureAnUnreadableHeader`
+  (the parser/writer regression guard -- note this test measures the *truncation* consequence via this
+  library's own parser/writer, not the raw well-formed shape via a hand-built header line the way rows 1, 4-6
+  do; no separate hand-built-header bcftools probe of the exact well-formed `[WholeGenome, Exome]` value exists,
+  since the truncation test already proves the point that matters -- what this library must never emit).
+
+### Row 8 -- `addMeta(Map)` -- `Values=[WholeGenome, Exome]` (well-formed bracket value)
+
+- **Classification:** Descriptive-only -- this is a statement about what this library's own code does with the
+  spec's own worked example, not a tool-measured claim. No `bcftoolsDependencyTest` case is required for this
+  row: `VCFv4.3.tex:273`'s own worked example already settles that this exact shape must succeed, independent
+  of any tool's behavior.
+- **Spec citation:** `VCFv4.3.tex:273` -- `##META=<ID=Assay,Type=String,Number=.,Values=[WholeGenome, Exome]>`
+  (identically in `VCFv4.4.tex:287`/`VCFv4.5.tex:336`; `silent`/nonexistent in 4.2, since `##META` does not
+  exist as a declaration type before 4.3).
+- **Outcome:** succeeds -- the comma inside a well-formed bracket value on `##META`'s `Values` specifically is
+  not checked at all. See `VCF_SPEC_AMBIGUITIES.md`'s "General bracket-list quoting beyond `##META`'s `Values`"
+  entry -- this is the ONE case bracket-list quoting is scoped to.
+- **Test evidence:** `MetadataPropertyEncodingTest#constructionAcceptsAWellFormedBracketValueOnMetaValuesOnly`.
+
+### Row 9 -- `addContig(Map)` -- `assembly="a,b"` (quoted)
+
+- **Classification:** Descriptive-only -- quoting a value is unambiguously fine under any reading of the spec;
+  no tool measurement is needed to justify "succeeds". No `bcftoolsDependencyTest` case is required for this
+  table entry: this Decision depends on the value being validly quoted (`InternalUtils.isQuoted`), not on
+  bcftools.
+- **Spec citation (collapsed, per the descriptive-only exemption):** all four spec versions agree that a
+  double-quoted value is the normal, unambiguous form (e.g. `VCFv4.3.tex:153`'s own
+  `Description="description"` template), so the four spec columns are not shown separately here.
+- **Outcome:** succeeds; round-trips through default write + re-parse.
+- **Test evidence:** `MetadataPropertyEncodingTest#testAddMapAcceptsTheQuotedCounterparts`;
+  `#testAnAcceptedDeclarationRoundTripsThroughTheDefaultWritePath`.
+
+### Row 10 -- `addContig(Map)` -- `assembly="a=b"` (quoted)
+
+- **Classification:** Descriptive-only, for the identical reason as row 9 -- a quoted value containing `=` is
+  ordinary quoted content; `=` is not even checked in the unquoted (literal) branch, let alone the quoted one.
+- **Outcome:** succeeds.
+- **Test evidence:** `MetadataPropertyEncodingTest#testAddMapAcceptsTheQuotedCounterparts`.
+
+### Row 11 -- `addContig(Map)` -- `assembly=B36` (this table's control row)
+
+- **Classification:** Descriptive-only -- a plain, unambiguous value with none of the characters any check in
+  this family inspects. Per `BEHAVIOR_TABLE_STANDARD.md`'s "Include a control row" rule, this is the row that
+  must come back clean under every path, distinguishing "everything is rejected" from "the harness is broken."
+- **Outcome:** succeeds at Public construction and Validated write alike, with no warning from either path.
+- **Test evidence:** `MetadataPropertyEncodingTest#testAddMapAcceptsTheQuotedCounterparts` (adjacent assertion
+  in the same test); also the shared `good` payload for `contig` in
+  `testEveryPublicMapAddRouteStillAcceptsAValidDeclaration`'s route matrix.
+
+### Row 12 -- `addContig(id, length, assembly, md5, species, taxonomy, url)` -- `,` in `assembly`/`md5`/`taxonomy`/`url`
+
+- **Classification:** Descriptive-only -- which of `ContigMetadata`'s typed constructor arguments is stored via
+  `putPropertyRaw` (unquoted, checked) vs. `putAndQuoteProperty` (auto-quoted, safe) is purely a statement about
+  this library's own internal storage-path choice, not a tool-measured claim. The comma's own throw/warn
+  classification is already established by row 1; this row is only about which *fields* reach that same check.
+- **Outcome:** throws for `assembly`, `md5`, `taxonomy`, or `url` (each `putPropertyRaw`-stored, so each reaches
+  the identical literal-branch comma check row 1 already establishes).
+- **Test evidence:** `MetadataPropertyEncodingTest#testAddTypedRejectsAnUnquotedDelimiterInEveryRawStoredField`.
+
+### Row 13 -- `addContig(...)` -- `,` in `species`
+
+- **Classification:** Descriptive-only, for the same reason as row 12 -- `species` is the one contig argument
+  `ContigMetadata`'s typed constructor routes through `putAndQuoteProperty` instead, which quotes it
+  unconditionally on the way in, so no comma ever reaches the unquoted literal-branch check at all. This is a
+  statement about which inserter the constructor calls, not about tool behavior.
+- **Outcome:** succeeds; round-trips through default write + re-parse.
+- **Test evidence:** `MetadataPropertyEncodingTest#testAddTypedAcceptsADelimiterInContigsOwnAutoQuotedField`.
+
+### Row 14 -- `addInfo(id, description, ...)` -- `,` in `description`
+
+- **Classification:** Descriptive-only -- `InfoMetadata`'s typed constructor routes `description` through
+  `putAndQuoteProperty` the same way `ContigMetadata`'s `species` does (row 13); this is the identical
+  storage-path fact applied to a different kind, not a new tool-measured claim.
+- **Outcome:** succeeds; round-trips through default write + re-parse.
+- **Test evidence:** `MetadataPropertyEncodingTest#testAddTypedAcceptsADelimiterInAnAutoQuotedField`.
+
+### Row 16 -- any of the six `id`/`description`-shaped kinds' typed `addXxx` -- `<` in `id`
+
+(Row 15 -- the retired `=`-in-`id` probe, which this row's `<` probe replaced -- is deleted entirely, not
+renumbered: it was fully redundant with this row, which already documents `<` as the current NAME-shape probe.
+Rows keep their original numbers below rather than closing the gap, so this document's numbering stays stable
+for anything that cites a row by number.)
+
+- **Classification:** Descriptive-only -- `id` is the one raw-stored typed argument every one of the six kinds
+  (ALT, FILTER, FORMAT, INFO, contig, SAMPLE; `META` and `PEDIGREE` have no typed overload of this shape) shares,
+  stored via `putPropertyRaw` into the `ID` property exactly like `##contig`'s `assembly` argument is (row 4).
+  Once stored, `findEncodingProblems`'s literal-branch `<`/`>` check applies identically regardless of which
+  attribute name carries the value -- htslib's own scanner (`vcf.c:730-731`) is attribute-name-agnostic for
+  `<`/`>`, so this row reuses row 4's bcftools evidence rather than re-deriving it. No new
+  `bcftoolsDependencyTest` case is added for this row: it is purely descriptive, and this Decision depends on
+  row 4's already-established classification, not on a fresh bcftools measurement of the `id`/`ID` field
+  specifically.
+- **Outcome:** throws, at Public construction (`id` is the one raw-stored argument every typed route shares,
+  which is why this row is the table's typed-route NAME-shape probe; an `=` would not do, since `=` is not
+  checked at all -- see row 2).
+- **Test evidence:** `MetadataPropertyEncodingTest#testAddTypedRejectsAnAngleBracketInTheId`;
+  `#testEveryPublicTypedAddRouteRejectsAnUnquotedDelimiter` (all six kinds).
+
+### Row 17 -- `addContig(Map)` -- `a-b`, `1abc`, or `a b` as a property NAME
+
+- **Classification:** Decision-bearing -- `InternalUtils.METADATA_ATTRIBUTE_NAME_PATTERN` (the allowlist
+  itself) is bcftools-derived, not spec-derived.
+- **Probe shape:** `##contig`, three separate attribute names each probed individually as the sole non-`ID`
+  attribute (Map-argument probe; no position dimension). Raw-header equivalent already measured:
+  `##contig=<ID=1,a-b=v,length=100>` (`a-b` not last in the raw-text probe; `length` follows).
+- **4.2:** `silent` -- no character-set constraint on a structured attribute's NAME is stated anywhere in
+  VCFv4.2.tex.
+- **4.3:** `silent` on THIS grammar specifically -- `VCFv4.3.tex:119`'s structured-line template
+  (`##key=<key=value,key=value,...>`) leaves the inner `key` an undefined nonterminal, stating no character
+  set. (`VCFv4.3.tex:368`'s `"INFO keys must match the regular expression
+  ^([A-Za-z_][0-9A-Za-z_.]*|1000G)$"` governs a DIFFERENT grammar -- the per-record INFO column's own
+  semicolon-separated subfield keys -- and must not be conflated with this metadata-declaration
+  attribute-list NAME grammar, even though the character class happens to coincide.)
+- **4.4:** `silent`, identically to 4.3 -- `VCFv4.4.tex:117`'s template is unchanged; the coincidentally
+  similar-but-distinct INFO-key grammar is at `VCFv4.4.tex:384`.
+- **4.5:** `silent`, identically to 4.3/4.4 -- `VCFv4.5.tex:115`'s template is unchanged; the INFO-key grammar
+  equivalent is at `VCFv4.5.tex:433`.
+- **bcftools 1.23.1:** discards the WHOLE declaration for an attribute name outside
+  `^[A-Za-z_][0-9A-Za-z_.]*$` (`"Could not parse the header line"`), but the file itself stays readable (exit
+  0, every other declaration and every data line still emitted). htslib 1.23.1 carries this exact regex as a
+  comment above its own scanner (`~/Dev/htslib/vcf.c:695`, `// ^[A-Za-z_][0-9A-Za-z_.]*$`), which
+  `InternalUtils.METADATA_ATTRIBUTE_NAME_PATTERN`'s own Javadoc cites directly.
+- **Public construction:** throws (fails `InternalUtils.METADATA_ATTRIBUTE_NAME_PATTERN`).
+- **Validated write:** warns, not throws -- bcftools drops just the one declaration, file stays readable.
+- **Test evidence:** `MetadataPropertyEncodingTest#constructionRejectsANameOutsideTheAllowlist` (construction);
+  `#diagnosticsModeWarnsRatherThanThrowingOnCarriedForwardContent`/`#aNameOutsideTheAllowlistSurvivesParsing`
+  (write/parse); `BcftoolsDependencyTest#testMetadataAttributeNameOutsideAllowlistBcftoolsDropsDeclarationSilently`.
+
+### Row 18 -- `addContig(Map)` -- `Name_1` or `_x.y1` as a property NAME
+
+- **Classification:** Descriptive-only -- this restates row 17's already-established allowlist boundary from
+  the accepting side; confirming the regex `^[A-Za-z_][0-9A-Za-z_.]*$` matches these two specific strings is a
+  pure regex/code fact, not a new bcftools measurement. `Name_1` is additionally the spec's own literal example
+  name (`VCFv4.3.tex:287`, `##PEDIGREE=<ID=SampleID,Name_1=Ancestor_1,...,Name_N=Ancestor_N>`), so this row also
+  doubles as a positive control that a real spec-used name clears the allowlist. No new
+  `bcftoolsDependencyTest` case is added: this Decision depends on row 17's classification, not a fresh
+  measurement.
+- **Outcome:** succeeds -- both match the allowlist.
+- **Test evidence:** `MetadataPropertyEncodingTest#constructionAcceptsSpecConformantNames`.
+
+### Row 19 -- `replaceContig(Map)` / `replaceContig(typed...)` -- unquoted `,`
+
+- **Classification:** Descriptive-only -- `replaceXxx`'s object-taking implementation calls the identical
+  `checkMetadataPropertyEncoding`/`findEncodingProblems` classifier the `addXxx` rows above already establish;
+  only a comma is exercised on the replace path in this library's own test suite, since `"`/name-allowlist/
+  bracket share the identical underlying check already proven on the `addContig` rows above (rows 1, 3, 5-7,
+  17). No new `bcftoolsDependencyTest` case is added for this row: it reuses row 1's classification rather than
+  re-deriving it for the replace path specifically.
+- **Outcome:** throws, at both `replaceContig(Map)` and the typed overload.
+- **Test evidence:** `MetadataPropertyEncodingTest#testReplaceMapRejectsAnUnquotedDelimiter`/
+  `#testReplaceTypedRejectsAnUnquotedDelimiter`; `#testEveryPublicMapReplaceRouteRejectsAnUnquotedDelimiter`
+  (all eight kinds' Map route).
+
+### Row 20 -- `replaceContig(Map)` -- a valid replacement (e.g. `assembly=GRCh38`) after a prior valid `addContig`
+
+- **Classification:** Descriptive-only -- a plain, unambiguous replacement value; this row's role is
+  confirming the replace path doesn't reject every replacement outright, not measuring tool behavior.
+- **Outcome:** succeeds.
+- **Test evidence:** `MetadataPropertyEncodingTest#testAValidReplacementStillSucceeds`;
+  `#testEveryPublicMapReplaceRouteStillAcceptsAValidReplacement`.
+
+### Row 21 -- `replaceInfo`/`replaceFormat` (typed) -- `,` in `Number`
+
+- **Classification:** Descriptive-only -- `Number` is the one other raw-stored typed field reachable on the
+  replace path without disturbing the already-stored `ID` (ALT/FILTER/SAMPLE's typed replace routes have no
+  such reachable raw-stored field at all, since their only other argument, `Description`, is auto-quoted -- see
+  row 13/14's storage-path reasoning applied to the replace path). This reuses the identical comma
+  classification rows 1/12 already establish; no new `bcftoolsDependencyTest` case is added.
+- **Outcome:** throws, for both `replaceInfo` and `replaceFormat`.
+- **Test evidence:** `MetadataPropertyEncodingTest#testTypedReplaceRoutesWithAReachableRawFieldRejectAnUnquotedDelimiter`.
+
+### Row 22 -- `addContig(Map)` -- key `""`, `"bad,key"`, `"bad=key"`, or `"a\"b"` (unescaped quote in a NAME)
+
+- **Classification:** Descriptive-only -- that all four shapes fail via the SAME name-allowlist branch is a
+  statement about which branch of `findEncodingProblems` fires, derivable by reading the
+  classifier: none of `,`, `=`, `"`, or an empty string matches
+  `^[A-Za-z_][0-9A-Za-z_.]*$`. The underlying allowlist classification itself is row 17's decision, not a new
+  one; this row only confirms which four inputs land in it.
+- **Outcome:** throws, for all four key shapes, at Public construction.
+- **Test evidence:** `MetadataPropertyEncodingTest#testRejectsEveryInvalidKeyShape`.
+
+Rows 23-24 cover the two parse-path-only NAME probes on `##contig`. Row 25 restates the `null`-key shape.
+Rows 26-29 cover `addRawProperty`'s own, deliberately different `##key=value` grammar (the "## The generic
+`##key=value` grammar is deliberately different" section above already derives the underlying rule; these rows
+pin the four probe shapes against it). Rows 30-32 cover the three parse-time `Description=...` quote-recovery
+shapes. Row 33 covers `toBuilder()`.
+
+### Row 23 -- Parse `##contig=<ID=1,a"b=v,length=100>` (unescaped, non-leading quote in a property NAME)
+
+- **Classification:** Descriptive-only -- a pure code-reading fact about `InternalUtils.parseOneAttribute`'s own
+  definition, no tool measurement needed: the NAME-scanning loop (`InternalUtils.java:404-406`, `while (nameEnd
+  < limit && s.charAt(nameEnd) != '=') { nameEnd++; }`) has no quote-mode branch of any kind, unlike value
+  parsing 20 lines later (`InternalUtils.java:426`, `if (first == '"' || ...)`). A quote character anywhere
+  in a NAME -- leading or not -- is always ordinary content; there is no "leading quote absorbs the remainder"
+  nuance for names the way there is for values (see "Severity ranking" above).
+- **Probe shape:** `##contig`, property NAME `a"b`, not last in the declaration (`length=100` follows):
+  `##contig=<ID=1,a"b=v,length=100>`.
+- **Outcome (Parse):** parses; the re-parsed contig's properties are `{ID=1, a"b=v, length=100}`, all three
+  attributes intact. It also warns "Metadata attribute name \"a\"b\" is not valid" --
+  `InternalUtils.java:577-580`'s post-fold `METADATA_ATTRIBUTE_NAME_PATTERN` check runs against every surviving
+  key unconditionally, regardless of which character made it fail, so this shape trips the identical parse-time
+  name warning Row 24 documents (confirmed by tracing `foldAttributes`: the loop has no branch on which
+  character caused the mismatch). Parsing accepting this shape does not soften Row 22's construction-time
+  throw above, which still rejects the same shape (an unescaped quote in a NAME) unconditionally: the two are
+  different paths, not a single rule stated twice.
+- **Evidence gap, recorded rather than papered over:** no committed test currently pins the exact warning
+  message for THIS shape (`a"b` as a NAME) -- `MetadataPropertyEncodingTest#testAnUnescapedQuoteInAPropertyNameNoLongerCorruptsFollowingAttributes`
+  asserts only the recovered property map, and the general parse-time-name-warning mechanism is instead pinned
+  on a different shape (`2>B`) by `InternalUtilsTest#anInvalidAttributeNameWarnsAtParseTimeAndIsStillStored`.
+  Recorded here rather than filled, so it is not rediscovered as a new finding.
+- **Test evidence:** `MetadataPropertyEncodingTest#testAnUnescapedQuoteInAPropertyNameNoLongerCorruptsFollowingAttributes`
+  (recovered property map); `InternalUtilsTest#anInvalidAttributeNameWarnsAtParseTimeAndIsStillStored` (the
+  general parse-time name-warning mechanism, measured on a different invalid-name shape).
+
+### Row 24 -- Parse `##contig=<ID=1,a-b=v,length=100>` (a NAME outside the allowlist)
+
+- **Classification:** Descriptive-only -- restates Row 17's already-established, bcftools-derived allowlist
+  decision from the parse side: the identical `METADATA_ATTRIBUTE_NAME_PATTERN` check also runs at parse
+  time (`InternalUtils.java:577-580`, in `foldAttributes`, post-fold, once
+  per surviving key), warning rather than dropping the attribute -- matching `AGENTS.md`'s carried-forward-content
+  policy for content a prior parse already accepted. No new `bcftoolsDependencyTest` case is added for this row:
+  it reuses Row 17's classification rather than re-deriving it for the parse path specifically, the same pattern
+  Rows 18/19/21/22 already use for reusing Row 17/1's classification.
+- **Probe shape:** `##contig`, property NAME `a-b`, not last in the declaration: `##contig=<ID=1,a-b=v,length=100>`
+  (the committed tests below use the equivalent `##contig=<ID=c1,a-b=v,length=999>` -- same shape, different
+  literal ID/length values).
+- **Outcome (Parse):** parses; the re-parsed contig's properties are `{ID=1, a-b=v, length=100}`, all three
+  intact, plus a parse-time warning ("Metadata attribute name \"a-b\" is not valid") -- the allowlist is
+  enforced on all three paths: Parse (warns, leaving the attributes intact), Public construction (throws,
+  Row 22), and Validated write (warns, Row 17).
+- **Test evidence:** `MetadataPropertyEncodingTest#aNameOutsideTheAllowlistSurvivesParsing` (value survival);
+  `InternalUtilsTest#anInvalidAttributeNameWarnsAtParseTimeAndIsStillStored` (the general parse-time
+  name-warning mechanism); `MetadataPropertyEncodingTest#diagnosticsModeWarnsRatherThanThrowingOnCarriedForwardContent`
+  (the same `a-b` shape surviving `validateBeforeWrite()` too).
+
+### Row 25 -- `addContig(Map)` -- key `null` (via a `LinkedHashMap`, not `Map.of`)
+
+- **Classification:** Descriptive-only -- purely about which Java-level check fires first
+  (`BaseMetadata.validateProperties()` vs. `findEncodingProblems`), not a tool-measured claim. Already explained
+  in full in "The `null`-key shape is not new here..." above.
+- **Outcome:** throws, but from `BaseMetadata.validateProperties()` (`BaseMetadata.java:139-143`) *before*
+  `findEncodingProblems` ever runs -- a distinct message, "Metadata contains a null property name". A test
+  asserting on a `null` key pins `validateProperties`'s message, not this check's; the `null`-name branch inside
+  `findEncodingProblems` (`name == null` at `InternalUtils.java:1683`) is genuinely unreachable through any
+  public construction route.
+- **Test evidence:** `MetadataPropertyEncodingTest#testANullKeyIsRejectedByConstructionNotByThisCheck`.
+
+Rows 26-29 share one classification, stated once here and referenced by each row rather than repeated: none of
+the four is a case where a decision rests on measured tool behavior against spec-silent input
+(`BEHAVIOR_TABLE_STANDARD.md`'s own test for when a behavior table is warranted at all). The unstructured
+`##key=value` line IS defined by the spec (`VCFv4.3.tex:109`, "An *unstructured* meta-information line consists
+of a key ... and a value ..., separated by an `=` character" -- identically `VCFv4.5.tex:107`/`VCFv4.4.tex:109`;
+`silent`/undefined as its own named grammar in `VCFv4.2.tex`, whose closest text is line 57's "File
+meta-information is included after the \#\# string and must be key=value pairs" -- no split mechanism or
+character-set rule stated in any version), but no version of any of them says what happens if the KEY portion
+itself contains a second `=` or a `,` -- that is purely a fact about `VcfParser.parseMetadata`'s own re-parse
+mechanism (`VcfParser.java:551`, `int idx = line.indexOf("=");`, splitting on the FIRST occurrence only), fully
+derivable by reading the code, not by measuring a tool. The "## The generic `##key=value` grammar is
+deliberately different" section above already derives this exact rule in full (its own Shape/Re-parse/Rule
+table); these four rows exist to pin the four concrete probe shapes against that already-derived rule, not to
+re-derive it. No `bcftoolsDependencyTest` case is required for any of the four: this is a fact about
+`VcfParser`'s own re-parse mechanism, not about bcftools.
+
+### Row 26 -- `addRawProperty(name, value)` -- `=` in `name` (e.g. `"bad=name"`)
+
+- **Classification:** Descriptive-only -- see the shared reasoning above.
+- **Outcome:** throws at Public construction (`VcfMetadata.java:1428-1429`, `if (name.contains("=")) { throw new
+  VcfFormatException("Raw metadata property name contains '=', ...`) -- an `=` in the name would shift
+  `VcfParser.parseMetadata`'s first-`=` split point on re-parse (`##foo=bar=value` would come back as name
+  `foo`, value `bar=value`). Also throws at Validated write (`VcfWriter.Builder.validateBeforeWrite()` already
+  rejects exactly this, reached via a trusted bypass since `addRawProperty` itself already rejects it at
+  construction) -- construction is not narrower than the writer here.
+- **Test evidence:** `MetadataPropertyEncodingTest#testAddRawPropertyRejectsAnEqualsSignInTheName` (construction);
+  `VcfWriterTest#testValidateBeforeWriteRejectsEqualsSignInRawPropertyKey` (write, via a trusted bypass).
+
+### Row 27 -- `addRawProperty(name, value)` -- `,` in `name` (e.g. `"bad,name"`) -- this family's control row
+
+- **Classification:** Descriptive-only -- see the shared reasoning above.
+- This is the table's control for the `addRawProperty` family specifically: it proves the structured
+  attribute-list comma rule (Row 1; "Severity ranking" above, "A comma is still the one character an unquoted
+  value has no way to escape") was NOT applied to this deliberately different, unstructured generic grammar,
+  which has no comma-separated structure to protect at all.
+- **Outcome:** succeeds -- `VcfParser.parseMetadata` never splits a generic line on a comma, so nothing there can
+  be corrupted by one.
+- **Test evidence:** `MetadataPropertyEncodingTest#testAddRawPropertyAcceptsACommaInTheName`.
+
+### Row 28 -- `addRawProperty(name, value)` -- `=` in `value` (e.g. `"a=b"`)
+
+- **Classification:** Descriptive-only -- see the shared reasoning above.
+- **Outcome:** succeeds; round-trips through default write + re-parse unchanged -- splitting on the FIRST `=`
+  only means everything after it, including a second `=`, is returned intact as the value.
+- **Test evidence:** `MetadataPropertyEncodingTest#testAddRawPropertyValueKeepsDelimitersThroughAWriteAndReparse`.
+
+### Row 29 -- `addRawProperty(name, value)` -- `,` in `value` (e.g. `"a,b"`)
+
+- **Classification:** Descriptive-only -- see the shared reasoning above.
+- **Outcome:** succeeds; round-trips through default write + re-parse unchanged -- there is no attribute-list
+  structure here for a comma to end a value at.
+- **Test evidence:** `MetadataPropertyEncodingTest#testAddRawPropertyValueKeepsDelimitersThroughAWriteAndReparse`
+  (the same test method exercises both Row 28 and Row 29 in one pass, via two `addRawProperty` calls).
+
+### Row 30 -- Parse `Description="a"b"` (unescaped quote inside a quoted value)
+
+- **Classification:** Decision-bearing -- the parser's own recovery choice (close the value at the first
+  unescaped `"` by position) is not spec-derived, and this row's bcftools divergence is already measured and
+  fixture-pinned.
+- **Probe shape:** `##FILTER`, attribute name `Description`, LAST attribute in the declaration:
+  `##FILTER=<ID=q10,Description="a"b">`.
+- **4.2:** `silent` on recovery from this shape -- `VCFv4.2.tex:81` states only that the double-quote "**can**
+  be escaped with backslash", nothing about what happens when it is not.
+- **4.3:** `silent` on recovery -- `VCFv4.3.tex:173`, "Double-quote character must be escaped with backslash
+  $\backslash$ and backslash as $\backslash\backslash$." states the escaping requirement, not a recovery
+  strategy for a value that violates it.
+- **4.4:** `silent`, identically -- `VCFv4.4.tex:176`, same wording.
+- **4.5:** `silent`, identically -- `VCFv4.5.tex:174`, same wording.
+- **bcftools 1.23.1:** measured on `##INFO`, not `##FILTER`
+  (`##INFO=<ID=XX,Number=1,Type=String,Description="a"b">`, `Description` still LAST in the declaration) --
+  the underlying mechanism is htslib's declaration-type-agnostic quoted-value scan in `bcf_hdr_parse_line`,
+  which never consults the declaration type, so this generalizes from `##INFO` to `##FILTER` the same way
+  row 1 generalizes from `ID` to `assembly` and row 17's raw-header probe stands in for its Map probe.
+  It diverges from this library -- drops the WHOLE declaration ("Could not parse the header
+  line"), file stays readable at exit 0, rather than recovering a truncated `Description`. The htslib mechanism
+  (the quoted-value scan closing at the first unescaped `"`, then the next attribute-name scan landing one
+  character short of the true next token) is already cited in detail, with its own verified line numbers, by
+  `BcftoolsDependencyTest#testInfoQuotedValueUnescapedInteriorQuoteBcftoolsDropsDeclaration`'s own comment --
+  not repeated here to avoid a second, independently-drifting copy of the same htslib citation.
+- **Outcome (Parse):** parses; warns "has trailing content \"b\"\" after its closing delimiter; discarding it"
+  for the leftover `b"`; recovers `Description` as the well-formed `"a"` -- the value closes at the first
+  unescaped `"` by position, not by unbalanced-quote parity.
+- **Test/fixture evidence:** `MetadataPropertyEncodingTest#testParsingStillRecoversAnUnescapedQuoteWithAWarning`;
+  `BcftoolsDependencyTest#testInfoQuotedValueUnescapedInteriorQuoteBcftoolsDropsDeclaration`;
+  `local-fixtures/failed/info-quoted-value-unescaped-interior-quote.vcf` (carries both tools' `##Authority=`
+  citations, bcftools 1.23.1 and vcf_validator 0.10.2, measured live 2026-08-15).
+
+### Row 31 -- Parse `Description=ab"` (unquoted value ending in a quote)
+
+- **Classification:** Descriptive-only -- a mechanical fact about this library's own recovery, not a claim
+  about what bcftools does with this exact input: the value's first byte is neither `"` nor `[`, so it is
+  literal from the start and nothing truncates it, regardless of what its last byte is. No
+  `bcftoolsDependencyTest` case exists for this exact shape, and none is required: this row does not depend on
+  bcftools behavior, only on `InternalUtils.parseOneAttribute`'s literal-value branch (`InternalUtils.java:500-507`).
+- **Probe shape:** `##FILTER`, attribute name `Description`, LAST attribute in the declaration:
+  `##FILTER=<ID=q10,Description=ab">`.
+- **Outcome (Parse):** parses; warns **both** "has an unquoted value \"ab\"\" containing a character bcftools
+  treats as structural; preserving it" (`InternalUtils.java:504-505`) and "... should be quoted but was: ab\""
+  (`IdDescriptionMetadata.java:72`, the reserved-property quoting check that fires independently for
+  `Description` specifically); recovers `Description` as `ab"` in full.
+- **Test evidence:** `MetadataPropertyEncodingTest#testParsingStillRecoversAnUnescapedQuoteWithAWarning`.
+
+### Row 32 -- Parse `Description="ab,Source="s"` (leading, unclosed quote)
+
+- **Classification:** Descriptive-only -- a mechanical fact about this library's own recovery algorithm (the
+  closing-quote search spans the whole remainder of the line, per "Severity ranking" above), not a claim about
+  bcftools' behavior on this exact input. No `bcftoolsDependencyTest` case exists for this shape, and none is
+  required: the point of this row is what THIS library's tokenizer does when it cannot find its own closing
+  quote before the next comma, not a tool comparison.
+- **Probe shape:** `##INFO`, attribute name `Description`, NOT last in the declaration (`Source` follows):
+  `##INFO=<ID=XX,Number=1,Type=String,Description="ab,Source="s">`.
+- **Outcome (Parse):** parses; warns "has trailing content \"s\"\" after its closing delimiter; discarding it"
+  for the leftover `s"`; recovers `Description` as `"ab,Source="` -- absorbing the comma and the `=` by matching
+  `Source`'s own opening quote as its closing one; there is no `Source` key in the result at all. This is stable
+  on re-emission, not progressively degrading: `MetadataPropertyEncodingTest#testWritingParserRecoveredMetadataOnTheDefaultPathIsAFixedPointOnReparse`
+  confirms writing this recovered value on the default path and re-parsing it again reaches the identical
+  absorbed state, not a further-corrupted one.
+- **Test evidence:** `MetadataPropertyEncodingTest#testParsingStillRecoversAnUnescapedQuoteWithAWarning`;
+  `#testWritingParserRecoveredMetadataOnTheDefaultPathIsAFixedPointOnReparse`.
+
+### Row 33 -- `parsed.toBuilder().build()` for any of the three `Description=...` parses above
+
+- **Classification:** Descriptive-only -- a code-reading fact about the object-taking overloads' exemption
+  (`toBuilder()`'s package-private `addXxx(md)` overloads never call `checkMetadataPropertyEncoding` at all),
+  already explained in full in "Why the parse path is exempt" above ("`toBuilder()`'s package-private
+  object-taking overloads" route).
+- **Outcome:** succeeds, with the identical recovered raw properties -- the object-taking overloads' exemption is
+  what makes this possible; without it, `toBuilder()` would reject metadata the library itself just accepted.
+- **Test evidence:** `MetadataPropertyEncodingTest#testToBuilderRebuildsParserRecoveredMetadataWithoutThrowing`,
+  which iterates all FOUR of that class's `RECOVERED_QUOTE_CASES` -- one more than the three tabled here. The
+  fourth (`##INFO=<ID=XX,Number=1,Type=String,Description="a"b",Source="s">`, the variant of row 32's shape in
+  which the leading quote DOES find its own closing quote and absorbs nothing) is not tabled separately
+  because it recovers exactly as row 30 does: `Description` becomes the well-formed `"a"`, the leftover `b"`
+  is warned about as trailing content, and `Source` survives intact.
+
+The "round-trips through default write + re-parse" rows are not redundant with the "succeeds" rows above them:
+a change that accepted a value at construction but still corrupted it on the way out would pass every
+`assertDoesNotThrow`/`assertThrows` assertion in this table while `VcfWriter`'s default path (see "The defect"
+above) still emitted a value other than what was passed in. Only the round-trip assertion proves the
+accept-decision was actually correct.
 
 ## Known gap: an escaped quote in a property name
 
 **An escaped quote in a property name round-trips cleanly through the PARSE path -- construction has always
 rejected any quote in a name, escaped or not.** Parsing `##contig=<ID=1,a\"b=v,length=100>` (a literal
 backslash-quote sequence in the NAME), writing the result on the default path, and re-parsing it again yields
-`{ID=1, a\"b=v, length=100}` back -- all three attributes intact (verified live), though parsing now emits a
+`{ID=1, a\"b=v, length=100}` back -- all three attributes intact (verified live), though parsing emits a
 name-allowlist warning for this shape (see below). That round-trip is a property of the PARSE path being
 exempt from this check's throw/drop behavior (see "Why the parse path is exempt" above), not of the check
 itself distinguishing escaped from unescaped: construction (`addContig(Map)` and every other checked route)
-has never made that distinction. The pre-Task-3 predicate's `propertyName.contains("\"")` matched any quote
-character in a name regardless of what preceded it, and Task 3's allowlist rejects it for the same reason --
-neither `"` nor `\` is in `[A-Za-z_][0-9A-Za-z_.]*`. bcftools 1.23.1 agrees with construction, not with the
-parse path, and rejects the line outright:
+has never made that distinction -- neither `"` nor `\` is in `InternalUtils.METADATA_ATTRIBUTE_NAME_PATTERN`'s
+`[A-Za-z_][0-9A-Za-z_.]*`. bcftools 1.23.1 agrees with construction, not with the parse path, and rejects the
+line outright:
 
 ```
 [E::bcf_hdr_parse_line] Could not parse the header line: "##contig=<ID=1,a\\\"b=v,length=100>"
@@ -561,32 +1112,19 @@ parse path, and rejects the line outright:
 (bcftools's own message escapes the literal `\"` in the input line for display inside its own double-quoted
 diagnostic string, hence `\\\"` rather than `\"`.)
 
-Closing this is deliberately out of scope for the unescaped-quote fix above: the parse path is exempt from
-this check's throw/drop behavior (see "Why the parse path is exempt" above), so a header whose property name
-already contains an escaped quote still parses through today, now with a parse-time name warning rather than
-silently. Before Task 3, widening the check to also reject an
-escaped quote -- without also deciding what the parser itself should do -- would have made `validateBeforeWrite()`
-throw on content this library's own parser just accepted, because `validateBeforeWrite()`'s
-`validateMetadataProperties` (`VcfWriter.java:704-706`) was, at that time, the write-time net described in
-"Path asymmetry closed" above, running `checkMetadataPropertyEncoding` (the SAME unconditional-throw predicate
-construction used) against every entry's properties at write time, regardless of whether that entry came from
-a checked construction route or from the parser's exempt trusted routes. `toBuilder()` is *not* the mechanism
-here -- it re-adds every declaration through the package-private object-taking `addXxx(md)` overloads
-(`VcfMetadata.java:149-181`, `public Builder toBuilder() {` ... `return builder;`), none of which calls this
-check at all (see "Deliberately not checked" above), so
-it would keep succeeding on this content however the check were widened. A parse-path decision is needed
-first. Recorded here so it is not rediscovered as a new finding; to be addressed separately.
+Closing this is deliberately out of scope: the parse path is exempt from this check's throw/drop behavior
+(see "Why the parse path is exempt" above), so a header whose property name already contains an escaped quote
+still parses through today, with a parse-time name warning rather than silently. Closing the write-time gap
+requires a parse-path decision first -- whether the parser itself should reject this shape outright -- which
+has not been made. Recorded here so it is not rediscovered as a new finding; to be addressed separately.
 
-**Task 3 narrows, but does not eliminate, the specific write-time risk this section warns about.** A property
-name is now rejected via `InternalUtils.METADATA_ATTRIBUTE_NAME_PATTERN` rather than the old ad hoc
-comma/equals/quote checks -- a name containing any quote character (escaped or not) still fails that
-allowlist, since `"`/`\` are not in `[A-Za-z_][0-9A-Za-z_.]*`. What changed is what `validateBeforeWrite()`
-does about it: `checkMetadataPropertyEncodingForWrite` classifies an invalid name as `unreadableOutput=false`
-(bcftools drops the one declaration but keeps reading the file), so it now WARNS rather than throws. Widening
-the parse path itself to also reject this shape -- narrower now that parsing already warns about it, so the
-still-open question is outright rejection, not detection -- would therefore no longer make
-`validateBeforeWrite()` throw on content the parser just accepted -- that specific consequence is resolved by
-the construction/write split, independent of whatever the parse-path decision above eventually is.
+**A property name containing any quote character -- escaped or not -- still fails
+`InternalUtils.METADATA_ATTRIBUTE_NAME_PATTERN`'s allowlist, since neither `"` nor `\` is in
+`[A-Za-z_][0-9A-Za-z_.]*`.** `checkMetadataPropertyEncodingForWrite` classifies an invalid name as
+`unreadableOutput=false` (bcftools drops the one declaration but keeps reading the file), so it WARNS rather
+than throws. Widening the parse path today to also reject this shape -- the still-open question above is
+outright rejection, not detection, since parsing already warns -- would not make `validateBeforeWrite()`
+throw on the newly-rejected content, because of the current construction/write split.
 
 ## Where this is implemented
 
@@ -601,8 +1139,8 @@ the construction/write split, independent of whatever the parse-path decision ab
   sink otherwise, preserving the value unchanged either way. Called from `VcfWriter.validateMetadataProperties`,
   itself called once per declaration from `validateMetadataPropertiesForEntries`, itself called once per kind
   (INFO/FILTER/FORMAT/ALT/contig/SAMPLE/META/PEDIGREE) from `validateMetadataPropertyEncodings` -- which runs once
-  per header, from `writeHeader` only, not from `writeLine` (see "Path asymmetry closed" above for why this had
-  to move once the name check stopped being an unconditional throw).
+  per header, from `writeHeader` only, not from `writeLine` (see "Where write-time and construction-time checks
+  meet" above for why this had to move once the name check stopped being an unconditional throw).
 - `InternalUtils.METADATA_ATTRIBUTE_NAME_PATTERN` -- the bcftools-derived attribute-NAME allowlist
   (`^[A-Za-z_][0-9A-Za-z_.]*$`) `findEncodingProblems` checks first.
 - `InternalUtils.isWellFormedMetaValuesBracket(String)` -- the malformed-bracket-value check, scoped to
@@ -613,8 +1151,8 @@ the construction/write split, independent of whatever the parse-path decision ab
   (not gated to `Values`) rejects a leading `[` with no `]` anywhere on ANY attribute, since bcftools' own
   bracket handling is unaffected by this library's narrower acceptance scope.
 - `InternalUtils.isQuoted`/`InternalUtils.containsUnescapedQuote` -- `findEncodingProblems`'s two other helpers,
-  moved here from `VcfWriter` (where they were previously private) so every call site shares one implementation
-  rather than risking two copies of a predicate this subtle drifting apart.
+  so every call site shares one implementation rather than risking two copies of a predicate this subtle
+  drifting apart.
 - `VcfMetadata.Builder`'s eight `addXxx` families and seven `replaceXxx` families -- each kind's typed and `Map`
   overload (where a typed one exists) calls `checkMetadataPropertyEncoding` against the constructed
   declaration's `getPropertiesRaw()`, never against the method's own arguments.
@@ -630,12 +1168,11 @@ the construction/write split, independent of whatever the parse-path decision ab
   checked `addRawProperty`.
 - `VcfWriter.validateMetadataPropertyEncodings`/`validateMetadataProperties` -- the write-time net for the two
   routes that still bypass the construction-time check: `BaseMetadata.trustedMutableProperties()`'s test-only
-  bypass, and the parse path's own trusted/object-taking routes. `validateMetadataProperties` is now a thin
+  bypass, and the parse path's own trusted/object-taking routes. `validateMetadataProperties` is a thin
   delegate to `checkMetadataPropertyEncodingForWrite`, not `checkMetadataPropertyEncoding`.
 - `InternalUtils.tokenizeAttributeList`/`InternalUtils.parseAttribute` (sharing one per-attribute grammar via
   the private `parseOneAttribute`) -- the parse-side mechanism this whole document's "why the parse path is
-  exempt" reasoning is about. Superseded the retired two-pass `splitTopLevel`/`splitProperty`/
-  `hasUnbalancedQuotes`, which the severity-ranking and corruption-matrix sections above describe historically.
+  exempt" reasoning is about.
 - `MetadataPropertyEncodingTest` -- the test class covering every route and shape described in this document.
 - `AttributeListTokenizerTest` -- the test class covering the tokenizer's own per-attribute grammar (leading-
   byte classification, escape handling, junk-after-close recovery) referenced throughout this document.

@@ -1602,7 +1602,7 @@ public class InternalUtils {
    * bcftools-readable, since that route's content may be carried-forward (parsed, not originated) rather than
    * something this call is creating.
    * <p>
-   * See STRUCTURAL_DELIMITER_HANDLING.md for the verified corruption matrix.
+   * See STRUCTURAL_DELIMITER_HANDLING.md's Reference table for the per-shape throw/warn outcomes.
    *
    * @throws VcfFormatException for any problem {@link #findEncodingProblems} finds: an invalid property name, a
    * malformed bracket value, or an unquoted value containing {@code ,}, {@code <}, {@code >}, an unescaped
