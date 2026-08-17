@@ -1177,11 +1177,31 @@ class BcftoolsDependencyTest {
   }
 
   @Test
+  void testMetaAttributeOrderBcftoolsIgnoresIdLastPosition() throws IOException, InterruptedException {
+    // Third shape from VCF_SPEC_AMBIGUITIES.md's "##META attribute order" table (the row labelled
+    // '##META=<Number=1,Type=Integer,Values="d",ID=Assay>  (ID last)'): ID declared LAST on ##META itself,
+    // where the two tests above vary only Number-vs-Type order. BEHAVIOR_TABLE_STANDARD.md's "Preserving the
+    // evidence" tier 2 wants a case for EVERY bcftools row, and this row had none until now. Note the
+    // vcf_validator half of this row is disqualified twice over (see that table's notes [b] and [c]), so
+    // bcftools' silence is the only measured evidence the row carries -- all the more reason for it to be
+    // re-verified against a real binary on upgrade.
+    String vcf = "##fileformat=VCFv4.3\n##META=<Number=1,Type=Integer,Values=\"d\",ID=Assay>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("##META=<Number=1,Type=Integer,Values=\"d\",ID=Assay>"),
+        "Expected bcftools to retain the ID-last ##META declaration verbatim, got: " + result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"),
+        "Expected no bcftools warning/error at all, got: " + result.output());
+  }
+
+  @Test
   void testInfoAttributeOrderBcftoolsIgnoresIdPosition() throws IOException, InterruptedException {
-    // Generalizes the two ##META tests above to a non-##META type, per BEHAVIOR_TABLE_STANDARD.md's
+    // Generalizes the three ##META tests above to a non-##META type, per BEHAVIOR_TABLE_STANDARD.md's
     // "Preserving the evidence" tier 2: the decision to remove attribute-order checking from every keyed type
     // (not just ##META) rests partly on this exact shape -- VCF_SPEC_AMBIGUITIES.md's "##META attribute
-    // order" table's measured control row, ID declared LAST -- which previously had no dedicated
+    // order" table's ID-last ##INFO generalization row (NOT a control row: a control must come back clean
+    // from every tool, and vcf_validator reads this one 'not valid') -- which previously had no dedicated
     // bcftoolsDependencyTest case of its own, only the table's prose. bcftools doesn't privilege ID's position
     // any more than any other attribute's.
     String vcf = "##fileformat=VCFv4.2\n##INFO=<Number=1,Type=Integer,Description=\"d\",ID=DP>\n" +
@@ -1190,6 +1210,26 @@ class BcftoolsDependencyTest {
     assertEquals(0, result.exitCode(), result.output());
     assertTrue(result.output().contains("##INFO=<Number=1,Type=Integer,Description=\"d\",ID=DP>"),
         "Expected bcftools to retain the ID-last ##INFO declaration verbatim, got: " + result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"),
+        "Expected no bcftools warning/error at all, got: " + result.output());
+  }
+
+  @Test
+  void testAltAttributeOrderBcftoolsIgnoresTypeBeforeNumber() throws IOException, InterruptedException {
+    // Fifth and final shape from VCF_SPEC_AMBIGUITIES.md's "##META attribute order" table (the row labelled
+    // '##ALT=<ID=DEL,Type=String,Number=1,Description="Deletion">  (Type before Number)'): ##ALT with Type
+    // declared before Number, generalizing the decision to a second non-##META keyed type (##INFO already
+    // covered above) -- the table's own row previously had only its prose backing it, no dedicated
+    // bcftoolsDependencyTest case of its own, per BEHAVIOR_TABLE_STANDARD.md's "Preserving the evidence"
+    // tier 2. Like the ##INFO row above this is a generalization row, not a control row -- vcf_validator reads
+    // it 'not valid' (over-determined: see that table's note [c]).
+    String vcf = "##fileformat=VCFv4.3\n##ALT=<ID=DEL,Type=String,Number=1,Description=\"Deletion\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("##ALT=<ID=DEL,Type=String,Number=1,Description=\"Deletion\">"),
+        "Expected bcftools to retain the Type-before-Number ##ALT declaration verbatim, got: "
+            + result.output());
     assertFalse(result.output().contains("[W::") || result.output().contains("[E::"),
         "Expected no bcftools warning/error at all, got: " + result.output());
   }

@@ -1,0 +1,6 @@
+##fileformat=VCFv4.3
+##INFO=<ID=X,Extra=plain,Number=1,Type=Integer,Description="d">
+##contig=<ID=chr1,length=1000000>
+##Authority=VCFv4.3.tex:117 (see row 1's fixture for the full quote). This fixture is the table's "control B" row: an ordinary, unremarkable Extra value with no angle brackets, quoting, or commas at all, pinning that a plain unrecognized attribute name is accepted and preserved with no complaint before the comma/bracket rows below probe more interesting content.
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	G	.	PASS	X=abc

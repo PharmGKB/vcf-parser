@@ -1,0 +1,6 @@
+##fileformat=VCFv4.3
+##contig=<ID=chr1,length=1000000>
+##META=<ID=Assay,Type=String,Number=.,Values=[a, b]>
+##Authority=VCFv4.3.tex:273 verbatim -- "##META=<ID=Assay,Type=String,Number=.,Values=[WholeGenome, Exome]>" -- this row reproduces the specification's own worked ##META example's attribute order verbatim, which places Type before Number, not the ID,Number,Type,... order this library's own typed constructors use for output readability. No version requires an order (VCFv4.3 is silent; VCFv4.4.tex:134-135/VCFv4.5.tex:132-133 say implementations must not rely on one), so the spec's own example is expected to parse cleanly, matching VCF_SPEC_AMBIGUITIES.md's "##META attribute order" entry.
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	.

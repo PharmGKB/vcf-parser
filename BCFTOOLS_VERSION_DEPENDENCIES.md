@@ -196,7 +196,10 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
 ### `##META` attribute order
 - Test: `BcftoolsDependencyTest#testMetaAttributeOrderBcftoolsIgnoresCanonicalOrdering` (canonical-order control),
   `#testMetaAttributeOrderBcftoolsAcceptsTheSpecsOwnWorkedExample` (the spec-order shape the decision covers),
-  `#testInfoAttributeOrderBcftoolsIgnoresIdPosition` (generalizes to a non-`##META` type -- see below)
+  `#testMetaAttributeOrderBcftoolsIgnoresIdLastPosition` (ID declared last on `##META` itself),
+  `#testInfoAttributeOrderBcftoolsIgnoresIdPosition` and `#testAltAttributeOrderBcftoolsIgnoresTypeBeforeNumber`
+  (each generalizes to a non-`##META` type -- see below). Five cases, one per row of that entry's table, per
+  `BEHAVIOR_TABLE_STANDARD.md`'s evidence-preservation tier 2.
 - Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "`##META` attribute order" entry. No keyed declaration type
   attribute-order checks any more -- the decision, originally scoped to `##META` alone, was extended to
   `##INFO`/`##FORMAT`/`##ALT`/`##FILTER`/`##contig`/`##SAMPLE` on 2026-08-14 -- so ten fixtures
@@ -204,10 +207,12 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
   permanently-accepted `hts-specs-baseline.tsv` divergences whose sole justification is bcftools' own silence
   on ordering -- nothing else re-checks that premise (`htsSpecsTest` never runs bcftools; `bcf_hdr_parse_line`
   never consults `##fileformat`), so a future bcftools upgrade that started warning on ordering would rot
-  this decision silently without these three tests. The third test exists specifically because the
-  broader decision leans on a non-`##META` control row (an ID-last `##INFO` declaration) that had no
-  dedicated `bcftoolsDependencyTest` case of its own before this generalization -- see
-  `BEHAVIOR_TABLE_STANDARD.md`'s evidence-preservation tier 2.
+  this decision silently without these five tests. The fourth and fifth tests exist specifically because the
+  broader decision leans on non-`##META` *generalization* rows (an ID-last `##INFO` declaration and a
+  Type-before-Number `##ALT` declaration) that had no dedicated `bcftoolsDependencyTest` case of their own
+  before this generalization -- see `BEHAVIOR_TABLE_STANDARD.md`'s evidence-preservation tier 2. Neither is a
+  control row: a control must come back clean from every tool, and vcf_validator 0.10.2 reads both `not valid`
+  (the table's row 1 is its only control).
 
 ### Generic metadata property with an empty value
 - Test: `BcftoolsDependencyTest#testGenericPropertyEmptyValueBcftoolsPreservesButWeAreStricter`

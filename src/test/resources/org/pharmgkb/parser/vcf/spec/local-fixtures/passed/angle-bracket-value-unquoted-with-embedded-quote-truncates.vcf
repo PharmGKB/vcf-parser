@@ -1,0 +1,9 @@
+##fileformat=VCFv4.3
+##INFO=<ID=X,Extra=A<1,"2">B,Number=1,Type=Integer,Description="d">
+##contig=<ID=chr1,length=1000000>
+##Authority=VCFv4.3.tex:117 (see row 1's fixture) -- same interior-comma splitting as the unquoted A<1,2>B row, with an added embedded double-quote in the dropped second fragment to confirm the same truncation happens regardless of what the discarded remainder itself contains. The surviving "A<1" half also still contains a raw '<', so a second, distinct warning fires for it: InternalUtils.parseOneAttribute's structural-character warning (InternalUtils.java:504-505), already recorded as a parse-time outcome by STRUCTURAL_DELIMITER_HANDLING.md's Row 31 on 2026-08-15. Both warnings are pinned below.
+##ExpectWarnContains=has no '='; dropping it
+##ExpectWarnContains=containing a character bcftools treats as structural; preserving it
+##RoundTripDivergenceReason=InternalUtils.parseOneAttribute splits the unquoted Extra value on its interior comma and drops the name-less "\"2\">B" fragment (the ##ExpectWarnContains= warning above); the writer then re-emits only the surviving "A<1" half of Extra, so the round trip is not byte-identical -- verified live during authoring: the written ##INFO line reads Extra=A<1 instead of the original Extra=A<1,"2">B.
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	G	.	PASS	X=abc

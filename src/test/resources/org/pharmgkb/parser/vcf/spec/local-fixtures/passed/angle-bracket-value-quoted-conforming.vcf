@@ -1,0 +1,6 @@
+##fileformat=VCFv4.3
+##INFO=<ID=X,Extra="A<1,2>B",Number=1,Type=Integer,Description="d">
+##contig=<ID=chr1,length=1000000>
+##Authority=VCFv4.3.tex:117 (see row 1's fixture) plus VCFv4.3.tex:173 -- "Double-quote character must be escaped with backslash and backslash as \\" -- the target spec's only stated escaping mechanism, which this value uses correctly by NOT needing it: double-quoting protects the interior comma and angle brackets without requiring any escape at all, so the value round-trips byte-for-byte.
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	G	.	PASS	X=abc

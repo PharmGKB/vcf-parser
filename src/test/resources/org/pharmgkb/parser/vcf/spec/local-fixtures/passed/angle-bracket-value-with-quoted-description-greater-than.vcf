@@ -1,0 +1,7 @@
+##fileformat=VCFv4.3
+##INFO=<ID=X,Extra=a<b,Number=1,Type=Integer,Description=">">
+##contig=<ID=chr1,length=1000000>
+##Authority=VCF_SPEC_AMBIGUITIES.md's "Unquoted metadata attribute value: malformed bracket vs. `<`/`>`/`;`" entry, combined with VCFv4.3.tex:173's double-quote escaping rule: this row probes whether a bare `>` INSIDE a properly double-quoted value (Description=">") is treated any differently from the same character in an unquoted value (row 8) -- it is: quoting fully protects the content, so Description parses as the single-character string `>` with NO warning, in contrast to the unquoted Extra=a<b half of this same declaration, which (same InternalUtils.parseOneAttribute check as rows 7/8, InternalUtils.java:504-505, already recorded as a parse-time outcome by STRUCTURAL_DELIMITER_HANDLING.md's Row 31 on 2026-08-15) DOES produce a parse-time warning for its own unquoted `<`.
+##ExpectWarnContains=containing a character bcftools treats as structural; preserving it
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	G	.	PASS	X=abc

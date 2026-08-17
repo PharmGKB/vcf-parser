@@ -1,0 +1,7 @@
+##fileformat=VCFv4.3
+##contig=<ID=chr1,length=1000000>
+##META=<Number=1,Type=Integer,Values="d",ID=Assay>
+##Authority=No VCF version (4.2-4.5) requires ID to appear first, or in any particular position, within a structured metadata declaration -- VCFv4.4.tex:134-135/VCFv4.5.tex:132-133's non-binding "should be ID, Number, Type, Description" recommendation is the only ordering prose in any version, and it is explicitly non-binding ("must not rely on the order"). This fixture pins that ID declared LAST still parses cleanly for ##META specifically.
+##Authority=bcftools 1.23.1 (htslib 1.23.1), measured 2026-08-17: `bcftools view -h` on this exact declaration exits 0, emits no [W::/[E:: line, and echoes it verbatim. Pinned live by BcftoolsDependencyTest#testMetaAttributeOrderBcftoolsIgnoresIdLastPosition. vcf_validator 0.10.2 (4.3 grammar) reads this file not valid, but that verdict is over-determined and carries no weight: its 4.3 grammar (vcf-validator/src/vcf/vcf_v43.ragel:138-141) hardcodes the whole ##META production as ID=, ,Number=., ,Type=String, ,Values=[...], so Number=1, Type=Integer and a quoted Values each violate it independently of ordering -- see VCF_SPEC_AMBIGUITIES.md's "##META attribute order" table, notes [b] and [c].
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	.

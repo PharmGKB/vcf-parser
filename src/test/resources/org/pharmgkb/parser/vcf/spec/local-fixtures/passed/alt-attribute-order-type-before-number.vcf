@@ -1,0 +1,8 @@
+##fileformat=VCFv4.3
+##ALT=<ID=DEL,Type=String,Number=1,Description="Deletion">
+##contig=<ID=chr1,length=1000000>
+##Authority=VCFv4.3.tex is silent on structured-header attribute ordering (no ordering prose for any declaration type), and the only spec text in any version that names an order is non-binding: VCFv4.4.tex:134-135/VCFv4.5.tex:132-133, "To aid human readability, the order of fields should be ID, Number, Type, Description, then any optional fields. Implementations must not rely on the order of the fields within structured lines and are not required to preserve field ordering." So a Type-before-Number ##ALT declaration is expected to parse cleanly.
+##Authority=bcftools 1.23.1 (htslib 1.23.1), measured 2026-08-17: `bcftools view -h` on this exact declaration exits 0, emits no [W::/[E:: line, and echoes it verbatim -- bcftools ignores attribute order for ##ALT the same way it does for ##META. Pinned live by BcftoolsDependencyTest#testAltAttributeOrderBcftoolsIgnoresTypeBeforeNumber, so a future bcftools that started warning on ordering cannot rot this silently. vcf_validator 0.10.2 (4.3 grammar) reads this file not valid, but that verdict is over-determined and carries no weight here: its grammar (vcf-validator/src/vcf/vcf_v43.ragel:94-96) admits an extra ##ALT attribute only in the quoted `identifier="..."` form, so the unquoted Type=String is rejected regardless of position -- see VCF_SPEC_AMBIGUITIES.md's "##META attribute order" table, note [c].
+##Authority=Generalizes the decision to a second non-##META keyed type (##INFO, in info-attribute-order-id-last.vcf, is the first) -- a generalization row, not a control row, since it does not come back clean from both tools.
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	<DEL>	.	PASS	.

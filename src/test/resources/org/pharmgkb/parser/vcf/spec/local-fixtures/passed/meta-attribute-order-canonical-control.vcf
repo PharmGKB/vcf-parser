@@ -1,0 +1,7 @@
+##fileformat=VCFv4.3
+##contig=<ID=chr1,length=1000000>
+##META=<ID=Assay,Number=.,Type=String,Values=[a, b]>
+##Authority=VCFv4.4.tex:134/VCFv4.5.tex:132 (identical wording in both) -- "To aid human readability, the order of fields should be ID, Number, Type, Description, then any optional fields" -- is the only spec text in any version naming a canonical attribute order, and this declaration follows it (ID,Number,Type, then Values). NOTE: VCFv4.3.tex:273-276's four worked ##META examples all use ID,Type,Number instead -- see the sibling meta-attribute-order-spec-worked-example.vcf, which reproduces that order verbatim -- so "canonical" here means 4.4/4.5's recommendation, not 4.3's examples.
+##Authority=bcftools 1.23.1 (htslib 1.23.1), measured 2026-08-17: `bcftools view -h` exits 0, emits no [W::/[E:: line, and echoes this declaration verbatim; vcf_validator 0.10.2 (4.3 grammar) reads the file valid. This fixture is the control row of VCF_SPEC_AMBIGUITIES.md's "##META attribute order" table -- the one row that comes back clean from BOTH tools, per BEHAVIOR_TABLE_STANDARD.md's "Include a control row" -- pinning that the canonical ordering parses cleanly before the out-of-order rows probe whether reordering changes anything.
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	.

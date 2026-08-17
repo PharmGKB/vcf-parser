@@ -456,17 +456,36 @@ most important cells here, since they are why the argument runs from `:117` rath
   `X=abc` -- that payload is itself a Type violation and makes every cell, control included, read "not valid"),
   plus a `##reference` line; invoked as `vcf_validator -i <file>`.
 
-| `«suspect»` | bcftools 1.23.1 (A) | vcf_validator 0.10.2 (B) | this library |
+| `«suspect»` | bcftools 1.23.1 (A) | vcf_validator 0.10.2 (B) | Parse |
 |---|---|---|---|
-| *(control: no `Extra`)* | `X=.` | valid | Type registered |
+| *(control: no `Extra`)* | `X=.` | valid | parses cleanly; every attribute preserved; silent |
 | `Extra=plain` *(control B)* | `X=.` | **not valid** — so B's verdicts are about quoting, not brackets | preserved |
 | `"A<1,2>B"` — conforming | `X=.` | **valid** | intact, byte-for-byte, silent |
-| `A<1,2>B` | `X=.`; one value | not valid | truncated to `A<1` |
-| `A<1,"2">B` | `X=.`; one value | not valid | truncated to `A<1` |
-| `A<1,[2>B` | `X=.`; one value | not valid | truncated to `A<1` |
-| `a<b` | "no Type defined"; `X=abc`; doubled `>` emitted | not valid | all attributes preserved |
-| `a>b` | truncates to `##INFO=<ID=X,Extra=a>`, losing `Number`/`Type`/`Description`; also `X=abc` + "no Type defined" | not valid | all attributes preserved |
-| `a<b,…,Description=">"` | "no Type defined"; `X=abc` | not valid | all attributes preserved |
+| `A<1,2>B` | `X=.`; one value | not valid | truncated to `A<1`; warns **twice** (dropped `2>B` fragment has no `=`; surviving `A<1` has a structural character) |
+| `A<1,"2">B` | `X=.`; one value | not valid | truncated to `A<1`; warns **twice** (dropped `"2">B` fragment has no `=`; surviving `A<1` has a structural character) |
+| `A<1,[2>B` | `X=.`; one value | not valid | truncated to `A<1`; warns **twice** (dropped `[2>B` fragment has no `=`; surviving `A<1` has a structural character) |
+| `a<b` | "no Type defined"; `X=abc`; doubled `>` emitted | not valid | all attributes preserved; warns (structural character in unquoted value) |
+| `a>b` | truncates to `##INFO=<ID=X,Extra=a>`, losing `Number`/`Type`/`Description`; also `X=abc` + "no Type defined" | not valid | all attributes preserved; warns (structural character in unquoted value) |
+| `a<b,…,Description=">"` | "no Type defined"; `X=abc` | not valid | all attributes preserved; warns (structural character in unquoted value) |
+
+Each row has a local-fixtures corpus fixture demonstrating this library's own Parse behavior:
+`local-fixtures/passed/angle-bracket-value-no-extra-control.vcf` (control),
+`local-fixtures/passed/angle-bracket-value-plain-extra-control.vcf` (control B),
+`local-fixtures/passed/angle-bracket-value-quoted-conforming.vcf`,
+`local-fixtures/passed/angle-bracket-value-unquoted-truncates.vcf`,
+`local-fixtures/passed/angle-bracket-value-unquoted-with-embedded-quote-truncates.vcf`,
+`local-fixtures/passed/angle-bracket-value-unquoted-with-embedded-bracket-truncates.vcf`,
+`local-fixtures/passed/angle-bracket-value-unescaped-less-than.vcf`,
+`local-fixtures/passed/angle-bracket-value-unescaped-greater-than.vcf`, and
+`local-fixtures/passed/angle-bracket-value-with-quoted-description-greater-than.vcf`.
+
+**What those fixtures assert, precisely:** a `passed/` fixture is checked for parsing without throwing, for a
+byte-identical (unless it declares a `##RoundTripDivergenceReason=`) and semantically identical round trip,
+and for each `##ExpectWarnContains=` substring it declares. `LocalFixtureConformanceTest` makes no *negative*
+warning assertion on a `passed/` fixture, so the "warns" rows are genuinely pinned by their
+`##ExpectWarnContains=` lines (both of them, on the three truncation rows), while row 3's `silent` is pinned
+only as "does not throw, and round-trips byte-for-byte" -- a regression that added a spurious warning there
+would still pass.
 
 No new `bcftoolsDependencyTest` case is added for this table: it is purely descriptive, and this Decision
 depends on `VCFv4.3.tex:117`, not on bcftools.
@@ -593,37 +612,133 @@ threw -- on text copied verbatim from the specification itself.
   prose. (An earlier draft cited `VCFv4.2.tex:1160`, *"Note that the specific order of fields isn't
   defined…"* -- that sentence is in the BCF2 genotype-field encoding section and concerns FORMAT field order
   in a BCF2 genotypes block, not header attributes; VCFv4.3 carries the equivalent at `VCFv4.3.tex:1657`.)
-- VCFv4.4/4.5 (`VCFv4.4.tex:134-135`): "To aid human readability, the order of fields **should** be ID,
-  Number, Type, Description, then any optional fields. Implementations **must not rely on the order** of the
-  fields within structured lines and are not required to preserve field ordering."
+- VCFv4.4/4.5 (`VCFv4.4.tex:134-135`, identically `VCFv4.5.tex:132-133`): "To aid human readability, the
+  order of fields **should** be ID, Number, Type, Description, then any optional fields. Implementations
+  **must not rely on the order** of the fields within structured lines and are not required to preserve field
+  ordering."
 
 No version *requires* an order; the only normative statement across all four is a read-side "must not rely
 on," which argues against enforcing one, not for it.
 
-**Measured, 2026-08-12 (bcftools 1.23.1, vcf_validator 0.10.2):**
+**Probe shape.** One hand-built probe file per row, each containing exactly: `##fileformat` (the version
+named in the row's own fixture -- `VCFv4.3`, except row 4's `VCFv4.2`), `##reference=file:///ref.fa`,
+`##contig=<ID=chr1,length=1000000>`, the row's single metadata declaration, a `#CHROM` line with the eight
+fixed columns, and one data line (`chr1 100 . A T . PASS .`). Each non-control row reorders its
+declaration's attributes away from the canonical `ID, Number, Type, Description`/`Values` layout row 1 uses.
+Only rows 2 and 4 vary *nothing but* order relative to a measured-valid shape; rows 3 and 5 change other
+things too, which is what note [c] is about. Invocations: `bcftools view -h <file>` and
+`vcf_validator -i <file> -o <dir>`.
+Discriminating observable -- deliberately **not** byte-level re-emission, which proves nothing about how a
+declaration was split (`BEHAVIOR_TABLE_STANDARD.md`, "Byte-identical output does not prove correct parsing"):
+for bcftools, exit code plus the presence of any `[W::`/`[E::` line plus whether the declaration is echoed
+verbatim in the header; for vcf_validator, its terminal `the input file is (not) valid` line plus the
+`Error: Error in <TYPE> metadata` text in the `errors_summary` report it writes, which names the declaration
+type it rejected.
 
-| shape | bcftools | vcf_validator |
-|---|---|---|
-| `##META=<ID=Assay,Number=.,Type=String,Values=[a, b]>` *(canonical; control)* | exit 0, silent | valid |
-| `##META=<ID=Assay,Type=String,Number=.,Values=[a, b]>` -- `VCFv4.3.tex:273` verbatim | exit 0, silent | **not valid** |
-| `##META=<Number=1,Type=Integer,Values="d",ID=Assay>` *(ID last)* | exit 0, silent | not valid |
-| `##INFO=<Number=1,Type=Integer,Description="d",ID=DP>` *(ID last)* | exit 0, silent | not valid |
-| `##ALT=<ID=DEL,Type=String,Number=1,Description="Deletion">` *(Type before Number)* | exit 0, silent | not valid |
+**Tool versions and measurement dates: originally measured 2026-08-12; re-measured live 2026-08-17** against
+that same probe shape, bcftools 1.23.1 / htslib 1.23.1 and vcf_validator 0.10.2 both times. Every verdict the
+2026-08-12 reading recorded -- bcftools exit 0 and silence on all five rows, vcf_validator's per-row
+valid/not-valid -- was reproduced unchanged on 2026-08-17. The "echoed verbatim" half of each bcftools cell,
+and everything in note [c], are additional observables first recorded on the re-measurement.
 
-bcftools ignores attribute order entirely, on every shape probed, including the non-`##META` control rows
-included to confirm this isn't `##META`-specific tolerance. vcf_validator rejects every non-canonical
-ordering -- including the specification's own worked `##META` example -- which disqualifies its verdict here
-per `AGENTS.md`'s guidance on a tool result that contradicts the spec text it's meant to be enforcing.
+Column notes, per `BEHAVIOR_TABLE_STANDARD.md`: **bcftools** gets one unqualified column, since its header
+tokenizer never consults `##fileformat` (`bcf_hdr_parse_line`, htslib 1.23.1 `vcf.c`). **vcf_validator** is
+pinned to the `4.3` grammar, which every probe but row 4's exercises; row 4's own fixture declares `VCFv4.2`,
+and that shape was measured under both grammars with the identical verdict (note [d]). All four of this
+library's paths (**Parse**, **Public construction**, **Validated write**, **Default write**) are omitted as
+columns: they are a constant `N/A` on every row, for one shared reason, stated once below rather than tabled
+five times over -- per the standard's "Do not table a column that repeats one value."
+
+| # | shape | 4.2 | 4.3 | 4.4 | 4.5 | bcftools 1.23.1 | vcf_validator 0.10.2 (4.3) |
+|---|---|---|---|---|---|---|---|
+| 1 | `##META=<ID=Assay,Number=.,Type=String,Values=[a, b]>` *(canonical; **control**)* | silent | silent | `VCFv4.4.tex:134` [a] | `VCFv4.5.tex:132` [a] | exit 0, silent, echoed verbatim | valid |
+| 2 | `##META=<ID=Assay,Type=String,Number=.,Values=[a, b]>` -- `VCFv4.3.tex:273` verbatim | silent | silent | `VCFv4.4.tex:134` [a] | `VCFv4.5.tex:132` [a] | exit 0, silent, echoed verbatim | **not valid** [b] |
+| 3 | `##META=<Number=1,Type=Integer,Values="d",ID=Assay>` *(ID last)* | silent | silent | `VCFv4.4.tex:134` [a] | `VCFv4.5.tex:132` [a] | exit 0, silent, echoed verbatim | not valid [b][c] |
+| 4 | `##INFO=<Number=1,Type=Integer,Description="d",ID=DP>` *(ID last)* | silent | silent | `VCFv4.4.tex:134` [a] | `VCFv4.5.tex:132` [a] | exit 0, silent, echoed verbatim | not valid [b][d] |
+| 5 | `##ALT=<ID=DEL,Type=String,Number=1,Description="Deletion">` *(Type before Number)* | silent | silent | `VCFv4.4.tex:134` [a] | `VCFv4.5.tex:132` [a] | exit 0, silent, echoed verbatim | not valid [b][c] |
+
+**Notes:**
+
+- **[a]** `VCFv4.4.tex:134-135` and `VCFv4.5.tex:132-133` carry the identical two sentences: "To aid human
+  readability, the order of fields should be ID, Number, Type, Description, then any optional fields.
+  Implementations must not rely on the order of the fields within structured lines and are not required to
+  preserve field ordering." A non-binding "should," paired with a read-side prohibition on relying on order --
+  cited here on the row it applies to rather than only in the prose above it.
+- **[b]** **Disqualified as evidence, not weak evidence.** Row 2's shape is the specification's own worked
+  `##META` example (`VCFv4.3.tex:273`), so a `not valid` verdict on it contradicts the spec text vcf_validator
+  exists to enforce -- see the paragraph below the notes for the full reasoning. Every `not valid` cell in this
+  column carries this marker; none of them influenced the Decision.
+- **[c]** **Over-determined verdict: not attributable to attribute order alone.** Measured 2026-08-17, both
+  rows' shapes are rejected even in canonical order, so ordering is at most one of several independent causes.
+  Row 3: `##META=<ID=Assay,Number=1,Type=Integer,Values=[d]>` and `##META=<ID=Assay,Number=.,Type=String,
+  Values="d">` each read `not valid`, while `##META=<ID=Assay,Number=.,Type=String,Values=[d]>` reads `valid`
+  -- because `vcf-validator/src/vcf/vcf_v43.ragel:138-141` hardcodes the whole `##META` production
+  (`'ID=' ... ',Number=' %meta_number '.' ... ',Type=' %meta_type 'String' ... ',Values=' %meta_values '['
+  meta_meta_values ']'`), so `Number=1`, `Type=Integer`, and a quoted `Values` each violate it on their own.
+  Row 5: `vcf_v43.ragel:94-96` hardcodes `'ID=' ... ',Description=' ... '"' meta_field_desc '"'` and admits
+  further attributes only in the quoted `(',' identifier '="' meta_field_desc '"')*` form, so row 5's
+  *unquoted* `Type=String` fails regardless of position -- measured: `##ALT=<ID=DEL,Description="Deletion",
+  Type=String>` is `not valid`, `##ALT=<ID=DEL,Description="Deletion",Type="String">` is `valid`, and that
+  same quoted pair merely reordered (`##ALT=<ID=DEL,Type="String",Description="Deletion">`) is `not valid`
+  again -- so ordering does contribute for `##ALT`, just not by itself. Rows 2 and 4 are the two whose
+  verdicts *are* attributable to ordering alone: each differs from a measured-`valid` shape by nothing but
+  attribute order (row 1 for row 2; `##INFO=<ID=DP,Number=1,Type=Integer,Description="d">`, `valid` under
+  both the 4.2 and 4.3 grammars, for row 4).
+- **[d]** Row 4's probe (and its fixture) declares `VCFv4.2`, not the `VCFv4.3` the column is pinned to.
+  Measured under both: `not valid` either way, with the same `Error: Error in INFO metadata` text -- so this
+  cell is not a 4.2-vs-4.3 grammar artifact. (`BEHAVIOR_TABLE_STANDARD.md` lists `##META` as recognised only
+  from 4.3, which is why the three `##META` rows are 4.3-only probes rather than dual-grammar ones.)
+
+No path in this library checks metadata attribute order at all, which is why all four path columns are
+omitted as a constant `N/A`. `BaseMetadata.checkAttributeOrder()` and `IdMetadata.validateAttributeOrder()`
+-- the only mechanism that ever did -- were deleted entirely, repository-wide, not merely disabled per-path
+(confirmed: `rg -n "checkAttributeOrder|validateAttributeOrder|AttributeOrder"
+src/main/java/org/pharmgkb/parser/vcf/` returns zero hits). There is accordingly no per-path distinction to
+draw, unlike a table where different paths genuinely diverge.
+
+Each row has a local-fixtures corpus fixture:
+`local-fixtures/passed/meta-attribute-order-canonical-control.vcf`,
+`local-fixtures/passed/meta-attribute-order-spec-worked-example.vcf`,
+`local-fixtures/passed/meta-attribute-order-id-last.vcf`,
+`local-fixtures/passed/info-attribute-order-id-last.vcf`, and
+`local-fixtures/passed/alt-attribute-order-type-before-number.vcf`. **What those fixtures actually assert is
+narrower than "this row's outcome is pinned":** a `passed/` fixture is checked for parsing without throwing,
+for a byte-identical and semantically identical round trip, and for each `##ExpectWarnContains=` substring it
+declares -- and these five declare none, because they warn about nothing. `LocalFixtureConformanceTest` makes
+no negative warning assertion on a `passed/` fixture (`##ExpectParser=silent`, which does assert "no warning
+was logged," is a `failed/`-only key), so a regression that reintroduced a *warn-only* attribute-order check
+would still pass all five. The five `bcftoolsDependencyTest` cases below are what pin the tool side; the
+"nothing warns" side rests on the deletion of the only mechanism that could, plus the
+`#testMapConstructorIsNotAttributeOrderChecked` family of unit tests listed at the end of this entry.
+
+**Tier-2 evidence gaps, disclosed rather than asserted away** (`BEHAVIOR_TABLE_STANDARD.md`, "Preserving the
+evidence"): every bcftools row now has its own `bcftoolsDependencyTest` case (five cases, one per row), but
+**no probe script is committed** for this table, so its vcf_validator column can only be regenerated by hand
+from the probe shape stated above, and **no independent second-party re-derivation** has been done, which the
+standard requires for a load-bearing table. Neither gap is a new deviation -- no probe script has been
+committed for any table in this repository, and the 2026-08-16 `DUPLICATE_METADATA_ID_HANDLING.md` retrofit
+disclosed the same two gaps in `TODO.md` -- but neither is closed either, and this table's Decision does rest
+on measured bcftools behavior, so they are named here rather than left for a reader to discover.
+
+bcftools ignores attribute order entirely, on every shape probed, including the non-`##META` generalization
+rows (rows 4 and 5) included to confirm this isn't `##META`-specific tolerance. vcf_validator rejects every
+non-canonical ordering it can be shown to be judging on order at all -- including the specification's own
+worked `##META` example (row 2) -- which disqualifies its verdict here per `AGENTS.md`'s guidance on a tool
+result that contradicts the spec text it's meant to be enforcing. Note [c] is a further reason not to lean on
+that column: on rows 3 and 5 the rejection isn't even an ordering verdict.
 
 **Decision, extended to every keyed declaration type, 2026-08-14 (originally scoped to `##META` alone):**
 bcftools is the tie-breaker per `AGENTS.md`'s Decision Hierarchy, and the target spec is silent besides. The
 identical reasoning that justified relaxing `##META` applies without modification to
 `##INFO`/`##FORMAT`/`##ALT`/`##FILTER`/`##contig`/`##SAMPLE` -- no VCF version requires an order for any of
-them either, and the measured table above already includes non-`##META` control rows (`##INFO`/`##ALT`, ID
-declared last or `Type` before `Number`) confirming bcftools ignores order universally, not just for
-`##META`. A narrower "ID must come first" compromise was considered and rejected: the ID-last `##INFO`
-control row shows bcftools doesn't privilege ID's position over any other attribute's either, so that
-narrower rule would have been an unmeasured, unjustified special case, not something the evidence supports.
+them either, and the measured table above already includes non-`##META` generalization rows (rows 4 and 5:
+`##INFO`/`##ALT`, ID declared last or `Type` before `Number`) confirming bcftools ignores order universally,
+not just for `##META`. Those two are deliberately *not* called control rows: a control must come back clean
+from every tool (`BEHAVIOR_TABLE_STANDARD.md`, "Include a control row") and both read `not valid` from
+vcf_validator; row 1 is this table's only control. A narrower "ID must come first" compromise was considered
+and rejected: the ID-last `##INFO` row shows bcftools doesn't privilege ID's position over any other
+attribute's either, so that narrower rule would have been an unmeasured, unjustified special case, not
+something the evidence supports.
 
 **`BaseMetadata.checkAttributeOrder()` and the `IdMetadata.validateAttributeOrder()` dispatch hook that
 called it were removed entirely, not just disabled per-type.** After extending this decision to every keyed
@@ -654,8 +769,10 @@ Pinned by `MetaMetadataTest#aMetaDeclarationIsNotAttributeOrderChecked`,
 `BCFTOOLS_VERSION_DEPENDENCIES.md`'s "`##META` attribute order" entry
 (`BcftoolsDependencyTest#testMetaAttributeOrderBcftoolsIgnoresCanonicalOrdering`/
 `#testMetaAttributeOrderBcftoolsAcceptsTheSpecsOwnWorkedExample`/
-`#testInfoAttributeOrderBcftoolsIgnoresIdPosition`, the last one generalizing the decision's evidence beyond
-`##META` with its own dedicated case per `BEHAVIOR_TABLE_STANDARD.md`'s evidence-preservation tier 2).
+`#testMetaAttributeOrderBcftoolsIgnoresIdLastPosition`/`#testInfoAttributeOrderBcftoolsIgnoresIdPosition`/
+`#testAltAttributeOrderBcftoolsIgnoresTypeBeforeNumber` -- one case per table row, per
+`BEHAVIOR_TABLE_STANDARD.md`'s evidence-preservation tier 2, with the last two each generalizing the
+decision's evidence beyond `##META` to a distinct non-`##META` keyed type).
 
 ## Data-line / record structure
 

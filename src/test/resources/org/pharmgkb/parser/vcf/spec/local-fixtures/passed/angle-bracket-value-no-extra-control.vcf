@@ -1,0 +1,6 @@
+##fileformat=VCFv4.3
+##INFO=<ID=X,Number=1,Type=Integer,Description="d">
+##contig=<ID=chr1,length=1000000>
+##Authority=VCFv4.3.tex:117 -- "A structured meta-information line is similar, but the value is itself a comma-separated list of key=value pairs, enclosed within '<' and '>' characters" -- is the basis for VCF_SPEC_AMBIGUITIES.md's "Angle brackets are not a quoting form in a metadata attribute value" entry's Decision. This fixture is the entry's own table control row (no Extra attribute at all): a clean declaration with no comma-splitting ambiguity to probe.
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	G	.	PASS	X=abc
