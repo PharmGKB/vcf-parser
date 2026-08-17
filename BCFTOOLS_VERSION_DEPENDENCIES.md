@@ -222,12 +222,39 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
 - Reasoning: `WONT_FIX.md`, "`PedigreeMetadata` duplicate-ID dedup treats a present-but-blank `ID` the same as
   a real ID" entry
 
+### Duplicate `##PEDIGREE` lines sharing a real `ID`
+- Test: `BcftoolsDependencyTest#testPedigreeRealIdDuplicatesBcftoolsKeepsFirst`
+- Reasoning: `DUPLICATE_METADATA_ID_HANDLING.md`, "`##PEDIGREE`: a conditional case" section's table row 2.
+  Round-trip-relevant for a narrower reason than the "Round-trip-critical" section above's bar (this decision
+  is not listed there, since the divergence it documents is between two paths of this library, not against
+  bcftools): `addPedigree(PedigreeMetadata)` (Parse/Public construction) warns and drops the duplicate before
+  it is ever stored, but `VcfWriter.validateMetadata()`'s PEDIGREE loop cannot remove an entry from the
+  already-built, immutable list it walks, so a duplicate real-`ID` pair that reaches it (only possible via
+  the package-private trusted constructor) is written out as both entries -- bcftools keeps only the first.
+
 ### Missing `ID` on `##META`
 - Test: `BcftoolsDependencyTest#testMetaMissingIdBcftoolsKeepsSilently`
 - Reasoning: `DUPLICATE_METADATA_ID_HANDLING.md`'s "Missing or empty ID" section. A deliberate divergence:
   bcftools 1.23.1 keeps an ID-less `##META` unchanged with no warning; `vcf-parser` warns and drops it,
   since (unlike `##PEDIGREE`, whose `ID` requirement is version-gated at VCFv4.3+) `##META`'s required-`ID`
   rule is version-independent.
+
+### Missing `ID` on the other six keyed declaration types
+- Test: `BcftoolsDependencyTest#testAltMissingIdBcftoolsKeepsSilently`,
+  `#testContigMissingIdBcftoolsWarnsAndDrops`, `#testFilterMissingIdBcftoolsSilentlyDrops`,
+  `#testFormatMissingIdBcftoolsWarnsAndDrops`, `#testInfoMissingIdBcftoolsWarnsAndDrops`,
+  `#testSampleMissingIdBcftoolsKeepsSilently` (`##META`'s own missing-`ID` case is indexed separately above,
+  since it predates this retrofit and has a distinct, version-independent reasoning)
+- Reasoning: `DUPLICATE_METADATA_ID_HANDLING.md`'s "Missing or empty ID" section (its own table is the fuller
+  source of truth for the per-type keep/warn/drop split)
+
+### Empty (not missing) `ID` on all seven keyed declaration types
+- Test: `BcftoolsDependencyTest#testAltEmptyIdBcftoolsKeepsVerbatim`, `#testContigEmptyIdBcftoolsWarnsAndKeeps`,
+  `#testFilterEmptyIdBcftoolsKeepsVerbatim`, `#testFormatEmptyIdBcftoolsWarnsAndKeeps`,
+  `#testInfoEmptyIdBcftoolsWarnsAndKeeps`, `#testMetaEmptyIdBcftoolsKeepsVerbatim`,
+  `#testSampleEmptyIdBcftoolsKeepsVerbatim`
+- Reasoning: `DUPLICATE_METADATA_ID_HANDLING.md`'s "Missing or empty ID" section -- a present-but-blank `ID=`
+  is a distinct case from an absent `ID` attribute, per that section's own explicit missing-vs-empty split
 
 ### Duplicate metadata declaration ID (seven keyed types)
 - Test: `BcftoolsDependencyTest#testDuplicateContigIdBcftoolsKeepsFirst`,
@@ -296,12 +323,28 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
 
 ### Empty/zero-length delimited field handling
 - Test: `BcftoolsDependencyTest#testEmptyIdEntryInteriorBcftoolsPassesThroughSilently`,
+  `#testEmptyIdEntryTrailingBcftoolsPassesThroughSilently`,
   `#testEmptyFilterEntryInteriorBcftoolsWarnsButKeepsValue`,
+  `#testEmptyFilterEntryTrailingBcftoolsSilentlyDrops`,
   `#testEmptyAltEntryBcftoolsSubstitutesDotMatchingThisLibrarysOwnChoice`,
+  `#testTrailingEmptyAltEntryBcftoolsSubstitutesDot`,
   `#testFormatKeyEmptyEntryInteriorBcftoolsWarnsAndKeepsAsIs`,
+  `#testFormatKeyEmptyEntryTrailingBcftoolsWarnsAndKeepsAsIs`,
   `#testSampleValueTrailingEmptySubfieldBcftoolsSubstitutesDot`,
+  `#testSampleValueInteriorEmptySubfieldIntegerFieldBcftoolsWarnsAndSubstitutesDot`,
+  `#testSampleValueInteriorEmptySubfieldStringFieldBcftoolsStoresRawNulByte`,
   `#testInfoEmptyTopLevelEntryInteriorBcftoolsSilentlyDrops`,
-  `#testEmptyGtAlleleBcftoolsHardErrors`
-  (ID/FILTER/ALT/FORMAT-key/sample/INFO/GT are each independently re-verified here, not just ALT; see
-  `EMPTY_FIELD_HANDLING.md`'s per-row Test/fixture evidence for the full set of interior/trailing variants)
+  `#testInfoEmptyTopLevelEntryTrailingBcftoolsSilentlyDrops`,
+  `#testInfoEntryWithEmptyKeyBcftoolsSilentlyDrops`,
+  `#testInfoValueInteriorEmptyElementBcftoolsSubstitutesDot`,
+  `#testInfoValueTrailingEmptyElementBcftoolsSubstitutesDot`,
+  `#testInfoValueWhollyEmptyBcftoolsSubstitutesDot`,
+  `#testInfoFlagWithNoEqualsBcftoolsRoundTripsUnchanged`,
+  `#testEmptyGtAlleleBcftoolsHardErrors`,
+  `#testReservedListFormatValueTrailingEmptyElementBcftoolsWarnsAndSubstitutesDot`,
+  `#testReservedFormatFtValueInteriorEmptyCodeBcftoolsPassesThroughSilently`,
+  `#testReservedFormatFtValueAllCodesEmptyBcftoolsPassesThroughSilently`
+  (this is the complete set covering every row of `EMPTY_FIELD_HANDLING.md`'s Reference table except Row 23,
+  the generic-metadata-property case, which is indexed separately above as "Generic metadata property with an
+  empty value")
 - Reasoning: `EMPTY_FIELD_HANDLING.md` (its own field-by-field table is the fuller source of truth)
