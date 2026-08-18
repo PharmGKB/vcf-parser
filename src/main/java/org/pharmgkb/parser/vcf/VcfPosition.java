@@ -483,6 +483,22 @@ public final class VcfPosition {
       if (InternalUtils.containsWhitespace(f)) {
         throw new VcfFormatException("FILTER column entry \"" + f + "\" contains whitespace");
       }
+      // VCFv4.3.tex:362 (the target, already cited a few lines below for this method's duplicate-value
+      // check) states directly, for both ID and FILTER, "String, no whitespace or semicolons permitted,
+      // duplicate values not allowed." -- the whitespace half is checked immediately above; this is the
+      // semicolon half, previously missing here despite checkIds() enforcing it for the identical spec
+      // sentence at VCFv4.3.tex:338 (see checkIds() above). Unconditional, matching checkIds(): FILTER's own
+      // list-join delimiter can never appear inside one of its own entries and
+      // round-trip safely -- confirmed live (bcftools 1.23.1): a single intended FILTER entry "a;b", written
+      // joined with ';' between entries, produces the wire text "a;b", which bcftools silently accepts as
+      // TWO FILTER codes, exit 0, no warning at all (see BcftoolsDependencyTest#testFilterSemicolonEntryBcftoolsAcceptsAsTwoCodes,
+      // added in Task 2). This check can only ever fire on content reaching VcfPosition via public
+      // construction (Builder.filters() or a direct VcfContext.newPosition call): VcfParser.toList
+      // (VcfParser.java:661-689) is a plain, no-escaping split, so no filter entry produced by parsing a real
+      // file's FILTER column can ever itself contain the ';' it would have been split on.
+      if (f.contains(";")) {
+        throw new VcfFormatException("FILTER column entry \"" + f + "\" contains a semicolon");
+      }
       if (f.equals("0")) {
         // hts-specs test/vcf/4.2/failed/failed_body_filter_004.vcf, ##CauseOfFailure=FILTER contains reserved
         // value 0. Independently confirmed live via vcf_validator 0.10.2 ("FILTER string must not be 0
@@ -680,11 +696,32 @@ public final class VcfPosition {
             "it as-is, but it cannot be looked up in metadata");
         continue;
       }
-      // f.contains(":") is not checked separately: FORMAT_PATTERN's character class ([0-9A-Za-z_.]) never
-      // includes ':', so matches() alone already rejects any f containing one. Lenient, not a structural floor:
-      // matches FormatMetadata's identical warn-only treatment of this same grammar rule for a ##FORMAT
-      // declaration ID (see FormatMetadata.init()) -- a data-line FORMAT key failing it must not abort the whole
-      // parse (findings37.md item 1; confirmed against bcftools 1.23.1, which only warns on this input).
+      // VCFv4.3.tex:429 -- "First a FORMAT field is given specifying the data types and order
+      // (colon-separated FORMAT keys matching the regular expression ^[A-Za-z_][0-9A-Za-z_.]*$, duplicate
+      // keys are not allowed)." This is a separate, unconditional floor for the delimiter-corruption
+      // question, distinct from the tag-name-grammar check immediately below: a colon embedded in one
+      // intended key corrupts the key LIST's own structure on round-trip, the same shape checkFilters()/
+      // checkIds() already guard their own delimiters against. Confirmed live (bcftools 1.23.1): a 3-key
+      // list (GT, a colon-corrupted "GT:AA", DP), written joined with ':' between keys, produces the wire
+      // text "GT:GT:AA:DP" -- bcftools reports "[W::vcf_parse_format_alloc4] Duplicate FORMAT tag GT",
+      // collapses to 3 keys, and silently misassigns sample values (one value vanished entirely; another was
+      // reassigned to the wrong key -- see
+      // BcftoolsDependencyTest#testFormatColonCorruptedKeyBcftoolsMisalignsSampleValues, added in Task 2) --
+      // worse than the tag-name-grammar case below, which never corrupts alignment this way. Unconditional
+      // (not gated on warnings == null), unlike the tag-name-grammar check: this is a distinct question from
+      // "is this a valid identifier" and gets its own floor. This check can only ever fire on content
+      // reaching VcfPosition via public construction: VcfParser.toList (VcfParser.java:661-689) is a plain,
+      // no-escaping split, so no FORMAT key produced by parsing a real file's FORMAT column can ever itself
+      // contain the ':' it would have been split on.
+      if (f.contains(":")) {
+        throw new VcfFormatException("FORMAT key \"" + f + "\" contains a colon");
+      }
+      // f.contains(":") is already handled above as its own unconditional floor -- this check's remaining
+      // job is every OTHER tag-name-grammar violation (a leading digit, illegal punctuation that isn't ':').
+      // Lenient, not a structural floor for those: matches FormatMetadata's identical warn-only treatment of
+      // this same grammar rule for a ##FORMAT declaration ID (see FormatMetadata.init()) -- a data-line
+      // FORMAT key failing it must not abort the whole parse (findings37.md item 1; confirmed against
+      // bcftools 1.23.1, which only warns on this input).
       if (!InternalUtils.FORMAT_PATTERN.matcher(f).matches()) {
         if (warnings == null) {
           throw new VcfFormatException("FORMAT ID \"" + f + "\" does not match the required tag-name grammar " +

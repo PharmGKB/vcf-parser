@@ -1,0 +1,7 @@
+##fileformat=VCFv4.3
+##FILTER=<ID=q10,Description="qual below 10">
+##contig=<ID=chr1,length=1000000>
+##Authority=VCFv4.3.tex:362 -- "String, no whitespace or semicolons permitted, duplicate values not allowed" -- this table's control row for the FILTER field: a plain, unremarkable entry, confirming the harness correctly accepts a well-formed FILTER before the corrupting-shape case this plan's Task 1 fixes (VcfPositionTest#testStrictConstructorThrowsForSemicolonInFilter).
+##Authority=bcftools 1.23.1 (htslib 1.23.1) for the corrupting-shape row this is the control for: a single intended FILTER entry "a;b" reproduces as wire text bcftools silently accepts as TWO FILTER codes, exit 0, with no warning at all -- pinned live by BcftoolsDependencyTest#testFilterSemicolonEntryBcftoolsAcceptsAsTwoCodes. That probe's own FILTER column differs from this fixture's (it carries the corrupted "a;b"); the measurement cited here is about that shape, and this fixture is the well-formed baseline it is contrasted against.
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	q10	.

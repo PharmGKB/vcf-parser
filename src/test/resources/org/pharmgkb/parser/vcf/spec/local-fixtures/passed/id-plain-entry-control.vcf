@@ -1,0 +1,6 @@
+##fileformat=VCFv4.3
+##contig=<ID=chr1,length=1000000>
+##Authority=VCFv4.3.tex:338 -- "String, no whitespace or semicolons permitted, duplicate values not allowed" -- this is the table's control row for the ID field: a plain, unremarkable entry with no special characters, confirming the harness correctly accepts a well-formed ID before the corrupting-shape case (VcfPositionTest#testConstructorThrowsForSemicolonInId; ID's own semicolon check has no local-fixtures fixture since it is unreachable via parsing -- see this plan's Global Constraints).
+##Authority=bcftools 1.23.1 (htslib 1.23.1) for the corrupting-shape row this is the control for: a single intended ID entry "rs1;rs2" reproduces as wire text bcftools accepts unchanged, exit 0, with no warning at all -- pinned live by BcftoolsDependencyTest#testIdSemicolonEntryBcftoolsAcceptsSilently. That probe's own ID column differs from this fixture's (it carries the corrupted "rs1;rs2"); the measurement cited here is about that shape, and this fixture is the well-formed baseline it is contrasted against.
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	.

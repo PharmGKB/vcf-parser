@@ -1,0 +1,7 @@
+##fileformat=VCFv4.3
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Depth">
+##contig=<ID=chr1,length=1000000>
+##Authority=VCFv4.3.tex:363-365 -- "Semicolon-separated series of additional information fields... Literal semicolon and equals sign characters are not permitted in these values, and literal commas are permitted only as delimiters" -- this table's control row for the INFO field: a plain key=value entry, confirming the harness correctly accepts well-formed INFO before the corrupting-shape cases (VcfPositionTest#testInfoValueWithStructuralCharactersRejected and #testInfoValueContainingRawSemicolonOrCommaStillRejected).
+##Authority=bcftools 1.23.1 (htslib 1.23.1) for the two corrupting-shape rows this is the control for: a ';' inside an INFO key ("DP=10;X") reproduces as two entries, where bcftools warns "[W::vcf_parse_info] INFO 'X' is not defined in the header, assuming Type=String" but exits 0 and keeps the wire text unchanged (BcftoolsDependencyTest#testInfoKeySemicolonEntryBcftoolsWarnsButKeepsWireTextUnchanged); a ',' inside a scalar (Number=1, String-typed) INFO value ("SRC=a,b") is accepted with no warning at all, exit 0, and is never split (BcftoolsDependencyTest#testInfoValueCommaInScalarKeyBcftoolsAcceptsSilently). Both probes' own INFO columns differ from this fixture's (each carries its corrupted shape); the measurements cited here are about those shapes, and this fixture is the well-formed baseline they are contrasted against.
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	DP=10

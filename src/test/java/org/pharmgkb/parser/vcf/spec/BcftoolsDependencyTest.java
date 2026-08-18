@@ -1427,5 +1427,135 @@ class BcftoolsDependencyTest {
     assertFalse(result.output().lines().anyMatch(line -> line.startsWith("##INFO=")), result.output());
   }
 
+  @Test
+  void testIdSemicolonEntryBcftoolsAcceptsSilently() throws IOException, InterruptedException {
+    // VcfPosition.checkIds() already rejects this at construction (VcfPosition.java:377-379) -- this pins
+    // what bcftools itself does with the identical wire-level shape, which no existing bcftoolsDependencyTest
+    // case measures. A single intended ID entry "rs1;rs2", written joined with ';' between entries (ID's own
+    // list-join delimiter), produces the wire text "rs1;rs2" -- confirmed live: bcftools accepts it
+    // unchanged, exit 0, no warning at all (there is no ##ID declaration mechanism the way FILTER/INFO/FORMAT
+    // have, so there is nothing for htslib to "split" into internally; the observable here is silent
+    // acceptance of the corrupted wire text, not an internally-distinguishable entry count the way FILTER's
+    // declared-FILTER-code case is).
+    String vcf = "##fileformat=VCFv4.3\n##contig=<ID=chr1,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1;rs2\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
+    assertTrue(result.output().lines().anyMatch(line -> line.contains("\trs1;rs2\t")), result.output());
+  }
+
+  @Test
+  void testAltCommaEntryIsIndistinguishableFromTwoAllelesToBcftools() throws IOException, InterruptedException {
+    // VcfPosition.checkAltBases() already rejects a ',' inside a single ALT entry at construction
+    // (ALT_BASE_PATTERN's character classes structurally exclude ',' from every branch -- InternalUtils.java:49-111).
+    // Unlike FILTER/ID, this row has no unique bcftools-observable: a single corrupted allele string
+    // containing a comma and two genuinely separate alleles produce the IDENTICAL wire text "T,C" -- bcftools
+    // (and any consumer) cannot tell them apart, since ',' IS the ALT column's own legitimate multi-allele
+    // separator. This is exactly "byte-identical output does not prove correct parsing"
+    // (BEHAVIOR_TABLE_STANDARD.md) -- the assertions below only pin that bcftools treats "T,C" as two alleles
+    // (silent, exit 0), which is necessarily true regardless of whether the wire text originated from one
+    // corrupted entry or two real ones; they do NOT (and cannot) distinguish the two origins.
+    String vcf = "##fileformat=VCFv4.3\n##contig=<ID=chr1,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT,C\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
+    assertTrue(result.output().lines().anyMatch(line -> line.contains("\tT,C\t")), result.output());
+    // A byte-identical echo alone would be a vacuous assertion (BEHAVIOR_TABLE_STANDARD.md: byte-identical
+    // re-emission proves nothing about how an input was SPLIT -- an opaque single value containing a comma
+    // re-emits exactly like two parsed alleles). `norm -m-any` makes the split observable: it splits a
+    // multiallelic record into one record per ALT allele, so it can only produce two records if bcftools
+    // genuinely parsed "T,C" as two alleles rather than one opaque string. Measured live 2026-08-18 against
+    // bcftools 1.23.1: exit 0, two data records (ALT=T and ALT=C), and the trailing counter line reports
+    // total/split = 1/1.
+    BcftoolsResult split = runBcftools(vcf, "norm", "-m-any");
+    assertEquals(0, split.exitCode(), split.output());
+    List<String> dataLines = split.output().lines().filter(line -> line.startsWith("chr1\t")).toList();
+    assertEquals(2, dataLines.size(), split.output());
+    assertTrue(dataLines.get(0).contains("\tA\tT\t"), split.output());
+    assertTrue(dataLines.get(1).contains("\tA\tC\t"), split.output());
+  }
+
+  @Test
+  void testFilterSemicolonEntryBcftoolsAcceptsAsTwoCodes() throws IOException, InterruptedException {
+    // VcfPosition.checkFilters() now rejects this at construction (Task 1 of this plan). A single intended
+    // FILTER entry "a;b", written joined with ';' between entries (FILTER's own list-join delimiter),
+    // produces the wire text "a;b" -- confirmed live: bcftools silently accepts it as TWO FILTER codes, exit
+    // 0, no warning at all. This is the "worse than a rejection" shape AGENTS.md's item-3 backlog entry
+    // exists to close.
+    String vcf = "##fileformat=VCFv4.3\n##FILTER=<ID=a,Description=\"filter a\">\n" +
+        "##FILTER=<ID=b,Description=\"filter b\">\n##contig=<ID=chr1,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT\t.\ta;b\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
+    assertTrue(result.output().lines().anyMatch(line -> line.endsWith("a;b\t.")), result.output());
+  }
+
+  @Test
+  void testInfoKeySemicolonEntryBcftoolsWarnsButKeepsWireTextUnchanged() throws IOException, InterruptedException {
+    // VcfPosition.checkInfoEntries() already rejects a ';' in an INFO key at construction
+    // (VcfPosition.java:613-615). A corrupted INFO key "DP=10;X" -- INFO's own entry-separator ';' embedded
+    // where a key/value pair boundary should be -- reproduces as the wire text "DP=10;X" (a well-formed
+    // DP=10 entry followed by a bare-flag-shaped "X" entry, which is exactly the corruption: what the caller
+    // intended as ONE key's content became TWO entries on reparse). Confirmed live (re-measured 2026-08-18,
+    // correcting an earlier "no warning at all" prediction): bcftools emits
+    // "[W::vcf_parse_info] INFO 'X' is not defined in the header, assuming Type=String" -- because 'X' is not
+    // itself a declared INFO key -- but still exits 0 and re-emits the INFO column wire text unchanged.
+    String vcf = "##fileformat=VCFv4.3\n##INFO=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\tDP=10;X\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("[W::vcf_parse_info] INFO 'X' is not defined in the header, assuming Type=String"),
+        result.output());
+    assertTrue(result.output().lines().anyMatch(line -> line.endsWith("DP=10;X")), result.output());
+  }
+
+  @Test
+  void testInfoValueCommaInScalarKeyBcftoolsAcceptsSilently() throws IOException, InterruptedException {
+    // VcfPosition.checkInfoEntries() already rejects a ',' in an INFO value at construction
+    // (VcfPosition.java:616-618). Probes a SCALAR (Number=1, String-typed) key specifically, not a
+    // list-typed one, to isolate this from ordinary list syntax (a Number>1 key legitimately uses ',' as its
+    // own element separator -- that is not this row's corruption shape). A single intended scalar value
+    // "a,b" for key SRC reproduces as the wire text "SRC=a,b". Confirmed live: bcftools does not even attempt
+    // to split it -- bcftools query -f '%INFO/SRC\n' returns the literal string "a,b" unchanged, with no
+    // warning at all (bcftools does not validate a String-typed key's Number cardinality against its actual
+    // comma count).
+    String vcf = "##fileformat=VCFv4.3\n##INFO=<ID=SRC,Number=1,Type=String,Description=\"Source\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\tSRC=a,b\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
+    assertTrue(result.output().lines().anyMatch(line -> line.endsWith("SRC=a,b")), result.output());
+  }
+
+  @Test
+  void testFormatColonCorruptedKeyBcftoolsMisalignsSampleValues() throws IOException, InterruptedException {
+    // VcfPosition.checkFormat() now rejects this at construction (Task 1 of this plan). A FORMAT key list
+    // intended as 3 entries (GT, a colon-corrupted "GT:AA", DP), written joined with ':' between keys,
+    // produces the wire text "GT:GT:AA:DP" with only 3 sample values supplied (matching the 3 INTENDED
+    // entries, not the 4 the corrupted wire text now implies) -- confirmed live: bcftools reports
+    // "[W::vcf_parse_format_alloc4] Duplicate FORMAT tag GT", collapses to 3 keys "GT:AA:DP", and silently
+    // misassigns sample values: the value intended for the corrupted key vanishes entirely, and the value
+    // intended for DP is reassigned to AA instead. Worse than a rejection -- exactly the shape AGENTS.md's
+    // item-3 backlog entry exists to close.
+    String vcf = "##fileformat=VCFv4.3\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##FORMAT=<ID=AA,Number=1,Type=String,Description=\"Ancestral Allele\">\n" +
+        "##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:GT:AA:DP\t0/1:X:30\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("[W::vcf_parse_format_alloc4] Duplicate FORMAT tag GT"), result.output());
+    // the misalignment itself, not just the warning, is the actual finding: bcftools collapses to 3 keys
+    // "GT:AA:DP" and the sample column becomes "0/1:30:." -- the value "X" (intended for the corrupted
+    // "GT:AA" key) has vanished entirely, "30" (intended for DP) was reassigned to AA's slot instead, and DP
+    // itself reads "." (missing). Confirmed live 2026-08-18.
+    assertTrue(result.output().lines().anyMatch(line -> line.endsWith("GT:AA:DP\t0/1:30:.")), result.output());
+  }
+
   private record BcftoolsResult(int exitCode, String output) {}
 }

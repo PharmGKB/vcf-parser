@@ -967,6 +967,38 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testConstructorThrowsForSemicolonInId() {
+    // ID's own list-join delimiter embedded in a single entry: "rs1;rs2" as ONE intended ID reproduces on the
+    // wire as two IDs, which bcftools 1.23.1 accepts silently with no warning at all (see
+    // BcftoolsDependencyTest#testIdSemicolonEntryBcftoolsAcceptsSilently). checkIds() already rejected this
+    // unconditionally (VCFv4.3.tex:338, "String, no whitespace or semicolons permitted, duplicate values not
+    // allowed"); this test pins the construction-time rejection itself, which had no unit coverage. Both
+    // contexts are asserted, since the check is NOT gated on strict/lenient.
+    VcfFormatException strictEx = assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newPosition("1", 100, List.of("rs1;rs2"), "A", null, null, null, null, null, -1));
+    assertTrue(strictEx.getMessage().contains("contains whitespace or semicolons"));
+    VcfFormatException lenientEx = assertThrows(VcfFormatException.class,
+        () -> LENIENT_CONTEXT.newPosition("1", 100, List.of("rs1;rs2"), "A", null, null, null, null, null, -1));
+    assertTrue(lenientEx.getMessage().contains("contains whitespace or semicolons"));
+  }
+
+  @Test
+  public void testConstructorThrowsForCommaInAltEntry() {
+    // ALT's own list-join delimiter embedded in a single entry: "T,C" as ONE intended allele is
+    // byte-indistinguishable on the wire from two genuinely separate alleles, which bcftools splits into two
+    // records (see BcftoolsDependencyTest#testAltCommaEntryIsIndistinguishableFromTwoAllelesToBcftools).
+    // ALT_BASE_PATTERN's character classes structurally exclude ',' from every branch, so checkAltBases()
+    // already rejected this unconditionally; this test pins the construction-time rejection itself, which had
+    // no unit coverage. Both contexts are asserted, since the check is NOT gated on strict/lenient.
+    VcfFormatException strictEx = assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newPosition("1", 100, null, "A", List.of("T,C"), null, null, null, null, -1));
+    assertTrue(strictEx.getMessage().contains("Invalid alternate base"));
+    VcfFormatException lenientEx = assertThrows(VcfFormatException.class,
+        () -> LENIENT_CONTEXT.newPosition("1", 100, null, "A", List.of("T,C"), null, null, null, null, -1));
+    assertTrue(lenientEx.getMessage().contains("Invalid alternate base"));
+  }
+
+  @Test
   public void testStrictConstructorThrowsForPassCombinedWithOtherFilters() {
     VcfFormatException ex = assertThrows(VcfFormatException.class,
         () -> STRICT_CONTEXT.newPosition("1", 100, null, "A", null, null, List.of("PASS", "q10"), null, null, -1));
@@ -981,6 +1013,49 @@ public class VcfPositionTest {
     VcfFormatException ex = assertThrows(VcfFormatException.class,
         () -> STRICT_CONTEXT.newPosition("1", 100, null, "A", null, null, List.of("my filter"), null, null, -1));
     assertTrue(ex.getMessage().contains("contains whitespace"));
+  }
+
+  @Test
+  public void testStrictConstructorThrowsForSemicolonInFilter() {
+    // VCFv4.3.tex:362 states the identical rule ID and FILTER share ("String, no whitespace or semicolons
+    // permitted"); checkIds() already enforces the semicolon half for ID (VcfPosition.java:377-379) but
+    // checkFilters() never did for FILTER -- this closes that gap.
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newPosition("1", 100, null, "A", null, null, List.of("a;b"), null, null, -1));
+    assertTrue(ex.getMessage().contains("contains a semicolon"));
+  }
+
+  @Test
+  public void testLenientConstructorAlsoThrowsForSemicolonInFilter() {
+    // unconditional, like checkIds()'s identical check -- not gated on strict/lenient, since FILTER's own
+    // list-join delimiter embedded in one entry corrupts the entry count on round-trip regardless of context
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> LENIENT_CONTEXT.newPosition("1", 100, null, "A", null, null, List.of("a;b"), null, null, -1));
+    assertTrue(ex.getMessage().contains("contains a semicolon"));
+  }
+
+  @Test
+  public void testStrictConstructorThrowsForColonInFormatKey() {
+    // VCFv4.3.tex:429 ("colon-separated FORMAT keys matching the regular expression ^[A-Za-z_][0-9A-Za-z_.]*$")
+    // -- FORMAT_PATTERN already excludes ':' from its character class, so this was already unconditional
+    // under strict (matches() fails, warnings == null, throws); this test pins that continues to hold after
+    // Step 3 adds a separate, explicit check for the same character.
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newPosition("1", 100, null, "A", null, null, null, null, List.of("GT:AA"), -1));
+    assertTrue(ex.getMessage().contains("contains a colon"));
+  }
+
+  @Test
+  public void testLenientConstructorAlsoThrowsForColonInFormatKey() {
+    // the actual fix: previously, LENIENT_CONTEXT would only WARN here (FORMAT_PATTERN mismatch is
+    // warn(lenient)/throw(strict)) and keep "GT:AA" as a single, corrupted key -- confirmed live that writing
+    // this out and re-reading with bcftools silently misassigns every subsequent sample value (see
+    // BcftoolsDependencyTest#testFormatColonCorruptedKeyBcftoolsMisalignsSampleValues, added in Task 2). This
+    // is the one BREAKING CHANGE this task introduces: LENIENT_CONTEXT.newPosition(...) with a
+    // colon-containing FORMAT key now throws where it previously warned and continued.
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> LENIENT_CONTEXT.newPosition("1", 100, null, "A", null, null, null, null, List.of("GT:AA"), -1));
+    assertTrue(ex.getMessage().contains("contains a colon"));
   }
 
   @Test

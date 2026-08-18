@@ -1,0 +1,6 @@
+##fileformat=VCFv4.3
+##contig=<ID=chr1,length=1000000>
+##Authority=VCFv4.3.tex:352 -- "the ALT field must be a symbolic allele, or a breakend replacement string, or match the regular expression ^([ACGTNacgtn]+|*|.)$" (the ALT-column grammar this field's checkAltBases enforces via ALT_BASE_PATTERN) -- this table's control row for the ALT field: a plain, comma-free multi-base entry (an A -> TA insertion), confirming the harness correctly accepts a well-formed ALT before the corrupting-shape case (VcfPositionTest#testConstructorThrowsForCommaInAltEntry).
+##Authority=bcftools 1.23.1 (htslib 1.23.1) for the corrupting-shape row this is the control for: a single intended ALT entry "T,C" is byte-indistinguishable from two genuinely separate alleles, and bcftools parses it as two -- `bcftools norm -m-any` splits the record into two, one per allele (measured live 2026-08-18) -- pinned by BcftoolsDependencyTest#testAltCommaEntryIsIndistinguishableFromTwoAllelesToBcftools. That probe's own ALT column differs from this fixture's (it carries the corrupted "T,C"); the measurement cited here is about that shape, and this fixture is the well-formed baseline it is contrasted against.
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	TA	.	PASS	.

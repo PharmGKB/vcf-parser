@@ -44,6 +44,17 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   a `FILTER` of `0`; a `FILTER` missing value (`.`) combined with another filter code; an `INFO` missing value
   (`.`) combined with a real property; or a `FORMAT` in which `GT` is present but not the first sub-field or a
   (non-empty) key is duplicated.
+- A `FILTER` entry containing a literal `;`, or a `FORMAT` key containing a literal `:` -- both unconditional
+  (thrown regardless of strict/lenient), matching this same section's `ID`/`INFO` treatment of their own
+  delimiters. VCFv4.3.tex line 362 states, for `FILTER`, "String, no whitespace or semicolons permitted,
+  duplicate values not allowed" (the same sentence `ID`'s own semicolon rule at line 338 uses); VCFv4.3.tex
+  line 429 states, of the FORMAT field, "colon-separated FORMAT keys matching the regular expression
+  `^[A-Za-z_][0-9A-Za-z_.]*$`, duplicate keys are not allowed". Both are reachable only through direct construction
+  (`VcfContext.newPosition`, `VcfPosition.Builder`) -- confirmed live (bcftools 1.23.1) that either shape
+  corrupts silently if ever written and re-read: a `FILTER` entry `"a;b"` round-trips as two filter codes with
+  no warning at all, and a `FORMAT` key list containing a colon-corrupted key misassigns every subsequent
+  sample value on re-parse. See `docs/superpowers/specs/2026-08-18-1000-vcfposition-corrupting-character-surface-design.md`
+  for the full measured evidence.
 - An `INFO` **value** is the one exception to that whitespace rule: a literal space (U+0020) is accepted at
   every declared version, while a tab, LF, CR, vertical tab, or form feed still throws. VCFv4.2.tex line 186
   forbids all whitespace in an INFO value, but VCFv4.3.tex line 366 states "Space characters are allowed in

@@ -1,0 +1,8 @@
+##fileformat=VCFv4.3
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">
+##contig=<ID=chr1,length=1000000>
+##Authority=VCFv4.3.tex:429 -- "colon-separated FORMAT keys matching the regular expression ^[A-Za-z_][0-9A-Za-z_.]*$" -- this table's control row for the FORMAT field: a plain, well-formed key list, confirming the harness correctly accepts it before the corrupting-shape case this plan's Task 1 fixes (VcfPositionTest#testLenientConstructorAlsoThrowsForColonInFormatKey).
+##Authority=bcftools 1.23.1 (htslib 1.23.1) for the corrupting-shape row this is the control for: a 3-key list whose middle key is colon-corrupted ("GT", "GT:AA", "DP") reproduces as the wire text "GT:GT:AA:DP", where bcftools warns "[W::vcf_parse_format_alloc4] Duplicate FORMAT tag GT", collapses to 3 keys, and silently misassigns sample values against the wrong keys -- pinned live by BcftoolsDependencyTest#testFormatColonCorruptedKeyBcftoolsMisalignsSampleValues. That probe's own FORMAT/sample columns differ from this fixture's (they carry the corrupted key list); the measurement cited here is about that shape, and this fixture is the well-formed baseline it is contrasted against.
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	s1
+chr1	1	rs1	A	T	.	PASS	.	GT:DP	0/1:30

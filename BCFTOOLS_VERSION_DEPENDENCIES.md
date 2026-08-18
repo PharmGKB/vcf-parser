@@ -367,3 +367,29 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
   the generic-metadata-property case, which is indexed separately above as "Generic metadata property with an
   empty value")
 - Reasoning: `EMPTY_FIELD_HANDLING.md` (its own field-by-field table is the fuller source of truth)
+
+### `VcfPosition`'s corrupting-character surface: ID/ALT/FILTER/INFO/FORMAT delimiter corruption
+- Test: `BcftoolsDependencyTest#testIdSemicolonEntryBcftoolsAcceptsSilently` (ID's own `;` list-join
+  delimiter embedded in a single intended entry -- already rejected at construction, first-ever bcftools
+  evidence for it), `#testAltCommaEntryIsIndistinguishableFromTwoAllelesToBcftools` (ALT's own `,` list-join
+  delimiter -- already rejected at construction; a control-less row by construction, since the corrupted and
+  genuinely-two-allele wire text are byte-identical and bcftools cannot distinguish them),
+  `#testFilterSemicolonEntryBcftoolsAcceptsAsTwoCodes` (FILTER's own `;` list-join delimiter -- the fix from
+  the prior commit; bcftools silently accepts the corrupted wire text as two FILTER codes, exit 0, no
+  warning), `#testInfoKeySemicolonEntryBcftoolsWarnsButKeepsWireTextUnchanged` (INFO's own `;` entry
+  separator embedded in a key -- already rejected at construction; re-measured 2026-08-18 correcting an
+  earlier "no warning" prediction -- bcftools actually warns `INFO 'X' is not defined in the header` because
+  the corrupted second entry is undeclared, but still exits 0 and keeps the wire text unchanged),
+  `#testInfoValueCommaInScalarKeyBcftoolsAcceptsSilently` (INFO's own `,` list-join delimiter embedded in a
+  scalar (`Number=1`) value -- already rejected at construction; bcftools does not validate a String-typed
+  key's `Number` cardinality against its actual comma count), `#testFormatColonCorruptedKeyBcftoolsMisalignsSampleValues`
+  (FORMAT's own `:` key-join delimiter -- the fix from the prior commit; bcftools warns
+  `[W::vcf_parse_format_alloc4] Duplicate FORMAT tag GT`, collapses the duplicate key, and silently
+  misassigns every sample value after the corruption point -- worse than a rejection)
+- Reasoning: `docs/superpowers/specs/2026-08-18-1000-vcfposition-corrupting-character-surface-design.md`
+  (no pre-existing behavior-table document covers this surface; the design's own "no fresh markdown table"
+  decision routes the evidence here instead). The FILTER and FORMAT rows are the two delimiter-corruption
+  holes closed by `VcfPosition.checkFilters()`/`checkFormat()` in the prior commit on this branch; the
+  ID/ALT/INFO rows document pre-existing, already-correct `VcfPosition` construction-time rejections
+  (`checkIds()`, `checkAltBases()`, `checkInfoEntries()`) that had no bcftools evidence at all before this
+  commit.
