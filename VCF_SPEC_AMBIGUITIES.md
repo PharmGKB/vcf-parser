@@ -386,6 +386,16 @@ different kind of unreadability -- this library's own re-parse, not bcftools':
   warning is the only option that does not regress carried-forward content.
 - No check at all: `;` — bcftools gives it no special meaning in this grammar, and neither does this library.
 
+**A separate, unconditional check also warns at PARSE time for `<`/`>`/an unescaped `"`, independent of the
+`EncodingProblem` classification above.** The bullets above describe `findEncodingProblems`, which construction
+and `validateBeforeWrite()` call but ordinary `VcfParser.parse()` does not -- reading only those bullets could
+suggest parse is silent for an unescaped `<`/`>` in an unquoted value. It isn't:
+`InternalUtils.parseOneAttribute`'s own literal-value branch (`InternalUtils.java:504-505`) unconditionally
+warns "has an unquoted value \"...\" containing a character bcftools treats as structural; preserving it" for
+any unquoted value containing `<`, `>`, or an unescaped `"`, on every parse, regardless of `isLenient()`. See
+`STRUCTURAL_DELIMITER_HANDLING.md`'s Row 4 (this same `<`/`>` shape) and Row 31 (an unescaped trailing quote)
+for the measured Parse-column outcome.
+
 Tests: `MetadataPropertyEncodingTest#constructionRejectsABracketValueOutsideMetaValues`/
 `#constructionAcceptsAWellFormedBracketValueOnMetaValuesOnly`/
 `#constructionRejectsAMalformedBracketValueOnMetaValues`/
@@ -395,7 +405,8 @@ Tests: `MetadataPropertyEncodingTest#constructionRejectsABracketValueOutsideMeta
 `#testBracketValueWithTrailingJunkBcftoolsDropsDeclarationSilently`/
 `#testUnescapedLessThanInMetadataValueBcftoolsMisparsesButSurvives`/
 `#testUnescapedGreaterThanInMetadataValueBcftoolsTruncatesDeclaration`/
-`#testUnescapedSemicolonInMetadataValueBcftoolsTreatsAsOrdinaryContent`.
+`#testUnescapedSemicolonInMetadataValueBcftoolsTreatsAsOrdinaryContent`/
+`#testUnquotedCommaInMetadataAttributeValueBcftoolsDropsDeclaration`.
 
 ### Angle brackets are not a quoting form in a metadata attribute value
 

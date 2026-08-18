@@ -219,6 +219,24 @@ class BcftoolsDependencyTest {
   }
 
   @Test
+  void testUnquotedCommaInMetadataAttributeValueBcftoolsDropsDeclaration() throws IOException, InterruptedException {
+    // STRUCTURAL_DELIMITER_HANDLING.md's Row 1 (assembly=a,b): the sibling test above measures this same
+    // htslib mechanism (an unquoted comma always ends the value, vcf.c:733) via ##contig's ID specifically,
+    // framed around the contig-name character-set errata -- a different decision. This is the plain,
+    // non-ID-attribute case Row 1 itself is actually about, with exitCode asserted (the sibling test above
+    // does not).
+    String vcf = "##fileformat=VCFv4.2\n##contig=<ID=1,assembly=a,b,length=100>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n1\t1\t.\tA\tT\t.\t.\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("Could not parse the header line"), result.output());
+    // line-based, not a substring .contains() check: the error message itself quotes the whole offending
+    // "##contig=..." line verbatim for diagnostics, same reasoning as
+    // testMetadataAttributeNameOutsideAllowlistBcftoolsDropsDeclarationSilently above
+    assertFalse(result.output().lines().anyMatch(line -> line.startsWith("##contig=")), result.output());
+  }
+
+  @Test
   void testContigExtraAttributeBcftoolsAcceptsSilently() throws IOException, InterruptedException {
     String vcf = "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000000,accession=foo>\n" +
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT\t.\tPASS\t.\n";

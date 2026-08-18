@@ -1110,8 +1110,9 @@ public class VcfPositionTest {
     // already warns and substitutes null for an empty comma-separated element). An empty (but non-".") value
     // reached convertElement() directly for a scalar reserved key -- for DP (Long-typed), that raw-crashed the
     // typed conversion with a confusing "Expected integer; got " VcfFormatException instead of the graceful
-    // null this library's missing-value convention specifies everywhere else, even though EMPTY_FIELD_HANDLING's
-    // "invalid content silently accepted" floor is squarely triggered here. Lenient context, not strict: an
+    // null this library's missing-value convention specifies everywhere else, even though AGENTS.md's Parser
+    // Validation Policy floor ("report a parser finding only when invalid content is silently accepted...")
+    // is squarely triggered here. Lenient context, not strict: an
     // empty value now throws under strict (InternalUtils.convertProperty's own isLenient()-aware dispatch) --
     // this test is about the substitution itself, covered separately for strict by
     // testGetInfoReservedInfoPropertyEmptyValueThrowsUnderStrictContext below.

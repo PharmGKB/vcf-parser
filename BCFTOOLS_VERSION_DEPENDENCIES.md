@@ -155,6 +155,20 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
 - Test: `BcftoolsDependencyTest#testMetadataAttributeNameOutsideAllowlistBcftoolsDropsDeclarationSilently`
 - Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Metadata attribute NAME grammar (parse and write warn, construction throws)" entry
 
+### Unquoted comma in an unquoted metadata attribute value
+- Test: `BcftoolsDependencyTest#testUnquotedCommaInMetadataAttributeValueBcftoolsDropsDeclaration`
+  (a plain non-`ID` attribute, `assembly=a,b`; `#testContigIdCharacterSetBcftoolsRejectsCommaSameAsChromDoes`
+  measures the same underlying htslib mechanism but via `##contig`'s `ID` specifically, framed around the
+  contig-name character-set errata -- a different decision -- and does not assert `exitCode`)
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Unquoted metadata attribute value: malformed bracket vs.
+  `<`/`>`/`;`" entry / `STRUCTURAL_DELIMITER_HANDLING.md`'s Row 1. An unquoted comma always ends the value
+  there (htslib 1.23.1, `vcf.c:733`, `if ( *q==',' && nopen==1 ) break;`), regardless of which attribute
+  carries it -- `checkMetadataPropertyEncodingForWrite` throws for this shape
+  (`EncodingProblem.unreadableOutput=true`), the same classification as the bracket-with-trailing-junk shape
+  below, since the attribute-list tokenizer can never itself produce a *stored* value containing an unquoted
+  comma (it always terminates the value there first), so throwing here can never reject carried-forward
+  content.
+
 ### Bracket value with trailing junk (closed but malformed)
 - Test: `BcftoolsDependencyTest#testBracketValueWithTrailingJunkBcftoolsDropsDeclarationSilently`
 - Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Unquoted metadata attribute value: malformed bracket vs. `<`/`>`/`;`"

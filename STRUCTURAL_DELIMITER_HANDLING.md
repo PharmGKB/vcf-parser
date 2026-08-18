@@ -541,20 +541,16 @@ evidence. `Payload` is a paraphrase, not the literal probe text. (Row 15 does no
   (`~/Dev/htslib/vcf.c:733`, `if ( *q==',' && nopen==1 ) break;`, tag `1.23.1`) always ends an unquoted value at
   the first unescaped comma regardless of which attribute carries it, so this generalizes from `ID` to
   `assembly`.
-- **Evidence gap, recorded rather than papered over:** `BcftoolsDependencyTest#testContigIdCharacterSetBcftoolsRejectsCommaSameAsChromDoes`
-  is the closest existing case, but its own comment frames it around the *contig-name character-set errata*
-  (`InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN`), not around this generic attribute-value comma rule, and
-  it asserts only the output message, not `exitCode`. **No dedicated `bcftoolsDependencyTest` case exists yet
-  for a plain `assembly=a,b`-shaped unquoted comma in a non-`ID` attribute value** -- `VCF_SPEC_AMBIGUITIES.md`'s
-  own "Tests:" list for this exact decision (its "Unquoted metadata attribute value" entry) omits one too, so
-  the gap spans both documents rather than being specific to this one. Recorded here rather than filled, so
-  it is not rediscovered as a new finding.
 - **Public construction:** throws (`checkMetadataPropertyEncoding` throws for every problem, unconditionally).
 - **Validated write:** throws (`unreadableOutput=true` -- the attribute-list tokenizer can never itself produce
   a *stored* value containing an unquoted comma, since it always terminates the value there first, so throwing
   here can never reject carried-forward content; see `VCF_SPEC_AMBIGUITIES.md`'s "The unquoted comma throws for
   a weaker, different reason" paragraph).
-- **Test evidence:** `MetadataPropertyEncodingTest#testAddMapRejectsEachUnquotedDelimiter` (construction).
+- **Test evidence:** `MetadataPropertyEncodingTest#testAddMapRejectsEachUnquotedDelimiter` (construction);
+  `BcftoolsDependencyTest#testUnquotedCommaInMetadataAttributeValueBcftoolsDropsDeclaration` (a plain,
+  non-`ID` `assembly=a,b` shape, asserting `exitCode` -- closes the evidence gap this row previously
+  recorded; `#testContigIdCharacterSetBcftoolsRejectsCommaSameAsChromDoes` measures the same underlying
+  mechanism via `##contig`'s `ID` specifically, a different decision).
 
 ### Row 2 -- `addContig(Map)` -- `assembly=a=b` (unquoted `=`)
 
@@ -618,6 +614,14 @@ evidence. `Payload` is a paraphrase, not the literal probe text. (Row 15 does no
   `##contig=<ID=1,description=a>b,length=100>` truncates the declaration to
   `##contig=<ID=1,description=a>` with `"Dropped trailing junk from header line"`, `length` silently lost, file
   still reads at exit 0.
+- **Parse:** parses; warns "has an unquoted value \"a<b\" containing a character bcftools treats as
+  structural; preserving it" (`InternalUtils.parseOneAttribute`'s own unconditional check,
+  `InternalUtils.java:504-505` -- the same check Row 31 below documents for an unquoted trailing quote); this
+  is a SEPARATE, unconditional check from the `EncodingProblem`/construction/`validateBeforeWrite()`
+  machinery the rest of this row describes, and it runs on every parse regardless of `isLenient()`. Filed
+  originally as a gap in `VCF_SPEC_AMBIGUITIES.md`'s own "Unquoted metadata attribute value..." entry (see
+  `TODO.md`), whose prose read, by omission, as if parse were silent for this shape -- it isn't, and this row
+  is the parallel gap in this document that the same filed item also names.
 - **Public construction:** throws (`checkMetadataPropertyEncoding` throws for every problem).
 - **Validated write:** warns, not throws -- not `unreadableOutput` (bcftools garbles or truncates the
   declaration but the file stays readable).
@@ -1139,8 +1143,11 @@ throw on the newly-rejected content, because of the current construction/write s
   sink otherwise, preserving the value unchanged either way. Called from `VcfWriter.validateMetadataProperties`,
   itself called once per declaration from `validateMetadataPropertiesForEntries`, itself called once per kind
   (INFO/FILTER/FORMAT/ALT/contig/SAMPLE/META/PEDIGREE) from `validateMetadataPropertyEncodings` -- which runs once
-  per header, from `writeHeader` only, not from `writeLine` (see "Where write-time and construction-time checks
-  meet" above for why this had to move once the name check stopped being an unconditional throw).
+  per header, from `writeHeader` only, not from `writeLine` -- load-bearing, not just an optimization, because
+  `checkMetadataPropertyEncodingForWrite` warns rather than throws on most problems: running it from every
+  record (as `validateMetadata`, called from both `writeHeader` and `writeLine`, would) multiplies each
+  warning by (bad properties) x (declarations) x (records) on a large file instead of emitting it once
+  (`VcfWriter.validateMetadataPropertyEncodings`'s own Javadoc states this reasoning directly).
 - `InternalUtils.METADATA_ATTRIBUTE_NAME_PATTERN` -- the bcftools-derived attribute-NAME allowlist
   (`^[A-Za-z_][0-9A-Za-z_.]*$`) `findEncodingProblems` checks first.
 - `InternalUtils.isWellFormedMetaValuesBracket(String)` -- the malformed-bracket-value check, scoped to
