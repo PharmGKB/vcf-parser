@@ -40,10 +40,10 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   `FORMAT` column with no sample columns following it, an empty sample name, or a duplicate sample name.
 - A data line with the wrong number of tab-separated columns.
 - An empty mandatory fixed field (the missing value must be `.`), an empty `CHROM`, or a negative `POS`.
-- Invalid `REF`/`ALT` bases; whitespace where the spec forbids it (`CHROM`, `ID`, `FILTER`, and an `INFO` key);
-  a `FILTER` of `0`; a `FILTER` missing value (`.`) combined with another filter code; an `INFO` missing value
-  (`.`) combined with a real property; or a `FORMAT` in which `GT` is present but not the first sub-field or a
-  (non-empty) key is duplicated.
+- Invalid `REF`/`ALT` bases; whitespace where the spec forbids it (`CHROM`, `ID`, `FILTER`, and an `INFO` key --
+  a `FORMAT` key's own, narrower rule is its own bullet below); a `FILTER` of `0`; a `FILTER` missing value
+  (`.`) combined with another filter code; an `INFO` missing value (`.`) combined with a real property; or a
+  `FORMAT` in which `GT` is present but not the first sub-field or a (non-empty) key is duplicated.
 - A `FILTER` entry containing a literal `;`, or a `FORMAT` key containing a literal `:` -- both unconditional
   (thrown regardless of strict/lenient), matching this same section's `ID`/`INFO` treatment of their own
   delimiters. VCFv4.3.tex line 362 states, for `FILTER`, "String, no whitespace or semicolons permitted,
@@ -55,6 +55,19 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   no warning at all, and a `FORMAT` key list containing a colon-corrupted key misassigns every subsequent
   sample value on re-parse. See `docs/superpowers/specs/2026-08-18-1000-vcfposition-corrupting-character-surface-design.md`
   for the full measured evidence.
+- A `FORMAT` key containing a literal tab, LF, or CR -- unconditional, added alongside the `:` check as a
+  distinct structural floor. **Deliberately narrower** than `ID`/`FILTER`/`INFO`-key's full-whitespace ban
+  above: a plain space, vertical tab, or form feed in a `FORMAT` key is a tag-name-grammar violation like any
+  other (a leading digit, illegal punctuation) and stays warn-or-throw via the pre-existing `FORMAT_PATTERN`
+  check (`findings37.md` item 1's deliberate leniency, matching bcftools' own measured tolerance -- confirmed
+  live that bcftools only warns on a space/VT/FF-corrupted key, exit 0, no column shift, no data loss). Tab
+  and LF/CR are different in kind: `VcfWriter.addFormatConditionally` appends a `FORMAT` key verbatim
+  (`VcfWriter.java:463`), so an embedded tab adds a column (tab is the record's own column delimiter) and an
+  embedded LF/CR ends the record early on write, corrupting record structure rather than merely the key text
+  -- confirmed live (bcftools 1.23.1) that a tab-corrupted `FORMAT` key makes bcftools fail outright to read
+  the file at all (`[E::vcf_parse_format_fill5]`, exit code 8), a worse outcome than either of the two
+  delimiter-corruption shapes above. Reachable only through direct construction, for the same reason as the
+  `:` check.
 - An `INFO` **value** is the one exception to that whitespace rule: a literal space (U+0020) is accepted at
   every declared version, while a tab, LF, CR, vertical tab, or form feed still throws. VCFv4.2.tex line 186
   forbids all whitespace in an INFO value, but VCFv4.3.tex line 366 states "Space characters are allowed in

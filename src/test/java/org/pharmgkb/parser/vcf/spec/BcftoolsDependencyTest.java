@@ -1557,5 +1557,27 @@ class BcftoolsDependencyTest {
     assertTrue(result.output().lines().anyMatch(line -> line.endsWith("GT:AA:DP\t0/1:30:.")), result.output());
   }
 
+  @Test
+  void testFormatTabCorruptedKeyBcftoolsFatallyFailsToParse() throws IOException, InterruptedException {
+    // VcfPosition.checkFormat() now rejects this at construction. A FORMAT key list intended as one key
+    // "GT:AB" followed by "CD:DP" contains a literal embedded tab in place of what would otherwise be one of
+    // its own ':' separators -- since tab is the record's own column delimiter, this doesn't merely corrupt
+    // the key text, it splits the record into an extra physical column: the wire text below has FORMAT="GT:AB"
+    // followed by an unintended extra column "CD:DP" before the sample data. Confirmed live: unlike the ';'
+    // (silent split) and ':' (silent misalignment) shapes above, this makes bcftools fail outright --
+    // "[E::vcf_parse_format_fill5] Couldn't read GT data: value not a number or '.'", exit code 8 -- a file
+    // bcftools cannot read at all, the worst of the three corrupting shapes measured for this field.
+    String vcf = "##fileformat=VCFv4.3\n##contig=<ID=1>\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##FORMAT=<ID=AB,Number=1,Type=Float,Description=\"x\">\n" +
+        "##FORMAT=<ID=CD,Number=1,Type=Float,Description=\"x\">\n" +
+        "##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"x\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "1\t100\t.\tA\tG\t.\tPASS\t.\tGT:AB\tCD:DP\t0/1:0.5:0.3:30\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(8, result.exitCode(), result.output());
+    assertTrue(result.output().contains("[E::vcf_parse_format_fill5] Couldn't read GT data: value not a number or '.'"),
+        result.output());
+  }
+
   private record BcftoolsResult(int exitCode, String output) {}
 }

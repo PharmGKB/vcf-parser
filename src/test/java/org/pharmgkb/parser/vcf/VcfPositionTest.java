@@ -1059,6 +1059,32 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testStrictConstructorThrowsForTabInFormatKey() {
+    // VCFv4.3.tex:429 ("colon-separated FORMAT keys matching the regular expression ^[A-Za-z_][0-9A-Za-z_.]*$")
+    // -- FORMAT_PATTERN already excludes a tab from its character class, so this was already unconditional
+    // under strict (matches() fails, warnings == null, throws); this test pins that continues to hold after
+    // the new explicit tab/line-terminator check runs first.
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newPosition("1", 100, null, "A", null, null, null, null, List.of("GT\tAA"), -1));
+    assertTrue(ex.getMessage().contains("contains a tab or line terminator"));
+  }
+
+  @Test
+  public void testLenientConstructorAlsoThrowsForTabInFormatKey() {
+    // the actual fix: previously, LENIENT_CONTEXT would only WARN here (FORMAT_PATTERN mismatch is
+    // warn(lenient)/throw(strict)) and keep "GT\tAA" as a single, corrupted key -- confirmed live that writing
+    // this out and re-reading with bcftools fails outright, unable to parse the file at all (see
+    // BcftoolsDependencyTest#testFormatTabCorruptedKeyBcftoolsFatallyFailsToParse). This is the one BREAKING
+    // CHANGE this fix introduces: LENIENT_CONTEXT.newPosition(...) with a tab- or line-terminator-containing
+    // FORMAT key now throws where it previously warned and continued. A plain space, vertical tab, or form
+    // feed is deliberately NOT included -- confirmed live those are non-structural (bcftools only warns, exit
+    // 0, no column shift), so they remain governed by the pre-existing warn-or-throw FORMAT_PATTERN check.
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> LENIENT_CONTEXT.newPosition("1", 100, null, "A", null, null, null, null, List.of("GT\tAA"), -1));
+    assertTrue(ex.getMessage().contains("contains a tab or line terminator"));
+  }
+
+  @Test
   public void testStrictConstructorThrowsForWhitespaceInInfo() {
     // regression test: no prior coverage existed for this unconditional throw (reachable regardless of strict/
     // lenient mode) -- hts-specs test/vcf/4.2/failed/failed_body_info_028.vcf, ##CauseOfFailure=INFO contains a
@@ -1411,6 +1437,23 @@ public class VcfPositionTest {
     VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("1", 100, null, "A", null, null, null,
         null, format, -1);
     assertEquals(List.of("GT", "1KG"), position.getFormat());
+    assertTrue(sink.toString().contains("tag-name grammar"));
+  }
+
+  @Test
+  public void testLenientConstructorWarnsInsteadOfThrowingForSpaceInFormatKey() {
+    // pins the boundary the tab/line-terminator check deliberately does NOT cross: a plain space is a
+    // tag-name-grammar violation like any other (a leading digit, illegal punctuation), not a structural one
+    // -- confirmed live (bcftools 1.23.1) that a space-corrupted FORMAT key ("A B", the same shape hts-specs'
+    // own test/vcf/4.3/failed/failed_body_format_001.vcf uses) only produces "[W::vcf_parse_format_dict2]
+    // FORMAT 'A B' is not defined in the header"/"[W::bcf_hrec_check] Invalid tag name", exit 0, no column
+    // shift, no data loss -- unlike a tab, which fails the file outright. This must keep warning, not throw,
+    // under lenient.
+    StringWriter sink = new StringWriter();
+    List<String> format = new java.util.ArrayList<>(List.of("GT", "A B"));
+    VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("1", 100, null, "A", null, null, null,
+        null, format, -1);
+    assertEquals(List.of("GT", "A B"), position.getFormat());
     assertTrue(sink.toString().contains("tag-name grammar"));
   }
 

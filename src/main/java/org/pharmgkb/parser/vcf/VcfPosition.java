@@ -696,6 +696,25 @@ public final class VcfPosition {
             "it as-is, but it cannot be looked up in metadata");
         continue;
       }
+      // Deliberately narrower than checkIds()/checkFilters()'s full containsWhitespace() throw: a tab or
+      // line terminator embedded in a FORMAT key is structural -- VcfWriter.addFormatConditionally appends a
+      // FORMAT key verbatim (VcfWriter.java:463), so an embedded tab adds a column (tab is the record's own
+      // column delimiter) and an embedded LF/CR ends the record early on write; nothing downstream guards
+      // against either (InternalUtils.checkNoLineTerminator is only ever called on the metadata and
+      // sample-name/value paths, never here). Confirmed live (bcftools 1.23.1): a tab-corrupted FORMAT key
+      // ("GT:AB<TAB>CD:DP", one intended key split into two physical columns by the embedded tab) makes
+      // bcftools fail outright to read the file at all -- "[E::vcf_parse_format_fill5] Couldn't read GT
+      // data: value not a number or '.'", exit code 8. A plain space, vertical tab, or form feed is NOT the
+      // same kind of violation -- confirmed live that bcftools only warns on each ("[W::vcf_parse_format_dict2]
+      // FORMAT '...' is not defined in the header"/"[W::bcf_hrec_check] Invalid tag name"), exit 0, no column
+      // shift, no data loss -- so those three stay governed by the warn-or-throw FORMAT_PATTERN check below,
+      // matching this method's own pre-existing, deliberate leniency for non-structural grammar violations
+      // (findings37.md item 1). Unconditional (not gated on warnings == null), matching checkIds()/
+      // checkFilters()'s treatment of their own delimiters: this check can only ever fire on content reaching
+      // VcfPosition via public construction, for the same reason as the colon check immediately below.
+      if (f.indexOf('\t') >= 0 || f.indexOf('\n') >= 0 || f.indexOf('\r') >= 0) {
+        throw new VcfFormatException("FORMAT key \"" + f + "\" contains a tab or line terminator");
+      }
       // VCFv4.3.tex:429 -- "First a FORMAT field is given specifying the data types and order
       // (colon-separated FORMAT keys matching the regular expression ^[A-Za-z_][0-9A-Za-z_.]*$, duplicate
       // keys are not allowed)." This is a separate, unconditional floor for the delimiter-corruption
@@ -716,8 +735,9 @@ public final class VcfPosition {
       if (f.contains(":")) {
         throw new VcfFormatException("FORMAT key \"" + f + "\" contains a colon");
       }
-      // f.contains(":") is already handled above as its own unconditional floor -- this check's remaining
-      // job is every OTHER tag-name-grammar violation (a leading digit, illegal punctuation that isn't ':').
+      // tab/LF/CR and ':' are already handled above as their own unconditional structural floors -- this
+      // check's remaining job is every OTHER tag-name-grammar violation, including a plain space, vertical
+      // tab, or form feed (non-structural, per the comment above) plus a leading digit or illegal punctuation.
       // Lenient, not a structural floor for those: matches FormatMetadata's identical warn-only treatment of
       // this same grammar rule for a ##FORMAT declaration ID (see FormatMetadata.init()) -- a data-line
       // FORMAT key failing it must not abort the whole parse (findings37.md item 1; confirmed against

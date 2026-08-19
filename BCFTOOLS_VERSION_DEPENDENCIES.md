@@ -369,7 +369,15 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
 - Reasoning: `EMPTY_FIELD_HANDLING.md` (its own field-by-field table is the fuller source of truth)
 
 ### `VcfPosition`'s corrupting-character surface: ID/ALT/FILTER/INFO/FORMAT delimiter corruption
-- Test: `BcftoolsDependencyTest#testIdSemicolonEntryBcftoolsAcceptsSilently` (ID's own `;` list-join
+- Test: `BcftoolsDependencyTest#testFormatTabCorruptedKeyBcftoolsFatallyFailsToParse` (a literal tab embedded
+  in a FORMAT key, added as a follow-up fix -- TODO.md's "A literal TAB in a FORMAT key is warn-only under
+  lenient and produces structurally invalid output" entry, filed by this sub-project's own final review as an
+  out-of-scope pre-existing hole; TAB is the record's own column delimiter, not one of the row-set's original
+  field-own delimiters, so it fell outside that sub-project's approved row set -- see TODO.md's companion
+  "deliberate row-set narrowing" entry. Unlike the `;`/`:` shapes below, bcftools fails outright on this wire
+  text -- `[E::vcf_parse_format_fill5] Couldn't read GT data: value not a number or '.'`, exit code 8 -- a
+  file bcftools cannot read at all, worse than either of the silent-corruption shapes),
+  `#testIdSemicolonEntryBcftoolsAcceptsSilently` (ID's own `;` list-join
   delimiter embedded in a single intended entry -- already rejected at construction, first-ever bcftools
   evidence for it), `#testAltCommaEntryIsIndistinguishableFromTwoAllelesToBcftools` (ALT's own `,` list-join
   delimiter -- already rejected at construction; a control-less row by construction, since the corrupted and
