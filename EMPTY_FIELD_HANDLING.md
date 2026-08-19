@@ -71,10 +71,10 @@ is the spec's own wording for the second clause, in every version from 4.2 throu
 index down by one, silently misdirecting any `GT` value referencing a position after the dropped entry to the wrong
 allele — a real correctness bug, not just a cosmetic list-length difference. Substituting `.` instead, matching
 bcftools exactly, preserves every index. The VCF spec recognizes `.` as a valid per-entry ALT token: `VCFv4.3.tex`
-(the target) line 349 introduces the ALT column's comma-separated list ("These alleles do not have to be called in
-any of the samples."), and the very next line, `VCFv4.3.tex` line 350, gives that list's per-entry options,
-including "a MISSING value `.' (no variant)"; `VCFv4.4.tex` line 367 and `VCFv4.5.tex` line 416 restate this rule
-more explicitly:
+(the target) line 348 introduces the ALT column's comma-separated list ("Comma-separated list of alternate
+non-reference alleles."), line 349 adds that "These alleles do not have to be called in any of the samples.",
+and line 350 gives that list's per-entry options, including "a MISSING value `.' (no variant)"; `VCFv4.4.tex`
+line 367 and `VCFv4.5.tex` line 416 restate this rule more explicitly:
 "Each allele in this list must be one of: ... the MISSING value `.` (no variant); ...". Confirmed bcftools 1.23.1
 accepts `T,.,C` with zero warning whether the `.` is substituted or literal, and with genotype indices before, at,
 and after the dot all resolving correctly.
@@ -1128,7 +1128,10 @@ list has no positional index for anything else to reference into) rather than su
   exemption.
 - **Probe shape:** a `##contig` declaration with two well-formed attributes and one empty interior attribute
   produced by a doubled `,` (`ID=chr1,,length=1000000`).
-- **4.2 - 4.5:** `silent`.
+- **4.2 - 4.5:** `silent` -- this reuses the descriptive-only exemption's collapsed one-line notation purely
+  for typesetting economy, since all four versions were independently confirmed silent (see the Classification
+  bullet above); it does not make this row descriptive-only, and every other rule (probe shape, control row,
+  tool-defect handling) still applies as a decision-bearing row.
 - **bcftools 1.23.1:** cannot parse the declaration at all and discards the entire `##contig` line --
   `[E::bcf_hdr_parse_line] Could not parse the header line: "##contig=<ID=chr1,,length=1000000>"`, exit 0
   (the file itself stays readable) -- measured live 2026-08-15, matching the pre-existing, `##INFO`-shaped
@@ -1151,7 +1154,9 @@ list has no positional index for anything else to reference into) rather than su
   interior empty attribute.
 - **Probe shape:** a `##contig` declaration with two well-formed attributes followed by a trailing `,` with
   nothing after it (`ID=chr1,length=1000000,`).
-- **4.2 - 4.5:** `silent`.
+- **4.2 - 4.5:** `silent` -- as with AL-6 above, this reuses the descriptive-only exemption's collapsed
+  one-line notation purely for typesetting economy, not because this row is descriptive-only (it remains
+  decision-bearing per the Classification bullet above).
 - **bcftools 1.23.1:** cannot parse the declaration at all and discards the entire `##contig` line --
   `[E::bcf_hdr_parse_line] Could not parse the header line: "##contig=<ID=chr1,length=1000000,>"`, exit 0
   -- measured live 2026-08-15; shows no interior/trailing asymmetry the way the main Reference table's FILTER
