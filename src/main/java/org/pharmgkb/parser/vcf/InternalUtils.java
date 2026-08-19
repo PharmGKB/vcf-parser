@@ -1287,17 +1287,27 @@ public class InternalUtils {
   }
 
   /**
-   * Warns if {@code actual} doesn't match the cardinality {@code number} implies for {@code numAltAlleles} ALT
-   * alleles (and, for {@code Number=G}, {@code ploidy}). Relocated from {@code VcfWriter} (was a private instance
-   * method reading {@code m_warnings} implicitly) so {@code VcfSample}'s own read-path check can share the
-   * identical implementation, rather than a second, independently-drifting copy.
+   * Warns (or, if {@code checkWarnings} is {@code null} -- strict mode -- throws {@link VcfFormatException}) if
+   * {@code actual} doesn't match the cardinality {@code number} implies for {@code numAltAlleles} ALT alleles
+   * (and, for {@code Number=G}, {@code ploidy}). Relocated from {@code VcfWriter} (was a private instance method
+   * reading {@code m_warnings} implicitly) so {@code VcfSample}'s own read-path check can share the identical
+   * implementation, rather than a second, independently-drifting copy.
+   * <p>
+   * {@code warnings} and {@code checkWarnings} are deliberately separate, matching
+   * {@link #convertProperty(Class, String, boolean, VcfWarnings, VcfWarnings)}'s own two-parameter shape:
+   * {@code warnings} is always used for {@link #getExpectedCardinality}'s own "cardinality too large to
+   * validate" message, which is an internal computation limit, not a claim about {@code actual} being wrong, and
+   * must never become a throw regardless of context; {@code checkWarnings} is the {@code isLenient()}-gated
+   * dispatch for the actual mismatch this method itself reports. A write-side caller (always-warn diagnostics,
+   * per {@code AGENTS.md}'s Writer Validation Policy) passes the same non-null {@link VcfWarnings} for both; a
+   * read-side caller passes {@code isLenient() ? warnings : null} for {@code checkWarnings}.
    */
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static void warnIfWrongCardinality(String field, @Nullable String number, int actual, int numAltAlleles,
-      @Nullable Integer ploidy, VcfWarnings warnings) {
+      @Nullable Integer ploidy, VcfWarnings warnings, @Nullable VcfWarnings checkWarnings) {
     Long expected = getExpectedCardinality(number, numAltAlleles, ploidy, warnings);
     if (expected != null && expected != actual) {
-      warnings.warn("{} has {} value(s), but Number={} requires {}", field, actual, number, expected);
+      warnOrThrow(checkWarnings, "{} has {} value(s), but Number={} requires {}", field, actual, number, expected);
     }
   }
 

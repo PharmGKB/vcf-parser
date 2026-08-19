@@ -519,6 +519,27 @@ is a structural failure and still throws -- see the strict section above):
   hts-specs conformance gap covered by `failed_body_info_integer_overflow.vcf`/`_underflow.vcf`/`_reserved.vcf`
   -- see `HTS_SPECS_BASELINE_STATUS.md`'s "INFO reserved/non-reserved Integer value outside the 32-bit signed
   range" entry and `VcfParserTest`'s three `testHtsSpecsInteger*FixtureWarnsOnTypedAccess` tests.
+- Any INFO/FORMAT value (reserved or not, scalar or list) whose actual comma-split element count doesn't match
+  its declared/reserved `Number` for the record's ALT allele count (and, for `Number=G`, the sample's ploidy):
+  checked by `InternalUtils.warnIfWrongCardinality`, wired into `VcfPosition.getInfo(ReservedInfoProperty)`,
+  `VcfPosition.getInfo(VcfMetadata, String)`, and `VcfSample.getProperty(VcfPosition, VcfMetadata, String)`.
+  Includes, as one instance of this general check rather than a separate rule, a scalar-declared key (`Number=0`
+  or `Number=1`) given a value containing a literal comma -- e.g. a `FORMAT/FT` value written as
+  `"STD_FILTER,extra"` -- which previously had no read-side detection at all for a non-reserved/undeclared key,
+  and silently kept only the first comma-piece with no diagnostic for a reserved one. The read side is
+  `isLenient()`-aware (warns under a lenient `VcfContext` and keeps only the first comma-piece for a
+  scalar-declared key, or the full list unchanged for a list-declared one; throws `VcfFormatException` under a
+  strict one) -- this matches the dispatch `VALIDATION_PHILOSOPHY.md` documents as the universal contract, the
+  same family as `FT`/`PS`/`GP`/`AC`/`AN`/`DP`/`END`/`MQ0`/`NS`/`AF`/`CIGAR` in this section; the write side
+  (`VcfWriter.validateInfoValue`/`validateFormatValue`) always warns, regardless of the written object's own
+  strict/lenient origin, per `AGENTS.md`'s Writer Validation Policy -- confirmed live (bcftools 1.23.1) that
+  writing this shape unchanged is not itself unsafe: bcftools never splits or validates FORMAT/INFO value
+  cardinality on read at all, so the full round trip (write, then re-parse) loses nothing at the raw/untyped
+  level; the truncation is purely an artifact of this library's own typed accessor, independent of whether a
+  round trip ever occurred. `VcfPosition`'s two `getInfo` overloads previously duplicated this same "scalar key
+  given more than one value" logic as a separate, hand-written, always-warn message instead of routing through
+  `warnIfWrongCardinality` -- unified into the one shared, now-`isLenient()`-aware check instead of a second,
+  independently-drifting copy.
 - A reserved `FORMAT/GP` value outside the interval `[0, 1]`, but **only under VCFv4.3 and later** -- VCFv4.3
   redefined `GP` from VCFv4.2's phred-scaled encoding to a 0-1 probability (VCFv4.3.tex line 491; see
   `ReservedFormatProperty.GenotypePosterior`'s own comment for the full citation), so no range check applies

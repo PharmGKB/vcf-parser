@@ -801,7 +801,11 @@ public class VcfWriter implements Closeable {
     // Number=G's expected cardinality from; pass null so getExpectedCardinality skips that check instead of
     // guessing a ploidy (previously hardcoded to 2, which could produce the same false-positive warning that
     // getPloidy's ploidy==null handling was introduced to prevent for FORMAT values)
-    InternalUtils.warnIfWrongCardinality("INFO " + key, number, values.size(), numAltAlleles, null, m_warnings);
+    // validateBeforeWrite()'s own policy is warn-always for semantically-non-compliant-but-safe content,
+    // regardless of the written object's own strict/lenient origin -- see AGENTS.md's Writer Validation Policy
+    // -- so checkWarnings is m_warnings here too, never null
+    InternalUtils.warnIfWrongCardinality("INFO " + key, number, values.size(), numAltAlleles, null, m_warnings,
+        m_warnings);
     if (type == null) {
       return;
     }
@@ -868,8 +872,9 @@ public class VcfWriter implements Closeable {
       // InternalUtils.resolvePloidyForCardinalityCheck's own comment for the full citation -- is applied per
       // key here rather than once for the whole sample, since ploidy is computed once per sample (in
       // validateSamples, shared across every FORMAT key) and this default applies only to these four keys.
+      // same always-warn policy as the INFO call site above -- checkWarnings is m_warnings, never null
       InternalUtils.warnIfWrongCardinality("FORMAT " + key + " for sample #" + sampleIndex, number, values.length,
-          numAltAlleles, InternalUtils.resolvePloidyForCardinalityCheck(key, ploidy), m_warnings);
+          numAltAlleles, InternalUtils.resolvePloidyForCardinalityCheck(key, ploidy), m_warnings, m_warnings);
     }
     if (type == null) {
       return;

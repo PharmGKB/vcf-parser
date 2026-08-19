@@ -1105,6 +1105,11 @@ public final class VcfPosition {
    * @param <T> The type specified by {@code ReservedInfoProperty.getType()} if {@code ReservedInfoProperty.isList()}
    *           is false;
    *           otherwise {@code List<V>} where V is the type specified by {@code ReservedInfoProperty.getType()}.
+   * @throws VcfFormatException if the raw value's actual element count does not match {@code key}'s declared
+   * {@code Number} and this position was built under a strict {@link VcfContext} (under a lenient one, this
+   * instead warns and, for a scalar-declared key given more than one comma-piece, keeps only the first -- see
+   * {@link InternalUtils#warnIfWrongCardinality}); or for the other, pre-existing reasons
+   * {@link InternalUtils#convertProperty(ReservedProperty, String, VcfContext)} already documents
    */
   public @Nullable <T> T getInfo(ReservedInfoProperty key) {
     // matches getInfo(String)'s own null-tolerant "not present" contract (see hasInfo(ReservedInfoProperty)
@@ -1127,13 +1132,21 @@ public final class VcfPosition {
     // supposed to warn-and-recover rather than throw for a non-structural problem (see AGENTS.md's Parser
     // Validation Policy). Warn and fall back to the first piece -- the same "keep the first, warn about the
     // rest" convention this library already uses for a duplicate metadata ID and a duplicate INFO key.
+    // isLenient()-aware, shared by both cardinality-check branches below and convertProperty's own dispatch --
+    // see InternalUtils.convertProperty(Class, String, boolean, VcfWarnings, VcfWarnings)'s own Javadoc for the
+    // general pattern. A cardinality mismatch (scalar or list) is the same kind of "bad input causing data loss
+    // on typed access" this library already throws for elsewhere under strict, rather than warning and silently
+    // keeping only the first piece.
+    VcfWarnings checkWarnings = m_context.isLenient() ? m_warnings : null;
     String value;
     if (!key.isList() && list.size() > 1) {
-      // getExpectedNumber() is always the literal "0" or "1" for a scalar (isList=false) key -- unlike
-      // VcfWriter.warnIfWrongCardinality's Number=A/G/R cases, there's no combinatorial expected count to compute
-      // here, so the same string fills both message slots
-      m_warnings.warn("INFO {} has {} value(s), but Number={} requires {}", key.getId(), list.size(),
-          key.getExpectedNumber(), key.getExpectedNumber());
+      // getExpectedNumber() is always the literal "0" or "1" for a scalar (isList=false) key --
+      // getExpectedCardinality() parses it back to the identical numeric value, so this produces the same
+      // message text as this method's own previous hand-written warn call, now isLenient()-aware like the list
+      // branch below (unifying both into the one shared check, rather than a second, independently-drifting
+      // copy of the same "is the actual count what Number requires" logic)
+      InternalUtils.warnIfWrongCardinality("INFO " + key.getId(), key.getExpectedNumber(), list.size(),
+          getAltBases().size(), null, m_warnings, checkWarnings);
       value = list.get(0);
     } else {
       // for a list-typed key, check the actual element count against what getExpectedNumber() implies for this
@@ -1146,7 +1159,7 @@ public final class VcfPosition {
       // count could violate cardinality.
       if (key.isList() && !(list.size() == 1 && list.get(0).equals("."))) {
         InternalUtils.warnIfWrongCardinality("INFO " + key.getId(), key.getExpectedNumber(), list.size(),
-            getAltBases().size(), null, m_warnings);
+            getAltBases().size(), null, m_warnings, checkWarnings);
       }
       value = sf_commaJoiner.join(list);
     }
@@ -1178,9 +1191,12 @@ public final class VcfPosition {
    * @throws VcfFormatException if {@code metadata} was built under a different {@link VcfContext} than this
    * position; if the raw value's {@code Type} does not match {@code id}'s declared type; if a declared
    * {@code Type=Integer} value is not representable as a 32-bit signed integer or collides with a BCF-reserved
-   * sentinel value (see {@link InternalUtils#checkInteger32BitRange}); or if the raw value is an empty (but
-   * non-{@code "."}) entry and this position was built under a strict {@link VcfContext} (under a lenient one,
-   * an empty value instead returns {@code null} -- see
+   * sentinel value (see {@link InternalUtils#checkInteger32BitRange}); if the raw value's actual element count
+   * does not match {@code id}'s declared/reserved {@code Number} and this position was built under a strict
+   * {@link VcfContext} (under a lenient one, this instead warns and, for a scalar-declared key given more than
+   * one comma-piece, keeps only the first -- see {@link InternalUtils#warnIfWrongCardinality}); or if the raw
+   * value is an empty (but non-{@code "."}) entry and this position was built under a strict {@link VcfContext}
+   * (under a lenient one, an empty value instead returns {@code null} -- see
    * {@link InternalUtils#convertProperty(Class, String, boolean, VcfWarnings, VcfWarnings)})
    */
   public @Nullable <T> T getInfo(VcfMetadata metadata, String id) {
@@ -1215,14 +1231,22 @@ public final class VcfPosition {
       }
       isList = !number.equals("0") && !number.equals("1");
     }
+    // isLenient()-aware, shared by both cardinality-check branches below, the range check further down, and
+    // convertProperty's own empty-value substitution -- see
+    // InternalUtils.convertProperty(Class, String, boolean, VcfWarnings, VcfWarnings)'s own Javadoc for the
+    // general pattern.
+    VcfWarnings checkWarnings = m_context.isLenient() ? m_warnings : null;
     String value;
     if (!isList && list.size() > 1) {
-      m_warnings.warn("INFO {} has {} value(s), but Number={} requires {}", id, list.size(), number, number);
+      // same unification as getInfo(ReservedInfoProperty) above: routes through the shared cardinality check
+      // rather than a second, independently-drifting hand-written warn call
+      InternalUtils.warnIfWrongCardinality("INFO " + id, number, list.size(), getAltBases().size(), null,
+          m_warnings, checkWarnings);
       value = list.get(0);
     } else {
       if (isList && !(list.size() == 1 && list.get(0).equals("."))) {
         InternalUtils.warnIfWrongCardinality("INFO " + id, number, list.size(), getAltBases().size(), null,
-            m_warnings);
+            m_warnings, checkWarnings);
       }
       value = sf_commaJoiner.join(list);
     }
@@ -1238,10 +1262,6 @@ public final class VcfPosition {
     }
     InfoType infoType = declared.getType();
     Class<?> type = infoType == null ? String.class : InternalUtils.toJavaType(infoType);
-    // isLenient()-aware, shared by both the range check below and convertProperty's own empty-value
-    // substitution -- see InternalUtils.convertProperty(Class, String, boolean, VcfWarnings, VcfWarnings)'s
-    // own Javadoc for why an empty value is isLenient()-gated here but not on VcfWriter's write side.
-    VcfWarnings checkWarnings = m_context.isLenient() ? m_warnings : null;
     try {
       if (type == Long.class) {
         InternalUtils.checkInteger32BitRange("INFO " + id, value, isList, checkWarnings);

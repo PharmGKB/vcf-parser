@@ -655,13 +655,16 @@ class VcfSampleTest {
   @Test
   void testGetPropertyWithPositionAndMetadataChecksReservedListCardinality() {
     // PL is Number=G, isList=true: GT=0|1 (ploidy 2), 1 ALT allele -> 2 total alleles -> expected
-    // combinationsWithRepetition(2, 2) = 3, but only 2 values given -- must warn, but still return the full list
+    // combinationsWithRepetition(2, 2) = 3, but only 2 values given -- must warn, but still return the full list.
+    // Uses LENIENT_CONTEXT, not STRICT_CONTEXT: a cardinality mismatch now throws under strict (see
+    // testGetPropertyWithPositionAndMetadataCardinalityViolationThrowsUnderStrict below) -- this test is
+    // specifically about the warn path.
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0|1");
     map.put("PL", "1,2");
-    VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
-    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
+    VcfSample sample = LENIENT_CONTEXT.newSample(map);
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
@@ -896,13 +899,15 @@ class VcfSampleTest {
     // PL's own spec definition (VCFv4.2.tex line 224 and unchanged through 4.5, via GL's definition PL defers
     // to) states "without GT field, diploidy is assumed" -- unlike the non-reserved Number=G field above, this
     // is a real, spec-stated default, not a guess. 1 ALT allele + assumed ploidy 2 -> expected 3 values, but
-    // only 2 are given, so this must warn (regression test for a prior bug: this used to silently skip the
-    // check entirely whenever GT was absent, for GL/PL/GP/PP same as any other Number=G field)
+    // only 2 are given, so this must warn under lenient (regression test for a prior bug: this used to silently
+    // skip the check entirely whenever GT was absent, for GL/PL/GP/PP same as any other Number=G field). Uses
+    // LENIENT_CONTEXT, not STRICT_CONTEXT: this test is about the warn path specifically -- see
+    // testGetPropertyWithPositionAndMetadataCardinalityViolationThrowsUnderStrict for the strict throw.
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("PL", "1,2");
-    VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
-    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
+    VcfSample sample = LENIENT_CONTEXT.newSample(map);
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
@@ -943,14 +948,16 @@ class VcfSampleTest {
   @Test
   void testGetPropertyWithPositionAndMetadataTruncatesScalarCardinalityViolation() {
     // FT is Number=1/String-typed, isList=false; a raw comma is a cardinality violation this library had no
-    // read-path way to detect before this method -- must warn and keep only the first piece, not silently pass
-    // the whole comma-containing value through as one opaque String
+    // read-path way to detect before this method -- must warn under lenient and keep only the first piece, not
+    // silently pass the whole comma-containing value through as one opaque String. Uses LENIENT_CONTEXT, not
+    // STRICT_CONTEXT: this test is about the warn path specifically -- see
+    // testGetPropertyWithPositionAndMetadataCardinalityViolationThrowsUnderStrict below for the strict throw.
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0/1");
     map.put("FT", "STD_FILTER,extra");
-    VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
-    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
+    VcfSample sample = LENIENT_CONTEXT.newSample(map);
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
@@ -963,6 +970,36 @@ class VcfSampleTest {
       root.detachAppender(appender);
       appender.stop();
     }
+  }
+
+  @Test
+  void testGetPropertyWithPositionAndMetadataCardinalityViolationThrowsUnderStrict() {
+    // the actual fix: a strict VcfContext now throws VcfFormatException for a cardinality mismatch instead of
+    // warning and best-effort truncating to the first comma-piece -- same shape as
+    // testGetPropertyWithPositionAndMetadataTruncatesScalarCardinalityViolation above (a reserved scalar key,
+    // FT, given a comma-corrupted value), but under STRICT_CONTEXT. This is the original motivating case: a
+    // scalar-declared FORMAT value containing a literal comma silently truncates on typed access under lenient,
+    // which is real (if bcftools-harmless) data loss for a caller of this library's own typed getter.
+    LinkedHashMap<String, String> map = new LinkedHashMap<>();
+    map.put("GT", "0/1");
+    map.put("FT", "STD_FILTER,extra");
+    VcfSample sample = STRICT_CONTEXT.newSample(map);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
+
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> sample.getProperty(position, metadata, "FT"));
+    assertTrue(ex.getMessage().contains("FORMAT FT has 2 value(s), but Number=1 requires 1"));
+
+    // a genuine list-cardinality mismatch (not just the comma-in-scalar shape) also throws under strict, since
+    // the fix generalizes InternalUtils.warnIfWrongCardinality itself, not just the scalar case
+    LinkedHashMap<String, String> plMap = new LinkedHashMap<>();
+    plMap.put("GT", "0|1");
+    plMap.put("PL", "1,2");
+    VcfSample plSample = STRICT_CONTEXT.newSample(plMap);
+    VcfFormatException plEx = assertThrows(VcfFormatException.class,
+        () -> plSample.getProperty(position, metadata, "PL"));
+    assertTrue(plEx.getMessage().contains("FORMAT PL has 2 value(s), but Number=G requires 3"));
   }
 
   @Test
@@ -1105,13 +1142,15 @@ class VcfSampleTest {
 
   @Test
   void testGetPropertyWithPositionAndMetadataWarnsOnNonReservedScalarCardinalityViolation() {
+    // Uses LENIENT_CONTEXT, not STRICT_CONTEXT: this test is about the warn path specifically -- a cardinality
+    // mismatch now throws under strict.
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0/1");
     map.put("DS", "1.5,2.5");
-    VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
-    FormatMetadata dsFormat = new FormatMetadata(STRICT_CONTEXT, "DS", "Genotype dosage", "1", FormatType.Float);
-    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").addFormat(dsFormat).build();
+    VcfSample sample = LENIENT_CONTEXT.newSample(map);
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
+    FormatMetadata dsFormat = new FormatMetadata(LENIENT_CONTEXT, "DS", "Genotype dosage", "1", FormatType.Float);
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addFormat(dsFormat).build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();

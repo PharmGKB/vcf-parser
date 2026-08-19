@@ -257,7 +257,9 @@ public class VcfPositionTest {
     // AC is Number=A (list-typed): with 1 ALT allele, exactly 1 value is expected, but 2 are given. Unlike the
     // scalar-key violation below (which truncates to the first value), a list-typed violation warns but returns
     // every given value unchanged -- this is the INFO-side counterpart of VcfSample.getProperty(VcfPosition,
-    // VcfMetadata, String)'s identical FORMAT-side check, added earlier this session
+    // VcfMetadata, String)'s identical FORMAT-side check, added earlier this session. Uses lenientPosition(),
+    // not newPosition(): a cardinality mismatch now throws under strict (see
+    // testGetInfoCardinalityViolationThrowsUnderStrict below) -- this test is specifically about the warn path.
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -265,7 +267,7 @@ public class VcfPositionTest {
     appender.start();
     root.addAppender(appender);
     try {
-      VcfPosition p = newPosition().toBuilder().altBases(List.of("T")).rawInfo("AC=1,2").build();
+      VcfPosition p = lenientPosition().toBuilder().altBases(List.of("T")).rawInfo("AC=1,2").build();
       assertEquals(Arrays.asList(1L, 2L), p.getInfo(ReservedInfoProperty.AlleleCount));
       assertTrue(appender.anyMessageContains("INFO AC has 2 value(s), but Number=A requires 1"));
     } finally {
@@ -276,7 +278,8 @@ public class VcfPositionTest {
 
   @Test
   public void testGetInfoFixedCountKeyCardinalityViolationWarns() {
-    // CIPOS is a fixed Number=2 (not ALT-allele-derived); 3 values given instead of 2 must still warn
+    // CIPOS is a fixed Number=2 (not ALT-allele-derived); 3 values given instead of 2 must still warn under
+    // lenient (see the class comment above on lenientPosition() vs newPosition())
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -284,7 +287,7 @@ public class VcfPositionTest {
     appender.start();
     root.addAppender(appender);
     try {
-      VcfPosition p = newPosition().toBuilder().rawInfo("CIPOS=1,2,3").build();
+      VcfPosition p = lenientPosition().toBuilder().rawInfo("CIPOS=1,2,3").build();
       assertEquals(Arrays.asList(1L, 2L, 3L), p.getInfo(ReservedInfoProperty.ConfidenceIntervalForPosition));
       assertTrue(appender.anyMessageContains("INFO CIPOS has 3 value(s), but Number=2 requires 2"));
     } finally {
@@ -338,7 +341,8 @@ public class VcfPositionTest {
     // AA is Number=1/String-typed; info() unconditionally comma-splits every raw INFO value regardless of the
     // key's declared cardinality, and the pre-fix code rejoined the split pieces with "," before Type conversion
     // -- for a String-typed key, that rejoined "1,23" round-tripped as one opaque, unvalidated string, silently
-    // hiding the cardinality violation entirely (no warning, no throw)
+    // hiding the cardinality violation entirely (no warning, no throw). Uses lenientPosition(): this test is
+    // about the warn path specifically -- see testGetInfoCardinalityViolationThrowsUnderStrict below for strict.
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -346,7 +350,7 @@ public class VcfPositionTest {
     appender.start();
     root.addAppender(appender);
     try {
-      VcfPosition p = newPosition().toBuilder().rawInfo("AA=1,23").build();
+      VcfPosition p = lenientPosition().toBuilder().rawInfo("AA=1,23").build();
       assertEquals("1", p.getInfo(ReservedInfoProperty.AncestralAllele));
       assertEquals(1, appender.countMessagesContaining("INFO AA has 2 value(s), but Number=1 requires 1"));
     } finally {
@@ -359,7 +363,7 @@ public class VcfPositionTest {
   public void testGetInfoNumericTypedScalarKeyCardinalityViolationWarnsInsteadOfThrowing() {
     // DP is Number=1/Long-typed; the pre-fix rejoin instead crashed here (Long.parseLong("1,23") throws
     // VcfFormatException), even though AGENTS.md's Parser Validation Policy says a non-structural INFO problem
-    // should warn and recover, not throw
+    // should warn and recover, not throw under lenient (see lenientPosition() vs newPosition() above)
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -367,13 +371,31 @@ public class VcfPositionTest {
     appender.start();
     root.addAppender(appender);
     try {
-      VcfPosition p = newPosition().toBuilder().rawInfo("DP=1,23").build();
+      VcfPosition p = lenientPosition().toBuilder().rawInfo("DP=1,23").build();
       assertEquals(Long.valueOf(1L), p.getInfo(ReservedInfoProperty.Depth));
       assertEquals(1, appender.countMessagesContaining("INFO DP has 2 value(s), but Number=1 requires 1"));
     } finally {
       root.detachAppender(appender);
       appender.stop();
     }
+  }
+
+  @Test
+  public void testGetInfoCardinalityViolationThrowsUnderStrict() {
+    // the actual fix: a strict VcfContext now throws VcfFormatException for a cardinality mismatch instead of
+    // warning and best-effort recovering, matching this library's established isLenient()-gated read-side
+    // dispatch elsewhere (InternalUtils.warnIfWrongCardinality). newPosition() (strict) is deliberate here,
+    // unlike the warn-path tests above.
+    VcfPosition p = newPosition().toBuilder().rawInfo("DP=1,23").build();
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> p.getInfo(ReservedInfoProperty.Depth));
+    assertTrue(ex.getMessage().contains("INFO DP has 2 value(s), but Number=1 requires 1"));
+
+    // the non-reserved-key overload (getInfo(VcfMetadata, String)) shares the identical dispatch
+    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2")
+        .addInfo("XX", "custom", InfoType.Integer, "1", null, null).build();
+    VcfPosition p2 = newPosition().toBuilder().rawInfo("XX=1,2").build();
+    VcfFormatException ex2 = assertThrows(VcfFormatException.class, () -> p2.getInfo(metadata, "XX"));
+    assertTrue(ex2.getMessage().contains("INFO XX has 2 value(s), but Number=1 requires 1"));
   }
 
   @Test
@@ -404,6 +426,10 @@ public class VcfPositionTest {
 
   private static VcfPosition newPosition() {
     return STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, null, null, -1);
+  }
+
+  private static VcfPosition lenientPosition() {
+    return LENIENT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, null, null, -1);
   }
 
   @Test

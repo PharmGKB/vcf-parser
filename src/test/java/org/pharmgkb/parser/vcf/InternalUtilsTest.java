@@ -1193,13 +1193,25 @@ public class InternalUtilsTest {
   public void testWarnIfWrongCardinalityWarnsOnMismatchOnly() {
     StringWriter sink = new StringWriter();
     VcfWarnings warnings = new VcfWarnings(sink);
-    InternalUtils.warnIfWrongCardinality("FORMAT PL", "G", 2, 1, 2, warnings);
+    InternalUtils.warnIfWrongCardinality("FORMAT PL", "G", 2, 1, 2, warnings, warnings);
     assertTrue(sink.toString().contains("FORMAT PL has 2 value(s), but Number=G requires 3"));
 
     StringWriter matchSink = new StringWriter();
     VcfWarnings matchWarnings = new VcfWarnings(matchSink);
-    InternalUtils.warnIfWrongCardinality("FORMAT PL", "A", 2, 2, null, matchWarnings);
+    InternalUtils.warnIfWrongCardinality("FORMAT PL", "A", 2, 2, null, matchWarnings, matchWarnings);
     assertEquals("", matchSink.toString());
+  }
+
+  @Test
+  public void testWarnIfWrongCardinalityThrowsUnderStrict() {
+    // checkWarnings == null (strict) throws instead of warning; matches checkInteger32BitRange's and
+    // convertProperty's own null-means-throw convention
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> InternalUtils.warnIfWrongCardinality("FORMAT PL", "G", 2, 1, 2, VcfWarnings.DEFAULT, null));
+    assertTrue(ex.getMessage().contains("FORMAT PL has 2 value(s), but Number=G requires 3"));
+
+    // a match still doesn't throw under strict -- only a genuine mismatch does
+    InternalUtils.warnIfWrongCardinality("FORMAT PL", "A", 2, 2, null, VcfWarnings.DEFAULT, null);
   }
 
   @Test

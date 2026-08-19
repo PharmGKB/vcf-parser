@@ -49,7 +49,19 @@ One shape implements principles 1 and 2, uniformly:
   `VcfPosition.getInfo(VcfMetadata, String)` and `VcfSample.getProperty(VcfPosition, VcfMetadata, String)` --
   each deriving `m_context.isLenient() ? m_warnings : null` locally rather than through `convertProperty`,
   since a non-reserved key's declared `Type` comes from its own `##INFO`/`##FORMAT` declaration, not a
-  `ReservedProperty` constant. `InternalUtils.convertProperty(Class, String, boolean, VcfWarnings,
+  `ReservedProperty` constant. `InternalUtils.warnIfWrongCardinality` (the shared Number-vs-actual-element-count
+  check for both INFO and FORMAT) follows the same shape as `checkInteger32BitRange`, but with three read-side
+  dispatch sites rather than two, since INFO's reserved and non-reserved keys are two separate `VcfPosition`
+  methods (`getInfo(ReservedInfoProperty)` and `getInfo(VcfMetadata, String)`, both deriving
+  `m_context.isLenient() ? m_warnings : null` locally) rather than sharing one dispatch point the way
+  `convertProperty(ReservedProperty, ...)` unifies INFO/FORMAT's reserved-key `Type` checks; the third site is
+  `VcfSample.getProperty(VcfPosition, VcfMetadata, String)` for FORMAT, mirroring `checkInteger32BitRange`'s own
+  FORMAT-side site exactly. Unlike the six reserved-key content checks named above, `warnIfWrongCardinality`
+  takes its `isLenient()`-gated `VcfWarnings` as a second, separate parameter (`checkWarnings`) alongside an
+  always-non-null `warnings`, matching `convertProperty(Class, String, boolean, VcfWarnings, VcfWarnings)`'s own
+  two-parameter shape below: the always-warn parameter carries `getExpectedCardinality`'s own "cardinality too
+  large to validate" message, an internal computation limit rather than a claim about the input being wrong, so
+  it must never become a throw regardless of context. `InternalUtils.convertProperty(Class, String, boolean, VcfWarnings,
   VcfWarnings)` -- the shared type-conversion plumbing behind every one of those read paths -- reuses
   whichever `checkWarnings` its own caller already derived for its two empty-value substitution branches
   (an empty scalar or list-entry value); `InternalUtils.convertNonEmptyProperty` is its write-path

@@ -340,8 +340,10 @@ public final class VcfSample {
    * {@code position} or {@code metadata}. {@code GL}/{@code PL}/{@code GP}/{@code PP} assume ploidy 2 when
    * {@code GT} is absent (their own spec-stated default -- see
    * {@code InternalUtils.resolvePloidyForCardinalityCheck}); every other {@code Number=G} key instead skips the
-   * cardinality check entirely when ploidy can't be determined. A cardinality mismatch warns rather than
-   * throwing; a genuine {@code Type} mismatch still throws {@link VcfFormatException}, unchanged from
+   * cardinality check entirely when ploidy can't be determined. A cardinality mismatch warns under a lenient
+   * {@link VcfContext} (unchanged from previous behavior), or throws {@link VcfFormatException} under a strict
+   * one -- see {@link InternalUtils#warnIfWrongCardinality}; a genuine {@code Type} mismatch still throws
+   * {@link VcfFormatException} unconditionally, unchanged from
    * {@link #getProperty(ReservedFormatProperty)}'s existing behavior. Returns {@code null} -- without any
    * cardinality warning -- when the value is absent or is the missing-value sentinel {@code "."}. A
    * non-reserved key's {@code ##FORMAT} declaration missing its own {@code Number} attribute is treated as
@@ -358,9 +360,12 @@ public final class VcfSample {
    * @throws VcfFormatException if {@code position} or {@code metadata} was built under a different
    * {@link VcfContext} than this sample; if the raw value's {@code Type} does not match {@code key}'s declared
    * type; if a declared {@code Type=Integer} value is not representable as a 32-bit signed integer or collides
-   * with a BCF-reserved sentinel value (see {@link InternalUtils#checkInteger32BitRange}); or if the raw value
-   * is an empty (but non-{@code "."}) entry and this sample was built under a strict {@link VcfContext} (under
-   * a lenient one, an empty value instead returns {@code null} -- see
+   * with a BCF-reserved sentinel value (see {@link InternalUtils#checkInteger32BitRange}); if the raw value's
+   * actual element count does not match {@code key}'s declared/reserved {@code Number} and this sample was
+   * built under a strict {@link VcfContext} (under a lenient one, this instead warns and, for a scalar-declared
+   * key given more than one comma-piece, keeps only the first); or if the raw value is an empty (but
+   * non-{@code "."}) entry and this sample was built under a strict {@link VcfContext} (under a lenient one, an
+   * empty value instead returns {@code null} -- see
    * {@link InternalUtils#convertProperty(Class, String, boolean, VcfWarnings, VcfWarnings)})
    */
   public @Nullable <T> T getProperty(VcfPosition position, VcfMetadata metadata, String key) {
@@ -455,30 +460,36 @@ public final class VcfSample {
       isList = !number.equals("0") && !number.equals("1");
     }
     String[] pieces = InternalUtils.splitFormatValue(key, rawValue, version);
+    // isLenient()-aware, shared by the cardinality check just below, the range check further down, and
+    // convertProperty's own empty-value substitution -- see
+    // InternalUtils.convertProperty(Class, String, boolean, VcfWarnings, VcfWarnings)'s own Javadoc for why an
+    // empty value is isLenient()-gated here but not on VcfWriter's write side. A cardinality mismatch (including
+    // a scalar-declared key given a comma-corrupted, multi-piece value -- see the comment below) is the same
+    // kind of "bad input causing data loss on typed access" this library already throws for elsewhere under
+    // strict, rather than warning and silently keeping only the first piece.
+    VcfWarnings checkWarnings = m_context.isLenient() ? m_warnings : null;
     if (!InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck(key, version, number)) {
       Integer ploidy = InternalUtils.getPloidy(position, getProperty("GT"), "FORMAT " + key, m_warnings);
       // GL/PL/GP/PP's own spec-stated "diploidy is assumed" default when GT is absent -- see
       // InternalUtils.resolvePloidyForCardinalityCheck's own comment for the full citation
       ploidy = InternalUtils.resolvePloidyForCardinalityCheck(key, ploidy);
       InternalUtils.warnIfWrongCardinality("FORMAT " + key, number, pieces.length, position.getAltBases().size(),
-          ploidy, m_warnings);
+          ploidy, m_warnings, checkWarnings);
     }
     // more than one comma-piece for a scalar (isList=false) key is a cardinality violation already warned about
-    // above -- convert only the first piece (the same "keep the first, warn about the rest" convention this
-    // library already uses for a duplicate metadata ID and a duplicate INFO key), rather than passing the whole
-    // multi-piece value through as one opaque element, which would silently swallow a String-typed key's extra
-    // pieces or crash a numeric/Boolean-typed one. number is never null by this point: the reserved branch above
-    // always sets a real value, and the non-reserved branch just substituted "." for an absent declaration.
+    // (or, under strict, thrown for) above -- convert only the first piece (the same "keep the first, warn about
+    // the rest" convention this library already uses for a duplicate metadata ID and a duplicate INFO key),
+    // rather than passing the whole multi-piece value through as one opaque element, which would silently
+    // swallow a String-typed key's extra pieces or crash a numeric/Boolean-typed one. Reached only under
+    // lenient, or when the mismatch check above didn't fire at all -- the strict throw above already exits the
+    // method before this line runs. number is never null by this point: the reserved branch above always sets a
+    // real value, and the non-reserved branch just substituted "." for an absent declaration.
     String valueToConvert = (!isList && pieces.length > 1) ? pieces[0] : rawValue;
     if (reserved != null) {
       return InternalUtils.convertProperty(reserved, valueToConvert, m_context);
     }
     FormatType formatType = format.getType();
     Class<?> type = formatType == null ? String.class : InternalUtils.toJavaType(formatType);
-    // isLenient()-aware, shared by both the range check below and convertProperty's own empty-value
-    // substitution -- see InternalUtils.convertProperty(Class, String, boolean, VcfWarnings, VcfWarnings)'s
-    // own Javadoc for why an empty value is isLenient()-gated here but not on VcfWriter's write side.
-    VcfWarnings checkWarnings = m_context.isLenient() ? m_warnings : null;
     if (type == Long.class) {
       InternalUtils.checkInteger32BitRange("FORMAT " + key, valueToConvert, isList, checkWarnings);
     }
