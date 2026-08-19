@@ -388,12 +388,21 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
   separator embedded in a key -- already rejected at construction; re-measured 2026-08-18 correcting an
   earlier "no warning" prediction -- bcftools actually warns `INFO 'X' is not defined in the header` because
   the corrupted second entry is undeclared, but still exits 0 and keeps the wire text unchanged),
-  `#testInfoValueCommaInScalarKeyBcftoolsAcceptsSilently` (INFO's own `,` list-join delimiter embedded in a
-  scalar (`Number=1`) value -- already rejected at construction; bcftools does not validate a String-typed
-  key's `Number` cardinality against its actual comma count), `#testFormatColonCorruptedKeyBcftoolsMisalignsSampleValues`
+  `#testInfoKeyEqualsEntryBcftoolsWarnsButKeepsWireTextUnchanged` (INFO's own `=` key/value separator embedded
+  in a key -- already rejected at construction; added as a follow-up fix, TODO.md's "no dedicated row or
+  evidence" residue -- bcftools splits on the first `=` the same way this library's own parser does, warns
+  `INFO 'KEY' is not defined in the header` because the corrupted key isn't declared, but still exits 0 and
+  keeps the wire text unchanged), `#testInfoValueCommaInScalarKeyBcftoolsAcceptsSilently` (INFO's own `,`
+  list-join delimiter embedded in a scalar (`Number=1`) value -- already rejected at construction; bcftools
+  does not validate a String-typed key's `Number` cardinality against its actual comma count),
+  `#testFormatColonCorruptedKeyBcftoolsMisalignsSampleValues`
   (FORMAT's own `:` key-join delimiter -- the fix from the prior commit; bcftools warns
   `[W::vcf_parse_format_alloc4] Duplicate FORMAT tag GT`, collapses the duplicate key, and silently
-  misassigns every sample value after the corruption point -- worse than a rejection)
+  misassigns every sample value after the corruption point -- worse than a rejection),
+  `#testWellFormedIdAltFilterInfoFormatBcftoolsAcceptsCleanlyAsControl` (the control row for this whole
+  surface, added as a follow-up fix -- TODO.md's "no control case on the bcftools side" residue; one ordinary
+  record touching every field this surface covers, none of the corrupting shapes, confirming the shared
+  `runBcftools` harness itself produces a clean result rather than silently reporting every input invalid)
 - Reasoning: `docs/superpowers/specs/2026-08-18-1000-vcfposition-corrupting-character-surface-design.md`
   (no pre-existing behavior-table document covers this surface; the design's own "no fresh markdown table"
   decision routes the evidence here instead). The FILTER and FORMAT rows are the two delimiter-corruption

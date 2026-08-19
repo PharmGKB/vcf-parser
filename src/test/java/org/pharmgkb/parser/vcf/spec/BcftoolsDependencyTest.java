@@ -1514,6 +1514,49 @@ class BcftoolsDependencyTest {
   }
 
   @Test
+  void testInfoKeyEqualsEntryBcftoolsWarnsButKeepsWireTextUnchanged() throws IOException, InterruptedException {
+    // VcfPosition.checkInfoEntries() already rejects a '=' in an INFO key at construction
+    // (VcfPosition.java:613-615, key.contains(";") || key.contains("=")) -- this row had bcftools evidence
+    // for its sibling ';'-in-key shape but none of its own (TODO.md's "VcfPosition corrupting-character
+    // sub-project: deliberate row-set narrowing" entry). A corrupted INFO key "KEY=X" combined with an
+    // intended value "value" reproduces as the wire text "KEY=X=value" -- INFO's own key/value separator '='
+    // embedded where the key/value boundary should be. Confirmed live: bcftools splits on the FIRST '='
+    // (key="KEY", value="X=value"), the same behavior this library's own parser already uses for a '=' inside
+    // a VALUE (see checkInfoEntries's own comment on that shape) -- it emits
+    // "[W::vcf_parse_info] INFO 'KEY' is not defined in the header, assuming Type=String" because the
+    // corrupted key isn't itself declared, but still exits 0 and re-emits the wire text unchanged. Symmetric
+    // with the ';'-in-key case above: a warning, not a rejection or misalignment.
+    String vcf = "##fileformat=VCFv4.3\n##contig=<ID=chr1,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT\t.\tPASS\tKEY=X=value\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("[W::vcf_parse_info] INFO 'KEY' is not defined in the header, assuming Type=String"),
+        result.output());
+    assertTrue(result.output().lines().anyMatch(line -> line.endsWith("KEY=X=value")), result.output());
+  }
+
+  @Test
+  void testWellFormedIdAltFilterInfoFormatBcftoolsAcceptsCleanlyAsControl() throws IOException, InterruptedException {
+    // Control row for this whole corrupting-character surface (TODO.md's "no control case on the bcftools
+    // side" entry): the 7 corrupting-shape tests above and below share the runBcftools harness, but none of
+    // them has an accompanying well-formed probe demonstrating the harness produces a clean result for the
+    // same fields -- unlike the local-fixtures corpus's own 5 passed/ control-row fixtures, which serve that
+    // purpose on the parser side only. One ordinary, unremarkable record touching every field this surface
+    // covers (ID, ALT, FILTER, INFO key/value, FORMAT), none of them containing any of the corrupting
+    // characters measured above -- confirmed live: exit 0, no "[W::"/"[E::" anywhere in the output at all.
+    String vcf = "##fileformat=VCFv4.3\n##FILTER=<ID=q10,Description=\"quality below 10\">\n" +
+        "##INFO=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">\n" +
+        "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
+        "chr1\t1\trs1\tA\tT\t.\tq10\tDP=10\tGT:DP\t0/1:30\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
+    assertTrue(result.output().lines().anyMatch(line -> line.endsWith("q10\tDP=10\tGT:DP\t0/1:30")), result.output());
+  }
+
+  @Test
   void testInfoValueCommaInScalarKeyBcftoolsAcceptsSilently() throws IOException, InterruptedException {
     // VcfPosition.checkInfoEntries() already rejects a ',' in an INFO value at construction
     // (VcfPosition.java:616-618). Probes a SCALAR (Number=1, String-typed) key specifically, not a
