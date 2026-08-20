@@ -242,7 +242,7 @@ class BcftoolsDependencyTest {
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
     BcftoolsResult result = runBcftools(vcf, "view", "-h");
     assertEquals(0, result.exitCode(), result.output());
-    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
     assertTrue(result.output().contains("accession=foo"), result.output());
   }
 
@@ -789,7 +789,7 @@ class BcftoolsDependencyTest {
         "chr1\t1\trs1\tA\tT,C\t.\tPASS\t.\tGT:PL\t0/1:1,2\n";
     BcftoolsResult result = runBcftools(vcf, "view");
     assertEquals(0, result.exitCode(), result.output());
-    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
   }
 
   @Test
@@ -802,7 +802,7 @@ class BcftoolsDependencyTest {
     BcftoolsResult result = runBcftools(vcf, "view");
     assertEquals(0, result.exitCode(), result.output());
     assertTrue(result.output().contains("\trs1;;rs2\t"), result.output());
-    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
   }
 
   @Test
@@ -814,7 +814,7 @@ class BcftoolsDependencyTest {
     BcftoolsResult result = runBcftools(vcf, "view");
     assertEquals(0, result.exitCode(), result.output());
     assertTrue(result.output().contains("\trs3;\t"), result.output());
-    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
   }
 
   @Test
@@ -841,7 +841,7 @@ class BcftoolsDependencyTest {
         "chr1\t1\trs1\tA\tT\t.\tq10;\t.\n";
     BcftoolsResult result = runBcftools(vcf, "view");
     assertEquals(0, result.exitCode(), result.output());
-    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
     assertTrue(result.output().contains("\tq10\t"), result.output());
   }
 
@@ -896,7 +896,7 @@ class BcftoolsDependencyTest {
         "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:DP\t0/1:\n";
     BcftoolsResult result = runBcftools(vcf, "view");
     assertEquals(0, result.exitCode(), result.output());
-    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
     assertTrue(result.output().contains("\tGT:DP\t0/1:.\n") || result.output().contains("\tGT:DP\t0/1:.\r\n"),
         result.output());
   }
@@ -937,7 +937,7 @@ class BcftoolsDependencyTest {
         "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:XX:GQ\t0/1::30\n";
     BcftoolsResult result = runBcftools(vcf, "view");
     assertEquals(0, result.exitCode(), result.output());
-    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
     assertTrue(result.output().contains("\tGT:XX:GQ\t0/1:\0:30\n"),
         "Expected a literal NUL byte (0x00) in place of the empty XX subfield, got: " + result.output());
   }
@@ -964,7 +964,7 @@ class BcftoolsDependencyTest {
         "chr1\t1\trs1\tA\tT\t.\tPASS\tDP=10;\n";
     BcftoolsResult result = runBcftools(vcf, "view");
     assertEquals(0, result.exitCode(), result.output());
-    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
     assertTrue(result.output().contains("\tDP=10\n"), result.output());
   }
 
@@ -977,7 +977,7 @@ class BcftoolsDependencyTest {
         "chr1\t1\trs1\tA\tT\t.\tPASS\t=5;DP=10\n";
     BcftoolsResult result = runBcftools(vcf, "view");
     assertEquals(0, result.exitCode(), result.output());
-    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
     assertTrue(result.output().contains("\tDP=10\n"), result.output());
   }
 
@@ -1031,7 +1031,7 @@ class BcftoolsDependencyTest {
         "chr1\t1\trs1\tA\tT\t.\tPASS\tDB;DP=10\n";
     BcftoolsResult result = runBcftools(vcf, "view");
     assertEquals(0, result.exitCode(), result.output());
-    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
     assertTrue(result.output().contains("\tDB;DP=10\n"), result.output());
   }
 
@@ -1081,7 +1081,7 @@ class BcftoolsDependencyTest {
         "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:FT\t0/1:q10;;q20\n";
     BcftoolsResult result = runBcftools(vcf, "view");
     assertEquals(0, result.exitCode(), result.output());
-    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
     assertTrue(result.output().contains("\tGT:FT\t0/1:q10;;q20\n"), result.output());
   }
 
@@ -1097,7 +1097,7 @@ class BcftoolsDependencyTest {
         "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:FT\t0/1:;;\n";
     BcftoolsResult result = runBcftools(vcf, "view");
     assertEquals(0, result.exitCode(), result.output());
-    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
     assertTrue(result.output().contains("\tGT:FT\t0/1:;;\n"), result.output());
   }
 
@@ -1353,7 +1353,7 @@ class BcftoolsDependencyTest {
     BcftoolsResult result = runBcftools(vcf, "view", "-h");
     assertEquals(0, result.exitCode(), result.output());
     assertTrue(result.output().contains("description=a;b"), result.output());
-    assertFalse(result.output().toLowerCase(java.util.Locale.ROOT).contains("warn"), result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
   }
 
   @Test
