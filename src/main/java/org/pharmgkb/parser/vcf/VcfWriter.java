@@ -371,21 +371,29 @@ public class VcfWriter implements Closeable {
     // ALT is position-dependent (GT genotype values index into it), so an empty entry is substituted with "."
     // rather than dropped -- dropping would shift every later allele's index; see EMPTY_FIELD_HANDLING.md.
     addListOrElse("ALT", position.getAltBases(), ",", ".", true, sb);
-    try {
-      addStringOrElse(position.getQuality(), ".", sb);
-    } catch (VcfFormatException e) {
-      // getQuality() now throws unconditionally for a QUAL value it cannot parse as a number at all -- this can
-      // genuinely arise from parsed content (QUAL parses lazily; the parser itself never eagerly validates it),
-      // so this write path must not crash here (AGENTS.md's Writer Round-Trip Policy: "a record accepted by the
-      // parser must be writable without losing fields"). Write the original wire text via getRawQuality()
-      // instead of canonicalizing to "." -- this preserves the malformed value exactly rather than losing it.
-      // validateBeforeWrite()'s own always-warn policy applies here too, regardless of the written position's
-      // own strict/lenient origin (AGENTS.md's Writer Validation Policy) -- see the sibling INFO/FORMAT
-      // catch-and-warn call sites in validateInfoValue/validateFormatValue for the identical pattern.
+    // QUAL is written back from its original wire text whenever one exists -- every genuinely parsed record
+    // has one (even "." for the missing value; see VcfParser, which always attaches the raw QUAL column text)
+    // -- matching how every other field (ID/FILTER/FORMAT, and INFO's per-key values) is written from its
+    // originally parsed text, never reformatted through a typed getter. getQuality() is still called here, but
+    // only under validateBeforeWrite(): its sole remaining role on this path is the diagnostic side effect (the
+    // grammar-mismatch warning VcfFloat.parse() emits internally, or a thrown VcfFormatException for a
+    // genuinely unparseable value, caught and warned below) -- the default (non-validating) path leaves that
+    // check entirely deferred to a caller's own later access, per this project's delayed-validation philosophy
+    // (see VALIDATION_PHILOSOPHY.md). Only a Builder-constructed position with no raw text at all
+    // (Builder#quality(VcfFloat)) falls through to the else branch and formats getQuality() directly -- it
+    // cannot throw there, since there was never wire text to fail parsing.
+    String rawQuality = position.getRawQuality();
+    if (rawQuality != null) {
       if (m_validateBeforeWrite) {
-        m_warnings.warn(e.getMessage());
+        try {
+          position.getQuality();
+        } catch (VcfFormatException e) {
+          m_warnings.warn(e.getMessage());
+        }
       }
-      addStringOrElse(position.getRawQuality(), ".", sb);
+      addStringOrElse(rawQuality, ".", sb);
+    } else {
+      addStringOrElse(position.getQuality(), ".", sb);
     }
     addListOrElse("FILTER", position.getFilters(), ";", ".", false, sb);
     addInfoOrDot(metadata, position, sb);
