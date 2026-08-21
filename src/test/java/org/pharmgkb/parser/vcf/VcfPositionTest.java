@@ -24,8 +24,8 @@ public class VcfPositionTest {
   @Test
   public void testLazyQuality() {
     VcfPosition value = newPosition().toBuilder().rawQuality("29.5").build();
-    assertEquals(new BigDecimal("29.5"), value.getQuality());
-    assertEquals(new BigDecimal("29.5"), value.getQuality()); // stable across repeated reads
+    assertEquals(VcfFloat.of(new BigDecimal("29.5")), value.getQuality());
+    assertEquals(VcfFloat.of(new BigDecimal("29.5")), value.getQuality()); // stable across repeated reads
 
     VcfPosition missing = newPosition().toBuilder().rawQuality(".").build();
     assertNull(missing.getQuality());
@@ -44,8 +44,8 @@ public class VcfPositionTest {
     assertThrows(VcfFormatException.class, bad::getQuality);
 
     // Builder#quality overrides any pending raw value
-    VcfPosition override = newPosition().toBuilder().rawQuality("1").quality(new BigDecimal("2")).build();
-    assertEquals(new BigDecimal("2"), override.getQuality());
+    VcfPosition override = newPosition().toBuilder().rawQuality("1").quality(VcfFloat.of(new BigDecimal("2"))).build();
+    assertEquals(VcfFloat.of(new BigDecimal("2")), override.getQuality());
     // no raw text ever existed for this position -- it was constructed directly from a BigDecimal
     assertNull(override.getRawQuality());
   }
@@ -56,7 +56,7 @@ public class VcfPositionTest {
     // the original wire text even after getQuality() has already parsed it successfully -- not just for the
     // malformed case above
     VcfPosition value = newPosition().toBuilder().rawQuality("29.5").build();
-    assertEquals(new BigDecimal("29.5"), value.getQuality());
+    assertEquals(VcfFloat.of(new BigDecimal("29.5")), value.getQuality());
     assertEquals("29.5", value.getRawQuality());
 
     // getQuality()'s unconditional throw is not gated by isLenient() -- VcfParser itself stays lenient
@@ -65,6 +65,39 @@ public class VcfPositionTest {
     VcfPosition lenientBad = lenientPosition().toBuilder().rawQuality("not-a-number").build();
     assertThrows(VcfFormatException.class, lenientBad::getQuality);
     assertEquals("not-a-number", lenientBad.getRawQuality());
+  }
+
+  @Test
+  public void testGetQualitySucceedsForSpecialFloatValues() {
+    // VCFv4.3.tex line 100: "NAN, INF, INFINITY" (case-insensitive, optionally signed) are valid Float
+    // literals -- QUAL is VCF-spec-typed Float, so getQuality() must accept them the same way every other
+    // Float-typed reserved key already does via InternalUtils.convertElement's VcfFloat.parse(value,
+    // warnings) call
+    VcfPosition inf = newPosition().toBuilder().rawQuality("Inf").build();
+    assertEquals(VcfFloat.ofSpecial(VcfFloat.Special.POSITIVE_INFINITY), inf.getQuality());
+    assertEquals("Inf", inf.getRawQuality());
+
+    VcfPosition plusInf = newPosition().toBuilder().rawQuality("+Inf").build();
+    assertEquals(VcfFloat.ofSpecial(VcfFloat.Special.POSITIVE_INFINITY), plusInf.getQuality());
+
+    VcfPosition negInf = newPosition().toBuilder().rawQuality("-INFINITY").build();
+    assertEquals(VcfFloat.ofSpecial(VcfFloat.Special.NEGATIVE_INFINITY), negInf.getQuality());
+
+    VcfPosition nan = newPosition().toBuilder().rawQuality("nan").build();
+    assertEquals(VcfFloat.ofSpecial(VcfFloat.Special.NAN), nan.getQuality());
+  }
+
+  @Test
+  public void testBuilderConstructedSpecialQualityHasNoRawTextAndReturnsUnchanged() {
+    // a caller can now construct a special-value QUAL directly, with no wire text ever existing for it --
+    // getQuality() returns exactly what was set, and getRawQuality() stays null (mirrors the existing
+    // BigDecimal-equivalent case pinned by testLazyQuality's "Builder#quality overrides any pending raw
+    // value" assertion)
+    VcfPosition position = newPosition().toBuilder()
+        .quality(VcfFloat.ofSpecial(VcfFloat.Special.POSITIVE_INFINITY))
+        .build();
+    assertEquals(VcfFloat.ofSpecial(VcfFloat.Special.POSITIVE_INFINITY), position.getQuality());
+    assertNull(position.getRawQuality());
   }
 
   @Test
@@ -93,7 +126,7 @@ public class VcfPositionTest {
     root.addAppender(appender);
     try {
       VcfPosition value = newPosition().toBuilder().rawQuality("5.").build();
-      assertEquals(new BigDecimal("5"), value.getQuality());
+      assertEquals(VcfFloat.of(new BigDecimal("5")), value.getQuality());
       assertTrue(appender.hasWarnOrHigher());
       assertTrue(appender.anyMessageContains("does not match the VCF Float grammar"));
     } finally {
@@ -470,7 +503,7 @@ public class VcfPositionTest {
 
   @Test
   public void testGetAlleleShortConstructor() {
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "C", new BigDecimal("0.0"), -1);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "C", VcfFloat.of(new BigDecimal("0.0")), -1);
     assertEquals("C", position.getAllele(0));
     assertThrows(IndexOutOfBoundsException.class, () -> position.getAllele(1));
   }
@@ -670,7 +703,7 @@ public class VcfPositionTest {
     char[] invalidChars = { '\\', ',', '"', '`', '\'', '(', ')', '{', '}', '[', ']', '<', '>' };
     for (char c : invalidChars) {
       String chrom = "chr" + c + "1";
-      assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newPosition(chrom, 1, "C", new BigDecimal("0"), -1),
+      assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newPosition(chrom, 1, "C", VcfFloat.of(new BigDecimal("0")), -1),
           () -> "CHROM \"" + chrom + "\" containing '" + c + "' should have been rejected");
     }
   }
@@ -679,41 +712,41 @@ public class VcfPositionTest {
   public void testAsteriskAndEqualsRejectedOnlyAsFirstCharacter() {
     // VCFv4.3.tex's appendix: "* is now valid when not the first character"; "*"/"=" as the first character
     // "were already invalid and remain so"
-    assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newPosition("*chr1", 1, "C", new BigDecimal("0"), -1));
-    assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newPosition("=chr1", 1, "C", new BigDecimal("0"), -1));
-    STRICT_CONTEXT.newPosition("chr*1", 1, "C", new BigDecimal("0"), -1); // '*' elsewhere is fine
-    STRICT_CONTEXT.newPosition("chr1*", 1, "C", new BigDecimal("0"), -1);
-    STRICT_CONTEXT.newPosition("chr=1", 1, "C", new BigDecimal("0"), -1); // '=' elsewhere was never restricted
+    assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newPosition("*chr1", 1, "C", VcfFloat.of(new BigDecimal("0")), -1));
+    assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newPosition("=chr1", 1, "C", VcfFloat.of(new BigDecimal("0")), -1));
+    STRICT_CONTEXT.newPosition("chr*1", 1, "C", VcfFloat.of(new BigDecimal("0")), -1); // '*' elsewhere is fine
+    STRICT_CONTEXT.newPosition("chr1*", 1, "C", VcfFloat.of(new BigDecimal("0")), -1);
+    STRICT_CONTEXT.newPosition("chr=1", 1, "C", VcfFloat.of(new BigDecimal("0")), -1); // '=' elsewhere was never restricted
   }
 
   @Test
   public void testWellFormedAngleBracketWrappedChromosomeAccepted() {
     // VCFv4.2.tex line 179: CHROM's other valid form, "an angle-bracketed ID String (<ID>) pointing to a contig
     // in the assembly file"
-    STRICT_CONTEXT.newPosition("<1>", 1, "C", new BigDecimal("0"), -1);
-    STRICT_CONTEXT.newPosition("<chr1>", 1, "C", new BigDecimal("0"), -1);
+    STRICT_CONTEXT.newPosition("<1>", 1, "C", VcfFloat.of(new BigDecimal("0")), -1);
+    STRICT_CONTEXT.newPosition("<chr1>", 1, "C", VcfFloat.of(new BigDecimal("0")), -1);
   }
 
   @Test
   public void testMalformedAngleBracketChromosomeRejected() {
     assertThrows(VcfFormatException.class,
-        () -> STRICT_CONTEXT.newPosition("<1", 1, "C", new BigDecimal("0"), -1));    // unclosed
+        () -> STRICT_CONTEXT.newPosition("<1", 1, "C", VcfFloat.of(new BigDecimal("0")), -1));    // unclosed
     assertThrows(VcfFormatException.class,
-        () -> STRICT_CONTEXT.newPosition("1>", 1, "C", new BigDecimal("0"), -1));    // no opening
+        () -> STRICT_CONTEXT.newPosition("1>", 1, "C", VcfFloat.of(new BigDecimal("0")), -1));    // no opening
     assertThrows(VcfFormatException.class,
-        () -> STRICT_CONTEXT.newPosition("<>", 1, "C", new BigDecimal("0"), -1));    // empty content after unwrap
+        () -> STRICT_CONTEXT.newPosition("<>", 1, "C", VcfFloat.of(new BigDecimal("0")), -1));    // empty content after unwrap
     assertThrows(VcfFormatException.class,
-        () -> STRICT_CONTEXT.newPosition("<1>2>", 1, "C", new BigDecimal("0"), -1)); // malformed nested '>'
+        () -> STRICT_CONTEXT.newPosition("<1>2>", 1, "C", VcfFloat.of(new BigDecimal("0")), -1)); // malformed nested '>'
   }
 
   @Test
   public void testShortConstructorValidates() {
     assertThrows(VcfFormatException.class,
-        () -> STRICT_CONTEXT.newPosition("", 1, "C", new BigDecimal("0"), -1));      // empty CHROM
+        () -> STRICT_CONTEXT.newPosition("", 1, "C", VcfFloat.of(new BigDecimal("0")), -1));      // empty CHROM
     assertThrows(VcfFormatException.class,
-        () -> STRICT_CONTEXT.newPosition("chr1", -1, "C", new BigDecimal("0"), -1)); // negative POS
+        () -> STRICT_CONTEXT.newPosition("chr1", -1, "C", VcfFloat.of(new BigDecimal("0")), -1)); // negative POS
     assertThrows(VcfFormatException.class,
-        () -> STRICT_CONTEXT.newPosition("chr1", 1, "X", new BigDecimal("0"), -1));  // invalid REF
+        () -> STRICT_CONTEXT.newPosition("chr1", 1, "X", VcfFloat.of(new BigDecimal("0")), -1));  // invalid REF
   }
 
   @Test
@@ -1706,7 +1739,7 @@ public class VcfPositionTest {
   @Test
   public void testToBuilderCopiesEveryFieldAndPreservesContext() {
     VcfPosition original = STRICT_CONTEXT.newPosition("chr1", 100, List.of("rs1"), "A", List.of("T"),
-        new BigDecimal("50"), List.of("PASS"), null, List.of("GT"), 7);
+        VcfFloat.of(new BigDecimal("50")), List.of("PASS"), null, List.of("GT"), 7);
     VcfPosition copy = original.toBuilder().build();
     assertEquals(original.getChromosome(), copy.getChromosome());
     assertEquals(original.getPosition(), copy.getPosition());
@@ -1721,11 +1754,11 @@ public class VcfPositionTest {
 
   @Test
   public void testToBuilderChangeOneFieldLeavesSourceUntouched() {
-    VcfPosition original = STRICT_CONTEXT.newPosition("chr1", 100, null, "A", List.of("T"), new BigDecimal("50"),
+    VcfPosition original = STRICT_CONTEXT.newPosition("chr1", 100, null, "A", List.of("T"), VcfFloat.of(new BigDecimal("50")),
         null, null, null, -1);
-    VcfPosition modified = original.toBuilder().quality(BigDecimal.ZERO).build();
-    assertEquals(new BigDecimal("50"), original.getQuality());
-    assertEquals(BigDecimal.ZERO, modified.getQuality());
+    VcfPosition modified = original.toBuilder().quality(VcfFloat.of(BigDecimal.ZERO)).build();
+    assertEquals(VcfFloat.of(new BigDecimal("50")), original.getQuality());
+    assertEquals(VcfFloat.of(BigDecimal.ZERO), modified.getQuality());
     assertEquals("chr1", modified.getChromosome());
   }
 
