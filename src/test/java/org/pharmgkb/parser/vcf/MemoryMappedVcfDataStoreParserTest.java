@@ -47,7 +47,7 @@ public class MemoryMappedVcfDataStoreParserTest {
   @Test
   public void testParseLineRejectsNullMetadataInsteadOfCorruptingLaterLookups() {
     MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", VcfFloat.of(new BigDecimal("0")), -1);
     // hoisted out of the lambda so this can only ever fail on parseLine()'s own rejection, never on a future
     // VcfRecord constructor check
     VcfRecord record = STRICT_CONTEXT.newRecord(position, Collections.emptyList());
@@ -85,7 +85,7 @@ public class MemoryMappedVcfDataStoreParserTest {
     // the only path by which a null sample element can still reach parseLine().
     MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
     VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", new BigDecimal("0"), -1);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, "A", VcfFloat.of(new BigDecimal("0")), -1);
     VcfSample validSample = STRICT_CONTEXT.newSample(List.of("GT"), List.of("0/1"));
     VcfRecord record = STRICT_CONTEXT.newTrustedRecord(position, Arrays.asList(validSample, null));
     VcfFormatException e = assertThrows(VcfFormatException.class,
@@ -523,7 +523,7 @@ public class MemoryMappedVcfDataStoreParserTest {
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
     lineParser.parseMetadata(metadata);
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, List.of("rs1", "rs1"), "A", null,
-        new BigDecimal("0"), null, null, null, -1);
+        VcfFloat.of(new BigDecimal("0")), null, null, null, -1);
 
     VcfRecord record = LENIENT_CONTEXT.newRecord(position, Collections.emptyList());
     assertThrows(VcfFormatException.class, () -> lineParser.parseLine(metadata, record));

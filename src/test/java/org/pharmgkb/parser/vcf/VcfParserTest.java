@@ -71,7 +71,7 @@ public class VcfParserTest {
                assertEquals(Arrays.asList("rsa", "rsb"), position.getIds());
                assertEquals("Aa", position.getRef());
                assertEquals(Arrays.asList("Tt", "Gg", "Cc"), position.getAltBases());
-               assertEquals(new BigDecimal("5.2e-10"), position.getQuality());
+               assertEquals(VcfFloat.of(new BigDecimal("5.2e-10")), position.getQuality());
                assertEquals(Arrays.asList("PASS"), position.getFilters());
                assertTrue(position.getInfo().isEmpty());
              })
@@ -175,7 +175,7 @@ public class VcfParserTest {
                assertEquals(Arrays.asList("rsa", "rsb"), position.getIds());
                assertEquals("Aa", position.getRef());
                assertEquals(Arrays.asList("Tt", "Gg", "Cc"), position.getAltBases());
-               assertEquals(new BigDecimal("5.2e-10"), position.getQuality());
+               assertEquals(VcfFloat.of(new BigDecimal("5.2e-10")), position.getQuality());
                assertEquals(Arrays.asList("PASS"), position.getFilters());
                assertTrue(position.getInfo().isEmpty());
              })
@@ -2653,7 +2653,7 @@ public class VcfParserTest {
         })
         .build();
     parser.parse();
-    assertEquals(new java.math.BigDecimal("5"), assertDoesNotThrow(() -> captured.get(0).getQuality()));
+    assertEquals(VcfFloat.of(new java.math.BigDecimal("5")), assertDoesNotThrow(() -> captured.get(0).getQuality()));
     assertFalse(Files.readString(warningsFile).contains("does not match the VCF Float grammar"));
   }
   // ---- VcfContext wiring ----
