@@ -455,8 +455,38 @@ is a structural failure and still throws -- see the strict section above):
 ### INFO/FORMAT/sample value content
 
 - INFO, FILTER, FORMAT, and sample content that is semantically malformed but can be preserved or normalized safely.
-- A non-numeric `QUAL`: the column itself is still well-formed, so this is treated as the missing value rather than
-  a structural failure.
+- **A `QUAL`/reserved INFO/FORMAT value that cannot be parsed as its declared `Type` at all** -- distinct from a
+  value that parses fine but is out of range or the wrong cardinality (both of which warn-and-recover under a
+  lenient `VcfContext`, per the bullets below): `VcfPosition.getQuality()`, `InternalUtils.convertElement`'s
+  `Character`/`Boolean`/`Long`/`VcfFloat` branches (reached from `getInfo(ReservedInfoProperty)`,
+  `getInfo(VcfMetadata, String)`, `VcfSample.getProperty(ReservedFormatProperty)`, and
+  `getProperty(VcfPosition, VcfMetadata, String)`) all throw `VcfFormatException` **unconditionally, regardless of
+  context** -- not gated by `isLenient()` the way every other check in this section is. This is deliberate, not an
+  oversight: unlike an out-of-range number (still a real, storable value) or a wrong-cardinality list (the raw
+  pieces are all individually still valid), there is no sane value to preserve or normalize a genuinely
+  non-numeric/non-boolean/non-single-character string to. Nothing is lost by throwing either way: the original
+  wire text remains permanently retrievable afterward via a sibling raw accessor the typed conversion never
+  mutates -- `VcfPosition.getRawQuality()`/`getInfo(String)`/`getInfo()` for QUAL/INFO, `VcfSample.getProperty(String)`
+  for FORMAT. This is a genuinely deferred check: `VcfParser` itself stays lenient and finishes parsing the file
+  regardless of what a later typed-getter call throws. Before 2026-08-20, `getQuality()` instead warned and
+  treated an unparseable QUAL as the missing value, silently conflating "genuinely absent" with "present but
+  malformed" -- changed to match `convertElement`'s pre-existing behavior for the identical failure mode elsewhere.
+  **Known gap:** `getQuality()` still does not accept VCFv4.3.tex line 100's Special Float values
+  (`NAN`/`INF`/`INFINITY`), unlike every other Float-typed field (which reach `VcfFloat.parse()`, not
+  `getQuality()`'s own direct `VcfFloat.parseDecimal` call) -- filed in `TODO.md`, since a real fix needs
+  `getQuality()`'s return type to change from `BigDecimal` (which cannot represent `Infinity`/`NaN`) to `VcfFloat`.
+- **The same reserved-key `Type` check also runs eagerly at manual construction time**, not just lazily at read
+  time, for `VcfPosition`/`VcfSample` alike -- `VcfPosition.checkReservedInfoTypes` (called only when a caller
+  passes an already-split `ListMultimap` directly to `Builder.info(...)`/`VcfContext.newPosition`, never on the
+  lazy `Builder.rawInfo(...)` path `VcfParser` itself exclusively uses) and `VcfSample.checkReservedFormatTypes`
+  (called on every public construction path except the parser's own `trusted` fast path). Both reuse the exact
+  same `InternalUtils.convertProperty(ReservedProperty, ...)` call the read-side getters use, purely as a
+  validation probe, so they inherit the identical dispatch: a cardinality/range mismatch still only warns under a
+  lenient context; an unparseable value still throws unconditionally. Construction-only by design (provably
+  unreachable via `VcfParser`, matching this project's "provably cannot fire during genuine parsing" bar for
+  every other unconditional-throw check) -- gives Principle 1 ("fail fast on direct, programmatic input") the
+  same reach for a reserved key's declared `Type` that it already had for structural checks like
+  `checkInfoEntries`/`checkNoStructuralDelimiter`.
 - A **zero-length allele token inside an otherwise non-empty `GT` value** (e.g. `0/`, `/1`, `0//1`): warned
   ("GT \"{}\" contains an empty allele (VCF does not allow zero-length fields); treating it as the missing
   value '.'") and substituted with `.` in the returned `Genotype`, leaving the sample's own stored `GT` text

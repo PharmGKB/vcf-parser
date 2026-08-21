@@ -2018,7 +2018,13 @@ public class VcfWriterTest {
         .build();
     VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         null, List.of("FT"), -1);
-    VcfSample sample = STRICT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("FT", "PASS;q10")));
+    // VcfSample has no lazy/raw construction route the way VcfPosition's INFO/QUAL do -- every public
+    // construction path is eager, so checkReservedFormatTypes' new construction-time check now makes it
+    // impossible for ANY public route to produce a strict-context sample holding this exact violation (FT's
+    // grammar check is isLenient()-aware, so strict construction now throws immediately). newDoublyUncheckedForTest
+    // exists precisely for this: synthesizing malformed state a real caller can no longer produce, to keep testing
+    // validateBeforeWrite()'s own independent policy in isolation from that now-unrelated construction-time check.
+    VcfSample sample = VcfSample.newDoublyUncheckedForTest(STRICT_CONTEXT, List.of("FT"), List.of("PASS;q10"));
 
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
@@ -2250,10 +2256,12 @@ public class VcfWriterTest {
     InfoMetadata ac = new InfoMetadata(STRICT_CONTEXT, ReservedInfoProperty.AlleleCount.getId(), "d", InfoType.Integer,
         "A", null, null);
     VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").addInfo(ac).build();
-    ListMultimap<String, String> positionInfo = ArrayListMultimap.create();
-    positionInfo.put("AC", "-1");
+    // attached via rawInfo(), not a pre-built ListMultimap: checkReservedInfoTypes' new construction-time check
+    // only runs on the eager already-split-multimap path (never reachable via VcfParser, which always stays
+    // lazy too) -- the lazy rawInfo() path stays lazy even under strict, so this is still the only genuinely
+    // public route left to construct a strict-context position carrying an as-yet-unvalidated reserved value
     VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
-        positionInfo, null, -1);
+        null, null, -1).toBuilder().rawInfo("AC=-1").build();
 
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
@@ -2305,7 +2313,14 @@ public class VcfWriterTest {
       writer.writeLine(metadata, position, Collections.emptyList());
     }
     assertTrue(Files.readString(writerWarningsFile).contains("INFO AC value \"-1\" is a negative number"));
-    assertFalse(recordSink.toString().contains("INFO AC value \"-1\" is a negative number"));
+    // checkReservedInfoTypes' new construction-time check ALSO now warns about this exact violation, but to
+    // recordContext's own sink (recordSink), since `position` was built under recordContext directly from a
+    // pre-built ListMultimap -- this is a second, genuinely independent diagnostic emission point, not a
+    // misroute of the writer's own warning: this test's actual claim (validateInfoValue's warning goes to the
+    // WRITER's sink, never to the record's own construction-time context) still holds, and is still verified
+    // by writerWarningsFile containing the message while metadata/position's own context sink is a DIFFERENT
+    // destination than where the writer's warning landed.
+    assertTrue(recordSink.toString().contains("INFO AC value \"-1\" is a negative number"));
   }
 
   @Test
@@ -2583,32 +2598,40 @@ public class VcfWriterTest {
     // previously propagated out of writeLine uncaught instead of just logging a warning
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "AN", "d", InfoType.Integer, "1", null, null);
+    // "XX" (not a reserved key like "AN"): checkReservedInfoTypes' new construction-time check would otherwise
+    // reject this value eagerly, before the writer this test is actually exercising ever sees it -- unlike a
+    // cardinality/range mismatch, an unparseable value throws unconditionally regardless of context (see
+    // InternalUtils.convertElement's own entry in VALIDATION_REFERENCE.md), so LENIENT_CONTEXT does not help here
+    InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "XX", "d", InfoType.Integer, "1", null, null);
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addInfo(info).build();
     writer.writeHeader(metadata);
     ListMultimap<String, String> positionInfo = ArrayListMultimap.create();
-    positionInfo.put("AN", "not-a-number"); // Type=Integer declared, but the value doesn't parse as one
+    positionInfo.put("XX", "not-a-number"); // Type=Integer declared, but the value doesn't parse as one
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
         positionInfo, null, -1);
     writer.writeLine(metadata, position, Collections.emptyList());
-    assertTrue(sw.toString().contains("AN=not-a-number"));
+    assertTrue(sw.toString().contains("XX=not-a-number"));
   }
 
   @Test
   public void testWriteSamplePropertyNotMatchingDeclaredTypeWarnsInsteadOfThrowing() throws Exception {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    FormatMetadata format = new FormatMetadata(LENIENT_CONTEXT, "DP", "d", "1", FormatType.Integer);
+    // "XX" (not a reserved key like "DP"): checkReservedFormatTypes' new construction-time check would otherwise
+    // reject this value eagerly, before the writer this test is actually exercising ever sees it -- unlike a
+    // cardinality/range mismatch, an unparseable value throws unconditionally regardless of context (see
+    // InternalUtils.convertElement's own entry in VALIDATION_REFERENCE.md), so LENIENT_CONTEXT does not help here
+    FormatMetadata format = new FormatMetadata(LENIENT_CONTEXT, "XX", "d", "1", FormatType.Integer);
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addFormat(format)
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "SAMPLE1"))
         .build();
     writer.writeHeader(metadata);
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), new BigDecimal("0"), null,
-        null, List.of("DP"), -1);
+        null, List.of("XX"), -1);
     // Type=Integer declared, but the value doesn't parse as one
-    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("DP", "not-a-number")));
+    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("XX", "not-a-number")));
     writer.writeLine(metadata, position, Collections.singletonList(sample));
-    assertTrue(sw.toString().contains("\tDP\tnot-a-number"));
+    assertTrue(sw.toString().contains("\tXX\tnot-a-number"));
   }
 
   @Test
@@ -3451,11 +3474,16 @@ public class VcfWriterTest {
     // own VcfContext and is never re-pointed by a later VcfWriter. `position` is built under LENIENT_CONTEXT
     // (VcfWarnings.DEFAULT, the shared SLF4J logger), so the lazy QUAL parse warning writeLine() triggers goes
     // there -- not to this writer's own warningsToFile() destination, even though the writer's own generated
-    // diagnostics (e.g. an undeclared INFO key) still land there.
+    // diagnostics (e.g. an undeclared INFO key) still land there. "5." (not "notanumber"): getQuality() now
+    // throws unconditionally for a value it cannot parse as a number at all, and the default (non-
+    // validateBeforeWrite) write path silently recovers via getRawQuality() without warning anywhere -- see
+    // VcfWriter.writeLine's own comment -- so this test needs a QUAL that still warns-and-parses to keep
+    // exercising the sink-routing behavior it's actually about, matching VcfPositionTest's own
+    // testQualityWarnsOnGrammarMismatchButStillParses fixture.
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").setColumns(List.of("#CHROM", "POS",
         "ID", "REF", "ALT", "QUAL", "FILTER", "INFO")).build();
     VcfPosition position = LENIENT_CONTEXT.newPosition("1", 100, "A", null, -1).toBuilder()
-        .rawQuality("notanumber") // never accessed yet -- writeLine() must be what fires the lazy parse
+        .rawQuality("5.") // never accessed yet -- writeLine() must be what fires the lazy parse
         .build();
     Path outFile = tempDir.resolve("out.vcf");
     Path warningsFile = tempDir.resolve("warnings.log");
@@ -3471,8 +3499,8 @@ public class VcfWriterTest {
         writer.writeHeader(metadata);
         writer.writeLine(metadata, position, List.of());
       }
-      assertFalse(java.nio.file.Files.readString(warningsFile).contains("is not a number"));
-      assertTrue(appender.anyMessageContains("is not a number"));
+      assertFalse(java.nio.file.Files.readString(warningsFile).contains("does not match the VCF Float grammar"));
+      assertTrue(appender.anyMessageContains("does not match the VCF Float grammar"));
     } finally {
       root.detachAppender(appender);
       appender.stop();

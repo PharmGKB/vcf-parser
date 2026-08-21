@@ -109,6 +109,7 @@ public final class VcfSample {
       for (int x = 0; x < keys.size(); x++) {
         checkNoStructuralDelimiter(keys.get(x), values.get(x), version);
       }
+      checkReservedFormatTypes(keys, values, context);
     } else if (selfVerify) {
       // self-verification only, compiled out at runtime unless assertions are enabled (see this
       // constructor's own Javadoc) -- runs the exact check the trusted path skips, so this constructor's
@@ -167,6 +168,7 @@ public final class VcfSample {
     for (Map.Entry<String, String> entry : m_properties.entrySet()) {
       checkNoStructuralDelimiter(entry.getKey(), entry.getValue(), version);
     }
+    checkReservedFormatTypes(m_properties, context);
   }
 
   /** @return the context this sample was created under; never {@code null}. */
@@ -230,6 +232,37 @@ public final class VcfSample {
     if (value != null && (value.contains("\t") || (!isGle && value.contains(":")))) {
       throw new VcfFormatException("Sample property value \"" + value + "\" for key \"" + key +
           "\" contains ':' or a tab");
+    }
+  }
+
+  /**
+   * For every key matching a {@link ReservedFormatProperty}, eagerly runs the same conversion
+   * {@link #getProperty(ReservedFormatProperty)} would otherwise only run lazily on first read -- purely as a
+   * validation probe, discarding the result -- so a caller building a sample directly from discrete key/value
+   * pairs gets {@code VALIDATION_PHILOSOPHY.md}'s Principle 1 ("fail fast on direct, programmatic input") for a
+   * reserved key's declared {@code Type}, not just {@link #checkNoStructuralDelimiter}'s structural checks. A
+   * value that cannot be parsed as the key's declared {@code Type} at all throws {@link VcfFormatException}
+   * unconditionally regardless of context, matching {@link #getProperty(ReservedFormatProperty)}'s own existing
+   * behavior -- see {@code InternalUtils.convertElement}'s entry in {@code VALIDATION_REFERENCE.md} for why.
+   * Never reachable via {@code VcfParser}: the parser exclusively uses the {@code trusted} parallel-list
+   * constructor above ({@code VcfContext.newTrustedSample}), which never calls this method.
+   */
+  private static void checkReservedFormatTypes(List<String> keys, List<String> values, VcfContext context) {
+    for (ReservedFormatProperty prop : ReservedFormatProperty.values()) {
+      int idx = keys.indexOf(prop.getId());
+      if (idx >= 0) {
+        InternalUtils.convertProperty(prop, values.get(idx), context);
+      }
+    }
+  }
+
+  /** {@code Map}-keyed counterpart of {@link #checkReservedFormatTypes(List, List, VcfContext)} above, for the
+   * property-map constructor, which has no parallel lists to scan linearly. */
+  private static void checkReservedFormatTypes(Map<String, String> properties, VcfContext context) {
+    for (ReservedFormatProperty prop : ReservedFormatProperty.values()) {
+      if (properties.containsKey(prop.getId())) {
+        InternalUtils.convertProperty(prop, properties.get(prop.getId()), context);
+      }
     }
   }
 
@@ -318,6 +351,11 @@ public final class VcfSample {
    * @param <T> The type specified by {@code ReservedInfoProperty.getType()} if {@code ReservedFormatProperty.isList()}
    *           is false;
    *           otherwise {@code List<V>} where V is the type specified by {@code ReservedFormatProperty.getType()}.
+   * @throws VcfFormatException if the raw value cannot be parsed as {@code key}'s declared {@code Type} at all --
+   * unconditionally, regardless of context, since there is no sane value to preserve or normalize to. This is a
+   * genuinely deferred check ({@code VcfParser} itself stays lenient and finishes parsing the file regardless),
+   * and nothing is lost even when it throws: the original wire text for {@code key} remains available afterward
+   * via {@link #getProperty(String)}, which reads from the same backing storage this conversion never mutates
    */
   public @Nullable <T> T getProperty(ReservedFormatProperty key) {
     // matches getProperty(String)'s own null-tolerant "not present" contract (see containsProperty's Javadoc
@@ -358,8 +396,12 @@ public final class VcfSample {
    * {@link #getProperty(String)}'s "not present" contract); see {@code AGENTS.md}'s Public API Null-Safety
    * Policy for the distinction
    * @throws VcfFormatException if {@code position} or {@code metadata} was built under a different
-   * {@link VcfContext} than this sample; if the raw value's {@code Type} does not match {@code key}'s declared
-   * type; if a declared {@code Type=Integer} value is not representable as a 32-bit signed integer or collides
+   * {@link VcfContext} than this sample; if the raw value cannot be parsed as {@code key}'s declared {@code Type}
+   * at all -- unconditionally, regardless of context, since there is no sane value to preserve or normalize to;
+   * this is a genuinely deferred check ({@code VcfParser} itself stays lenient and finishes parsing the file
+   * regardless), and nothing is lost even when it throws, since the original wire text for {@code key} remains
+   * available afterward via {@link #getProperty(String)}; if a declared {@code Type=Integer} value is not
+   * representable as a 32-bit signed integer or collides
    * with a BCF-reserved sentinel value (see {@link InternalUtils#checkInteger32BitRange}); if the raw value's
    * actual element count does not match {@code key}'s declared/reserved {@code Number} and this sample was
    * built under a strict {@link VcfContext} (under a lenient one, this instead warns and, for a scalar-declared

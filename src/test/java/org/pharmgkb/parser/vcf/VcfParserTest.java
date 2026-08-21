@@ -2565,9 +2565,13 @@ public class VcfParserTest {
     // getterDone is released in an inner finally (so a getter failure doesn't strand the parse thread) and
     // released again in the outer finally as a second safety net, and shutdownNow() + awaitTermination()
     // replace the bare shutdown() so a failed run can't leak a running thread into later tests.
+    // "5." (not "notanumber"): getQuality() now throws unconditionally for a value it cannot parse as a number
+    // at all (see its own Javadoc) -- this test needs the lazy getter to warn-and-return normally instead, to
+    // keep exercising cross-thread warning routing rather than exception propagation; see
+    // testLazyGetterFiredAfterParseReturnsFallsBackToSharedLoggerNotClosedFileWrite's identical fixture change.
     Path vcfFile = tempDir.resolve("test.vcf");
     Files.writeString(vcfFile, "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
-        "1\t100\t.\tA\tT\tnotanumber\t.\t.\n");
+        "1\t100\t.\tA\tT\t5.\t.\t.\n");
     Path warningsFile = tempDir.resolve("warnings.log");
     java.util.concurrent.CountDownLatch positionReady = new java.util.concurrent.CountDownLatch(1);
     java.util.concurrent.CountDownLatch getterDone = new java.util.concurrent.CountDownLatch(1);
@@ -2619,7 +2623,7 @@ public class VcfParserTest {
       pool.shutdownNow();
       assertTrue(pool.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS));
     }
-    assertTrue(Files.readString(warningsFile).contains("is not a number"));
+    assertTrue(Files.readString(warningsFile).contains("does not match the VCF Float grammar"));
   }
 
   @Test
@@ -2627,10 +2631,14 @@ public class VcfParserTest {
       throws IOException {
     // documented behavior, preserved: a lazy warning after parse() has returned (and its warnings file closed)
     // does not throw and does not write to the closed file -- it falls back to the shared logger, via
-    // VcfWarnings's own closed-flag fallback
+    // VcfWarnings's own closed-flag fallback. "5." (not "notanumber"): getQuality() now throws unconditionally
+    // for a value it cannot parse as a number at all (see its own Javadoc), so this needs a QUAL that still
+    // warns-and-parses instead -- BigDecimal accepts "5." but it doesn't match VCFv4.3's Float grammar (a
+    // trailing decimal point with no digits after it), which VcfFloat.parse()/parseDecimal() already warns
+    // about without failing the parse (see VcfPositionTest.testQualityWarnsOnGrammarMismatchButStillParses).
     Path vcfFile = tempDir.resolve("test.vcf");
     Files.writeString(vcfFile, "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
-        "1\t100\t.\tA\tT\tnotanumber\t.\t.\n");
+        "1\t100\t.\tA\tT\t5.\t.\t.\n");
     Path warningsFile = tempDir.resolve("warnings.log");
     List<VcfPosition> captured = new ArrayList<>();
     VcfParser parser = new VcfParser.Builder()
@@ -2645,8 +2653,8 @@ public class VcfParserTest {
         })
         .build();
     parser.parse();
-    assertDoesNotThrow(() -> captured.get(0).getQuality());
-    assertFalse(Files.readString(warningsFile).contains("is not a number"));
+    assertEquals(new java.math.BigDecimal("5"), assertDoesNotThrow(() -> captured.get(0).getQuality()));
+    assertFalse(Files.readString(warningsFile).contains("does not match the VCF Float grammar"));
   }
   // ---- VcfContext wiring ----
 

@@ -379,7 +379,20 @@ class HtsSpecsConformanceTest {
           " (writer-semantic): unexpectedly threw while re-parsing written output: " + e.getMessage());
       return;
     }
-    Optional<String> diff = WriterRoundTrip.semanticDiff(before, after);
+    Optional<String> diff;
+    try {
+      diff = WriterRoundTrip.semanticDiff(before, after);
+    } catch (RuntimeException e) {
+      // matches the parseFile/write/parseText phases above: semanticDiff calls typed getters (e.g. getQuality())
+      // on both `before` and `after` to compare them, and those can throw too (deferred validation) -- previously
+      // uncaught here, so any such exception escaped as a hard, unbaselined test failure instead of a tracked
+      // divergence, for any fixture, not just this one.
+      boolean acceptable = BASELINE.check(fixturePath, "writer-semantic", true, "semantic-diff-exception",
+          String.valueOf(e.getMessage()));
+      assertTrue(acceptable, () -> fixturePath +
+          " (writer-semantic): unexpectedly threw while comparing before/after: " + e.getMessage());
+      return;
+    }
     boolean acceptable = BASELINE.check(fixturePath, "writer-semantic", diff.isPresent(), "semantic-mismatch",
         diff.orElse(""));
     assertTrue(acceptable, () -> diff.isPresent()

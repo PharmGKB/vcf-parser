@@ -33,14 +33,38 @@ public class VcfPositionTest {
     VcfPosition empty = newPosition().toBuilder().rawQuality("").build();
     assertNull(empty.getQuality());
 
-    // an invalid QUAL is a value-quality issue, not a structural one; it warns and is treated as missing, rather
-    // than throwing
+    // an invalid QUAL cannot be represented as a number at all, so getQuality() throws unconditionally (matching
+    // InternalUtils.convertElement's identical decision for INFO/FORMAT reserved keys) -- but the original text
+    // remains available via getRawQuality() either way, both before and after the throw
     VcfPosition bad = newPosition().toBuilder().rawQuality("not-a-number").build();
-    assertNull(bad.getQuality());
+    assertEquals("not-a-number", bad.getRawQuality());
+    assertThrows(VcfFormatException.class, bad::getQuality);
+    assertEquals("not-a-number", bad.getRawQuality());
+    // every call re-throws (not just the first) -- see getQuality()'s own Javadoc
+    assertThrows(VcfFormatException.class, bad::getQuality);
 
     // Builder#quality overrides any pending raw value
     VcfPosition override = newPosition().toBuilder().rawQuality("1").quality(new BigDecimal("2")).build();
     assertEquals(new BigDecimal("2"), override.getQuality());
+    // no raw text ever existed for this position -- it was constructed directly from a BigDecimal
+    assertNull(override.getRawQuality());
+  }
+
+  @Test
+  public void testGetRawQualityIsPreservedAfterSuccessfulParseAndUnderLenientContextToo() {
+    // full symmetry with INFO's own permanently-available raw per-key values: getRawQuality() keeps returning
+    // the original wire text even after getQuality() has already parsed it successfully -- not just for the
+    // malformed case above
+    VcfPosition value = newPosition().toBuilder().rawQuality("29.5").build();
+    assertEquals(new BigDecimal("29.5"), value.getQuality());
+    assertEquals("29.5", value.getRawQuality());
+
+    // getQuality()'s unconditional throw is not gated by isLenient() -- VcfParser itself stays lenient
+    // regardless (it never calls getQuality() during parse()), but a lenient caller who does call it gets the
+    // same throw a strict caller does, since there is no sane recoverable value either way
+    VcfPosition lenientBad = lenientPosition().toBuilder().rawQuality("not-a-number").build();
+    assertThrows(VcfFormatException.class, lenientBad::getQuality);
+    assertEquals("not-a-number", lenientBad.getRawQuality());
   }
 
   @Test
@@ -48,10 +72,11 @@ public class VcfPositionTest {
     // regression test: getQuality() ultimately calls VcfFloat.parseDecimal, which used to call
     // `new BigDecimal(value)` with no length bound -- a CPU-exhaustion vector via an attacker-controlled QUAL
     // value. An oversized value is now rejected before the expensive parse is attempted, treated the same as
-    // any other unparseable QUAL (warns, falls back to the missing value). 3 seconds is a wide margin above
-    // the fixed behavior's near-instant fallback at this size.
+    // any other unparseable QUAL (throws, rather than hanging). 3 seconds is a wide margin above the fixed
+    // behavior's near-instant rejection at this size.
     VcfPosition pathological = newPosition().toBuilder().rawQuality("1".repeat(500_000)).build();
-    assertTimeoutPreemptively(java.time.Duration.ofSeconds(3), () -> assertNull(pathological.getQuality()));
+    assertTimeoutPreemptively(java.time.Duration.ofSeconds(3),
+        () -> assertThrows(VcfFormatException.class, pathological::getQuality));
   }
 
   @Test
@@ -1265,27 +1290,43 @@ public class VcfPositionTest {
 
   @Test
   public void testGetInfoReservedInfoPropertyEmptyValueThrowsUnderStrictContext() {
-    // end-to-end: a position built under a strict VcfContext must throw VcfFormatException, not warn-and-
-    // substitute, when a reserved key's value is empty -- InternalUtils.convertProperty(Class, String,
-    // boolean, VcfWarnings, VcfWarnings)'s empty-value branches are isLenient()-aware, matching VcfPosition's
-    // own construction-time checks' treatment of the analogous empty-entry condition
+    // end-to-end: a strict VcfContext must throw VcfFormatException, not warn-and-substitute, when a reserved
+    // key's value is empty -- InternalUtils.convertProperty(Class, String, boolean, VcfWarnings, VcfWarnings)'s
+    // empty-value branches are isLenient()-aware, matching VcfPosition's own construction-time checks' treatment
+    // of the analogous empty-entry condition. This now fires at construction, not at getInfo() read time:
+    // checkReservedInfoTypes eagerly runs this exact conversion for every reserved key present in an
+    // already-split ListMultimap passed directly to newPosition (manual construction only -- never reachable
+    // via VcfParser, which always stays lazy).
     ListMultimap<String, String> info = ArrayListMultimap.create();
     info.put("DP", "");
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, info, null, -1);
-    VcfFormatException ex = assertThrows(VcfFormatException.class,
-        () -> position.getInfo(ReservedInfoProperty.Depth));
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () ->
+        STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, info, null, -1));
     assertTrue(ex.getMessage().contains("is an empty entry"));
   }
 
   @Test
   public void testGetInfoReservedInfoPropertyAlleleCountThrowsUnderStrictContext() {
-    // end-to-end: a position built under a strict VcfContext must throw VcfFormatException when a negative AC
-    // value is read via the public getInfo(ReservedInfoProperty) route -- InternalUtilsTest's own strict-throw
-    // coverage for checkNonNegativeInteger only exercises checkReservedInfoConstraints/convertProperty
-    // (ReservedProperty, ...) directly, not this actual call path
+    // end-to-end: a strict VcfContext must throw VcfFormatException for a negative AC value --
+    // InternalUtilsTest's own strict-throw coverage for checkNonNegativeInteger only exercises
+    // checkReservedInfoConstraints/convertProperty(ReservedProperty, ...) directly, not this actual call path.
+    // This now fires at construction (checkReservedInfoTypes), not at a later getInfo() call -- see
+    // testGetInfoReservedInfoPropertyEmptyValueThrowsUnderStrictContext's comment for why.
     ListMultimap<String, String> info = ArrayListMultimap.create();
     info.put("AC", "-5");
-    VcfPosition position = STRICT_CONTEXT.newPosition("1", 100, null, "A", List.of("T"), null, null, info, null, -1);
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () ->
+        STRICT_CONTEXT.newPosition("1", 100, null, "A", List.of("T"), null, null, info, null, -1));
+    assertTrue(ex.getMessage().contains("is a negative number"));
+  }
+
+  @Test
+  public void testGetInfoReservedPropertyViaRawInfoStillDefersThrowToReadTimeUnderStrictContext() {
+    // checkReservedInfoTypes only runs on the EAGER (already-split ListMultimap) construction path -- the LAZY
+    // rawInfo() path stays lazy even under a strict context, per this class's own "QUAL and INFO parse lazily
+    // on first access" design (see its own Javadoc), so a bad reserved value supplied this way still only
+    // throws when the typed getter is actually called, exactly as getInfo(ReservedInfoProperty)'s read-path
+    // behavior always has, unaffected by the new construction-time check above.
+    VcfPosition position = STRICT_CONTEXT.newPosition("1", 100, null, "A", List.of("T"), null, null, null, null, -1)
+        .toBuilder().rawInfo("AC=-5").build();
     VcfFormatException ex = assertThrows(VcfFormatException.class,
         () -> position.getInfo(ReservedInfoProperty.AlleleCount));
     assertTrue(ex.getMessage().contains("is a negative number"));
@@ -1409,29 +1450,27 @@ public class VcfPositionTest {
 
   @Test
   public void testGetInfoReservedInfoPropertyAlleleFrequencyThrowsUnderStrictContext() {
-    // end-to-end: a position built under a strict VcfContext must throw VcfFormatException when an
-    // out-of-[0,1]-range AF value is read via the public getInfo(ReservedInfoProperty) route --
-    // InternalUtilsTest's own strict-throw coverage for checkUnitInterval only exercises the package-private
-    // checkReservedInfoConstraints helper directly, not this actual call path
+    // a strict VcfContext must throw VcfFormatException for an out-of-[0,1]-range AF value -- InternalUtilsTest's
+    // own strict-throw coverage for checkUnitInterval only exercises the package-private
+    // checkReservedInfoConstraints helper directly, not this actual call path. Fires at construction now, not at
+    // a later getInfo() call -- see testGetInfoReservedInfoPropertyEmptyValueThrowsUnderStrictContext's comment.
     ListMultimap<String, String> info = ArrayListMultimap.create();
     info.put("AF", "-0.01");
-    VcfPosition position = STRICT_CONTEXT.newPosition("1", 100, null, "A", List.of("T"), null, null, info, null, -1);
-    VcfFormatException ex = assertThrows(VcfFormatException.class,
-        () -> position.getInfo(ReservedInfoProperty.AlleleFrequency));
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () ->
+        STRICT_CONTEXT.newPosition("1", 100, null, "A", List.of("T"), null, null, info, null, -1));
     assertTrue(ex.getMessage().contains("does not lie in the interval [0, 1]"));
   }
 
   @Test
   public void testGetInfoReservedInfoPropertyCigarThrowsUnderStrictContext() {
-    // end-to-end: a position built under a strict VcfContext must throw VcfFormatException when a
-    // grammar-invalid CIGAR value is read via the public getInfo(ReservedInfoProperty) route --
-    // InternalUtilsTest's own strict-throw coverage for checkCigarGrammar only exercises the package-private
-    // checkReservedInfoConstraints helper directly, not this actual call path
+    // a strict VcfContext must throw VcfFormatException for a grammar-invalid CIGAR value -- InternalUtilsTest's
+    // own strict-throw coverage for checkCigarGrammar only exercises the package-private
+    // checkReservedInfoConstraints helper directly, not this actual call path. Fires at construction now, not at
+    // a later getInfo() call -- see testGetInfoReservedInfoPropertyEmptyValueThrowsUnderStrictContext's comment.
     ListMultimap<String, String> info = ArrayListMultimap.create();
     info.put("CIGAR", "123MYCIGAR");
-    VcfPosition position = STRICT_CONTEXT.newPosition("1", 100, null, "A", List.of("T"), null, null, info, null, -1);
-    VcfFormatException ex = assertThrows(VcfFormatException.class,
-        () -> position.getInfo(ReservedInfoProperty.Cigar));
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () ->
+        STRICT_CONTEXT.newPosition("1", 100, null, "A", List.of("T"), null, null, info, null, -1));
     assertTrue(ex.getMessage().contains("does not match the expected CIGAR grammar"));
   }
 
@@ -1619,14 +1658,16 @@ public class VcfPositionTest {
   }
 
   @Test
-  public void testGetQualityWarnsToConfiguredSinkForNonNumericValue() {
-    // Task 7: setWarningsSink was removed -- route the sink through the position's own construction-time
-    // context (lenientContext(...)) instead of redirecting it afterward.
-    StringWriter sink = new StringWriter();
-    VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("1", 100, "A", null, -1)
+  public void testGetQualityThrowsRegardlessOfLenientContextForNonNumericValue() {
+    // getQuality()'s unconditional throw for an unparseable value is NOT isLenient()-gated (unlike a
+    // cardinality/range mismatch elsewhere in this library) -- a lenient context does not turn this into a
+    // warning, since there is no sane value to preserve or normalize to and the raw text remains available
+    // via getRawQuality() either way. VcfParser itself is unaffected: it never calls getQuality() during
+    // parse(), so parsing a real file stays fully lenient regardless of this method's own throw.
+    VcfPosition position = lenientContext(new VcfWarnings(new StringWriter())).newPosition("1", 100, "A", null, -1)
         .toBuilder().rawQuality("not-a-number").build();
-    assertNull(position.getQuality());
-    assertTrue(sink.toString().contains("is not a number"));
+    VcfFormatException ex = assertThrows(VcfFormatException.class, position::getQuality);
+    assertTrue(ex.getMessage().contains("is not a number"));
   }
 
   @Test
@@ -1723,8 +1764,11 @@ public class VcfPositionTest {
     assertEquals("", sink.toString(), "attaching raw QUAL/INFO via the builder must not materialize or warn");
     VcfPosition copy = parsed.toBuilder().build();
     assertEquals("", sink.toString(), "copying alone must not materialize or warn");
-    // both resolve identically once actually read
-    assertEquals(parsed.getQuality(), copy.getQuality());
+    // both resolve identically once actually read -- QUAL throws the same way on both (see getQuality()'s own
+    // Javadoc), and getRawQuality() confirms the preserved raw text itself matches too
+    assertThrows(VcfFormatException.class, parsed::getQuality);
+    assertThrows(VcfFormatException.class, copy::getQuality);
+    assertEquals(parsed.getRawQuality(), copy.getRawQuality());
     assertEquals(parsed.getInfo(), copy.getInfo());
   }
 

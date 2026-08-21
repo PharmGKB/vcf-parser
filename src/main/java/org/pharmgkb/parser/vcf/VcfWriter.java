@@ -371,7 +371,22 @@ public class VcfWriter implements Closeable {
     // ALT is position-dependent (GT genotype values index into it), so an empty entry is substituted with "."
     // rather than dropped -- dropping would shift every later allele's index; see EMPTY_FIELD_HANDLING.md.
     addListOrElse("ALT", position.getAltBases(), ",", ".", true, sb);
-    addStringOrElse(position.getQuality(), ".", sb);
+    try {
+      addStringOrElse(position.getQuality(), ".", sb);
+    } catch (VcfFormatException e) {
+      // getQuality() now throws unconditionally for a QUAL value it cannot parse as a number at all -- this can
+      // genuinely arise from parsed content (QUAL parses lazily; the parser itself never eagerly validates it),
+      // so this write path must not crash here (AGENTS.md's Writer Round-Trip Policy: "a record accepted by the
+      // parser must be writable without losing fields"). Write the original wire text via getRawQuality()
+      // instead of canonicalizing to "." -- this preserves the malformed value exactly rather than losing it.
+      // validateBeforeWrite()'s own always-warn policy applies here too, regardless of the written position's
+      // own strict/lenient origin (AGENTS.md's Writer Validation Policy) -- see the sibling INFO/FORMAT
+      // catch-and-warn call sites in validateInfoValue/validateFormatValue for the identical pattern.
+      if (m_validateBeforeWrite) {
+        m_warnings.warn(e.getMessage());
+      }
+      addStringOrElse(position.getRawQuality(), ".", sb);
+    }
     addListOrElse("FILTER", position.getFilters(), ";", ".", false, sb);
     addInfoOrDot(metadata, position, sb);
 

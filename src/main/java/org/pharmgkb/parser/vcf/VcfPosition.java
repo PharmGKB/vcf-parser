@@ -34,11 +34,12 @@ import org.jspecify.annotations.Nullable;
  * Effectively immutable: there are no setters, and every collection-returning getter returns an unmodifiable
  * view, so no method changes any value a caller can observe once construction (or {@link Builder#build()}) has
  * returned. QUAL and INFO are the one internal exception -- {@link #getQuality()}/{@link #getInfo()} and
- * friends parse lazily on first access, writing {@link #m_quality}/{@link #m_info} (and clearing
- * {@link #m_rawQuality}/{@link #m_rawInfo}) the first time either is actually read. That caching has no
- * observable effect on a single-threaded caller, but it is unsynchronized, so <b>this class is not
- * thread-safe</b>: sharing one instance across threads before its QUAL/INFO have both been read at least once
- * is not safe without external synchronization. A caller that needs a changed position derives a new one via
+ * friends parse lazily on first access, writing {@link #m_quality}/{@link #m_info} the first time either is
+ * actually read (clearing {@link #m_rawInfo}, the whole unsplit INFO text, once it does; {@link #m_rawQuality}
+ * is never cleared, since {@link #getRawQuality()} exposes it permanently). That caching has no observable
+ * effect on a single-threaded caller, but it is unsynchronized, so <b>this class is not thread-safe</b>:
+ * sharing one instance across threads before its QUAL/INFO have both been read at least once is not safe
+ * without external synchronization. A caller that needs a changed position derives a new one via
  * {@link #toBuilder()}.
  *
  * @author Mark Woon
@@ -52,9 +53,16 @@ public final class VcfPosition {
   private String m_refBases;
   private List<String> m_altBases = new ArrayList<>();
   // QUAL is stored either as a parsed BigDecimal (eager path) or as raw text parsed lazily on first getQuality()
-  // (parser path via this class's own constructor rawQual parameter); many consumers never read QUAL.
+  // (parser path via this class's own constructor rawQual parameter); many consumers never read QUAL. Unlike
+  // INFO's m_rawInfo, m_rawQuality is never nulled out once set -- it remains permanently available via
+  // getRawQuality(), the same way INFO's own per-key raw string values remain permanently available via
+  // getInfo(String) regardless of whether the reserved-key typed getter has been called.
   private @Nullable BigDecimal m_quality;
   private @Nullable String m_rawQuality;
+  // true once getQuality()'s lazy parse has produced a final (cacheable) outcome -- success, or "nothing to
+  // parse" (missing/"."). Deliberately NOT set when getQuality() throws for an unparseable value: see that
+  // method's own Javadoc for why that specific outcome re-fires on every call instead of being cached.
+  private boolean m_qualityResolved;
   private List<String> m_filter = new ArrayList<>();
   // INFO is stored either as a parsed multimap (eager constructor path) or as raw text parsed lazily on first access
   // (parser path via this class's own constructor rawInfo parameter); at most one is non-null at a time.
@@ -130,7 +138,9 @@ public final class VcfPosition {
    * @param rawQual raw, not-yet-parsed QUAL column text to store as {@link #m_rawQuality}, parsed lazily on first
    * {@link #getQuality()}, when {@code qual} is {@code null} -- lets a caller construct a lazily-parsed position
    * in one call instead of a separate post-construction mutation. Ignored (and never stored) when {@code qual}
-   * is non-null, preserving this class's "parsed and raw are never both non-null" invariant for QUAL.
+   * is non-null -- {@link #m_rawQuality} and {@link #m_quality} are never both non-null immediately after
+   * construction, though a subsequent successful {@link #getQuality()} call sets {@link #m_quality} without
+   * clearing {@link #m_rawQuality} (see that method's own Javadoc), so the two can both be non-null afterward.
    * @param rawInfo the {@code rawQual} parameter's exact counterpart for INFO.
    */
   VcfPosition(VcfContext context, String chr, long pos,
@@ -173,6 +183,7 @@ public final class VcfPosition {
     }
     if (info != null && !trustedFields) {
       info = checkInfoEntries(info, checkWarnings);
+      checkReservedInfoTypes(info, context);
     }
     if (format != null && !trustedFormat) {
       format = checkFormat(format, checkWarnings);
@@ -264,9 +275,14 @@ public final class VcfPosition {
    * <p>
    * QUAL and INFO are seeded from {@link #m_quality}/{@link #m_rawQuality} and {@link #m_info}/{@link #m_rawInfo}
    * directly, never through {@link #getQuality()}/{@link #getInfo()}: those getters force lazy parsing (emitting
-   * any parse warning) as a side effect, and {@link #getQuality()} additionally nulls {@link #m_rawQuality} when
-   * it does, so reading through them here would both parse-and-warn at copy time and destroy the source's own
-   * lazy state.
+   * any parse warning, or throwing for an unparseable QUAL) as a side effect, so reading through them here would
+   * both parse-and-warn-or-throw at copy time and, for INFO, destroy the source's own lazy state ({@link
+   * #getInfo()} nulls {@link #m_rawInfo} once it splits it). QUAL prefers {@link #m_rawQuality} over
+   * {@link #m_quality} when both are set (i.e. {@link #getQuality()} already ran successfully on the source):
+   * {@link #m_rawQuality} is never cleared once populated (see its own field comment), so it is always at least
+   * as complete as {@link #m_quality} -- the copy re-derives the same parsed value lazily on its own first
+   * {@link #getQuality()} call -- and preserves a malformed source's original text too, which {@link #m_quality}
+   * alone (still {@code null} in that case) cannot.
    * <p>
    * {@code ids}/{@code altBases}/{@code filter}/{@code format}/{@code info} are seeded through {@link Builder}'s
    * private {@code seedXxx} methods, not its public setters -- this position already validated (or already
@@ -284,10 +300,10 @@ public final class VcfPosition {
     builder.seedAltBases(m_altBases);
     builder.seedFilters(m_filter);
     builder.seedFormat(m_format);
-    if (m_quality != null) {
-      builder.quality(m_quality);
-    } else {
+    if (m_rawQuality != null) {
       builder.rawQuality(m_rawQuality);
+    } else {
+      builder.quality(m_quality);
     }
     if (m_info != null) {
       builder.seedInfo(m_info);
@@ -661,6 +677,32 @@ public final class VcfPosition {
   }
 
   /**
+   * For every entry in {@code info} whose key matches a {@link ReservedInfoProperty}, eagerly runs the same
+   * conversion {@link #getInfo(ReservedInfoProperty)} would otherwise only run lazily on first read -- purely as
+   * a validation probe, discarding the result -- so a caller building a position directly from an already-split
+   * {@link ListMultimap} gets {@code VALIDATION_PHILOSOPHY.md}'s Principle 1 ("fail fast on direct, programmatic
+   * input") for a reserved key's declared {@code Type}, not just {@link #checkInfoEntries}'s structural checks.
+   * A cardinality mismatch still only warns under a lenient {@code context} (unchanged -- this deliberately does
+   * NOT duplicate {@link #getInfo(ReservedInfoProperty)}'s own cardinality check and first-piece fallback, since
+   * that requires this position's own ALT allele count, which isn't the point of this probe); a value that
+   * cannot be parsed as the key's declared {@code Type} at all throws {@link VcfFormatException} unconditionally
+   * regardless of context -- see {@code InternalUtils.convertElement}'s own entry in
+   * {@code VALIDATION_REFERENCE.md} for why. Never reachable via {@code VcfParser}: the parser exclusively
+   * attaches INFO through this constructor's {@code rawInfo} parameter (see
+   * {@code VcfContext.newPositionTakingOwnership}/{@code newPositionWithTrustedFormat}), which stays lazy and
+   * never reaches this already-split-multimap path at all.
+   */
+  private static void checkReservedInfoTypes(ListMultimap<String, String> info, VcfContext context) {
+    for (ReservedInfoProperty prop : ReservedInfoProperty.values()) {
+      List<String> values = info.get(prop.getId());
+      if (!values.isEmpty()) {
+        String value = prop.isList() ? sf_commaJoiner.join(values) : values.get(0);
+        InternalUtils.convertProperty(prop, value, context);
+      }
+    }
+  }
+
+  /**
    * @return {@code format} unchanged, or a new empty list if {@code format} was the single-element list
    * {@code ["."]} -- FORMAT being "." means no per-sample format fields at all when sample columns are present.
    * VCFv4.2 through 4.5 are all silent on this exact case (FORMAT is only described as required "if genotype
@@ -896,27 +938,49 @@ public final class VcfPosition {
   }
 
 
+  /**
+   * @throws VcfFormatException if the raw QUAL text cannot be parsed as a number at all -- unconditionally,
+   * regardless of context (this is a genuinely deferred check: {@code VcfParser} itself stays lenient and
+   * finishes parsing the file regardless of what this throws later). Matches
+   * {@link InternalUtils#convertElement}'s identical unconditional-throw-for-an-unparseable-value decision for
+   * INFO/FORMAT reserved keys, for the same reason: there is no sane numeric value to preserve or normalize to,
+   * and nothing is lost by throwing, since {@link #getRawQuality()} still returns the original wire text either
+   * way. Every call re-attempts the parse and re-throws, unlike the warn-and-recover branch below, which only
+   * ever warns once.
+   */
   public @Nullable BigDecimal getQuality() {
-    if (m_quality == null && m_rawQuality != null) {
+    if (!m_qualityResolved) {
       String raw = m_rawQuality;
-      m_rawQuality = null;
-      if (!raw.isEmpty() && !raw.equals(".")) {
+      if (raw != null && !raw.isEmpty() && !raw.equals(".")) {
         try {
           // QUAL is VCF-spec-typed Float; VcfFloat.parseDecimal shares the same grammar check (and warning)
-          // VcfFloat.parse() uses, so this class doesn't need its own copy of FLOAT_PATTERN -- only the
-          // unparseable-input handling differs (warn-and-fall-back-to-missing here, vs. VcfFormatException
-          // in VcfFloat.parse()), which is exactly why that's a bare NumberFormatException below, not thrown
-          // from inside parseDecimal itself
+          // VcfFloat.parse() uses, so this class doesn't need its own copy of FLOAT_PATTERN.
           m_quality = VcfFloat.parseDecimal("QUAL", raw, m_warnings);
+          m_qualityResolved = true;
         } catch (NumberFormatException e) {
-          // a non-numeric QUAL is a value-quality issue, not a structural one (the column itself is well-formed);
-          // warn and recover as the missing value, consistent with how other non-structural content issues are
-          // handled, rather than throwing
-          m_warnings.warn("QUAL '{}' is not a number; treating it as the missing value", raw);
+          // deliberately not setting m_qualityResolved here -- see this method's own @throws Javadoc for why a
+          // strict-equivalent throw (unconditional here, not gated on isLenient()) re-fires on every call
+          // instead of being cached like the successful/missing outcomes above and below
+          throw new VcfFormatException("QUAL '" + raw + "' is not a number -- see getRawQuality() for the " +
+              "original text");
         }
+      } else {
+        m_qualityResolved = true;
       }
     }
     return m_quality;
+  }
+
+  /**
+   * @return the original QUAL column text, exactly as it appeared on the wire -- {@code null} only when this
+   * position was constructed directly from an already-parsed {@link BigDecimal} (via {@link Builder#quality}),
+   * so no wire text ever existed to reproduce. Unlike {@link #getQuality()}, never parses anything and never
+   * throws; always safe to call, including after {@link #getQuality()} has thrown for an unparseable value --
+   * this is exactly the fallback that makes that throw lossless. Mirrors {@link #getInfo(String)}'s equivalent
+   * role for INFO's own reserved-key typed getters.
+   */
+  public @Nullable String getRawQuality() {
+    return m_rawQuality;
   }
 
   /**
@@ -1108,8 +1172,13 @@ public final class VcfPosition {
    * @throws VcfFormatException if the raw value's actual element count does not match {@code key}'s declared
    * {@code Number} and this position was built under a strict {@link VcfContext} (under a lenient one, this
    * instead warns and, for a scalar-declared key given more than one comma-piece, keeps only the first -- see
-   * {@link InternalUtils#warnIfWrongCardinality}); or for the other, pre-existing reasons
-   * {@link InternalUtils#convertProperty(ReservedProperty, String, VcfContext)} already documents
+   * {@link InternalUtils#warnIfWrongCardinality}); or if the raw value cannot be parsed as {@code key}'s
+   * declared {@code Type} at all -- unconditionally, regardless of context, since (unlike a cardinality
+   * mismatch or an out-of-range-but-otherwise-valid number) there is no sane value to preserve or normalize to.
+   * This parse is a genuinely deferred check -- {@code VcfParser} itself stays lenient and finishes parsing the
+   * file regardless -- and nothing is lost even when it throws: the original wire text for {@code key} remains
+   * available afterward via {@link #getInfo(String)}/{@link #getInfo()}, which read from the same backing
+   * storage this conversion never mutates
    */
   public @Nullable <T> T getInfo(ReservedInfoProperty key) {
     // matches getInfo(String)'s own null-tolerant "not present" contract (see hasInfo(ReservedInfoProperty)
@@ -1189,7 +1258,11 @@ public final class VcfPosition {
    * not content being looked up (unlike {@code id}, which is null-tolerant, matching {@link #getInfo(String)}'s
    * "not present" contract); see {@code AGENTS.md}'s Public API Null-Safety Policy for the distinction
    * @throws VcfFormatException if {@code metadata} was built under a different {@link VcfContext} than this
-   * position; if the raw value's {@code Type} does not match {@code id}'s declared type; if a declared
+   * position; if the raw value cannot be parsed as {@code id}'s declared {@code Type} at all -- unconditionally,
+   * regardless of context, since there is no sane value to preserve or normalize to; this is a genuinely
+   * deferred check ({@code VcfParser} itself stays lenient and finishes parsing the file regardless), and
+   * nothing is lost even when it throws, since the original wire text for {@code id} remains available
+   * afterward via {@link #getInfo(String)}/{@link #getInfo()}; if a declared
    * {@code Type=Integer} value is not representable as a 32-bit signed integer or collides with a BCF-reserved
    * sentinel value (see {@link InternalUtils#checkInteger32BitRange}); if the raw value's actual element count
    * does not match {@code id}'s declared/reserved {@code Number} and this position was built under a strict
@@ -1527,6 +1600,7 @@ public final class VcfPosition {
       }
       if (m_infoDirty && m_info != null) {
         m_info = checkInfoEntries(m_info, checkWarnings);
+        checkReservedInfoTypes(m_info, m_context);
       }
       if (m_formatDirty && m_format != null) {
         m_format = checkFormat(m_format, checkWarnings);

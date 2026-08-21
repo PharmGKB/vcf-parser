@@ -78,6 +78,28 @@ One shape implements principles 1 and 2, uniformly:
   `checkReservedFormatConstraints`/`checkReservedInfoConstraints` and its two direct
   `checkInteger32BitRange` calls, none of which ever see a `null`).
 
+**A genuinely unparseable value is dispatched differently from every check above: unconditionally, never gated
+on `isLenient()` at all.** `InternalUtils.convertElement`'s `Character`/`Boolean`/`Long`/`VcfFloat` branches and
+`VcfPosition.getQuality()` both throw `VcfFormatException` regardless of context when the raw text cannot be
+parsed as the target type at all -- not merely out of range (`checkInteger32BitRange`) or the wrong cardinality
+(`warnIfWrongCardinality`), both of which still warn-and-recover under a lenient context because the value itself
+is still valid, just non-compliant. The reason this one check breaks from the universal `isLenient()` contract is
+that there is no sane value to preserve or normalize a non-numeric/non-boolean/non-single-character string to --
+recovering the way the checks above do would mean inventing data, not recovering it. This is deliberately made
+safe rather than merely tolerated: a sibling raw accessor the typed conversion never mutates
+(`VcfPosition.getRawQuality()`/`getInfo(String)`/`getInfo()`; `VcfSample.getProperty(String)`) keeps the original
+wire text permanently retrievable, so nothing is lost by throwing instead of returning `null`. This also answers
+the question this shape might otherwise raise -- "doesn't `VcfParser` need to stay lenient?" -- by keeping the two
+axes separate: *parsing* a file is unaffected either way, since `VcfParser` never calls these typed getters itself
+and stays lenient regardless; it is *accessing* an already-parsed value through its typed getter that can throw,
+at whatever later point a caller chooses to do that, with a full recovery path (the raw text) always available if
+it does. `VcfPosition.checkReservedInfoTypes`/`VcfSample.checkReservedFormatTypes` extend this same dispatch to
+manual construction: both reuse `InternalUtils.convertProperty(ReservedProperty, ...)` directly as an eager
+validation probe on the already-split-multimap/discrete-key-value construction paths (never the parser's own
+lazy/trusted paths), so a reserved key's value gets the identical warn-or-throw-on-mismatch,
+throw-unconditionally-on-unparseable treatment at construction time under Principle 1 that it already got at
+read time under Principle 2/3.
+
 **The input shape never decides strictness.** A declaration class still has two constructors -- a typed
 `(id, description, ...)` one and a `Map`-based one -- but they differ only in input format: the typed one
 still performs its own inline checks rather than deferring to the shared `init()` (it works from already-typed

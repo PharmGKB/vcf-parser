@@ -210,13 +210,14 @@ class VcfSampleTest {
 
   @Test
   void testGetPropertyReservedListTypeWithEmptyEntryThrowsUnderStrictContext() {
-    // end-to-end: a sample built under a strict VcfContext must throw VcfFormatException, not warn-and-
-    // substitute, when a reserved list-typed key's value contains an empty entry
+    // a sample built under a strict VcfContext must throw VcfFormatException, not warn-and-substitute, when a
+    // reserved list-typed key's value contains an empty entry. This now fires at construction, not at a later
+    // getProperty() call: checkReservedFormatTypes eagerly runs this exact conversion for every reserved key
+    // present -- manual construction only, never reachable via VcfParser, which always uses the trusted
+    // parallel-list fast path this check never runs on.
     LinkedHashMap<String, String> trailing = new LinkedHashMap<>();
     trailing.put("HQ", "1,2,");
-    VcfSample sample = STRICT_CONTEXT.newSample(trailing);
-    VcfFormatException e = assertThrows(VcfFormatException.class,
-        () -> sample.getProperty(ReservedFormatProperty.HaplotypeQualities));
+    VcfFormatException e = assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newSample(trailing));
     assertTrue(e.getMessage().contains("contains an empty entry"));
   }
 
@@ -244,17 +245,16 @@ class VcfSampleTest {
 
   @Test
   void testGetPropertyReservedFormatPropertyFilterThrowsUnderStrictContext() {
-    // end-to-end: a sample built under a strict VcfContext must throw VcfFormatException when a grammar-invalid
-    // FT value is read via the public getProperty(ReservedFormatProperty) route -- InternalUtilsTest's own
-    // testCheckReservedFormatConstraintsFtThrowsUnderStrictForEachViolationShape only exercises the
-    // package-private checkReservedFormatConstraints helper directly, not this actual call path
-    // (VcfSample.getProperty -> InternalUtils.convertProperty(ReservedProperty, ...) ->
-    // checkReservedFormatConstraints -> checkFilterLikeValue)
+    // a strict VcfContext must throw VcfFormatException when a grammar-invalid FT value is present --
+    // InternalUtilsTest's own testCheckReservedFormatConstraintsFtThrowsUnderStrictForEachViolationShape only
+    // exercises the package-private checkReservedFormatConstraints helper directly, not this actual call path
+    // (VcfSample construction -> checkReservedFormatTypes -> InternalUtils.convertProperty(ReservedProperty, ...)
+    // -> checkReservedFormatConstraints -> checkFilterLikeValue). This now fires at construction, not at a
+    // later getProperty() call -- see testGetPropertyReservedListTypeWithEmptyEntryThrowsUnderStrictContext's
+    // comment for why.
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("FT", "PASS;q10");
-    VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfFormatException e = assertThrows(VcfFormatException.class,
-        () -> sample.getProperty(ReservedFormatProperty.Filter));
+    VcfFormatException e = assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newSample(map));
     assertTrue(e.getMessage().contains("combines PASS or '.' with other filter codes"));
   }
 
@@ -264,9 +264,7 @@ class VcfSampleTest {
     // through the package-private checkReservedFormatConstraints/checkFilterLikeValue helpers)
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("FT", "q10;;q20");
-    VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfFormatException e = assertThrows(VcfFormatException.class,
-        () -> sample.getProperty(ReservedFormatProperty.Filter));
+    VcfFormatException e = assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newSample(map));
     assertTrue(e.getMessage().contains("contains an empty filter code"));
   }
 
@@ -274,9 +272,7 @@ class VcfSampleTest {
   void testGetPropertyReservedFormatPropertyFilterThrowsUnderStrictContextForWhitespace() {
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("FT", "q10 q20");
-    VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfFormatException e = assertThrows(VcfFormatException.class,
-        () -> sample.getProperty(ReservedFormatProperty.Filter));
+    VcfFormatException e = assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newSample(map));
     assertTrue(e.getMessage().contains("contains whitespace in filter code"));
   }
 
@@ -287,26 +283,25 @@ class VcfSampleTest {
     // testConvertPropertyReservedFormatPsWarnsTwiceForAReservedSentinelValue); under strict the first check to
     // run (checkNonNegative32BitInteger, inside checkReservedFormatConstraints, called before the general
     // range check in convertProperty's own dispatch order) throws before the second ever runs, so the caller
-    // must see only its message, never the more specific "BCF-reserved sentinel" one from checkInteger32BitRange
-    VcfSample sample = STRICT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("PS", "-2147483648")));
+    // must see only its message, never the more specific "BCF-reserved sentinel" one from checkInteger32BitRange.
+    // Fires at construction now, not at a later getProperty() call -- same reason as the FT tests above.
     VcfFormatException e = assertThrows(VcfFormatException.class,
-        () -> sample.getProperty(ReservedFormatProperty.PhaseSet));
+        () -> STRICT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("PS", "-2147483648"))));
     assertTrue(e.getMessage().contains("is not a non-negative 32-bit integer"));
     assertFalse(e.getMessage().contains("BCF-reserved sentinel"));
   }
 
   @Test
   void testGetPropertyReservedFormatPropertyGenotypePosteriorThrowsUnderStrictContextAt43() {
-    // end-to-end: a sample built under a strict VCFv4.3 VcfContext must throw VcfFormatException when an
-    // out-of-[0,1]-range GP value is read via the public getProperty(ReservedFormatProperty) route. This is
-    // the strict-context coverage that testGetPropertyReservedFormatPropertyGenotypePosteriorRangeCheckIsVersionGated
+    // a strict VCFv4.3 VcfContext must throw VcfFormatException for an out-of-[0,1]-range GP value. This is the
+    // strict-context coverage that testGetPropertyReservedFormatPropertyGenotypePosteriorRangeCheckIsVersionGated
     // no longer provides for its 4.3 case (that test switched to lenient specifically to observe the warning
     // rather than the throw, once checkUnitInterval became isLenient()-aware) -- a dedicated test restores
     // end-to-end strict coverage without reintroducing that test's own conflict with the version-gate check.
+    // Fires at construction now, not at a later getProperty() call -- same reason as the FT tests above.
     VcfContext strict43 = VcfContext.strict("VCFv4.3");
-    VcfSample sample = strict43.newSample(new LinkedHashMap<>(Map.of("GP", "5.0")));
     VcfFormatException e = assertThrows(VcfFormatException.class,
-        () -> sample.getProperty(ReservedFormatProperty.GenotypePosterior));
+        () -> strict43.newSample(new LinkedHashMap<>(Map.of("GP", "5.0"))));
     assertTrue(e.getMessage().contains("does not lie in the interval [0, 1]"));
   }
 
@@ -638,7 +633,10 @@ class VcfSampleTest {
 
   @Test
   void testDefaultWarningsSinkIsSharedLoggerWhenNeverConfigured() {
-    VcfSample sample = STRICT_CONTEXT.newSample(List.of("DP"), new ArrayList<>(List.of("")));
+    // "XX" (not a reserved key) rather than "DP": this test is about validate()'s own always-warn empty-value
+    // handling, unrelated to checkReservedFormatTypes' new construction-time reserved-key check, which would
+    // otherwise throw immediately for DP's own empty value under this strict context
+    VcfSample sample = STRICT_CONTEXT.newSample(List.of("XX"), new ArrayList<>(List.of("")));
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
     appender.start();
@@ -1467,24 +1465,16 @@ class VcfSampleTest {
 
   @Test
   void testGetPropertyEmptyGtThrowsUnderStrictContext() {
-    // end-to-end: a sample built under a strict VcfContext must throw VcfFormatException, not warn-and-
-    // substitute, when a reserved scalar String-typed key's (GT's) value is empty
-    VcfSample sample = STRICT_CONTEXT.newSample(List.of("GT"), new ArrayList<>(List.of("")));
+    // a sample built under a strict VcfContext must throw VcfFormatException, not warn-and-substitute, when a
+    // reserved scalar String-typed key's (GT's) value is empty. This now fires at construction time --
+    // checkReservedFormatTypes eagerly runs this exact conversion for every reserved key present, so there is
+    // no longer a way to construct such a sample under strict at all, let alone reach getProperty/getGenotype
+    // with it afterward. This single test now covers what used to be two separate end-to-end pins
+    // (testGetPropertyEmptyGtThrowsUnderStrictContext at the getProperty level, and a since-removed
+    // testGetGenotypeThrowsUnderStrictContextForEmptyGt at the getGenotype level) -- both are the same
+    // construction-time throw now, so keeping both would only duplicate the same assertion.
     VcfFormatException e = assertThrows(VcfFormatException.class,
-        () -> sample.getProperty(ReservedFormatProperty.Genotype));
-    assertTrue(e.getMessage().contains("is an empty entry"));
-  }
-
-  @Test
-  void testGetGenotypeThrowsUnderStrictContextForEmptyGt() {
-    // getGenotype(VcfPosition) reads GT through getProperty(ReservedFormatProperty), so it inherits that
-    // method's strict-context throw for an empty value -- its own documented "@return null for absent or
-    // empty GT" no longer holds under strict, only under lenient (see testGetGenotypeReturnsNullForAbsentOrEmptyGt
-    // above); this end-to-end test pins the throw at the getGenotype level specifically, not just at
-    // getProperty's own level (testGetPropertyEmptyGtThrowsUnderStrictContext above)
-    VcfSample sample = STRICT_CONTEXT.newSample(List.of("GT"), new ArrayList<>(List.of("")));
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
-    VcfFormatException e = assertThrows(VcfFormatException.class, () -> sample.getGenotype(position));
+        () -> STRICT_CONTEXT.newSample(List.of("GT"), new ArrayList<>(List.of(""))));
     assertTrue(e.getMessage().contains("is an empty entry"));
   }
 
