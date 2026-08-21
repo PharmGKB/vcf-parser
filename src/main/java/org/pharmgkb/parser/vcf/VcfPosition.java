@@ -1,6 +1,5 @@
 package org.pharmgkb.parser.vcf;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -52,12 +51,12 @@ public final class VcfPosition {
   private List<String> m_ids = new ArrayList<>();
   private String m_refBases;
   private List<String> m_altBases = new ArrayList<>();
-  // QUAL is stored either as a parsed BigDecimal (eager path) or as raw text parsed lazily on first getQuality()
+  // QUAL is stored either as a parsed VcfFloat (eager path) or as raw text parsed lazily on first getQuality()
   // (parser path via this class's own constructor rawQual parameter); many consumers never read QUAL. Unlike
   // INFO's m_rawInfo, m_rawQuality is never nulled out once set -- it remains permanently available via
   // getRawQuality(), the same way INFO's own per-key raw string values remain permanently available via
   // getInfo(String) regardless of whether the reserved-key typed getter has been called.
-  private @Nullable BigDecimal m_quality;
+  private @Nullable VcfFloat m_quality;
   private @Nullable String m_rawQuality;
   // true once getQuality()'s lazy parse has produced a final (cacheable) outcome -- success, or "nothing to
   // parse" (missing/"."). Deliberately NOT set when getQuality() throws for an unparseable value: see that
@@ -96,7 +95,7 @@ public final class VcfPosition {
 
   /**
    * The single construction path for a fully-specified position. Package-private: every caller goes through
-   * {@link VcfContext#newPosition(String, long, List, String, List, BigDecimal, List, ListMultimap, List, int)}
+   * {@link VcfContext#newPosition(String, long, List, String, List, VcfFloat, List, ListMultimap, List, int)}
    * (or, for {@code VcfParser}'s own per-record construction, {@code VcfContext.newPositionTakingOwnership}, for
    * its FORMAT cache specifically {@code VcfContext.newPositionWithTrustedFormat}, or for
    * {@link Builder#build()}, {@code VcfContext.newPositionCopyingTrustedFields}), which is what supplies the
@@ -147,7 +146,7 @@ public final class VcfPosition {
       @Nullable List<String> ids,
       String ref,
       @Nullable List<String> altBases,
-      @Nullable BigDecimal qual,
+      @Nullable VcfFloat qual,
       @Nullable List<String> filter,
       @Nullable ListMultimap<String, String> info,
       @Nullable List<String> format,
@@ -243,13 +242,13 @@ public final class VcfPosition {
   /**
    * Convenience shape for a position with no ID/ALT/FILTER/INFO/FORMAT content. Package-private for the same
    * reason as the primary constructor above; reached via
-   * {@link VcfContext#newPosition(String, long, String, BigDecimal, int)}. There is nothing mutable to take
+   * {@link VcfContext#newPosition(String, long, String, VcfFloat, int)}. There is nothing mutable to take
    * ownership of here, so that factory has no defensive copy to make.
    *
    * @param lineNumber the originating line number in the source VCF file, or {@code -1} if this position was not
    * produced by parsing a real file (e.g. constructed directly by a caller or test)
    */
-  VcfPosition(VcfContext context, String chromosome, long position, String refBases, @Nullable BigDecimal quality,
+  VcfPosition(VcfContext context, String chromosome, long position, String refBases, @Nullable VcfFloat quality,
       int lineNumber) {
     m_context = Preconditions.checkNotNull(context, "context must not be null");
     m_warnings = context.getWarnings();
@@ -939,25 +938,27 @@ public final class VcfPosition {
 
 
   /**
-   * @throws VcfFormatException if the raw QUAL text cannot be parsed as a number at all -- unconditionally,
-   * regardless of context (this is a genuinely deferred check: {@code VcfParser} itself stays lenient and
-   * finishes parsing the file regardless of what this throws later). Matches
+   * @throws VcfFormatException if the raw QUAL text is neither a normal decimal number nor one of VCFv4.3.tex
+   * line 100's Special Float values ({@code NAN}/{@code INF}/{@code INFINITY}, case-insensitive, optionally
+   * signed) -- unconditionally, regardless of context (this is a genuinely deferred check: {@code VcfParser}
+   * itself stays lenient and finishes parsing the file regardless of what this throws later). Matches
    * {@link InternalUtils#convertElement}'s identical unconditional-throw-for-an-unparseable-value decision for
-   * INFO/FORMAT reserved keys, for the same reason: there is no sane numeric value to preserve or normalize to,
-   * and nothing is lost by throwing, since {@link #getRawQuality()} still returns the original wire text either
+   * INFO/FORMAT reserved keys, for the same reason: there is no sane value to preserve or normalize to, and
+   * nothing is lost by throwing, since {@link #getRawQuality()} still returns the original wire text either
    * way. Every call re-attempts the parse and re-throws, unlike the warn-and-recover branch below, which only
    * ever warns once.
    */
-  public @Nullable BigDecimal getQuality() {
+  public @Nullable VcfFloat getQuality() {
     if (!m_qualityResolved) {
       String raw = m_rawQuality;
       if (raw != null && !raw.isEmpty() && !raw.equals(".")) {
         try {
-          // QUAL is VCF-spec-typed Float; VcfFloat.parseDecimal shares the same grammar check (and warning)
-          // VcfFloat.parse() uses, so this class doesn't need its own copy of FLOAT_PATTERN.
-          m_quality = VcfFloat.parseDecimal("QUAL", raw, m_warnings);
+          // QUAL is VCF-spec-typed Float; VcfFloat.parse() also accepts NAN/INF/INFINITY (case-insensitive,
+          // optionally signed) per VCFv4.3.tex line 100, exactly like every other Float-typed reserved key
+          // (see InternalUtils.convertElement's own identical VcfFloat.parse(value, warnings) call).
+          m_quality = VcfFloat.parse(raw, m_warnings);
           m_qualityResolved = true;
-        } catch (NumberFormatException e) {
+        } catch (VcfFormatException e) {
           // deliberately not setting m_qualityResolved here -- see this method's own @throws Javadoc for why a
           // strict-equivalent throw (unconditional here, not gated on isLenient()) re-fires on every call
           // instead of being cached like the successful/missing outcomes above and below
@@ -973,11 +974,13 @@ public final class VcfPosition {
 
   /**
    * @return the original QUAL column text, exactly as it appeared on the wire -- {@code null} only when this
-   * position was constructed directly from an already-parsed {@link BigDecimal} (via {@link Builder#quality}),
+   * position was constructed directly from an already-parsed {@link VcfFloat} (via {@link Builder#quality}),
    * so no wire text ever existed to reproduce. Unlike {@link #getQuality()}, never parses anything and never
    * throws; always safe to call, including after {@link #getQuality()} has thrown for an unparseable value --
    * this is exactly the fallback that makes that throw lossless. Mirrors {@link #getInfo(String)}'s equivalent
-   * role for INFO's own reserved-key typed getters.
+   * role for INFO's own reserved-key typed getters. {@code VcfWriter}'s default write path prefers this over
+   * {@link #getQuality()} whenever it is non-null, matching how every other field is written back from its
+   * originally parsed text rather than a reformatted typed value.
    */
   public @Nullable String getRawQuality() {
     return m_rawQuality;
@@ -1423,7 +1426,7 @@ public final class VcfPosition {
     private @Nullable String m_ref;
     private @Nullable List<String> m_altBases;
     private boolean m_altBasesDirty;
-    private @Nullable BigDecimal m_quality;
+    private @Nullable VcfFloat m_quality;
     private @Nullable String m_rawQuality;
     private @Nullable List<String> m_filter;
     private boolean m_filterDirty;
@@ -1495,7 +1498,7 @@ public final class VcfPosition {
     /** Sets a parsed QUAL value, clearing any raw QUAL text set via {@link #rawQuality}. QUAL has no
      * warn-and-recover validation at construction (only lazy parsing on first {@link #getQuality()}), so it has
      * no dirty flag to set -- there is nothing for {@link #build()} to skip or re-run either way. */
-    public Builder quality(@Nullable BigDecimal quality) {
+    public Builder quality(@Nullable VcfFloat quality) {
       m_quality = quality;
       m_rawQuality = null;
       return this;

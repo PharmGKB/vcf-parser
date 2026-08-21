@@ -1,6 +1,5 @@
 package org.pharmgkb.parser.vcf;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -121,7 +120,7 @@ public final class VcfContext {
    * produced by parsing a real file
    */
   public VcfPosition newPosition(String chr, long pos, @Nullable List<String> ids, String ref,
-      @Nullable List<String> altBases, @Nullable BigDecimal qual, @Nullable List<String> filter,
+      @Nullable List<String> altBases, @Nullable VcfFloat qual, @Nullable List<String> filter,
       @Nullable ListMultimap<String, String> info, @Nullable List<String> format, int lineNumber) {
     return new VcfPosition(this, chr, pos, copyOf(ids), ref, copyOf(altBases), qual, copyOf(filter), copyOf(info),
         copyOf(format), lineNumber, false, false, null, null);
@@ -134,7 +133,7 @@ public final class VcfContext {
    * @param lineNumber the originating line number in the source VCF file, or {@code -1} if this position was not
    * produced by parsing a real file
    */
-  public VcfPosition newPosition(String chromosome, long position, String refBases, @Nullable BigDecimal quality,
+  public VcfPosition newPosition(String chromosome, long position, String refBases, @Nullable VcfFloat quality,
       int lineNumber) {
     return new VcfPosition(this, chromosome, position, refBases, quality, lineNumber);
   }
@@ -157,7 +156,7 @@ public final class VcfContext {
    * visibility is what actually enforces the restriction.
    */
   VcfPosition newPositionTakingOwnership(String chr, long pos, @Nullable List<String> ids, String ref,
-      @Nullable List<String> altBases, @Nullable BigDecimal qual, @Nullable List<String> filter,
+      @Nullable List<String> altBases, @Nullable VcfFloat qual, @Nullable List<String> filter,
       @Nullable ListMultimap<String, String> info, @Nullable List<String> ownedFormat, int lineNumber) {
     return newPositionTakingOwnership(chr, pos, ids, ref, altBases, qual, filter, info, ownedFormat, lineNumber,
         null, null);
@@ -172,7 +171,7 @@ public final class VcfContext {
    * {@code info}. Package-private for the same reason as the overload above.
    */
   VcfPosition newPositionTakingOwnership(String chr, long pos, @Nullable List<String> ids, String ref,
-      @Nullable List<String> altBases, @Nullable BigDecimal qual, @Nullable List<String> filter,
+      @Nullable List<String> altBases, @Nullable VcfFloat qual, @Nullable List<String> filter,
       @Nullable ListMultimap<String, String> info, @Nullable List<String> ownedFormat, int lineNumber,
       @Nullable String rawQual, @Nullable String rawInfo) {
     return new VcfPosition(this, chr, pos, ids, ref, altBases, qual, filter, info, ownedFormat, lineNumber,
@@ -192,7 +191,7 @@ public final class VcfContext {
    * visibility is what actually enforces the restriction.
    */
   VcfPosition newPositionWithTrustedFormat(String chr, long pos, @Nullable List<String> ids, String ref,
-      @Nullable List<String> altBases, @Nullable BigDecimal qual, @Nullable List<String> filter,
+      @Nullable List<String> altBases, @Nullable VcfFloat qual, @Nullable List<String> filter,
       @Nullable ListMultimap<String, String> info, List<String> trustedFormat, int lineNumber) {
     return newPositionWithTrustedFormat(chr, pos, ids, ref, altBases, qual, filter, info, trustedFormat, lineNumber,
         null, null);
@@ -200,11 +199,11 @@ public final class VcfContext {
 
   /**
    * Same as the overload above, but also accepts raw, not-yet-parsed QUAL/INFO column text -- see
-   * {@link #newPositionTakingOwnership(String, long, List, String, List, BigDecimal, List, ListMultimap, List,
+   * {@link #newPositionTakingOwnership(String, long, List, String, List, VcfFloat, List, ListMultimap, List,
    * int, String, String)}'s identical rawQual/rawInfo Javadoc; the same reasoning applies here.
    */
   VcfPosition newPositionWithTrustedFormat(String chr, long pos, @Nullable List<String> ids, String ref,
-      @Nullable List<String> altBases, @Nullable BigDecimal qual, @Nullable List<String> filter,
+      @Nullable List<String> altBases, @Nullable VcfFloat qual, @Nullable List<String> filter,
       @Nullable ListMultimap<String, String> info, List<String> trustedFormat, int lineNumber,
       @Nullable String rawQual, @Nullable String rawInfo) {
     return new VcfPosition(this, chr, pos, ids, ref, altBases, qual, filter, info, trustedFormat, lineNumber,
@@ -229,7 +228,7 @@ public final class VcfContext {
    * visibility is what actually enforces the restriction.
    */
   VcfPosition newPositionCopyingTrustedFields(String chr, long pos, @Nullable List<String> ids, String ref,
-      @Nullable List<String> altBases, @Nullable BigDecimal qual, @Nullable List<String> filter,
+      @Nullable List<String> altBases, @Nullable VcfFloat qual, @Nullable List<String> filter,
       @Nullable ListMultimap<String, String> info, @Nullable List<String> format, int lineNumber,
       @Nullable String rawQual, @Nullable String rawInfo) {
     return new VcfPosition(this, chr, pos, copyOf(ids), ref, copyOf(altBases), qual, copyOf(filter), copyOf(info),
@@ -238,7 +237,7 @@ public final class VcfContext {
 
   /**
    * Creates a {@link VcfSample} bound to this context, defensively copying both lists -- see
-   * {@link #newPosition(String, long, List, String, List, BigDecimal, List, ListMultimap, List, int)} for why
+   * {@link #newPosition(String, long, List, String, List, VcfFloat, List, ListMultimap, List, int)} for why
    * unmodifiable getters alone would not be sufficient.
    */
   public VcfSample newSample(@Nullable List<String> keys, @Nullable List<String> values) {
