@@ -1064,12 +1064,8 @@ public final class VcfPosition {
         // exclusivity rule for their own "." sentinel; unlike an empty prop (dropped above), this isn't a stray
         // delimiter artifact, it directly contradicts "." meaning "nothing here"
         if (props.contains(".") && props.size() > 1) {
-          VcfFormatException ex = new VcfFormatException(
-              "INFO contains '.' (missing value) along with other properties");
-          if (m_lineNumber >= 0) {
-            ex.addMetadata(m_lineNumber, "data");
-          }
-          throw ex;
+          throw withLineNumber(new VcfFormatException(
+              "INFO contains '.' (missing value) along with other properties"));
         }
         // VCFv4.2 is silent on whether a top-level INFO key may appear more than once, but VCFv4.3 explicitly
         // states "Duplicate keys are not allowed" for INFO (mirroring the same rule for FORMAT keys). bcftools
@@ -1115,16 +1111,25 @@ public final class VcfPosition {
         try {
           info = checkInfoEntries(info, m_warnings);
         } catch (VcfFormatException ex) {
-          if (m_lineNumber >= 0) {
-            ex.addMetadata(m_lineNumber, "data");
-          }
-          throw ex;
+          throw withLineNumber(ex);
         }
       }
       m_info = info;
       m_rawInfo = null;
     }
     return info;
+  }
+
+  /**
+   * @return {@code ex}, annotated with this position's line number if known ({@code m_lineNumber >= 0}) --
+   * shared by {@link #info()} and both {@code getInfo} overloads below, which otherwise each independently
+   * repeated this same annotate-then-throw snippet.
+   */
+  private VcfFormatException withLineNumber(VcfFormatException ex) {
+    if (m_lineNumber >= 0) {
+      ex.addMetadata(m_lineNumber, "data");
+    }
+    return ex;
   }
 
   /**
@@ -1205,45 +1210,54 @@ public final class VcfPosition {
     // supposed to warn-and-recover rather than throw for a non-structural problem (see AGENTS.md's Parser
     // Validation Policy). Warn and fall back to the first piece -- the same "keep the first, warn about the
     // rest" convention this library already uses for a duplicate metadata ID and a duplicate INFO key.
-    // isLenient()-aware, shared by both cardinality-check branches below and convertProperty's own dispatch --
-    // see InternalUtils.convertProperty(Class, String, boolean, VcfWarnings, VcfWarnings)'s own Javadoc for the
-    // general pattern. A cardinality mismatch (scalar or list) is the same kind of "bad input causing data loss
-    // on typed access" this library already throws for elsewhere under strict, rather than warning and silently
-    // keeping only the first piece.
+    // isLenient()-aware, shared by both cardinality-check branches inside resolveInfoValue() and
+    // convertProperty's own dispatch -- see InternalUtils.convertProperty(Class, String, boolean, VcfWarnings,
+    // VcfWarnings)'s own Javadoc for the general pattern. A cardinality mismatch (scalar or list) is the same
+    // kind of "bad input causing data loss on typed access" this library already throws for elsewhere under
+    // strict, rather than warning and silently keeping only the first piece.
     VcfWarnings checkWarnings = m_context.isLenient() ? m_warnings : null;
-    String value;
-    if (!key.isList() && list.size() > 1) {
-      // getExpectedNumber() is always the literal "0" or "1" for a scalar (isList=false) key --
-      // getExpectedCardinality() parses it back to the identical numeric value, so this produces the same
-      // message text as this method's own previous hand-written warn call, now isLenient()-aware like the list
-      // branch below (unifying both into the one shared check, rather than a second, independently-drifting
-      // copy of the same "is the actual count what Number requires" logic)
-      InternalUtils.warnIfWrongCardinality("INFO " + key.getId(), key.getExpectedNumber(), list.size(),
-          getAltBases().size(), null, m_warnings, checkWarnings);
-      value = list.get(0);
-    } else {
-      // for a list-typed key, check the actual element count against what getExpectedNumber() implies for this
-      // record's own ALT allele count (the INFO-side counterpart of VcfSample.getProperty(VcfPosition,
-      // VcfMetadata, String)'s identical FORMAT-side check) -- e.g. AC/AF (Number=A) must have exactly one value
-      // per ALT allele, CIPOS/CIEND (Number=2) exactly two. No reserved INFO key declares Number=G, so ploidy
-      // (irrelevant for INFO, which has no per-sample concept) is always null here. Skipped when list is the
-      // single-element "." sentinel: that represents this key's value being entirely absent (e.g. an INFO
-      // string of "AD=" normalizes to a single "." entry, per EMPTY_FIELD_HANDLING.md), not a real value whose
-      // count could violate cardinality.
-      if (key.isList() && !(list.size() == 1 && list.get(0).equals("."))) {
-        InternalUtils.warnIfWrongCardinality("INFO " + key.getId(), key.getExpectedNumber(), list.size(),
-            getAltBases().size(), null, m_warnings, checkWarnings);
-      }
-      value = sf_commaJoiner.join(list);
-    }
+    // getExpectedNumber() is always the literal "0" or "1" for a scalar (isList=false) key --
+    // getExpectedCardinality() parses it back to the identical numeric value, so this produces the same
+    // message text as this method's own previous hand-written warn call. For a list-typed key, this checks the
+    // actual element count against what getExpectedNumber() implies for this record's own ALT allele count (the
+    // INFO-side counterpart of VcfSample.getProperty(VcfPosition, VcfMetadata, String)'s identical FORMAT-side
+    // check) -- e.g. AC/AF (Number=A) must have exactly one value per ALT allele, CIPOS/CIEND (Number=2) exactly
+    // two. No reserved INFO key declares Number=G, so ploidy (irrelevant for INFO, which has no per-sample
+    // concept) is always null here.
+    String value = resolveInfoValue("INFO " + key.getId(), key.getExpectedNumber(), key.isList(), list,
+        checkWarnings);
     try {
       return InternalUtils.convertProperty(key, value, m_context);
     } catch (VcfFormatException ex) {
-      if (m_lineNumber >= 0) {
-        ex.addMetadata(m_lineNumber, "data");
-      }
-      throw ex;
+      throw withLineNumber(ex);
     }
+  }
+
+  /**
+   * Resolves {@code list}'s value for a Number-checked INFO read -- warning (via {@code checkWarnings},
+   * isLenient()-gated) if the actual element count doesn't match {@code number}'s expected cardinality, then
+   * either falling back to the first element (scalar) or comma-joining every element (list) -- shared by
+   * {@link #getInfo(ReservedInfoProperty)} and {@link #getInfo(VcfMetadata, String)}, which otherwise each
+   * independently repeated this same resolve-and-join block, differing only in whether {@code number}/
+   * {@code isList} come from a {@link ReservedInfoProperty} or a resolved {@code ##INFO} declaration. Skipped
+   * when {@code list} is the single-element {@code "."} sentinel: that represents this key's value being
+   * entirely absent (e.g. an INFO string of {@code "AD="} normalizes to a single {@code "."} entry, per
+   * {@code EMPTY_FIELD_HANDLING.md}), not a real value whose count could violate cardinality.
+   *
+   * @param label the {@code "INFO <key>"} label used in the cardinality-mismatch warning/exception text
+   */
+  private String resolveInfoValue(String label, String number, boolean isList, List<String> list,
+      @Nullable VcfWarnings checkWarnings) {
+    if (!isList && list.size() > 1) {
+      InternalUtils.warnIfWrongCardinality(label, number, list.size(), getAltBases().size(), null, m_warnings,
+          checkWarnings);
+      return list.get(0);
+    }
+    if (isList && !(list.size() == 1 && list.get(0).equals("."))) {
+      InternalUtils.warnIfWrongCardinality(label, number, list.size(), getAltBases().size(), null, m_warnings,
+          checkWarnings);
+    }
+    return sf_commaJoiner.join(list);
   }
 
   /**
@@ -1308,33 +1322,19 @@ public final class VcfPosition {
       }
       isList = !number.equals("0") && !number.equals("1");
     }
-    // isLenient()-aware, shared by both cardinality-check branches below, the range check further down, and
-    // convertProperty's own empty-value substitution -- see
+    // isLenient()-aware, shared by both cardinality-check branches inside resolveInfoValue(), the range check
+    // further down, and convertProperty's own empty-value substitution -- see
     // InternalUtils.convertProperty(Class, String, boolean, VcfWarnings, VcfWarnings)'s own Javadoc for the
     // general pattern.
     VcfWarnings checkWarnings = m_context.isLenient() ? m_warnings : null;
-    String value;
-    if (!isList && list.size() > 1) {
-      // same unification as getInfo(ReservedInfoProperty) above: routes through the shared cardinality check
-      // rather than a second, independently-drifting hand-written warn call
-      InternalUtils.warnIfWrongCardinality("INFO " + id, number, list.size(), getAltBases().size(), null,
-          m_warnings, checkWarnings);
-      value = list.get(0);
-    } else {
-      if (isList && !(list.size() == 1 && list.get(0).equals("."))) {
-        InternalUtils.warnIfWrongCardinality("INFO " + id, number, list.size(), getAltBases().size(), null,
-            m_warnings, checkWarnings);
-      }
-      value = sf_commaJoiner.join(list);
-    }
+    // same shared helper as getInfo(ReservedInfoProperty) above, so both routes stay in sync rather than each
+    // independently drifting
+    String value = resolveInfoValue("INFO " + id, number, isList, list, checkWarnings);
     if (reserved != null) {
       try {
         return InternalUtils.convertProperty(reserved, value, m_context);
       } catch (VcfFormatException ex) {
-        if (m_lineNumber >= 0) {
-          ex.addMetadata(m_lineNumber, "data");
-        }
-        throw ex;
+        throw withLineNumber(ex);
       }
     }
     InfoType infoType = declared.getType();
@@ -1345,10 +1345,7 @@ public final class VcfPosition {
       }
       return InternalUtils.convertProperty(type, value, isList, m_warnings, checkWarnings);
     } catch (VcfFormatException ex) {
-      if (m_lineNumber >= 0) {
-        ex.addMetadata(m_lineNumber, "data");
-      }
-      throw ex;
+      throw withLineNumber(ex);
     }
   }
 
