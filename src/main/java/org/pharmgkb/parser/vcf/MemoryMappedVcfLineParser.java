@@ -92,6 +92,11 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
     MemoryMappedVcfDataStore.Locus locus = new MemoryMappedVcfDataStore.Locus(position.getChromosome(), position.getPosition());
     m_dataStore.getLocusToPositions().computeIfAbsent(locus, l -> new ArrayList<>()).add(position);
     m_dataStore.getLocusToSamplesList().computeIfAbsent(locus, l -> new ArrayList<>()).add(sampleData);
+    // also record file order directly (not derivable from the locus maps above -- see
+    // MemoryMappedVcfDataStore's m_positionsInFileOrder/m_samplesListInFileOrder field comment) for
+    // getAllPositions()/getAllSamples()
+    m_dataStore.getPositionsInFileOrder().add(position);
+    m_dataStore.getSamplesListInFileOrder().add(sampleData);
 
     // link by ID
     for (String id : position.getIds()) {

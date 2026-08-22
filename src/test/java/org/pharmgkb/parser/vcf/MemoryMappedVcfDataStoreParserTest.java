@@ -485,10 +485,12 @@ public class MemoryMappedVcfDataStoreParserTest {
 
   @Test
   public void testGetAllPositionsReturnsFileOrderNotHashBucketOrder() throws IOException {
-    // regression test: m_locusToPositions was previously a plain HashMap, so getAllPositions() (which iterates
-    // its values()) returned records in arbitrary hash-bucket order rather than the order they were read --
-    // confirmed empirically that a HashMap<Locus,...> populated with this exact 20-locus sequence comes back
-    // scrambled (e.g. 8,9,10,11,4,5,6,... instead of 1..20). Now backed by a LinkedHashMap, so file order holds.
+    // regression test: m_locusToPositions was previously a plain HashMap, so getAllPositions() (which used to
+    // iterate its values()) returned records in arbitrary hash-bucket order rather than the order they were
+    // read -- confirmed empirically that a HashMap<Locus,...> populated with this exact 20-locus sequence comes
+    // back scrambled (e.g. 8,9,10,11,4,5,6,... instead of 1..20). Now backed by a dedicated file-order list --
+    // see testGetAllPositionsPreservesFileOrderAcrossARevisitedLocus below for why a locus-keyed map (even a
+    // LinkedHashMap) can't deliver this guarantee on its own.
     StringBuilder vcf = new StringBuilder("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n");
     for (int i = 1; i <= 20; i++) {
       vcf.append("chr1\t").append(i).append("\t.\tA\tT\t.\t.\t.\n");
@@ -509,6 +511,33 @@ public class MemoryMappedVcfDataStoreParserTest {
         expected.add(i);
       }
       assertEquals(expected, positionsInOrder);
+    }
+  }
+
+  @Test
+  public void testGetAllPositionsPreservesFileOrderAcrossARevisitedLocus() throws IOException {
+    // regression test: an earlier fix made m_locusToPositions/m_locusToSamplesList LinkedHashMaps and had
+    // getAllPositions()/getAllSamples() flatten map.values(), which only orders *loci* -- a locus revisited
+    // later in the file (chr1:100 here) was hoisted back next to its first occurrence instead of staying at
+    // its actual read position. Confirmed empirically: that approach returned rsA, rsC, rsB for this exact
+    // input instead of rsA, rsB, rsC. Both getAllPositions() and getAllSamples() must reflect true file order.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t100\trsA\tA\tT\t.\t.\t.\n" +
+        "chr1\t200\trsB\tA\tC\t.\t.\t.\n" +
+        "chr1\t100\trsC\tA\tG\t.\t.\t.\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf))) {
+      MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+      new VcfParser.Builder()
+          .fromReader(reader)
+          .parseWith(lineParser)
+          .build().parse();
+      MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
+      List<String> idsInOrder = new ArrayList<>();
+      for (VcfPosition position : dataStore.getAllPositions()) {
+        idsInOrder.add(position.getIds().get(0));
+      }
+      assertEquals(List.of("rsA", "rsB", "rsC"), idsInOrder);
     }
   }
 

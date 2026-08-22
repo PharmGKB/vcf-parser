@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -24,19 +23,21 @@ public class MemoryMappedVcfDataStore {
 
   private @Nullable VcfMetadata m_metadata;
   private final Map<String, VcfPosition> m_idToPosition = new HashMap<>();
-  // LinkedHashMap, not HashMap: getAllPositions()/getAllSamples() below iterate this map's values() directly, so
-  // its iteration order is externally visible. A plain HashMap's order is arbitrary hash-bucket order, not the
-  // order loci were first read -- silently returning records in file order was the previous (accidental)
-  // behavior only for locus sets that happened to hash into ascending bucket order; LinkedHashMap makes "first
-  // read, first returned" an actual guarantee instead of a coincidence.
-  private final Map<Locus, List<VcfPosition>> m_locusToPositions = new LinkedHashMap<>();
+  private final Map<Locus, List<VcfPosition>> m_locusToPositions = new HashMap<>();
   private final Map<String, List<VcfSample>> m_idToSamples = new HashMap<>();
-  // see m_locusToPositions's comment just above -- getAllSamples() below has the identical iteration-order
-  // dependency on this map.
-  private final Map<Locus, List<List<VcfSample>>> m_locusToSamplesList = new LinkedHashMap<>();
+  private final Map<Locus, List<List<VcfSample>>> m_locusToSamplesList = new HashMap<>();
+  // Dedicated file-order lists for getAllPositions()/getAllSamples() below, appended to directly by
+  // MemoryMappedVcfLineParser.parseLine() alongside the locus maps above. A LinkedHashMap keyed on locus was
+  // tried for this previously, but that only orders *loci*, not individual records: flattening
+  // m_locusToPositions.values() groups every record at a locus together, so a locus revisited later in the file
+  // (e.g. chr1:100, chr1:200, chr1:100) gets hoisted back next to its earlier occurrence instead of staying in
+  // its actual read position. These lists have no such grouping -- one append per record, in read order -- so
+  // they are the only correct backing for the "file order" guarantee those two methods document.
+  private final List<VcfPosition> m_positionsInFileOrder = new ArrayList<>();
+  private final List<List<VcfSample>> m_samplesListInFileOrder = new ArrayList<>();
 
   /**
-   * @return Every position read, in the order it was first read, or null if parsing has not happened yet.
+   * @return Every position read, in the order it appeared in the file, or null if parsing has not happened yet.
    * Returns an empty (non-null) collection if parsing completed but the file had no data lines.
    */
   public @Nullable
@@ -44,15 +45,11 @@ public class MemoryMappedVcfDataStore {
     if (m_metadata == null) {
       return null;
     }
-    List<VcfPosition> all = new ArrayList<>();
-    for (List<VcfPosition> positions : m_locusToPositions.values()) {
-      all.addAll(positions);
-    }
-    return all;
+    return new ArrayList<>(m_positionsInFileOrder);
   }
 
   /**
-   * @return The samples for every VCF record read, in the order the record was first read, or null if parsing has
+   * @return The samples for every VCF record read, in the order it appeared in the file, or null if parsing has
    * not happened yet. Returns an empty (non-null) collection if parsing completed but the file had no data lines.
    * Each element is a record's own per-sample list, the same unmodifiable object {@link #getSamplesForId} returns
    * for that record -- see {@link #getSamplesAtLocus}'s Javadoc for why. The contained {@link VcfSample} objects
@@ -62,11 +59,7 @@ public class MemoryMappedVcfDataStore {
     if (m_metadata == null) {
       return null;
     }
-    List<List<VcfSample>> all = new ArrayList<>();
-    for (List<List<VcfSample>> samplesList : m_locusToSamplesList.values()) {
-      all.addAll(samplesList);
-    }
-    return all;
+    return new ArrayList<>(m_samplesListInFileOrder);
   }
 
   /**
@@ -228,6 +221,14 @@ public class MemoryMappedVcfDataStore {
 
   protected Map<Locus, List<List<VcfSample>>> getLocusToSamplesList() {
     return m_locusToSamplesList;
+  }
+
+  protected List<VcfPosition> getPositionsInFileOrder() {
+    return m_positionsInFileOrder;
+  }
+
+  protected List<List<VcfSample>> getSamplesListInFileOrder() {
+    return m_samplesListInFileOrder;
   }
 
   @Immutable
