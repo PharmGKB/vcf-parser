@@ -3,8 +3,10 @@ package org.pharmgkb.parser.vcf;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 public class ReservedStructuralVariantCodeTest {
@@ -50,5 +52,28 @@ public class ReservedStructuralVariantCodeTest {
     // Tandem has a real, non-empty parent list (Duplication) -- unlike a level-0 code, which has none.
     assertThrows(UnsupportedOperationException.class,
         () -> ReservedStructuralVariantCode.Tandem.getParentCodes().set(0, ReservedStructuralVariantCode.Deletion));
+  }
+
+  @Test
+  public void testIsReservedSymbolicAlleleNameRecognizesEveryLevel0CodeAndReservedLevel1Combination() {
+    // every bare level-0 code (VCFv4.3.tex lines 203-208) plus every reserved level-1 subtype combined with
+    // each of its own reserved parents (lines 213-215) -- 6 + 3 = 9 total
+    for (String id : new String[] {"DEL", "INS", "DUP", "INV", "CNV", "BND", "DUP:TANDEM", "DEL:ME", "INS:ME"}) {
+      assertTrue(ReservedStructuralVariantCode.isReservedSymbolicAlleleName(id), id + " should be reserved");
+    }
+  }
+
+  @Test
+  public void testIsReservedSymbolicAlleleNameRejectsCustomSubtypeAndBareLevel1Code() {
+    // a custom subtype under a reserved parent is not itself a reserved NAME (VCFv4.4.tex:221, implementations
+    // may define their own subtypes), and a level-1 code used bare (never reserved at level 0) isn't either
+    assertFalse(ReservedStructuralVariantCode.isReservedSymbolicAlleleName("INS:ME:LINE"));
+    assertFalse(ReservedStructuralVariantCode.isReservedSymbolicAlleleName("TANDEM"));
+    assertFalse(ReservedStructuralVariantCode.isReservedSymbolicAlleleName("NOT_A_RESERVED_CODE"));
+  }
+
+  @Test
+  public void testIsReservedSymbolicAlleleNameReturnsFalseForNull() {
+    assertFalse(ReservedStructuralVariantCode.isReservedSymbolicAlleleName(null));
   }
 }

@@ -103,6 +103,13 @@ public final class ContigMetadata extends IdMetadata {
             warnOrThrow("{} ID \"{}\" contains the invalid character '{}'", getLabel(), unquotedId, invalid);
           }
         }
+        // VCFv4.3.tex line 266 (the target, unchanged through 4.4/4.5): "The contig names must not use a
+        // reserved symbolic allele name." New at 4.3 -- the sentence doesn't appear in VCFv4.1.tex/VCFv4.2.tex.
+        // See ReservedStructuralVariantCode.isReservedSymbolicAlleleName's own comment for exactly which names
+        // count as reserved (e.g. "DEL", "DUP:TANDEM" -- not a custom subtype like "INS:ME:LINE").
+        if (ReservedStructuralVariantCode.isReservedSymbolicAlleleName(unquotedId)) {
+          warnOrThrow("{} ID \"{}\" must not use a reserved symbolic allele name", getLabel(), unquotedId);
+        }
       }
     }
   }
@@ -254,6 +261,10 @@ public final class ContigMetadata extends IdMetadata {
         if (warnedChars.add(invalid)) {
           warnOrThrow("{} ID \"{}\" contains the invalid character '{}'", getLabel(), id, invalid);
         }
+      }
+      // see the typed constructor's identical check for the VCFv4.3.tex:266 citation
+      if (ReservedStructuralVariantCode.isReservedSymbolicAlleleName(id)) {
+        warnOrThrow("{} ID \"{}\" must not use a reserved symbolic allele name", getLabel(), id);
       }
     }
     // No unrecognized-attribute check here, matching InfoMetadata/FormatMetadata/IdDescriptionMetadata's

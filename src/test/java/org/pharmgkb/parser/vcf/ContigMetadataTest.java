@@ -224,6 +224,70 @@ public class ContigMetadataTest {
   }
 
   @Test
+  public void testTypedConstructorWarnsForReservedSymbolicAlleleName() {
+    // regression test: VCFv4.3.tex line 266, "The contig names must not use a reserved symbolic allele name,"
+    // was never checked -- ##contig=<ID=DEL,...> parsed with zero warnings.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new ContigMetadata(LENIENT_CONTEXT, "DEL", 100L, null, null, null, null, null);
+      assertTrue(appender.anyMessageContains("must not use a reserved symbolic allele name"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testMapConstructorWarnsForReservedLevel1SymbolicAlleleName() {
+    // a reserved level-1 combination (subtype + its reserved parent), not just a bare level-0 code
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      Map<String, String> map = new HashMap<>();
+      map.put(ContigMetadata.ID, "DUP:TANDEM");
+      new ContigMetadata(LENIENT_CONTEXT, map);
+      assertTrue(appender.anyMessageContains("must not use a reserved symbolic allele name"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testTypedConstructorDoesNotWarnForCustomSubtypeUnderReservedParent() {
+    // a custom subtype under a reserved parent is NOT itself reserved (VCFv4.4.tex:221, "Implementations are
+    // free to define their own subtypes") and must not warn
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new ContigMetadata(LENIENT_CONTEXT, "INS:ME:LINE", 100L, null, null, null, null, null);
+      assertFalse(appender.anyMessageContains("must not use a reserved symbolic allele name"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testStrictConstructorThrowsForReservedSymbolicAlleleName() {
+    assertThrows(VcfFormatException.class,
+        () -> new ContigMetadata(STRICT_CONTEXT, "DEL", 100L, null, null, null, null, null));
+  }
+
+  @Test
   public void testMapConstructorWarnsOnceForCommaOnlyId() {
     // regression guard: a comma-containing id must warn only once (IdMetadata's own dedicated comma check),
     // not also trigger this class's own character-set warning for the same comma -- init()'s pattern-match
