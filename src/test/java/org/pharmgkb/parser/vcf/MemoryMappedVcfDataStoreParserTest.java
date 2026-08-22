@@ -484,6 +484,35 @@ public class MemoryMappedVcfDataStoreParserTest {
   }
 
   @Test
+  public void testGetAllPositionsReturnsFileOrderNotHashBucketOrder() throws IOException {
+    // regression test: m_locusToPositions was previously a plain HashMap, so getAllPositions() (which iterates
+    // its values()) returned records in arbitrary hash-bucket order rather than the order they were read --
+    // confirmed empirically that a HashMap<Locus,...> populated with this exact 20-locus sequence comes back
+    // scrambled (e.g. 8,9,10,11,4,5,6,... instead of 1..20). Now backed by a LinkedHashMap, so file order holds.
+    StringBuilder vcf = new StringBuilder("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n");
+    for (int i = 1; i <= 20; i++) {
+      vcf.append("chr1\t").append(i).append("\t.\tA\tT\t.\t.\t.\n");
+    }
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf.toString()))) {
+      MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+      new VcfParser.Builder()
+          .fromReader(reader)
+          .parseWith(lineParser)
+          .build().parse();
+      MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
+      List<Long> positionsInOrder = new ArrayList<>();
+      for (VcfPosition position : dataStore.getAllPositions()) {
+        positionsInOrder.add(position.getPosition());
+      }
+      List<Long> expected = new ArrayList<>();
+      for (long i = 1; i <= 20; i++) {
+        expected.add(i);
+      }
+      assertEquals(expected, positionsInOrder);
+    }
+  }
+
+  @Test
   public void testDuplicateIdRejectionIsAtomicForWholeRecord() throws IOException {
     // a record with two IDs where the second is a pre-existing duplicate must be rejected as a whole: the first
     // (non-duplicate) ID must not end up linked, and the record must not appear in locus-based lookup either

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -23,13 +24,20 @@ public class MemoryMappedVcfDataStore {
 
   private @Nullable VcfMetadata m_metadata;
   private final Map<String, VcfPosition> m_idToPosition = new HashMap<>();
-  private final Map<Locus, List<VcfPosition>> m_locusToPositions = new HashMap<>();
+  // LinkedHashMap, not HashMap: getAllPositions()/getAllSamples() below iterate this map's values() directly, so
+  // its iteration order is externally visible. A plain HashMap's order is arbitrary hash-bucket order, not the
+  // order loci were first read -- silently returning records in file order was the previous (accidental)
+  // behavior only for locus sets that happened to hash into ascending bucket order; LinkedHashMap makes "first
+  // read, first returned" an actual guarantee instead of a coincidence.
+  private final Map<Locus, List<VcfPosition>> m_locusToPositions = new LinkedHashMap<>();
   private final Map<String, List<VcfSample>> m_idToSamples = new HashMap<>();
-  private final Map<Locus, List<List<VcfSample>>> m_locusToSamplesList = new HashMap<>();
+  // see m_locusToPositions's comment just above -- getAllSamples() below has the identical iteration-order
+  // dependency on this map.
+  private final Map<Locus, List<List<VcfSample>>> m_locusToSamplesList = new LinkedHashMap<>();
 
   /**
-   * @return Every position read, or null if parsing has not happened yet. Returns an empty (non-null) collection
-   * if parsing completed but the file had no data lines.
+   * @return Every position read, in the order it was first read, or null if parsing has not happened yet.
+   * Returns an empty (non-null) collection if parsing completed but the file had no data lines.
    */
   public @Nullable
   Collection<VcfPosition> getAllPositions() {
@@ -44,11 +52,11 @@ public class MemoryMappedVcfDataStore {
   }
 
   /**
-   * @return The samples for every VCF record read, or null if parsing has not happened yet. Returns an empty
-   * (non-null) collection if parsing completed but the file had no data lines. Each element is a record's own
-   * per-sample list, the same unmodifiable object {@link #getSamplesForId} returns for that record -- see
-   * {@link #getSamplesAtLocus}'s Javadoc for why. The contained {@link VcfSample} objects themselves remain
-   * mutable.
+   * @return The samples for every VCF record read, in the order the record was first read, or null if parsing has
+   * not happened yet. Returns an empty (non-null) collection if parsing completed but the file had no data lines.
+   * Each element is a record's own per-sample list, the same unmodifiable object {@link #getSamplesForId} returns
+   * for that record -- see {@link #getSamplesAtLocus}'s Javadoc for why. The contained {@link VcfSample} objects
+   * themselves remain mutable.
    */
   public @Nullable Collection<List<VcfSample>> getAllSamples() {
     if (m_metadata == null) {
