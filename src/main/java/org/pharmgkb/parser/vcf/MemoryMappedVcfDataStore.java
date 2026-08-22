@@ -139,35 +139,24 @@ public class MemoryMappedVcfDataStore {
     if (samples == null) {
       return null;
     }
-    int idx = m_metadata.getSampleIndex(sampleId);
-    return idx < 0 || idx >= samples.size() ? null : samples.get(idx);
+    return getOrNull(samples, m_metadata.getSampleIndex(sampleId));
   }
 
   public @Nullable VcfSample getSampleForId(String positionId, int sampleIndex) {
-    List<VcfSample> samples = m_idToSamples.get(positionId);
-    if (samples == null || sampleIndex < 0 || sampleIndex >= samples.size()) {
-      return null;
-    }
-    return samples.get(sampleIndex);
+    return getOrNull(m_idToSamples.get(positionId), sampleIndex);
   }
 
   public @Nullable VcfSample getSampleAtLocus(String chromosome, long position, int recordIndex, String sampleId) {
-    List<List<VcfSample>> samplesList = m_locusToSamplesList.get(new Locus(chromosome, position));
-    if (samplesList == null || recordIndex < 0 || recordIndex >= samplesList.size()) {
+    List<VcfSample> samples = getOrNull(m_locusToSamplesList.get(new Locus(chromosome, position)), recordIndex);
+    if (samples == null) {
       return null;
     }
-    List<VcfSample> samples = samplesList.get(recordIndex);
-    int idx = m_metadata.getSampleIndex(sampleId);
-    return idx < 0 || idx >= samples.size() ? null : samples.get(idx);
+    return getOrNull(samples, m_metadata.getSampleIndex(sampleId));
   }
 
   public @Nullable VcfSample getSampleAtLocus(String chromosome, long position, int recordIndex, int sampleIndex) {
-    List<List<VcfSample>> samplesList = m_locusToSamplesList.get(new Locus(chromosome, position));
-    if (samplesList == null || recordIndex < 0 || recordIndex >= samplesList.size()) {
-      return null;
-    }
-    List<VcfSample> samples = samplesList.get(recordIndex);
-    return sampleIndex < 0 || sampleIndex >= samples.size() ? null : samples.get(sampleIndex);
+    List<VcfSample> samples = getOrNull(m_locusToSamplesList.get(new Locus(chromosome, position)), recordIndex);
+    return getOrNull(samples, sampleIndex);
   }
 
   public VcfSample.@Nullable Genotype getGenotypeForId(String positionId, String sampleId) {
@@ -176,54 +165,53 @@ public class MemoryMappedVcfDataStore {
     if (position == null || samples == null) {
       return null;
     }
-    int idx = m_metadata.getSampleIndex(sampleId);
-    if (idx < 0 || idx >= samples.size()) {
-      return null;
-    }
-    return samples.get(idx).getGenotype(position);
+    VcfSample sample = getOrNull(samples, m_metadata.getSampleIndex(sampleId));
+    return sample == null ? null : sample.getGenotype(position);
   }
 
   public VcfSample.@Nullable Genotype getGenotypeAtLocus(String chromosome, long position, int recordIndex, String sampleId) {
     Locus locus = new Locus(chromosome, position);
     List<VcfPosition> positions = m_locusToPositions.get(locus);
-    List<List<VcfSample>> samplesList = m_locusToSamplesList.get(locus);
-    // bounds-checking recordIndex against samplesList.size() alone also guards positions.get(recordIndex) below:
-    // MemoryMappedVcfLineParser.parseLine() populates both maps in lockstep (one add() call each, same locus,
-    // every record), so positions.size() == samplesList.size() always holds for a given locus.
-    if (positions == null || samplesList == null || recordIndex < 0 || recordIndex >= samplesList.size()) {
+    // bounds-checking recordIndex against the samples list's presence/size alone (via getOrNull below) also
+    // guards positions.get(recordIndex) below: MemoryMappedVcfLineParser.parseLine() populates both maps in
+    // lockstep (one add() call each, same locus, every record), so positions.size() == samplesList.size()
+    // always holds for a given locus.
+    List<VcfSample> samples = getOrNull(m_locusToSamplesList.get(locus), recordIndex);
+    if (samples == null) {
       return null;
     }
-    List<VcfSample> samples = samplesList.get(recordIndex);
-    int idx = m_metadata.getSampleIndex(sampleId);
-    if (idx < 0 || idx >= samples.size()) {
-      return null;
-    }
-    return samples.get(idx).getGenotype(positions.get(recordIndex));
+    VcfSample sample = getOrNull(samples, m_metadata.getSampleIndex(sampleId));
+    return sample == null ? null : sample.getGenotype(positions.get(recordIndex));
   }
 
   public VcfSample.@Nullable Genotype getGenotypeForId(String positionId, int sampleIndex) {
     VcfPosition position = m_idToPosition.get(positionId);
-    List<VcfSample> samples = m_idToSamples.get(positionId);
-    if (position == null || samples == null || sampleIndex < 0 || sampleIndex >= samples.size()) {
-      return null;
-    }
-    return samples.get(sampleIndex).getGenotype(position);
+    VcfSample sample = getOrNull(m_idToSamples.get(positionId), sampleIndex);
+    return position == null || sample == null ? null : sample.getGenotype(position);
   }
 
   public VcfSample.@Nullable Genotype getGenotypeAtLocus(String chromosome, long position, int recordIndex, int sampleIndex) {
     Locus locus = new Locus(chromosome, position);
     List<VcfPosition> positions = m_locusToPositions.get(locus);
-    List<List<VcfSample>> samplesList = m_locusToSamplesList.get(locus);
-    // bounds-checking recordIndex against samplesList.size() alone also guards positions.get(recordIndex) below --
-    // see the comment in the sibling getGenotypeAtLocus(String, long, int, String) overload for why.
-    if (positions == null || samplesList == null || recordIndex < 0 || recordIndex >= samplesList.size()) {
+    // see the comment in the sibling getGenotypeAtLocus(String, long, int, String) overload for why
+    // bounds-checking recordIndex against the samples list's presence/size alone also guards
+    // positions.get(recordIndex) below.
+    List<VcfSample> samples = getOrNull(m_locusToSamplesList.get(locus), recordIndex);
+    if (samples == null) {
       return null;
     }
-    List<VcfSample> samples = samplesList.get(recordIndex);
-    if (sampleIndex < 0 || sampleIndex >= samples.size()) {
-      return null;
-    }
-    return samples.get(sampleIndex).getGenotype(positions.get(recordIndex));
+    VcfSample sample = getOrNull(samples, sampleIndex);
+    return sample == null ? null : sample.getGenotype(positions.get(recordIndex));
+  }
+
+  /**
+   * @return {@code list.get(idx)}, or {@code null} if {@code list} is {@code null} or {@code idx} is out of
+   * bounds. Shared by every by-ID/by-locus sample and genotype lookup above, all of which repeated this same
+   * bounds-check-or-null pattern; this class is a non-performance-critical convenience store, so the extra
+   * call carries no meaningful cost.
+   */
+  private static <T> @Nullable T getOrNull(@Nullable List<T> list, int idx) {
+    return list == null || idx < 0 || idx >= list.size() ? null : list.get(idx);
   }
 
   protected Map<String, VcfPosition> getIdToPosition() {
