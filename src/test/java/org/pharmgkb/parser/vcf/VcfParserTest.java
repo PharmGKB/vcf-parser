@@ -2110,6 +2110,162 @@ public class VcfParserTest {
     }
   }
 
+  @Tag("hts-specs")
+  @Test
+  void testHtsSpecsNonNumericQualFixtureThrowsOnTypedAccess() throws IOException {
+    // QUAL's grammar (VcfFloat) is only checked lazily, when getQuality() is actually used -- this fixture's own
+    // ##CauseOfFailure= is "QUAL is not a number" (QUAL="quality"). Previously only "confirmed with a scratch
+    // parse+getQuality() test" per HTS_SPECS_BASELINE_STATUS.md's "Non-numeric QUAL" row -- this is the permanent
+    // regression test that row was missing.
+    List<VcfFormatException> thrown = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.2/failed/failed_body_qual_000.vcf"))
+        .parseWith((metadata, record) -> {
+          try {
+            record.getPosition().getQuality();
+          } catch (VcfFormatException e) {
+            thrown.add(e);
+          }
+        })
+        .build()) {
+      parser.parse();
+    }
+    assertFalse(thrown.isEmpty(), () -> "failed_body_qual_000.vcf should have thrown for its non-numeric QUAL");
+  }
+
+  @Tag("hts-specs")
+  @Test
+  void testHtsSpecsNegativeQualFixtureDoesNotThrowOrWarnOnTypedAccess() throws IOException {
+    // Companion to the non-numeric-QUAL test above: VcfFloat's grammar explicitly permits a leading '-', so a
+    // negative QUAL parses as an ordinary valid VcfFloat with no warning and no sentinel fallback -- this
+    // fixture's own ##CauseOfFailure= is "QUAL is a negative number" (QUAL=-100). See HTS_SPECS_BASELINE_STATUS.md's
+    // "Negative QUAL fixtures" section for why this asymmetry with the non-numeric case is deliberate, not a bug.
+    // Previously only "confirmed with a scratch parse+getQuality() test" -- this is the permanent regression test
+    // that section was missing.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    List<VcfFloat> quality = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.2/failed/failed_body_qual_001.vcf"))
+        .parseWith((metadata, record) -> quality.add(record.getPosition().getQuality()))
+        .build()) {
+      parser.parse();
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertEquals(List.of(VcfFloat.of(new BigDecimal("-100"))), quality);
+    assertFalse(appender.hasWarnOrHigherExcluding(Set.of(
+        "Sample {} is missing in the metadata", "There are {} samples in the header but {} in the metadata")),
+        () -> "failed_body_qual_001.vcf's negative QUAL should not have warned");
+  }
+
+  @Tag("hts-specs")
+  @Test
+  void testHtsSpecsGtSemanticViolationFixturesThrowOnTypedAccess() throws IOException {
+    // GT's semantic content (allele token shape, allele-index range) is only checked lazily, when
+    // VcfSample.getGenotype(VcfPosition) is actually used -- each fixture's own ##CauseOfFailure= is "Sample
+    // genotype contains illegal values" (_000, GT="1/C"), "Sample allele is out of range" (_001, GT="0/3" with
+    // only 2 valid ALT-derived indices), and "Sample first field is not a valid genotype" (_002, GT="0.000").
+    // Previously only "confirmed with a scratch parse+getGenotypeForId() test" per
+    // HTS_SPECS_BASELINE_STATUS.md's "GT semantic-content violations" row -- this is the permanent regression
+    // test that row was missing.
+    Object[][] cases = {
+        { "failed_body_sample_000.vcf", "is not a number" },
+        { "failed_body_sample_001.vcf", "is out of range" },
+        { "failed_body_sample_002.vcf", "is not a number" },
+    };
+    for (Object[] c : cases) {
+      String fixtureName = (String) c[0];
+      String expectedMessageFragment = (String) c[1];
+      List<VcfFormatException> thrown = new ArrayList<>();
+      try (VcfParser parser = new VcfParser.Builder()
+          .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.2/failed", fixtureName))
+          .parseWith((metadata, record) -> {
+            VcfPosition position = record.getPosition();
+            for (VcfSample sample : record.getSamples()) {
+              try {
+                sample.getGenotype(position);
+              } catch (VcfFormatException e) {
+                thrown.add(e);
+              }
+            }
+          })
+          .build()) {
+        parser.parse();
+      }
+      assertFalse(thrown.isEmpty(), () -> fixtureName + " should have thrown for its illegal GT");
+      assertTrue(thrown.stream().anyMatch(e -> e.getMessage().contains(expectedMessageFragment)),
+          () -> fixtureName + " should have thrown with a message containing: " + expectedMessageFragment);
+    }
+  }
+
+  @Tag("hts-specs")
+  @Test
+  void testHtsSpecsPassedBodyAltFixtureAltMissingRecordThrowsOnTypedGtAccess() throws IOException {
+    // passed_body_alt.vcf is an hts-specs passed/ fixture (should parse cleanly), but its ALT="." record (no ALT
+    // alleles) reuses the same "GT:DS:GL" sample block as every other row in this ALT-syntax sweep, whose second
+    // sample's GT=0|1 references allele index 1 -- out of range when there are zero ALT alleles. This looks like
+    // a copy-paste artifact in the upstream fixture, not a library bug: VcfSample.getGenotype(VcfPosition)
+    // unconditionally rejects an out-of-range allele index (see its own @throws Javadoc), and this is one of only
+    // two hts-specs-discovered fixture-scope-mismatch cases -- see HTS_SPECS_BASELINE_STATUS.md's "candidate for
+    // upstream filing" section for passed_body_alt.vcf/passed_body_info.vcf.
+    List<VcfFormatException> thrown = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.3/passed/passed_body_alt.vcf"))
+        .parseWith((metadata, record) -> {
+          VcfPosition position = record.getPosition();
+          for (VcfSample sample : record.getSamples()) {
+            try {
+              sample.getGenotype(position);
+            } catch (VcfFormatException e) {
+              thrown.add(e);
+            }
+          }
+        })
+        .build()) {
+      parser.parse();
+    }
+    assertFalse(thrown.isEmpty(),
+        () -> "passed_body_alt.vcf's ALT=\".\" record should have thrown for its out-of-range GT allele index");
+    assertTrue(thrown.stream().anyMatch(e -> e.getMessage().contains(
+        "Allele index 1 is out of range: should be between 0 and 0, inclusive")),
+        () -> "unexpected exception message(s): " + thrown);
+  }
+
+  @Tag("hts-specs")
+  @Test
+  void testHtsSpecsPassedBodyInfoFixtureStrandBiasFloatValueThrowsOnTypedAccess() throws IOException {
+    // passed_body_info.vcf is an hts-specs passed/ fixture (should parse cleanly), but its two SB-bearing records
+    // (CHROM 14) supply SB=0.150/SB=1.1e-123 -- single float values, whereas SB is reserved with Number=4,
+    // Type=Integer (VCFv4.3.tex's Reserved INFO Keys table: "SB & 4 & Integer & Strand bias"). This looks like
+    // the same float-value template used for AF/BQ/MQ (all genuinely Float-typed) mistakenly reused for SB, not
+    // a library bug: InternalUtils.convertElement's unconditional throw for an unparseable reserved-key value was
+    // reconfirmed correct in a46cad6. See HTS_SPECS_BASELINE_STATUS.md's "candidate for upstream filing" section
+    // for passed_body_alt.vcf/passed_body_info.vcf.
+    List<VcfFormatException> thrown = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(Path.of("build/hts-specs-checkout/test/vcf/4.3/passed/passed_body_info.vcf"))
+        .parseWith((metadata, record) -> {
+          try {
+            record.getPosition().getInfo(ReservedInfoProperty.StrandBias);
+          } catch (VcfFormatException e) {
+            thrown.add(e);
+          }
+        })
+        .build()) {
+      parser.parse();
+    }
+    assertFalse(thrown.isEmpty(), () -> "passed_body_info.vcf's SB records should have thrown for their " +
+        "unparseable-as-Integer value");
+    assertTrue(thrown.stream().anyMatch(e -> e.getMessage().contains("Expected integer; got 0.150")),
+        () -> "unexpected exception message(s): " + thrown);
+  }
+
   private static void assertHtsSpecsFixtureWarns(String fixtureName, String expectedMessageFragment)
       throws IOException {
     Path fixture = Path.of("build/hts-specs-checkout/test/vcf/4.2/failed", fixtureName);

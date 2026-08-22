@@ -175,13 +175,13 @@ Task 5).
 | CHROM contains a colon | `failed_body_chrom_001.vcf` (4.1, 4.2, 4.3) | 3 | Candidate for upstream filing, draft written | See "CHROM colon fixture" below. |
 | Duplicate/triplicate identical variant records at the same POS | `failed_body_duplicated_000.vcf` (duplicated), `_001.vcf` (triplicated), `_002.vcf` (multiallelic-derived), `_003.vcf` (different-context) (4.1, 4.2, 4.3) | 12 | Permanently accepted, deliberate | See "Duplicate/triplicate record fixtures" below. |
 | PL/GL/GP cardinality-vs-ploidy mismatch not detected at parse time | `failed_body_samples_ploidy_000-003.vcf` (4.1, 4.2, 4.3) | 12 | Permanently accepted | Fixed: `VcfSample.getProperty(VcfPosition, VcfMetadata, String)` now performs this check lazily on typed read access. `HtsSpecsConformanceTest`'s automated harness still can't observe it — its no-op `parseWith` callback never calls a typed getter, the same structural limitation already documented for the CIGAR/negative-INFO-value rows above — confirmed via an empty `htsSpecsUpdateBaseline` diff, and covered instead by `VcfParserTest.testHtsSpecsPlCardinalityFixturesWarnOnTypedAccess`, which calls the new accessor directly. |
-| Non-numeric QUAL | `failed_body_qual_000.vcf` (4.1, 4.2, 4.3) | 3 | Permanently accepted | `VcfPosition.getQuality()` now throws `VcfFormatException` unconditionally for a non-numeric QUAL (matching `InternalUtils.convertElement`'s identical decision for INFO/FORMAT reserved keys), with the original text still recoverable via `getRawQuality()` — a genuinely deferred check, since `VcfParser` itself stays lenient regardless. Confirmed with a scratch parse+`getQuality()` test. |
+| Non-numeric QUAL | `failed_body_qual_000.vcf` (4.1, 4.2, 4.3) | 3 | Permanently accepted | `VcfPosition.getQuality()` now throws `VcfFormatException` unconditionally for a non-numeric QUAL (matching `InternalUtils.convertElement`'s identical decision for INFO/FORMAT reserved keys), with the original text still recoverable via `getRawQuality()` — a genuinely deferred check, since `VcfParser` itself stays lenient regardless. Covered by `VcfParserTest.testHtsSpecsNonNumericQualFixtureThrowsOnTypedAccess`, which reparses the real fixture and calls `getQuality()` directly. |
 | Negative QUAL | `failed_body_qual_001.vcf` (4.1, 4.2, 4.3) | 3 | Permanently accepted | See "Negative QUAL fixtures" below. |
 | `##SAMPLE` missing `Genomes` field | `failed_meta_sample_000.vcf` (4.1, 4.2) | 2 | Permanently accepted | `VCFv4.2.tex` line 146's `##SAMPLE` template shows `Genomes` but no spec text (4.2-4.5) marks any `##SAMPLE` field but `ID` as mandatory; `IdDescriptionMetadata` (used for `##SAMPLE`) only models/validates `ID`/`Description`, treating `Genomes`/`Mixture` as unmodeled extra fields by design. bcftools 1.23.1 accepts silently; only vcf_validator 0.10.2 flags it (`Error: SAMPLE metadata Genomes is not a valid string...`). |
 | `##SAMPLE` non-`Description` field quoted (`Mixture="..."`) | `failed_meta_sample_001.vcf` (4.1, 4.2) | 2 | Permanently accepted | Same unmodeled-extra-field reasoning as the row above. Verified directly: parsing preserves the raw quoted value and `getPropertyUnquoted("Mixture")` correctly strips it to the intended value, with lossless round-trip via `VcfWriter`'s raw-property passthrough — no data loss or misalignment. bcftools 1.23.1 accepts silently; only vcf_validator 0.10.2 flags it (`Error: SAMPLE metadata Mixture is not a valid string...`). |
 | FORMAT key contains an underscore, flagged as "non-alphanumeric" | `failed_body_format_003.vcf` (4.1, 4.2) | 2 | Permanently accepted, deliberate | `InternalUtils.FORMAT_PATTERN` (`^[A-Za-z_][0-9A-Za-z_.]*$`, stated directly by `VCFv4.3.tex` line 429, the target; `VCFv4.2.tex` predates it) already permits `_` in a FORMAT key — the fixture's `G_S` key matches it. bcftools 1.23.1 accepts `GT:G_S:GL` silently (no charset complaint). vcf_validator 0.10.2 reports it invalid ("Format is not a colon-separated list of alphanumeric strings"), reading "alphanumeric" more literally than the spec's own cited regex allows; bcftools is the tie-breaker per `AGENTS.md`. |
 | GT contains an interior empty allele between two adjacent separators (`0/\|1`) | `failed_body_format_004.vcf` (4.1, 4.2), `failed_body_format_006.vcf` (4.3 — renumbered copy of the same fixture, see "Fixture numbering is not stable across hts-specs version directories" below) | 3 | Permanently accepted, deliberate — same divergence as `EMPTY_FIELD_HANDLING.md`'s existing GT row | `VcfSample.getGenotype`'s manual separator scan applies the identical warn-and-substitute-`.` treatment to an empty allele regardless of position (interior or trailing) — confirmed directly: `0/\|1` parses to alleles `[C, ., T]` with the same "GT ... contains an empty allele" warning already documented for the trailing case (`0/`). bcftools 1.23.1 hard-errors (exit code 8), the same error class already cited there; vcf_validator 0.10.2 reports "Allele index must not be empty." See `EMPTY_FIELD_HANDLING.md`'s GT row rather than a new explanation. |
-| GT semantic-content violations (illegal allele value, out-of-range allele index, non-genotype-shaped first field) | `failed_body_sample_000.vcf` (`1/C`), `_001.vcf` (`0/3`, only 2 valid indices), `_002.vcf` (`0.000`) (4.1, 4.2, 4.3) | 9 | Permanently accepted | `VcfSample.getProperty(ReservedFormatProperty.Genotype)` returns GT's raw String unvalidated, but `VcfSample.getGenotype(VcfPosition)` — the library's typed Genotype-interpretation method — throws `VcfFormatException` for all three (a non-numeric allele token, or an index exceeding `position.getAltBases().size()` per `VCFv4.2.tex` line 217's allele-indexing rule), and is reached via `MemoryMappedVcfDataStore.getGenotypeForId`/`getGenotypeAtLocus`. Confirmed with a scratch parse+`getGenotypeForId()` test. Matches Parser Validation Policy's deferred-validation-via-typed-conversion design. bcftools 1.23.1 hard-errors on `_000.vcf`/`_002.vcf` but is silent on `_001.vcf`'s out-of-range allele; vcf_validator 0.10.2 flags all three invalid. |
+| GT semantic-content violations (illegal allele value, out-of-range allele index, non-genotype-shaped first field) | `failed_body_sample_000.vcf` (`1/C`), `_001.vcf` (`0/3`, only 2 valid indices), `_002.vcf` (`0.000`) (4.1, 4.2, 4.3) | 9 | Permanently accepted | `VcfSample.getProperty(ReservedFormatProperty.Genotype)` returns GT's raw String unvalidated, but `VcfSample.getGenotype(VcfPosition)` — the library's typed Genotype-interpretation method — throws `VcfFormatException` for all three (a non-numeric allele token, or an index exceeding `position.getAltBases().size()` per `VCFv4.2.tex` line 217's allele-indexing rule), and is reached via `MemoryMappedVcfDataStore.getGenotypeForId`/`getGenotypeAtLocus`. Covered by `VcfParserTest.testHtsSpecsGtSemanticViolationFixturesThrowOnTypedAccess`, which reparses all three real fixtures and calls `getGenotype(VcfPosition)` directly. Matches Parser Validation Policy's deferred-validation-via-typed-conversion design. bcftools 1.23.1 hard-errors on `_000.vcf`/`_002.vcf` but is silent on `_001.vcf`'s out-of-range allele; vcf_validator 0.10.2 flags all three invalid. |
 | Sample FORMAT value's element count doesn't match its declared `Number` (a non-reserved key) | `failed_body_sample_004.vcf` (`DS`, Number=1, 2 values), `_005.vcf` (`AL`, Number=A), `_006.vcf` (`AL`, Number=G) (4.1, 4.2, 4.3), `_010.vcf` (`AL`, Number=R; 4.2, 4.3) | 11 | Permanently accepted | Fixed: `VcfSample.getProperty(VcfPosition, VcfMetadata, String)` now resolves a non-reserved key's `Number` from its own `##FORMAT` declaration and checks cardinality the same way as a reserved key. Same lazy-check/no-op-callback limitation as the PL/GL/GP row above applies to `HtsSpecsConformanceTest`'s automated harness — confirmed via an empty `htsSpecsUpdateBaseline` diff, covered instead by `VcfParserTest.testHtsSpecsNonReservedFormatNumberFixturesWarnOnTypedAccess`. bcftools 1.23.1 is silent on all four fixtures; vcf_validator 0.10.2 flags all four invalid with correct expected-vs-actual counts. |
 | Sample FORMAT value doesn't match its declared `Type` (a non-reserved key) | `failed_body_sample_007.vcf` (`DS`, Type=Float, `my_string`), `_008.vcf` (Type=Integer), `_009.vcf` (Type=Character) (4.1, 4.2, 4.3) | 9 | Permanently accepted | Fixed: `VcfSample.getProperty(VcfPosition, VcfMetadata, String)` now converts a non-reserved key's value using its declared `##FORMAT` `Type`, throwing `VcfFormatException` on a genuine mismatch (unchanged from `getProperty(ReservedFormatProperty)`'s existing throw-on-mismatch behavior for a reserved key). Covered by `VcfParserTest.testHtsSpecsNonReservedFormatTypeFixturesThrowOnTypedAccess`. bcftools 1.23.1 hard-errors for `_007.vcf`/`_008.vcf` but is silent on `_009.vcf`'s Character-type mismatch; vcf_validator 0.10.2 flags all three invalid. |
 | INFO value is not a flag (`1000G`, `DB`, `H2`, `H3`, `SOMATIC`, `VALIDATED`) | `failed_body_info_012.vcf`, `_019.vcf`, `_020.vcf`, `_025.vcf`, `_026.vcf`, `_027.vcf` (4.1, 4.2, 4.3) | 18 | Permanently accepted | `InternalUtils.convertElement`'s `Boolean` branch throws `VcfFormatException` for any value other than `0/1/true/false`, reached on `VcfPosition.getInfo(ReservedInfoProperty)` for each of these reserved Flag-typed keys — deferred validation working as designed. vcf_validator 0.10.2 independently confirms each invalid ("does not match the specification Type=Flag"); bcftools 1.23.1 is silent (no reserved-key semantic checks). |
@@ -219,7 +219,8 @@ deferred); the remaining cluster (the contig-asterisk pair, two fixtures) was ru
 `failed_body_qual_001.vcf` sets `##CauseOfFailure=QUAL is a negative number` (`QUAL=-100`).
 `VcfPosition.getQuality()` does *not* catch this: `VcfFloat`'s `FLOAT_PATTERN` explicitly permits a leading
 `-`, so a negative QUAL parses as an ordinary valid `VcfFloat` with no warning and no sentinel fallback —
-confirmed with a scratch parse+`getQuality()` test returning `-100` with zero captured warnings. Despite that
+covered by `VcfParserTest.testHtsSpecsNegativeQualFixtureDoesNotThrowOrWarnOnTypedAccess`, which reparses the
+real fixture and confirms `getQuality()` returns `-100` with zero captured warnings. Despite that
 internal asymmetry with the sibling non-numeric-QUAL row above, this is not treated as a reportable finding,
 because neither reference tool this project defers to actually rejects a negative QUAL either: bcftools
 1.23.1 (htslib 1.23.1) passes `-100` through unchanged with no warning, and vcf_validator 0.10.2 reports the
@@ -262,6 +263,74 @@ generally needing reference-genome context) to recognize as equivalent — a mat
 library isn't designed to provide, not a hot-path-cheap addition. Implementing the partial, `_000`-only
 version was considered and rejected as not worth the inconsistency (catching one of four documented patterns
 while leaving the rest permanently accepted anyway).
+
+**Unrelated coincidental defect in `_002.vcf`:** this fixture's first record has `ALT=AAT,AA` (2 alleles) but
+`AC=249`/`AF=0.11` (1 value each) -- a genuine `Number=A` cardinality mismatch, and its `FORMAT GL` values are
+also short by half. This is a real, already-covered-elsewhere check (the same one documented in the "Sample
+FORMAT value's element count doesn't match its declared `Number`" and reserved-INFO-cardinality rows above),
+just coincidentally present in a fixture whose own documented cause is the unrelated duplicate-record claim.
+Discovered while re-measuring the deferred-validation blind spot below with `DeferredValidationLineParser`:
+this coincidental defect is what makes `_002.vcf` alone (not `_000`/`_001`/`_003`) still show as detected once
+the `FORMAT {} has no metadata declaration` noise (see below) is excluded -- it does not change this section's
+"permanently accepted" ruling on the duplicate-record claim itself, which remains genuinely undetected.
+
+## `HtsSpecsConformanceTest`'s automated harness cannot observe a deferred/lazy validation check
+
+Every "Permanently accepted" row above whose Details column says the underlying check is "lazy"/"deferred" is
+undetectable by `HtsSpecsConformanceTest.assertParsesCleanly`/`assertThrowsOrWarns` as currently written: both
+use a no-op `parseWith` callback (`(metadata, record) -> { }`), so a check that only fires when a typed getter
+is actually called (`getQuality()`, `getInfo(ReservedInfoProperty)`, `getGenotype(VcfPosition)`,
+`getProperty(VcfPosition, VcfMetadata, String)`) never runs during the automated suite at all. This is
+deliberate, not an oversight -- see `DeferredValidationLineParser`'s own Javadoc and the sibling
+`LocalFixtureConformanceTest` harness, which wires it in directly; `HtsSpecsConformanceTest` does not, because
+its outcomes are baseline-diffed across up to 845 rows rather than hand-written per fixture, and wiring in
+deferred validation there risks two distinct failure modes measured directly while investigating the TODO.md
+item this section closes out (`HtsSpecsConformanceTest` may have silently unverified deferred-validation
+warnings, filed 2026-08-16):
+
+- **False credit from a generic, content-independent warning.** `DeferredValidationLineParser` calls
+  `sample.getProperty(position, metadata, key)` for every sample property key present, which fires `"FORMAT {}
+  has no metadata declaration; cannot determine its Number/Type"` for any fixture using a key like `DS`/`GL`
+  without a `##FORMAT` declaration -- true of most of this corpus, and unrelated to whatever each fixture
+  actually documents as wrong. Measured directly: temporarily wiring `DeferredValidationLineParser` into both
+  `assertParsesCleanly`/`assertThrowsOrWarns` and running `./gradlew htsSpecsTest` produced 179 divergences;
+  excluding this one additional generic warning (the same masking effect `GENERIC_NOISE_WARNINGS` already
+  guards against for two other warnings) dropped it to 147.
+- **Correct detection, wrong reason.** The `_002.vcf` coincidental defect immediately above is a second,
+  distinct failure mode: a real check firing legitimately, but not the one the fixture's own
+  `##CauseOfFailure=` documents. `HtsSpecsConformanceTest`'s `EXPECTED_WARNING_SUBSTRINGS` mechanism exists to
+  guard exactly this for a *fresh* detection, but does not run on a *baseline-STALE* transition (the
+  fixture-level `assertTrue` on `Baseline.check()`'s result throws before that content check is ever reached)
+  -- so wiring deferred validation into the main harness at this scale would need that gap closed too, not
+  just the generic-noise one above.
+
+Given both risks, this project's chosen resolution (matching every "Permanently accepted, covered by
+`VcfParserTest.testHtsSpecs*`" row already in this document) is: leave `HtsSpecsConformanceTest`'s harness and
+`hts-specs-baseline.tsv` untouched, and instead add one small, targeted, permanent regression test per
+rule-category, each reparsing the real fixture and asserting the *specific* expected exception/warning message
+-- never a bare "some warning fired" check. Of the ~40 rule-categories behind the 141 genuine STALE rows
+measured above, all but two (non-numeric QUAL, GT semantic-content violations) already had such a test; both
+gaps are now closed (see their table rows above). The remaining 6 of the 147 measured divergences were `NEW`,
+not `STALE` -- two `passed/` fixture-scope-mismatch cases, covered in the next section.
+
+## `passed/` fixture-scope-mismatch cases: candidates for upstream filing
+
+Discovered by the same `DeferredValidationLineParser` re-measurement described above, applied to
+`passedFixturesParseWithoutError`'s no-op callback too: two `passed/` fixtures (should parse cleanly) contain a
+record that this library correctly, and by deliberate existing design, rejects once a typed getter actually
+reads it. Neither is a library bug -- both look like upstream template artifacts, not deliberate test content,
+and neither is wired into `hts-specs-baseline.tsv` (the automated `parser-no-throw` check still uses a no-op
+callback and never observes either), so this is documentation + a pinning test only, matching the "CHROM colon
+fixture" precedent above.
+
+| Fixture | Version(s) | Record | Why this looks like an upstream defect |
+|---|---|---|---|
+| `passed_body_alt.vcf` | 4.1, 4.2, 4.3 | `POS=1900, ALT=.` (zero ALT alleles), sample 2's `GT=0\|1` | Every other row in this file's ALT-syntax sweep reuses the identical `GT:DS:GL` sample block; only the `ALT=.` row is where that reused `GT=0\|1` becomes actually invalid (index 1 with zero ALT alleles) -- `VcfSample.getGenotype(VcfPosition)` unconditionally rejects an out-of-range allele index, per its own `@throws` Javadoc, predating this investigation. |
+| `passed_body_info.vcf` | 4.1, 4.2, 4.3 | `CHROM=14, SB=0.150`/`SB=1.1e-123` | `SB` is reserved with `Number=4, Type=Integer` (`VCFv4.3.tex`'s Reserved INFO Keys table: `SB & 4 & Integer & Strand bias`), but both records supply a single float value -- the same `0.150`/`1.1e-123` template used elsewhere in this file for `AF`/`BQ`/`MQ` (all genuinely `Float`-typed) looks like it was mistakenly reused for `SB`. `InternalUtils.convertElement`'s unconditional throw for a reserved-key value unparseable as its declared type was reconfirmed correct in `a46cad6`, one day before this investigation. |
+
+Both pinned by `VcfParserTest.testHtsSpecsPassedBodyAltFixtureAltMissingRecordThrowsOnTypedGtAccess` and
+`testHtsSpecsPassedBodyInfoFixtureStrandBiasFloatValueThrowsOnTypedAccess`. Neither has a written upstream
+issue draft yet.
 
 ## `writer-bytediff` entries (6) — `passed/` fixtures whose round trip isn't byte-identical
 
