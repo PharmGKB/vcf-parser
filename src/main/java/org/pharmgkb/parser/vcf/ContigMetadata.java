@@ -72,11 +72,13 @@ public final class ContigMetadata extends IdMetadata {
     // VCF_SPEC_AMBIGUITIES.md's "##contig ID character set" entry). InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN itself has 13 characters,
     // including a comma, so its coverage overlaps IdMetadata's own dedicated comma check above. Under a strict
     // context that overlap is unreachable -- IdMetadata's own super("CONTIG", id) call throws on any
-    // comma-containing ID before this check runs -- so the single (non-looping) matcher.find() below has no
-    // comma case to special-case. Under a lenient context it can be reached, and then a comma-containing ID
-    // gets one warning here in addition to IdMetadata's own; init()'s own version of this check just below
-    // instead skips a comma match explicitly, since it also has to keep searching past it for a genuinely
-    // different defect -- see that loop's own comment.
+    // comma-containing ID before this check runs. Under a lenient context it can be reached, so this loops and
+    // skips a comma match explicitly (IdMetadata's own super(...) call already warned about it), the same as
+    // init()'s own version of this check just below -- a single non-looping matcher.find() previously stopped
+    // at the first match, which silently dropped a second, genuinely different invalid character whenever a
+    // comma happened to come first (e.g. "chr,(1)" warned about the comma alone, never the '('); looping fixes
+    // that regardless of which invalid character comes first, matching init()'s own comment for the identical
+    // reasoning.
     // id can also be null or empty here under a lenient context (IdMetadata's own super(...) call warns rather
     // than throwing for either) -- guard rather than letting id.charAt(0) raw-crash.
     if (id != null && !id.isEmpty()) {
@@ -88,8 +90,18 @@ public final class ContigMetadata extends IdMetadata {
           warnOrThrow("{} ID \"{}\" must not start with '{}'", getLabel(), unquotedId, first);
         }
         Matcher matcher = InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN.matcher(unquotedId);
-        if (matcher.find()) {
-          warnOrThrow("{} ID \"{}\" contains the invalid character '{}'", getLabel(), unquotedId, matcher.group());
+        Set<String> warnedChars = null;
+        while (matcher.find()) {
+          String invalid = matcher.group();
+          if (invalid.equals(",")) {
+            continue;
+          }
+          if (warnedChars == null) {
+            warnedChars = new HashSet<>();
+          }
+          if (warnedChars.add(invalid)) {
+            warnOrThrow("{} ID \"{}\" contains the invalid character '{}'", getLabel(), unquotedId, invalid);
+          }
         }
       }
     }

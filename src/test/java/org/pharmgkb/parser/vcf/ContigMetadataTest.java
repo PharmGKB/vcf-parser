@@ -163,6 +163,29 @@ public class ContigMetadataTest {
   }
 
   @Test
+  public void testTypedConstructorWarnsForBothCommaAndOtherInvalidCharacter() {
+    // regression guard: the typed constructor's invalid-character scan previously used a single, non-looping
+    // matcher.find(), which silently dropped a second, genuinely different defect whenever a comma came first
+    // in the id -- "chr,(1)" has both a comma (already covered by IdMetadata) and a paren (not covered by
+    // anything else), so both warnings must fire, matching testMapConstructorWarnsForBothCommaAndOtherInvalidCharacter
+    // below, which already covered this correctly for the Map-based constructor
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new ContigMetadata(LENIENT_CONTEXT, "chr,(1)", 100L, null, null, null, null, null);
+      assertTrue(appender.anyMessageContains("must not contain a comma"));
+      assertTrue(appender.anyMessageContains("contains the invalid character '('"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testMapConstructorWarnsForLeadingAsterisk() {
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
