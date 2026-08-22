@@ -25,22 +25,32 @@ public final class FormatMetadata extends IdDescriptionMetadata {
   FormatMetadata(VcfContext context, @Nullable String id, @Nullable String description, @Nullable String number,
       @Nullable FormatType type) {
     super(context, "FORMAT", id);
+    // Checked unquoted, not raw -- see InfoMetadata's identical constructor for why (there is no stored property
+    // to read yet, so this unquotes the constructor parameters directly via InternalUtils.unquote rather than
+    // getPropertyUnquoted). Without this, a quoted reserved ID (e.g. ID="GT") both false-rejected the
+    // tag-name-grammar check below and silently skipped the ReservedFormatProperty comparison entirely, since
+    // neither ever saw the value with its quotes stripped -- matching init()'s own getPropertyUnquoted(ID)/
+    // getPropertyUnquoted(NUMBER) reasoning for the Map-based constructor just below. unquotedId/unquotedNumber
+    // change only what is tested, not what is stored: putPropertyRaw below still stores the caller's original
+    // spelling.
+    String unquotedId = id == null ? null : InternalUtils.unquote(id);
+    String unquotedNumber = number == null ? null : InternalUtils.unquote(number);
     // see InfoMetadata's identical constructor for why id can be null (or blank/comma-containing) here under a
     // lenient context, and for why this strips commas/whitespace before checking -- matches init()'s own
     // identical reasoning for the Map-based constructor just below (a prior version of this check omitted the
     // stripping, which re-warned about a comma IdMetadata's own super(...) call had already reported).
-    if (id != null && !id.isEmpty()) {
-      String stripped = id.replaceAll("[,\\s]", "");
+    if (unquotedId != null && !unquotedId.isEmpty()) {
+      String stripped = unquotedId.replaceAll("[,\\s]", "");
       if (!stripped.isEmpty() && !InternalUtils.FORMAT_PATTERN.matcher(stripped).matches()) {
         warnOrThrow("{} ID \"{}\" does not match the required tag-name grammar (must start with a letter or " +
-            "underscore, followed only by letters, digits, underscores, or periods)", getLabel(), id);
+            "underscore, followed only by letters, digits, underscores, or periods)", getLabel(), unquotedId);
       }
     }
     // Validated before putPropertyRaw stores it below: see InfoMetadata's identical constructor for why
     // checking format here first (rather than after) is what makes a null or malformed Number actually
     // produce this class's own, more specific message instead of putPropertyRaw's generic null-check one.
-    if (number == null || !InternalUtils.NUMBER_PATTERN.matcher(number).matches()) {
-      warnOrThrow("FORMAT Number is not a valid VCF number: '{}'", number);
+    if (unquotedNumber == null || !InternalUtils.NUMBER_PATTERN.matcher(unquotedNumber).matches()) {
+      warnOrThrow("FORMAT Number is not a valid VCF number: '{}'", unquotedNumber);
     }
     if (number != null) {
       putPropertyRaw(NUMBER, number);
@@ -66,16 +76,16 @@ public final class FormatMetadata extends IdDescriptionMetadata {
     // ill-defined GLE FORMAT tag"), so a 4.3+ ##FORMAT=<ID=GLE,...> is validated only against its own declared
     // Number/Type, like any custom key -- never against this library's 4.1/4.2 canonical values
     VcfVersion version = getContext().getVersion();
-    ReservedFormatProperty reserved = ReservedFormatProperty.fromId(id, version);
+    ReservedFormatProperty reserved = ReservedFormatProperty.fromId(unquotedId, version);
     if (reserved != null) {
       // version-aware: CNL is the one reserved key whose expected Number differs by version (VCFv4.2.tex:308
       // "Number=.", VCFv4.3.tex:678 "Number=G") -- see that constant's own comment for the citations
-      if (!reserved.getExpectedNumber(version).equals(number)) {
-        warnOrThrow("FORMAT {} has Number '{}' but the reserved definition expects '{}'", id, number,
+      if (!reserved.getExpectedNumber(version).equals(unquotedNumber)) {
+        warnOrThrow("FORMAT {} has Number '{}' but the reserved definition expects '{}'", unquotedId, unquotedNumber,
             reserved.getExpectedNumber(version));
       }
       if (type != null && !InternalUtils.toJavaType(type).equals(reserved.getType())) {
-        warnOrThrow("FORMAT {} has Type '{}' but the reserved definition expects '{}'", id, type,
+        warnOrThrow("FORMAT {} has Type '{}' but the reserved definition expects '{}'", unquotedId, type,
             reserved.getType().getSimpleName());
       }
     }

@@ -521,4 +521,28 @@ public class InfoMetadataTest {
       appender.stop();
     }
   }
+
+  @Test
+  public void testTypedConstructorAppliesReservedKeyValidationToQuotedId() {
+    // regression test: the typed constructor previously validated the raw (possibly quoted) id/number instead
+    // of unquoting first, matching neither its own tag-name-grammar check nor the ReservedInfoProperty lookup
+    // against a quoted value -- so ID="AF" silently skipped the Number/Type mismatch check this class's own
+    // init() (the Map-based constructor's path) already performs for the equivalent unquoted declaration.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new InfoMetadata(LENIENT_CONTEXT, "\"AF\"", "d", InfoType.String, "\"1\"", null, null);
+      assertEquals(0, appender.countMessagesContaining("does not match the required tag-name grammar"));
+      assertEquals(0, appender.countMessagesContaining("is not a valid VCF number"));
+      assertEquals(1, appender.countMessagesContaining("but the reserved definition expects 'A'"));
+      assertEquals(1, appender.countMessagesContaining("but the reserved definition expects 'VcfFloat'"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
 }

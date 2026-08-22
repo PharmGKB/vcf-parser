@@ -35,6 +35,16 @@ public final class InfoMetadata extends IdDescriptionMetadata {
   InfoMetadata(VcfContext context, @Nullable String id, @Nullable String description, @Nullable InfoType type,
       @Nullable String number, @Nullable String source, @Nullable String version) {
     super(context, "INFO", id);
+    // Checked unquoted, not raw -- see IdMetadata's typed constructor's identical comment for why (there is no
+    // stored property to read yet, so this unquotes the constructor parameter directly via InternalUtils.unquote
+    // rather than getPropertyUnquoted). Without this, a quoted reserved ID (e.g. ID="AF") both false-rejected the
+    // tag-name-grammar check below and silently skipped the ReservedInfoProperty comparison entirely, since
+    // neither ever saw the value with its quotes stripped -- matching init()'s own getPropertyUnquoted(ID)/
+    // getPropertyUnquoted(NUMBER) reasoning for the Map-based constructor just below. unquotedId/unquotedNumber
+    // change only what is tested, not what is stored: putPropertyRaw below still stores the caller's original
+    // spelling.
+    String unquotedId = id == null ? null : InternalUtils.unquote(id);
+    String unquotedNumber = number == null ? null : InternalUtils.unquote(number);
     // Under a strict context IdMetadata's own super(...) call above already threw for a null, blank,
     // whitespace- or comma-containing id, so this check only ever sees a well-formed one there. Under a lenient
     // context that call warns and continues instead, so id genuinely can be null (or blank/comma-containing)
@@ -42,19 +52,19 @@ public final class InfoMetadata extends IdDescriptionMetadata {
     // checking so this only fires for a genuinely different defect, matching init()'s own identical reasoning
     // for the Map-based constructor just below (a prior version of this check omitted the stripping, which
     // re-warned about a comma IdMetadata's own super(...) call had already reported).
-    if (id != null && !id.isEmpty()) {
-      String stripped = id.replaceAll("[,\\s]", "");
+    if (unquotedId != null && !unquotedId.isEmpty()) {
+      String stripped = unquotedId.replaceAll("[,\\s]", "");
       if (!stripped.isEmpty() && !InternalUtils.INFO_PATTERN.matcher(stripped).matches()) {
         warnOrThrow("{} ID \"{}\" does not match the required tag-name grammar (must start with a letter or " +
             "underscore, followed only by letters, digits, underscores, or periods -- or be the legacy value " +
-            "'1000G')", getLabel(), id);
+            "'1000G')", getLabel(), unquotedId);
       }
     }
     // Validated before putPropertyRaw stores it below: putPropertyRaw only null-checks (with a generic
     // "Metadata property ... has a null value" message), so checking format here first is what makes a null
     // or malformed Number actually produce this class's own, more specific message.
-    if (number == null || !InternalUtils.NUMBER_PATTERN.matcher(number).matches()) {
-      warnOrThrow("INFO Number is not a valid VCF number: '{}'", number);
+    if (unquotedNumber == null || !InternalUtils.NUMBER_PATTERN.matcher(unquotedNumber).matches()) {
+      warnOrThrow("INFO Number is not a valid VCF number: '{}'", unquotedNumber);
     }
     if (number != null) {
       putPropertyRaw(NUMBER, number);
@@ -78,17 +88,17 @@ public final class InfoMetadata extends IdDescriptionMetadata {
     // no init() call: the Source/Version-quoting and Type-parse-failure checks init() also performs are
     // structurally unreachable here (putAndQuoteProperty always quotes; type is already a real InfoType enum,
     // not a raw string), per this project's "no error handling for impossible scenarios" convention.
-    if (type == InfoType.Flag && !"0".equals(number)) {
-      warnOrThrow("INFO {} has Type=Flag but Number is '{}' (should be 0)", id, number);
+    if (type == InfoType.Flag && !"0".equals(unquotedNumber)) {
+      warnOrThrow("INFO {} has Type=Flag but Number is '{}' (should be 0)", unquotedId, unquotedNumber);
     }
-    ReservedInfoProperty reserved = ReservedInfoProperty.fromId(id);
+    ReservedInfoProperty reserved = ReservedInfoProperty.fromId(unquotedId);
     if (reserved != null) {
-      if (!reserved.getExpectedNumber().equals(number)) {
-        warnOrThrow("INFO {} has Number '{}' but the reserved definition expects '{}'", id, number,
+      if (!reserved.getExpectedNumber().equals(unquotedNumber)) {
+        warnOrThrow("INFO {} has Number '{}' but the reserved definition expects '{}'", unquotedId, unquotedNumber,
             reserved.getExpectedNumber());
       }
       if (type != null && !InternalUtils.toJavaType(type).equals(reserved.getType())) {
-        warnOrThrow("INFO {} has Type '{}' but the reserved definition expects '{}'", id, type,
+        warnOrThrow("INFO {} has Type '{}' but the reserved definition expects '{}'", unquotedId, type,
             reserved.getType().getSimpleName());
       }
     }

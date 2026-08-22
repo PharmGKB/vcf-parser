@@ -658,6 +658,30 @@ public class FormatMetadataTest {
   }
 
   @Test
+  public void testTypedConstructorAppliesReservedKeyValidationToQuotedId() {
+    // regression test: the typed constructor previously validated the raw (possibly quoted) id/number instead
+    // of unquoting first, matching neither its own tag-name-grammar check nor the ReservedFormatProperty lookup
+    // against a quoted value -- so ID="GT" silently skipped the Number/Type mismatch check this class's own
+    // init() (the Map-based constructor's path) already performs for the equivalent unquoted declaration.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new FormatMetadata(LENIENT_CONTEXT, "\"GT\"", "d", "\"2\"", FormatType.Integer);
+      assertEquals(0, appender.countMessagesContaining("does not match the required tag-name grammar"));
+      assertEquals(0, appender.countMessagesContaining("is not a valid VCF number"));
+      assertEquals(1, appender.countMessagesContaining("but the reserved definition expects '1'"));
+      assertEquals(1, appender.countMessagesContaining("but the reserved definition expects 'String'"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testTypedConstructorRejects1000GUnlikeInfo() {
     // unlike INFO_PATTERN, FORMAT_PATTERN has no 1000G legacy exception -- confirmed directly against
     // bcftools 1.23.1, which accepts ##INFO=<ID=1000G,...> silently but flags ##FORMAT=<ID=1000G,...> as
