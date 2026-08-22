@@ -962,9 +962,13 @@ public final class VcfPosition {
         } catch (VcfFormatException e) {
           // deliberately not setting m_qualityResolved here -- see this method's own @throws Javadoc for why a
           // strict-equivalent throw (unconditional here, not gated on isLenient()) re-fires on every call
-          // instead of being cached like the successful/missing outcomes above and below
-          throw new VcfFormatException("QUAL '" + raw + "' is not a number -- see getRawQuality() for the " +
-              "original text");
+          // instead of being cached like the successful/missing outcomes above and below.
+          // withLineNumber (not a bare throw) and passing e as the cause: this is the one remaining deferred
+          // getter that threw without either, unlike its sibling info()/getInfo() overloads -- losing both the
+          // line number and, e.g., VcfFloat's own more specific "too long to be a valid VCF Float" diagnosis,
+          // flattened here to a generic "is not a number".
+          throw withLineNumber(new VcfFormatException("QUAL '" + raw + "' is not a number -- see getRawQuality() " +
+              "for the original text", e));
         }
       } else {
         m_qualityResolved = true;

@@ -1704,6 +1704,21 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testGetQualityExceptionIncludesLineNumberAndCause() {
+    // regression test: getQuality()'s deferred-parse exception previously threw a bare
+    // new VcfFormatException(String) with no line number and no cause, unlike its sibling deferred getters
+    // (info()/getInfo()) after the 225659c refactor extracted withLineNumber() -- this was the one remaining
+    // call site that refactor didn't reach (it wasn't one of the five it was scoped to). Losing the cause also
+    // flattened a more specific underlying diagnosis (e.g. VcfFloat's own "too long to be a valid VCF Float")
+    // down to this method's generic "is not a number" message.
+    VcfPosition position = lenientContext(new VcfWarnings(new StringWriter())).newPosition("1", 100, "A", null, 42)
+        .toBuilder().rawQuality("not-a-number").build();
+    VcfFormatException ex = assertThrows(VcfFormatException.class, position::getQuality);
+    assertEquals(42, ex.getLineNumber());
+    assertNotNull(ex.getCause());
+  }
+
+  @Test
   public void testValidateAlwaysWarnsRegardlessOfOriginalConstructor() {
     // regression test: a recoverable condition validate() (or the lazy info() parse it forces) re-checks always
     // warns -- via whatever m_warnings currently is -- never throws, because that path passes m_warnings
