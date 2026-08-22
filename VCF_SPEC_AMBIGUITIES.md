@@ -279,22 +279,36 @@ Task 4's `VcfPercentEncoding` scope investigation (see "Percent-encoding field s
 disagreement worth recording separately, since it's about metadata declaration IDs, not values. hts-specs' own
 `test/vcf/4.3/passed/passed_meta_alt.vcf:9` declares an `##ALT` ID (`complexcustomcontig` followed by a long
 run of non-alphanumeric punctuation, including a literal, un-encoded `%`) and expects it to parse as valid.
-Confirmed live with vcf_validator 0.10.2 that it agrees for `##ALT` specifically (both the fixture and an
-isolated `##ALT` ID containing only `%` validate clean), but rejects the identical bare `%` character when it
-appears in an `##INFO`/`##FILTER` declaration ID instead ("Metadata ID contains a character different from
-alphanumeric, dot, underscore, dash and plus") — a blanket structural-field-ID grammar with no exception for
-`##ALT`. This matches `AGENTS.md`'s general note that vcf_validator is stricter than bcftools on structural
-fields, but here it's inconsistent with itself across declaration types rather than just stricter uniformly,
-and hts-specs has no fixture at all exercising `%` in a `##FILTER`/`##SAMPLE`/`##INFO` declaration ID to
-confirm which side is right for those three.
+Confirmed live with vcf_validator 0.10.2 that it agrees for `##ALT` specifically (the fixture validates clean),
+but rejects the identical bare `%` character when it appears in an `##INFO`/`##FILTER` declaration ID instead
+("Metadata ID contains a character different from alphanumeric, dot, underscore, dash and plus") — a blanket
+structural-field-ID grammar with no exception for `##ALT`. This matches `AGENTS.md`'s general note that
+vcf_validator is stricter than bcftools on structural fields, and hts-specs has no fixture at all exercising `%`
+in a `##FILTER`/`##SAMPLE`/`##INFO` declaration ID to confirm which side is right for those three.
+
+**Correction (2026-08-21 vcf_validator-citation audit):** an earlier draft of this entry additionally claimed
+"an isolated `##ALT` ID containing only `%` validate[s] clean" — checked directly against the installed binary
+while auditing this file's citations against the two confirmed 0.10.2 token-capture defects (see
+`TODO.md`'s "Audit existing vcf_validator citations" item), that specific claim is wrong: a bare `%`-only
+`##ALT` ID measures `not valid` (`ALT metadata ID is not prefixed by DEL/INS/DUP/INV/CNV/BND...`). Reading
+`~/Dev/vcf-validator`'s grammar (`src/vcf/vcf.ragel:500`, `alt_id = ( alnum | (punct - (',' | '<' | '>')) )+ -
+(punct)+`) explains why: `%` is a legal `alt_id` character, but the trailing `- (punct)+` subtraction excludes
+any token that is *entirely* punctuation with no alphanumeric character at all — unrelated to `%` specifically,
+and unrelated to either confirmed 0.10.2 defect (the token still parses and is compared correctly; it's simply
+excluded from the grammar by a separate, correctly-implemented rule). `##INFO`/`##FILTER`'s stricter rejection
+is not this same rule either: their `identifier` production (`vcf.ragel:498`, `alnum | '.' | '_' | '-' | '+'`)
+excludes `%` from its allowed character class entirely, so *any* `%` anywhere in the ID fails there, not just an
+all-punctuation token. Both behaviors are the tool correctly enforcing two different, but real, character-class
+grammars — not an inconsistency, and not evidence of either token-capture defect.
 
 **Decision:** no code change. This library's already-settled, bcftools-informed rule (see "`##FORMAT`/`##INFO`
 declaration ID grammar is stricter than `##FILTER`/`##SAMPLE`/`##ALT`" above) already allows a bare `%` in a
 `##FILTER`/`##SAMPLE`/`##ALT` ID via `IdMetadata`'s shared, looser whitespace/comma-only check, and rejects one
 in `##FORMAT`/`##INFO` IDs via the stricter tag-name grammar — unchanged by this task. Recorded here so a
 future agent who runs vcf_validator against a `%`-containing `##FILTER`/`##SAMPLE` ID and sees it flagged
-"invalid" doesn't treat that as a fresh finding: vcf_validator's own inconsistency here, unsupported by any
-hts-specs fixture for those three types, is not treated as controlling, per the tie-breaker hierarchy.
+"invalid" doesn't treat that as a fresh finding: vcf_validator's stricter `##INFO`/`##FILTER` character-class
+grammar, unsupported by any hts-specs fixture for those three types, is not treated as controlling, per the
+tie-breaker hierarchy.
 
 ### Metadata attribute NAME grammar (parse and write warn, construction throws)
 
