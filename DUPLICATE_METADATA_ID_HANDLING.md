@@ -80,6 +80,18 @@ fixtures (plus every other probe in this document) and checks each vcf_validator
 recorded here, per `BEHAVIOR_TABLE_STANDARD.md`'s Tier 2 evidence-preservation requirement -- re-run it after
 a vcf_validator or bcftools upgrade rather than re-deriving this table from memory.
 
+**Independently re-derived 2026-08-21**, blind: a fresh agent with no access to this document or to these
+fixtures' own content (only permitted to invoke `vcf_validator` by file path, never to open the files) wrote
+predictions from the `.ragel` grammar and this section's own probe-shape description, then measured -- all
+seven `Valid` verdicts confirmed. It also grounded the "why" one layer deeper than a grammar-only read can:
+vcf_validator's `ParsingState::add_meta` stores each declaration in a `meta_entries` multimap keyed by
+declaration **type** (e.g. `"INFO"`, `"contig"`), never by the declared `ID` -- confirmed by reading every
+call site of `.equal_range()`/`.find()`/`.count()` on that multimap across `record.cpp`,
+`validate_optional_policy.cpp`, and `store_parse_policy.cpp`; every one resolves a *record's* value against
+*any* matching header declaration (first match), and none of them ever compares two declarations of the same
+type against each other. So there is no code path capable of detecting a duplicate `ID`, not merely an
+untested one.
+
 Column notes, per the standard: **bcftools** gets one unqualified column, since its header tokenizer never
 consults `##fileformat` (`bcf_hdr_parse_line`, htslib 1.23.1 `vcf.c`). **vcf_validator** is pinned to the
 grammar actually exercised by every probe fixture (`VCFv4.3`) -- see row 7's own note for why `##META` alone
@@ -202,6 +214,16 @@ third copy of either fact as a column here would restate content on record, not 
 | 1 | Duplicate `##contig`/`##INFO`/etc. declaration ID | keep first, DROP dup, no warning | Valid | `duplicate-contig-id.vcf` (the "Reference table" section's own fixture, cited here rather than duplicated); `testDuplicateContigIdBcftoolsKeepsFirst` (already exists — no new case needed) |
 | 2 | Duplicate `#CHROM` sample-column name | **Hard error — refuses to parse the file at all** | **Invalid** | `duplicate-chrom-sample-column.vcf`; `testDuplicateChromSampleColumnNameBcftoolsHardErrors` (already exists — no new case needed) |
 | 3 | **Control** — single, non-duplicated `#CHROM` sample-column list | Accepted (exit 0), no warning | Valid | no dedicated fixture — measured live against a hand-built one-off on 2026-08-16 (see probe shape above); not itself a duplicate-ID decision, so no committed fixture or `bcftoolsDependencyTest` case was added |
+
+**Row 2 independently re-derived 2026-08-21**, blind (same check as the "Reference table" section above):
+confirmed Invalid, with the exact diagnostic `"The header line has 1 repeated sample names. Please remove
+these names from the header line and the data lines: S1."` The re-derivation also confirmed this is a
+different *kind* of check than row 1's -- not a Ragel grammar state at all, but a post-parse semantic check
+(`StoreParsePolicy::handle_header_line`'s `check_each_sample_appears_only_once`, which builds a `std::set`
+over the collected sample-name tokens and throws if any collide), corroborating this table's own opening
+"Contrast" paragraph that a duplicate `#CHROM` column name is a structurally different problem from a
+duplicate declaration `ID`, independently and from vcf_validator's own source rather than only from this
+document's positional-indexing argument.
 
 (Verified directly: `bcftools view` on a file with two `S1` sample columns emits `[E::bcf_hdr_add_sample_len]
 Duplicated sample name 'S1'` and fails to parse; `vcf_validator` reports the file invalid. The control's
@@ -602,6 +624,23 @@ version whose grammar has no `ID` attribute at all, isolating the no-`ID`/real-`
 citation below. **Discriminating observable:** for bcftools, whether both `##PEDIGREE=` lines survive to
 `bcftools view -h`'s output, not merely that the file re-parses; for vcf_validator, its own Valid/Invalid
 verdict plus, for row 3, its diagnostic message text.
+
+**Independently re-derived 2026-08-21**, blind (same discipline as the "Reference table" and "Missing or
+empty ID" sections above -- a fresh agent, barred from opening these fixtures or this document, wrote
+predictions from the `.ragel` grammar files first): all three rows' vcf_validator verdicts confirmed, plus
+row 4's control (hts-specs' own `test/vcf/4.3/passed/passed_meta_pedigree.vcf`). It also generalized the
+"Reference table" section's own finding (vcf_validator's `meta_entries` multimap never compares two
+same-type declarations' IDs) into a repo-wide claim: grepping "duplicat" across every `~/Dev/vcf-validator`
+`.cpp`/`.ragel` file found **no duplicate-metadata-declaration-ID check anywhere in vcf_validator, for any of
+the 8 structured types** -- every "duplicate" hit concerns a record-body value (`record.cpp`) or a duplicate
+sample *column name* (`store_parse_policy.cpp`), never a metadata declaration. So rows 1/2's `Valid` verdicts
+aren't vcf_validator *tolerating* a duplicate `##PEDIGREE` ID -- it never looks for the condition at all, for
+any type, the same conclusion the "Reference table" section's own independent check reached from a narrower
+starting point (that section's own multimap-keyed-by-type reading, confirmed here to generalize). Separately
+confirmed row 3's failure is a genuine grammar rejection of the *empty* `ID=` value itself (VCFv4.3's
+`meta_pedigree` rule requires a literal `ID=` followed by a non-empty `identifier`; VCFv4.2's grammar has no
+`ID=` token at all, which is why row 1's wholly-absent `ID` isn't even a grammar violation in that version) --
+not a duplicate-detection outcome, consistent with the "no duplicate check anywhere" finding above.
 
 Column notes, per the standard: **bcftools** gets one unqualified column, same reasoning as the "Reference
 table" section above (`bcf_hdr_parse_line` never consults `##fileformat`). **vcf_validator** is pinned
