@@ -359,6 +359,26 @@ Affected fixtures:
 | `failed_meta_assembly_001.vcf` | 4.2 (file internally declares `VCFv4.3` despite living under the `4.2/` directory), 4.3 | `Meta-data entry is not a key-value pair` |
 | `failed_meta_pedigreedb_002.vcf` | 4.1, 4.2, 4.3 | `Non-valid URL` (consistent across versions) |
 
+## Inconsistent `##CauseOfFailure=` wording for the same empty-value condition: candidate for upstream filing
+
+`failed_meta_009.vcf` (an empty `##reference=` value) labels its `##CauseOfFailure=` as "Meta-data entry is
+not a key-value pair (empty value)", while `failed_meta_assembly_000.vcf` and `failed_meta_pedigreedb_000.vcf`
+— each an empty `##assembly=`/`##pedigreeDB=` value, the exact same underlying condition (zero characters
+after `=`) — instead use "Meta-data entry is not a key-value pair", without the `(empty value)` qualifier.
+This holds across all three versions these fixtures exist for (4.1, 4.2, 4.3) — nine files total, three
+fixture families x three versions each. Confirmed still current against this file's pinned
+`htsSpecsPinnedSha`. There's no apparent reason the qualifier is present for one field's empty-value case and
+absent for the other two, given the content is structurally identical. (`failed_meta_pedigreedb_001.vcf`'s
+`##pedigreeDB=<>` is a different condition — a non-empty two-character value, not zero characters after `=`
+— so its lack of the qualifier is arguably correct as-is and isn't part of this note.)
+
+This is purely a wording inconsistency in hts-specs' own prose, with no functional effect on this library or
+its conformance harness: both wordings describe the identical "meta-data entry rejected" outcome, and
+`HtsSpecsConformanceTest`'s `EXPECTED_WARNING_SUBSTRINGS` is keyed per-fixture-path, not per-cause-text, so it
+doesn't group or count fixtures by this string — nothing here to fix in this library. A full upstream-filing
+write-up (affected-files table, suggested resolution) has already been drafted locally but not yet filed, the
+same disclosure this file already makes for the "CHROM colon fixture" entry below.
+
 ## CHROM colon fixture: candidate for upstream filing
 
 `failed_body_chrom_001.vcf`'s `##CauseOfFailure=contig ID contains a colon` claim is directly contradicted by

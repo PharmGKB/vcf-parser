@@ -75,6 +75,11 @@ is what vcf_validator was actually run against. **Discriminating observable:** w
 whole re-parses -- this is what distinguishes "kept the first, dropped the second" from "merged/renamed the
 second into the first," which byte count alone cannot.
 
+**Probe script:** `scripts/probe-duplicate-metadata-id-handling.sh` re-runs both tools against these seven
+fixtures (plus every other probe in this document) and checks each vcf_validator verdict against the value
+recorded here, per `BEHAVIOR_TABLE_STANDARD.md`'s Tier 2 evidence-preservation requirement -- re-run it after
+a vcf_validator or bcftools upgrade rather than re-deriving this table from memory.
+
 Column notes, per the standard: **bcftools** gets one unqualified column, since its header tokenizer never
 consults `##fileformat` (`bcf_hdr_parse_line`, htslib 1.23.1 `vcf.c`). **vcf_validator** is pinned to the
 grammar actually exercised by every probe fixture (`VCFv4.3`) -- see row 7's own note for why `##META` alone
@@ -177,7 +182,8 @@ identical names, the file's only sample columns) with one data line supplying ma
 The control row is a hand-built one-off (`##fileformat=VCFv4.3`, one `##FORMAT=<ID=GT,...>`, one `##contig`,
 and a `#CHROM` line with a single `S1` sample column plus one matching `GT` data value) — not committed as a
 fixture, since it is the ordinary case rather than a duplicate-ID decision, but run directly against both
-tools below rather than assumed. **Discriminating observable:** whether the file is accepted or rejected
+tools below rather than assumed, and reproducible via `scripts/probe-duplicate-metadata-id-handling.sh`
+(which builds this exact payload inline, since it isn't a committed fixture). **Discriminating observable:** whether the file is accepted or rejected
 outright, not which value survives — unlike the "Reference table" section's rows, which distinguish "kept the
 first" from "merged/renamed," these cases differ on whether parsing succeeds at all.
 
@@ -344,6 +350,17 @@ Two separate spec facts apply below and must not be conflated into one citation:
   different about the two shapes. This fact does not vary by row or column, so it is stated once, here, rather
   than repeated in each of the 28 spec cells below.
 
+**Probe script:** `scripts/probe-duplicate-metadata-id-handling.sh` also re-runs both tools against all 14 of
+these fixtures (see that script for the exact invocations and verdict parsing), the same evidence-preservation
+mechanism as the "Reference table" section above. **Independently re-derived 2026-08-21** (per
+`BEHAVIOR_TABLE_STANDARD.md`'s requirement that a load-bearing table get a second-party check): a fresh
+re-derivation from the `.ragel` grammar, predictions written before measuring and without reading this table
+first, confirmed every verdict in the `bcftools 1.23.1`/`vcf_validator 0.10.2` columns below and resolved
+notes [c]/[d]'s previously-open "presumed, not confirmed" status -- see those notes for the one new nuance it
+surfaced. (This document's other three tables have not had the same independent check; only this one's
+missing/empty-`ID` table has, since its own notes [c]/[d] were the specific gap that motivated commissioning
+it.)
+
 Column notes, per the standard: **bcftools** and **vcf_validator** each get one unqualified/version-pinned
 column per condition (missing vs. empty), the same convention as this document's "Reference table" above --
 bcftools unqualified (`bcf_hdr_parse_line` never consults `##fileformat`), vcf_validator pinned to `(4.3)`, the
@@ -395,14 +412,25 @@ fact (b) above, restated here for a reader who jumps straight to the table witho
   "All structured lines require an ID which must be unique within their type, i.e., within all the
   meta-information lines with the same ``##``*key*`=` prefix." Same citation as this document's "Reference
   table" footnote [a] above, reused rather than re-derived.
-- **[c]** vcf_validator's exact diagnostic for `##FORMAT`/`##contig`'s empty-`ID` case was never directly
-  measured -- inherited unchanged from this table's pre-retrofit content, presumed (not confirmed) to follow the
-  same character-class pattern as `##SAMPLE`/`##META`'s own measured message. Neither this task nor Tasks 3/5
-  re-verified vcf_validator (only bcftools was re-measured in this plan); this remains an open gap, flagged
-  rather than silently resolved.
-- **[d]** vcf_validator's exact diagnostic for `##INFO`/`##FILTER`'s empty-`ID` case is presumed identical to
-  `##SAMPLE`/`##META`'s own measured "ID contains a character different from..." message -- same caveat as [c]:
-  inherited, not independently re-confirmed in this task.
+- **[c]** **Confirmed 2026-08-21** by an independent second-party re-derivation (predictions written from
+  `vcf_v43.ragel`/`vcf.ragel` before measuring, per `BEHAVIOR_TABLE_STANDARD.md`'s discipline, without first
+  reading this table): `##FORMAT`/`##contig`'s empty-`ID` case does produce the identical
+  "Metadata ID contains a character different from alphanumeric, dot, underscore, dash and plus." message as
+  `##SAMPLE`/`##META`. Root cause: `meta_format`/`meta_contig` each feed their `ID` token into the shared
+  `meta_id_err` error action (`vcf_v43.ragel:107`/the `chrom_basic` production respectively), the same action
+  `meta_info`/`meta_filter`/`meta_sample`/`meta_meta` use, so all six share one message string verbatim --
+  only `##ALT` (footnote below) uses a different production and a different message. **One further, genuinely
+  new finding from that re-derivation, previously unrecorded here:** the message text is measurably
+  *inaccurate* for `##contig` specifically -- `chrom_basic` (contig's own ID-position production) tolerates
+  several punctuation characters (e.g. colon, `!`) that `identifier` (the production every other type uses)
+  does not, so the charset the message describes is narrower than what `##contig` actually accepts. This is a
+  tool-message-wording quirk, not a behavior divergence: the empty-`ID` fixture itself is still measurably
+  rejected with this exact text, confirmed by direct invocation, not inferred from the charset claim.
+- **[d]** **Confirmed 2026-08-21**, same independent re-derivation as [c]: `##INFO`/`##FILTER`'s empty-`ID`
+  case does produce the identical "ID contains a character different from..." message as `##SAMPLE`/`##META`.
+  `meta_info`/`meta_filter` both feed `identifier` into `meta_id_err` too (`vcf_v43.ragel:113`/`:103`), the
+  same shared action as [c] above -- unlike [c], no message-accuracy quirk was found here, since `identifier`'s
+  charset is exactly what the message describes for these two types.
 - **[e]** VCFv4.4.tex line 201, VCFv4.5.tex line 250: "ALT meta-information lines are structured lines with
   require[d] fields of ID and Description..." (the spec's own text reads "require," not "required" -- the
   bracketed insertion marks the apparent typo, matching this file's "Missing ID is spec-grounded" section's own
