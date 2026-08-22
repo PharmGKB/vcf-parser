@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.LinkedListMultimap;
 import com.google.common.collect.ListMultimap;
@@ -1057,8 +1058,21 @@ public final class VcfMetadata {
      * public raw-value overloads), which always add genuinely new, not-yet-validated content.
      */
     private Builder addAlt(IdDescriptionMetadata md, boolean validateContent) {
-      requireNonNull(md, "ALT");
-      checkSameContext(md, m_context, "ALT");
+      return addKeyedDeclaration(m_alt, md, "ALT", validateContent ? m -> validateAlt(m, m_context) : null);
+    }
+
+    /**
+     * Shared add-declaration logic for the seven {@code addXxx(md)} overloads below: null/context checks, ID
+     * extraction, blank-ID drop, duplicate-ID drop, and map storage -- these differ only in the map, the
+     * declaration's own type, the type-name string used in messages, and (ALT only) an extra
+     * post-construction content check. {@code validateContent}, if non-null, runs only when the declaration is
+     * actually going to be stored (never for a dropped blank/duplicate ID) -- ALT is the only caller that
+     * supplies one, since it is the only keyed type with its own extra content check ({@link #validateAlt}).
+     */
+    private <T extends BaseMetadata> Builder addKeyedDeclaration(Map<String, T> map, T md, String typeName,
+        @Nullable Consumer<T> validateContent) {
+      requireNonNull(md, typeName);
+      checkSameContext(md, m_context, typeName);
       // getPropertyUnquoted(ID): the blank check, the duplicate check, and the map storage key itself must all
       // see the ID's actual content rather than its header-syntax quoting -- see AGENTS.md's "Unquoting before
       // internal use" policy. Without this, a quoted-empty (ID="") or quoted-whitespace (ID="   ") ID
@@ -1066,16 +1080,17 @@ public final class VcfMetadata {
       // see the retired WONT_FIX.md entry and DUPLICATE_METADATA_ID_HANDLING.md's "Missing or empty ID" section.
       String id = md.getPropertyUnquoted(IdMetadata.ID);
       if (id == null || id.trim().isEmpty()) {
-        warnOrThrow(m_context, "ALT metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
+        warnOrThrow(m_context, "{} metadata declaration has no ID and cannot be stored; dropped: {}", typeName,
+            md.getPropertiesRaw());
         return this;
       }
-      if (warnIfDuplicate(m_alt, id, "ALT", m_context)) {
+      if (warnIfDuplicate(map, id, typeName, m_context)) {
         return this;
       }
-      if (validateContent) {
-        validateAlt(md, m_context);
+      if (validateContent != null) {
+        validateContent.accept(md);
       }
-      m_alt.put(id, md);
+      map.put(id, md);
       return this;
     }
 
@@ -1087,19 +1102,7 @@ public final class VcfMetadata {
      * {@link #checkSameContext}.
      */
     Builder addInfo(InfoMetadata md) {
-      requireNonNull(md, "INFO");
-      checkSameContext(md, m_context, "INFO");
-      // getPropertyUnquoted(ID) -- see addAlt(IdDescriptionMetadata, boolean)'s identical comment.
-      String id = md.getPropertyUnquoted(IdMetadata.ID);
-      if (id == null || id.trim().isEmpty()) {
-        warnOrThrow(m_context, "INFO metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
-        return this;
-      }
-      if (warnIfDuplicate(m_info, id, "INFO", m_context)) {
-        return this;
-      }
-      m_info.put(id, md);
-      return this;
+      return addKeyedDeclaration(m_info, md, "INFO", null);
     }
 
     /**
@@ -1110,19 +1113,7 @@ public final class VcfMetadata {
      * {@link #checkSameContext}.
      */
     Builder addFilter(IdDescriptionMetadata md) {
-      requireNonNull(md, "FILTER");
-      checkSameContext(md, m_context, "FILTER");
-      // getPropertyUnquoted(ID) -- see addAlt(IdDescriptionMetadata, boolean)'s identical comment.
-      String id = md.getPropertyUnquoted(IdMetadata.ID);
-      if (id == null || id.trim().isEmpty()) {
-        warnOrThrow(m_context, "FILTER metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
-        return this;
-      }
-      if (warnIfDuplicate(m_filter, id, "FILTER", m_context)) {
-        return this;
-      }
-      m_filter.put(id, md);
-      return this;
+      return addKeyedDeclaration(m_filter, md, "FILTER", null);
     }
 
     /**
@@ -1133,19 +1124,7 @@ public final class VcfMetadata {
      * {@link #checkSameContext}.
      */
     Builder addFormat(FormatMetadata md) {
-      requireNonNull(md, "FORMAT");
-      checkSameContext(md, m_context, "FORMAT");
-      // getPropertyUnquoted(ID) -- see addAlt(IdDescriptionMetadata, boolean)'s identical comment.
-      String id = md.getPropertyUnquoted(IdMetadata.ID);
-      if (id == null || id.trim().isEmpty()) {
-        warnOrThrow(m_context, "FORMAT metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
-        return this;
-      }
-      if (warnIfDuplicate(m_format, id, "FORMAT", m_context)) {
-        return this;
-      }
-      m_format.put(id, md);
-      return this;
+      return addKeyedDeclaration(m_format, md, "FORMAT", null);
     }
 
     /**
@@ -1156,19 +1135,7 @@ public final class VcfMetadata {
      * {@link #checkSameContext}.
      */
     Builder addContig(ContigMetadata md) {
-      requireNonNull(md, "CONTIG");
-      checkSameContext(md, m_context, "CONTIG");
-      // getPropertyUnquoted(ID) -- see addAlt(IdDescriptionMetadata, boolean)'s identical comment.
-      String id = md.getPropertyUnquoted(IdMetadata.ID);
-      if (id == null || id.trim().isEmpty()) {
-        warnOrThrow(m_context, "CONTIG metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
-        return this;
-      }
-      if (warnIfDuplicate(m_contig, id, "CONTIG", m_context)) {
-        return this;
-      }
-      m_contig.put(id, md);
-      return this;
+      return addKeyedDeclaration(m_contig, md, "CONTIG", null);
     }
 
     /**
@@ -1179,19 +1146,7 @@ public final class VcfMetadata {
      * {@link #checkSameContext}.
      */
     Builder addSample(IdDescriptionMetadata md) {
-      requireNonNull(md, "SAMPLE");
-      checkSameContext(md, m_context, "SAMPLE");
-      // getPropertyUnquoted(ID) -- see addAlt(IdDescriptionMetadata, boolean)'s identical comment.
-      String id = md.getPropertyUnquoted(IdMetadata.ID);
-      if (id == null || id.trim().isEmpty()) {
-        warnOrThrow(m_context, "SAMPLE metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
-        return this;
-      }
-      if (warnIfDuplicate(m_sample, id, "SAMPLE", m_context)) {
-        return this;
-      }
-      m_sample.put(id, md);
-      return this;
+      return addKeyedDeclaration(m_sample, md, "SAMPLE", null);
     }
 
     /**
@@ -1202,19 +1157,7 @@ public final class VcfMetadata {
      * {@link #checkSameContext}.
      */
     Builder addMeta(MetaMetadata md) {
-      requireNonNull(md, "META");
-      checkSameContext(md, m_context, "META");
-      // getPropertyUnquoted(ID) -- see addAlt(IdDescriptionMetadata, boolean)'s identical comment.
-      String id = md.getPropertyUnquoted(IdMetadata.ID);
-      if (id == null || id.trim().isEmpty()) {
-        warnOrThrow(m_context, "META metadata declaration has no ID and cannot be stored; dropped: {}", md.getPropertiesRaw());
-        return this;
-      }
-      if (warnIfDuplicate(m_meta, id, "META", m_context)) {
-        return this;
-      }
-      m_meta.put(id, md);
-      return this;
+      return addKeyedDeclaration(m_meta, md, "META", null);
     }
 
     /**
@@ -1307,14 +1250,33 @@ public final class VcfMetadata {
      * duplicate-ID warning before content is ever validated (Step 2a of the task that introduced this method).
      */
     private Builder replaceAlt(IdDescriptionMetadata md) {
-      requireNonNull(md, "ALT");
-      checkSameContext(md, m_context, "ALT");
-      // getPropertyUnquoted(ID) -- see addAlt(IdDescriptionMetadata, boolean)'s comment; the map is
-      // keyed by the unquoted ID, so a lookup/store here must match.
+      return replaceKeyedDeclaration(m_alt, md, "ALT", m -> validateAlt(m, m_context));
+    }
+
+    /**
+     * Shared replace-declaration logic for the seven {@code replaceXxx(md)} overloads below: null/context
+     * checks, ID extraction, {@link #requirePresentForReplace}, and map storage -- these differ only in the
+     * map, the declaration's own type, the type-name string used in messages, and (ALT only) an extra
+     * post-construction content check, exactly the same shape {@link #addKeyedDeclaration} shares for the
+     * addXxx(md) overloads. {@code validateContent}, if non-null, always runs (unlike
+     * {@link #addKeyedDeclaration}'s duplicate-ID short-circuit, there is none here to skip it for) --
+     * content is validated completely before the single map mutation. {@code addAlt(md, boolean)} cannot be
+     * reused here: it runs {@code warnIfDuplicate} before validating content, which would short-circuit a
+     * same-ID replacement on the duplicate-ID warning before content is ever validated (Step 2a of the task
+     * that introduced this method).
+     */
+    private <T extends BaseMetadata> Builder replaceKeyedDeclaration(Map<String, T> map, T md, String typeName,
+        @Nullable Consumer<T> validateContent) {
+      requireNonNull(md, typeName);
+      checkSameContext(md, m_context, typeName);
+      // getPropertyUnquoted(ID) -- see addKeyedDeclaration's identical comment; the map is keyed by the
+      // unquoted ID, so a lookup/store here must match.
       String id = md.getPropertyUnquoted(IdMetadata.ID);
-      requirePresentForReplace(m_alt, id, "ALT");
-      validateAlt(md, m_context);
-      m_alt.put(id, md);
+      requirePresentForReplace(map, id, typeName);
+      if (validateContent != null) {
+        validateContent.accept(md);
+      }
+      map.put(id, md);
       return this;
     }
 
@@ -1324,13 +1286,7 @@ public final class VcfMetadata {
      * shared reasoning; INFO has no equivalent post-construction content check to run before the map mutation.
      */
     private Builder replaceInfo(InfoMetadata md) {
-      requireNonNull(md, "INFO");
-      checkSameContext(md, m_context, "INFO");
-      // getPropertyUnquoted(ID) -- see replaceAlt(IdDescriptionMetadata)'s comment.
-      String id = md.getPropertyUnquoted(IdMetadata.ID);
-      requirePresentForReplace(m_info, id, "INFO");
-      m_info.put(id, md);
-      return this;
+      return replaceKeyedDeclaration(m_info, md, "INFO", null);
     }
 
     /**
@@ -1339,13 +1295,7 @@ public final class VcfMetadata {
      * shared reasoning; FILTER has no equivalent post-construction content check to run before the map mutation.
      */
     private Builder replaceFilter(IdDescriptionMetadata md) {
-      requireNonNull(md, "FILTER");
-      checkSameContext(md, m_context, "FILTER");
-      // getPropertyUnquoted(ID) -- see replaceAlt(IdDescriptionMetadata)'s comment.
-      String id = md.getPropertyUnquoted(IdMetadata.ID);
-      requirePresentForReplace(m_filter, id, "FILTER");
-      m_filter.put(id, md);
-      return this;
+      return replaceKeyedDeclaration(m_filter, md, "FILTER", null);
     }
 
     /**
@@ -1354,13 +1304,7 @@ public final class VcfMetadata {
      * shared reasoning; FORMAT has no equivalent post-construction content check to run before the map mutation.
      */
     private Builder replaceFormat(FormatMetadata md) {
-      requireNonNull(md, "FORMAT");
-      checkSameContext(md, m_context, "FORMAT");
-      // getPropertyUnquoted(ID) -- see replaceAlt(IdDescriptionMetadata)'s comment.
-      String id = md.getPropertyUnquoted(IdMetadata.ID);
-      requirePresentForReplace(m_format, id, "FORMAT");
-      m_format.put(id, md);
-      return this;
+      return replaceKeyedDeclaration(m_format, md, "FORMAT", null);
     }
 
     /**
@@ -1369,13 +1313,7 @@ public final class VcfMetadata {
      * shared reasoning; CONTIG has no equivalent post-construction content check to run before the map mutation.
      */
     private Builder replaceContig(ContigMetadata md) {
-      requireNonNull(md, "CONTIG");
-      checkSameContext(md, m_context, "CONTIG");
-      // getPropertyUnquoted(ID) -- see replaceAlt(IdDescriptionMetadata)'s comment.
-      String id = md.getPropertyUnquoted(IdMetadata.ID);
-      requirePresentForReplace(m_contig, id, "CONTIG");
-      m_contig.put(id, md);
-      return this;
+      return replaceKeyedDeclaration(m_contig, md, "CONTIG", null);
     }
 
     /**
@@ -1384,13 +1322,7 @@ public final class VcfMetadata {
      * shared reasoning; SAMPLE has no equivalent post-construction content check to run before the map mutation.
      */
     private Builder replaceSample(IdDescriptionMetadata md) {
-      requireNonNull(md, "SAMPLE");
-      checkSameContext(md, m_context, "SAMPLE");
-      // getPropertyUnquoted(ID) -- see replaceAlt(IdDescriptionMetadata)'s comment.
-      String id = md.getPropertyUnquoted(IdMetadata.ID);
-      requirePresentForReplace(m_sample, id, "SAMPLE");
-      m_sample.put(id, md);
-      return this;
+      return replaceKeyedDeclaration(m_sample, md, "SAMPLE", null);
     }
 
     /**
@@ -1399,13 +1331,7 @@ public final class VcfMetadata {
      * shared reasoning; META has no equivalent post-construction content check to run before the map mutation.
      */
     private Builder replaceMeta(MetaMetadata md) {
-      requireNonNull(md, "META");
-      checkSameContext(md, m_context, "META");
-      // getPropertyUnquoted(ID) -- see replaceAlt(IdDescriptionMetadata)'s comment.
-      String id = md.getPropertyUnquoted(IdMetadata.ID);
-      requirePresentForReplace(m_meta, id, "META");
-      m_meta.put(id, md);
-      return this;
+      return replaceKeyedDeclaration(m_meta, md, "META", null);
     }
 
     public Builder addRawProperty(String name, String value) {
