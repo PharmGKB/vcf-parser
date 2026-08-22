@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import com.google.errorprone.annotations.RestrictedApi;
 import org.apache.commons.lang3.StringUtils;
@@ -888,11 +889,22 @@ public class InternalUtils {
       // and convertProperty(ReservedProperty, ...) doesn't split at all here, only later, inside the generic
       // convertProperty(Class<?>, ...) it calls next. A scalar BigDecimal parse of e.g. "0.2,5.0,0.8" would throw
       // and be treated as "not a number at all" (see checkUnitInterval), silently skipping the whole check.
-      for (String element : value.split(",", -1)) {
-        checkUnitInterval("FORMAT", key, element, checkWarnings);
-      }
+      checkEachCommaElement(value, element -> checkUnitInterval("FORMAT", key, element, checkWarnings));
     }
     return value;
+  }
+
+  /**
+   * Splits {@code value} on {@code ","} (allowing empty elements, matching every caller's own
+   * {@code split(",", -1)}) and runs {@code check} against each element in order -- shared by
+   * {@link #checkReservedFormatConstraints}'s {@code GP} branch and {@link #checkReservedInfoConstraints}'s
+   * three branches, which otherwise each independently repeated this same split-and-check loop, differing
+   * only in which single-element validator they invoke.
+   */
+  private static void checkEachCommaElement(String value, Consumer<String> check) {
+    for (String element : value.split(",", -1)) {
+      check.accept(element);
+    }
   }
 
   private static String checkFilterLikeValue(String key, String value, @Nullable VcfWarnings checkWarnings) {
@@ -1099,17 +1111,11 @@ public class InternalUtils {
       return;
     }
     if (NON_NEGATIVE_INTEGER_INFO_KEYS.contains(key)) {
-      for (String element : value.split(",", -1)) {
-        checkNonNegativeInteger(key, element, checkWarnings);
-      }
+      checkEachCommaElement(value, element -> checkNonNegativeInteger(key, element, checkWarnings));
     } else if (key.equals(ReservedInfoProperty.AlleleFrequency.getId())) {
-      for (String element : value.split(",", -1)) {
-        checkUnitInterval("INFO", key, element, checkWarnings);
-      }
+      checkEachCommaElement(value, element -> checkUnitInterval("INFO", key, element, checkWarnings));
     } else if (key.equals(ReservedInfoProperty.Cigar.getId())) {
-      for (String element : value.split(",", -1)) {
-        checkCigarGrammar(element, checkWarnings);
-      }
+      checkEachCommaElement(value, element -> checkCigarGrammar(element, checkWarnings));
     }
     // TODO: SVLEN and CN (INFO's CopyNumberOfSegment) each gain a 4.4+-only reserved-key Number/Type change
     // not modeled here (VCFv4.4.tex changelog line 2575, "Redefined Number= for SVLEN, ... CN, ... to support
