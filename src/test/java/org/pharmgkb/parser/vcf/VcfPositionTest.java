@@ -1083,6 +1083,21 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testConstructorAcceptsBreakendAltWithColonInMateChromosome() {
+    // regression test: a breakend ALT whose mate chromosome contains a colon (e.g. an HLA allele name) used to
+    // be rejected unconditionally -- InternalUtils.ALT_BASE_PATTERN's mate-location sub-pattern excluded ':'
+    // from the unbracketed chromosome class, even though VCFv4.3.tex:2140-2141's own errata explicitly says
+    // this is legal and unambiguous ("the ':pos' part is always present"). Both contexts accept it, since
+    // checkAltBases's grammar check is not gated on strict/lenient.
+    VcfPosition strict = STRICT_CONTEXT.newPosition("1", 100, null, "C",
+        List.of("C[HLA-A*01:01:200["), null, null, null, null, -1);
+    assertEquals("C[HLA-A*01:01:200[", strict.getAltBases().get(0));
+    VcfPosition lenient = LENIENT_CONTEXT.newPosition("1", 100, null, "C",
+        List.of("C[HLA-A*01:01:200["), null, null, null, null, -1);
+    assertEquals("C[HLA-A*01:01:200[", lenient.getAltBases().get(0));
+  }
+
+  @Test
   public void testStrictConstructorThrowsForPassCombinedWithOtherFilters() {
     VcfFormatException ex = assertThrows(VcfFormatException.class,
         () -> STRICT_CONTEXT.newPosition("1", 100, null, "A", null, null, List.of("PASS", "q10"), null, null, -1));

@@ -76,9 +76,22 @@ public class InternalUtils {
   // ALT_BASE_PATTERN, not this pattern). chr may be any non-symbolic CHROM-like value, not just digits: the spec's
   // own examples happen to use only numeric chromosome names (plus one symbolic contig ID), which is why this was
   // wrongly restricted to \d+ before and never caught by tests built from those same examples.
+  //
+  // Colon is deliberately NOT excluded from the unbracketed chromosome class, even though this pattern's own job
+  // is to find the ":pos" suffix: VCFv4.3.tex:2140-2141's errata explicitly addresses exactly this ambiguity --
+  // "The VCF specification previously disallowed colons (':') in contig names to avoid confusion when parsing
+  // breakends, but this was unnecessary. Even with contig names containing colons, the breakend mate position
+  // notation can be unambiguously parsed because the ':pos' part is always present" -- i.e. resolve any colon
+  // ambiguity by taking the LAST ":digits" suffix as pos, never the first. A colon-excluding class here would
+  // make a colon-bearing contig name (legal per InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN's own identical
+  // citation, and thus a legal CHROM or ##contig ID) unrepresentable in a breakend ALT that refers to it -- this
+  // was a real bug (an unconditional VcfFormatException, aborting the whole parse even under a lenient context)
+  // until fixed. Relying on backtracking, not a possessive quantifier, is required for this: the greedy "+"
+  // below must be able to give back trailing characters to whatever ":\d+" needs, which is exactly how the
+  // spec's own disambiguation works (measured: "HLA-A*01:01:200" still resolves to chr="HLA-A*01:01", pos=200).
   private static final String sf_mateLocation =
       "(?:"                                     + // wrap the whole expression
-        "(?:[^\\s,\\[\\]:]+|(?:<[^\\s,<>]+>))"   + // chromosome: CHROM-like (no whitespace, comma, brackets, or colon), or a symbolic ID
+        "(?:[^\\s,\\[\\]]+|(?:<[^\\s,<>]+>))"    + // chromosome: CHROM-like (no whitespace, comma, or brackets), or a symbolic ID
         ":\\d+"                                  + // position (required)
       ")";
 

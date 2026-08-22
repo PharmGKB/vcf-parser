@@ -75,6 +75,24 @@ public class InternalUtilsTest {
   }
 
   @Test
+  public void testAltBasePatternBreakpointAcceptsColonInMateChromosome() {
+    // regression test: the mate chromosome class previously excluded ':', so a colon-bearing mate chromosome
+    // (legal per VCFv4.3.tex:2140-2141's errata, which this pattern's own field comment now cites) made the
+    // breakend unrepresentable, even though the identical colon is already accepted in a CHROM value/##contig
+    // ID per InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN's citation of the same errata. All four breakend
+    // orientations, plus the disambiguation resolving to the LAST ":digits" suffix (not the first).
+    String[] shouldPass = {
+        "C[HLA-A*01:01:200[", "G]HLA-A*01:01:100]", "]HLA-A*01:01:100]T", "[HLA-A*01:01:100[T",
+    };
+    for (String test : shouldPass) {
+      assertTrue(InternalUtils.ALT_BASE_PATTERN.matcher(test).matches(), "String " + test + " was not recognized");
+    }
+    // still rejected: a colon-bearing chromosome with no trailing ":digits" position anywhere is exactly as
+    // invalid as any other chromosome-without-position (testAltBasePatternBreakpointRequiresPosition above)
+    assertFalse(InternalUtils.ALT_BASE_PATTERN.matcher("C[HLA-A*01:XX[").matches());
+  }
+
+  @Test
   public void testAltBasePatternBreakendRequiresReplacementString() {
     // hts-specs' own conformance suite (test/vcf/4.2/failed/failed_body_alt_005.vcf) rejects a breakend whose
     // replacement string "t" is missing on both sides: CauseOfFailure="Breakend without bases at either side",
