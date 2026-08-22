@@ -248,10 +248,19 @@ public final class VcfSample {
    * constructor above ({@code VcfContext.newTrustedSample}), which never calls this method.
    */
   private static void checkReservedFormatTypes(List<String> keys, List<String> values, VcfContext context) {
-    for (ReservedFormatProperty prop : ReservedFormatProperty.values()) {
-      int idx = keys.indexOf(prop.getId());
-      if (idx >= 0) {
-        InternalUtils.convertProperty(prop, values.get(idx), context);
+    // resolved per key via the version-aware fromId(key, version), not by iterating every ReservedFormatProperty
+    // constant and probing for its id: that iteration order used context.getVersion() nowhere, so a legitimate
+    // custom key with a spelling that's only reserved under a DIFFERENT version than this sample's own context
+    // (currently just GLE, reserved at <=4.2 and freely reusable as an ordinary key from 4.3 on -- see
+    // ReservedFormatProperty.fromId(String, VcfVersion)'s own Javadoc) was matched anyway, producing a
+    // misleading "not a reserved key under VCF 4.3" warning from InternalUtils.convertProperty for a key that
+    // was never reserved under this sample's actual version in the first place. Matches the version-aware
+    // classification getProperty(String)/getProperty(ReservedFormatProperty) already use for the same key.
+    VcfVersion version = context.getVersion();
+    for (int i = 0; i < keys.size(); i++) {
+      ReservedFormatProperty prop = ReservedFormatProperty.fromId(keys.get(i), version);
+      if (prop != null) {
+        InternalUtils.convertProperty(prop, values.get(i), context);
       }
     }
   }
@@ -259,9 +268,13 @@ public final class VcfSample {
   /** {@code Map}-keyed counterpart of {@link #checkReservedFormatTypes(List, List, VcfContext)} above, for the
    * property-map constructor, which has no parallel lists to scan linearly. */
   private static void checkReservedFormatTypes(Map<String, String> properties, VcfContext context) {
-    for (ReservedFormatProperty prop : ReservedFormatProperty.values()) {
-      if (properties.containsKey(prop.getId())) {
-        InternalUtils.convertProperty(prop, properties.get(prop.getId()), context);
+    // see the parallel-list overload's comment just above for why this resolves per key via
+    // ReservedFormatProperty.fromId(key, version) rather than iterating every constant
+    VcfVersion version = context.getVersion();
+    for (Map.Entry<String, String> entry : properties.entrySet()) {
+      ReservedFormatProperty prop = ReservedFormatProperty.fromId(entry.getKey(), version);
+      if (prop != null) {
+        InternalUtils.convertProperty(prop, entry.getValue(), context);
       }
     }
   }

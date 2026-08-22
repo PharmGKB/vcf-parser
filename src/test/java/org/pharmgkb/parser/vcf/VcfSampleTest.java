@@ -410,6 +410,33 @@ class VcfSampleTest {
   }
 
   @Test
+  void testConstructionDoesNotWarnForGleUnder43EvenThoughItsNotReservedThere() {
+    // regression test: checkReservedFormatTypes (both overloads) used to iterate every ReservedFormatProperty
+    // constant and probe the sample's keys for a match, ignoring the VcfContext's version entirely -- so a
+    // legitimate custom key spelled "GLE" under a 4.3+ context (where VCFv4.3 removed GLE as reserved -- see
+    // testGleColonExemptionIsVersionGated above) still matched GenotypeLikelihoodsOfHeterogenousPloidy and was
+    // handed to InternalUtils.convertProperty, which emits "not a reserved key under VCF 4.3... ignoring this
+    // reserved-property read" -- misleading, since nothing was being read; this is a construction-time probe,
+    // not a getProperty(ReservedFormatProperty) call. Fixed by resolving each key via the version-aware
+    // ReservedFormatProperty.fromId(key, version), matching getProperty(String)'s own classification.
+    VcfContext context43 = VcfContext.strict("VCFv4.3");
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      context43.newSample(new LinkedHashMap<>(Map.of("GLE", "abc")));
+      assertFalse(appender.anyMessageContains("not a reserved key"));
+
+      context43.newSample(Collections.singletonList("GLE"), Collections.singletonList("abc"));
+      assertFalse(appender.anyMessageContains("not a reserved key"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   void testGetPropertyReservedFormatPropertyGleIsVersionGated() {
     // behavior 6: the enum-key accessor consults neither metadata nor (before this gate) the version, so under
     // 4.3 a caller passing the removed key's constant would still get its historical interpretation. It
