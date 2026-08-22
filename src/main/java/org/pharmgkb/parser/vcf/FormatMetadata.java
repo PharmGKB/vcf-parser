@@ -25,10 +25,16 @@ public final class FormatMetadata extends IdDescriptionMetadata {
   FormatMetadata(VcfContext context, @Nullable String id, @Nullable String description, @Nullable String number,
       @Nullable FormatType type) {
     super(context, "FORMAT", id);
-    // see InfoMetadata's identical constructor for why id can be null here under a lenient context
-    if (id != null && !InternalUtils.FORMAT_PATTERN.matcher(id).matches()) {
-      warnOrThrow("{} ID \"{}\" does not match the required tag-name grammar (must start with a letter or " +
-          "underscore, followed only by letters, digits, underscores, or periods)", getLabel(), id);
+    // see InfoMetadata's identical constructor for why id can be null (or blank/comma-containing) here under a
+    // lenient context, and for why this strips commas/whitespace before checking -- matches init()'s own
+    // identical reasoning for the Map-based constructor just below (a prior version of this check omitted the
+    // stripping, which re-warned about a comma IdMetadata's own super(...) call had already reported).
+    if (id != null && !id.isEmpty()) {
+      String stripped = id.replaceAll("[,\\s]", "");
+      if (!stripped.isEmpty() && !InternalUtils.FORMAT_PATTERN.matcher(stripped).matches()) {
+        warnOrThrow("{} ID \"{}\" does not match the required tag-name grammar (must start with a letter or " +
+            "underscore, followed only by letters, digits, underscores, or periods)", getLabel(), id);
+      }
     }
     // Validated before putPropertyRaw stores it below: see InfoMetadata's identical constructor for why
     // checking format here first (rather than after) is what makes a null or malformed Number actually

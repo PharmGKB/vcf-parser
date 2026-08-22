@@ -37,12 +37,18 @@ public final class InfoMetadata extends IdDescriptionMetadata {
     super(context, "INFO", id);
     // Under a strict context IdMetadata's own super(...) call above already threw for a null, blank,
     // whitespace- or comma-containing id, so this check only ever sees a well-formed one there. Under a lenient
-    // context that call warns and continues instead, so id genuinely can be null here -- guard rather than
-    // letting INFO_PATTERN.matcher(id) raw-crash.
-    if (id != null && !InternalUtils.INFO_PATTERN.matcher(id).matches()) {
-      warnOrThrow("{} ID \"{}\" does not match the required tag-name grammar (must start with a letter or " +
-          "underscore, followed only by letters, digits, underscores, or periods -- or be the legacy value " +
-          "'1000G')", getLabel(), id);
+    // context that call warns and continues instead, so id genuinely can be null (or blank/comma-containing)
+    // here -- guard rather than letting INFO_PATTERN.matcher(id) raw-crash, and strip commas/whitespace before
+    // checking so this only fires for a genuinely different defect, matching init()'s own identical reasoning
+    // for the Map-based constructor just below (a prior version of this check omitted the stripping, which
+    // re-warned about a comma IdMetadata's own super(...) call had already reported).
+    if (id != null && !id.isEmpty()) {
+      String stripped = id.replaceAll("[,\\s]", "");
+      if (!stripped.isEmpty() && !InternalUtils.INFO_PATTERN.matcher(stripped).matches()) {
+        warnOrThrow("{} ID \"{}\" does not match the required tag-name grammar (must start with a letter or " +
+            "underscore, followed only by letters, digits, underscores, or periods -- or be the legacy value " +
+            "'1000G')", getLabel(), id);
+      }
     }
     // Validated before putPropertyRaw stores it below: putPropertyRaw only null-checks (with a generic
     // "Metadata property ... has a null value" message), so checking format here first is what makes a null

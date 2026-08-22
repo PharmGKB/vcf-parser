@@ -595,6 +595,28 @@ public class FormatMetadataTest {
   }
 
   @Test
+  public void testTypedConstructorDoesNotDoubleWarnForCommaContainingId() {
+    // regression guard: the typed constructor previously checked the tag-name grammar against the raw id
+    // without stripping commas/whitespace first, re-warning about a comma IdMetadata's own super(...) call had
+    // already reported -- mirrors testLenientConstructorDoesNotDoubleWarnForCommaContainingId above, which
+    // already covered this correctly for the Map-based constructor
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new FormatMetadata(LENIENT_CONTEXT, "AB,C", "d", "1", FormatType.String);
+      assertEquals(0, appender.countMessagesContaining("does not match the required tag-name grammar"));
+      assertEquals(1, appender.countMessagesContaining("must not contain a comma"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testLenientConstructorWarnsForBothCommaAndInvalidCharacterDefects() {
     // regression test: the old guard skipped the entire tag-name-grammar check whenever a comma (or whitespace)
     // was present anywhere in the id, which silently suppressed a genuinely different defect (e.g. an invalid
