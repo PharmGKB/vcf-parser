@@ -75,6 +75,10 @@ public class VcfParser implements Closeable {
   private VcfWarnings m_warnings = VcfWarnings.DEFAULT;
   private @Nullable String m_lastChromosome;
   private long m_lastPosition;
+  // the line the m_lastPosition record above was read on, so checkPositionOrdering()'s warning can attribute
+  // "previous record's POS was N" to the line it was actually on, rather than to m_lineNumber (the CURRENT,
+  // out-of-order record's line)
+  private int m_lastLineNumber;
   private final Set<String> m_closedChromosomes = new HashSet<>();
   // FORMAT-validation cache: real VCFs often repeat the same FORMAT column text across large blocks of
   // consecutive records. Holds only the single most
@@ -528,8 +532,12 @@ public class VcfParser implements Closeable {
     if (m_lastChromosome != null) {
       if (chromosome.equals(m_lastChromosome)) {
         if (position < m_lastPosition) {
-          m_warnings.warn("POS {} is out of order for CHROM {} (previous record's POS was {}, on line {})",
-              position, chromosome, m_lastPosition, m_lineNumber);
+          // m_lineNumber here is THIS (out-of-order) record's line, not the previous record's -- reported
+          // separately from m_lastLineNumber so the message doesn't misattribute the previous record's POS to
+          // the current line (existing tests match on the "POS {} is out of order for CHROM {}" prefix, so
+          // that part is left unchanged; both line numbers are disambiguated in the parenthetical instead)
+          m_warnings.warn("POS {} is out of order for CHROM {} (previous record's POS was {} on line {}; this " +
+              "record is on line {})", position, chromosome, m_lastPosition, m_lastLineNumber, m_lineNumber);
         }
       } else {
         if (m_closedChromosomes.contains(chromosome)) {
@@ -541,6 +549,7 @@ public class VcfParser implements Closeable {
     }
     m_lastChromosome = chromosome;
     m_lastPosition = position;
+    m_lastLineNumber = m_lineNumber;
   }
 
   @Override

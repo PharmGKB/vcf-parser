@@ -1382,6 +1382,39 @@ public class VcfParserTest {
   }
 
   @Test
+  void testPositionOrderingWarningAttributesLineNumbersToTheCorrectRecord() throws IOException {
+    // regression test: the warning previously reported only m_lineNumber (the CURRENT, out-of-order record's
+    // line) but labeled it "previous record's POS was {}, on line {}", misattributing that line to the
+    // PREVIOUS record's POS instead. Line 3 is "1\t200..." (the previous record, POS 200) and line 4 is
+    // "1\t100..." (the current, out-of-order record, POS 100) -- both numbers must appear against the record
+    // they actually belong to.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      String vcf = "##fileformat=VCFv4.2\n" +
+          "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+          "1\t200\t.\tA\tT\t.\t.\t.\n" +
+          "1\t100\t.\tA\tT\t.\t.\t.\n";
+      try (VcfParser parser = new VcfParser.Builder()
+          .fromReader(new BufferedReader(new StringReader(vcf)))
+          .parseWith((metadata, record) -> { })
+          .build()) {
+        parser.parse();
+      }
+      assertTrue(appender.anyMessageContains(
+          "POS 100 is out of order for CHROM 1 (previous record's POS was 200 on line 3; this record is on " +
+              "line 4)"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   void testVcfLineParserCallbackRuntimeExceptionPropagatesWithOriginalType() throws IOException {
     // regression test: a RuntimeException thrown by the caller's OWN VcfLineParser callback (a bug in their
     // code, not a VCF-content problem) must propagate as-is, not get silently relabeled as VcfFormatException
