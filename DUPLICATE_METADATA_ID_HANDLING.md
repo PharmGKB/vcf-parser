@@ -88,6 +88,13 @@ a `VcfMetadata` is built, each of the seven types is stored in a `Map<String, ..
 entries under one key -- so the condition this table describes (two declarations sharing an `ID`) cannot exist
 post-construction, for any of the seven types, and there is nothing for either write path to detect.
 
+**Case convention, used consistently in every table in this document:** uppercase `N/A` (always footnoted)
+marks a cell where the declaration type itself doesn't exist yet at that spec version (row 7's 4.2 cell below:
+`##META` isn't introduced until VCFv4.3); lowercase `n/a` marks a control row's cells, where the column's own
+subject -- a duplicate, or a missing/empty `ID` -- simply doesn't apply to that row at all. The two forms
+answer different questions (does the *type* exist vs. does the *condition* apply) and are not interchangeable,
+despite looking similar at a glance.
+
 | # | Declaration type | 4.2 | 4.3 | 4.4 | 4.5 | bcftools 1.23.1 | vcf_validator 0.10.2 (4.3) | Parse / Public construction | Fixture / `bcftoolsDependencyTest` |
 |---|---|---|---|---|---|---|---|---|---|
 | 1 | `##contig` | silent | "unique within type" [a] | "unique within type" [a] | "unique within type" [a] | keep first, DROP dup, no warning | Valid | warn + keep first | `duplicate-contig-id.vcf`; `testDuplicateContigIdBcftoolsKeepsFirst` |
@@ -174,11 +181,21 @@ tools below rather than assumed. **Discriminating observable:** whether the file
 outright, not which value survives — unlike the "Reference table" section's rows, which distinguish "kept the
 first" from "merged/renamed," these cases differ on whether parsing succeeds at all.
 
-| Case | vcf_validator 0.10.2 (4.3) | bcftools 1.23.1 | Fixture / `bcftoolsDependencyTest` |
-|---|---|---|---|
-| Duplicate `##contig`/`##INFO`/etc. declaration ID | Valid | Keeps first, drops duplicate, no warning | `duplicate-contig-id.vcf` (the "Reference table" section's own fixture, cited here rather than duplicated); `testDuplicateContigIdBcftoolsKeepsFirst` (already exists — no new case needed) |
-| Duplicate `#CHROM` sample-column name | **Invalid** | **Hard error — refuses to parse the file at all** | `duplicate-chrom-sample-column.vcf`; `testDuplicateChromSampleColumnNameBcftoolsHardErrors` (already exists — no new case needed) |
-| **Control** — single, non-duplicated `#CHROM` sample-column list | Valid | Accepted (exit 0), no warning | no dedicated fixture — measured live against a hand-built one-off on 2026-08-16 (see probe shape above); not itself a duplicate-ID decision, so no committed fixture or `bcftoolsDependencyTest` case was added |
+Column notes, per the standard: **bcftools** gets one unqualified column, same reasoning as the "Reference
+table" section above (`bcf_hdr_parse_line` never consults `##fileformat`); **vcf_validator** is pinned to
+`(4.3)`, the grammar the two cited fixtures and the hand-built control both declare. No **Parse / Public
+construction** column is included here, unlike this document's other three tables: this table is
+descriptive-only (see above), and both rows' own Parse/Public-construction behavior is already on record
+elsewhere in this document rather than novel to this table -- the duplicate-declaration-ID row is exactly the
+"Reference table" section's own row 1 (cited, not duplicated, per the probe shape above), and the `#CHROM` row
+is this document's own opening "Contrast with a duplicate `#CHROM` sample-column name" paragraph. Adding a
+third copy of either fact as a column here would restate content on record, not establish anything new.
+
+| # | Case | bcftools 1.23.1 | vcf_validator 0.10.2 (4.3) | Fixture / `bcftoolsDependencyTest` |
+|---|---|---|---|---|
+| 1 | Duplicate `##contig`/`##INFO`/etc. declaration ID | keep first, DROP dup, no warning | Valid | `duplicate-contig-id.vcf` (the "Reference table" section's own fixture, cited here rather than duplicated); `testDuplicateContigIdBcftoolsKeepsFirst` (already exists — no new case needed) |
+| 2 | Duplicate `#CHROM` sample-column name | **Hard error — refuses to parse the file at all** | **Invalid** | `duplicate-chrom-sample-column.vcf`; `testDuplicateChromSampleColumnNameBcftoolsHardErrors` (already exists — no new case needed) |
+| 3 | **Control** — single, non-duplicated `#CHROM` sample-column list | Accepted (exit 0), no warning | Valid | no dedicated fixture — measured live against a hand-built one-off on 2026-08-16 (see probe shape above); not itself a duplicate-ID decision, so no committed fixture or `bcftoolsDependencyTest` case was added |
 
 (Verified directly: `bcftools view` on a file with two `S1` sample columns emits `[E::bcf_hdr_add_sample_len]
 Duplicated sample name 'S1'` and fails to parse; `vcf_validator` reports the file invalid. The control's
@@ -304,6 +321,15 @@ observable:** for bcftools, whether the declaration survives to `bcftools view -
 verbatim vs. diagnostic-then-verbatim; for vcf_validator, its own Valid/Invalid verdict plus, where
 distinguishing, its diagnostic message text.
 
+The two `##SAMPLE` fixtures (`sample-missing-id.vcf`/`sample-empty-id.vcf`) and their corresponding
+`bcftoolsDependencyTest` inline probes also carry a `Genomes=Germline` attribute beyond the `ID`-focused probe
+shape stated above -- harmless, since `IdDescriptionMetadata` (used for `##SAMPLE`) treats `Genomes` as an
+unmodeled extra attribute it neither validates nor requires (see `VCF_SPEC_AMBIGUITIES.md`'s "`##SAMPLE`
+missing `Genomes` field" entry), so it has no bearing on the missing/empty-`ID` condition under test. Each fixture's own `##Authority=` line already discloses that its committed fixture
+additionally carries `Description="test"` where the inline test probe doesn't (to avoid an unrelated
+missing-`Description` warning); `Genomes=Germline` itself is common to both and was not previously called out
+as a deviation from the probe shape, since it isn't one -- it just isn't part of what this table's rows measure.
+
 Two separate spec facts apply below and must not be conflated into one citation:
 
 - **(a) Whether an `ID` is required at all** -- version-gated, stated per cell in the four spec columns below,
@@ -330,7 +356,7 @@ declaration *plus* an `##ExpectWarnContains=` line pinning that type's own
 `... metadata declaration has no ID and cannot be stored; dropped: ...` text -- the actual `DROP decl` evidence,
 not merely the `IdMetadata.init()` precursor warning -- both confirmed by `LocalFixtureConformanceTest`; and
 (2) by reading `VcfMetadata.java` directly
-(`addAlt`/`addInfo`/`addFilter`/`addFormat`/`addContig`/`addSample`/`addMeta`, lines ~1069-1213): each one's
+(`addAlt`/`addInfo`/`addFilter`/`addFormat`/`addContig`/`addSample`/`addMeta`, lines ~1048-1218): each one's
 missing/blank-`ID` `warnOrThrow` check runs in the identical shared, package-private `addXxx(md)` method that
 this document's "Reference table" section above already confirmed is reached identically by both `VcfParser`'s `addXxxTrusted`
 route and direct public construction's typed/raw `addXxx` overloads for the *duplicate*-ID check just below it
@@ -340,6 +366,9 @@ usually a constant... state the policy once" rule, applied here to Parse/Public 
 write** and **Default write** are omitted for the identical structural reason as the "Reference table" above: a
 declaration that is never stored (the seven keyed types' `Map`-backed storage; see this section's opening
 paragraph) leaves nothing for either write path to detect.
+
+**No column below distinguishes a missing `ID` from an empty `ID=`, because no spec version does either** --
+fact (b) above, restated here for a reader who jumps straight to the table without reading the prose first.
 
 | # | Declaration type | 4.2 | 4.3 | 4.4 | 4.5 | bcftools 1.23.1 (missing) | vcf_validator 0.10.2 (4.3) (missing) | bcftools 1.23.1 (empty) | vcf_validator 0.10.2 (4.3) (empty) | Fixture / `bcftoolsDependencyTest` (missing) | Fixture / `bcftoolsDependencyTest` (empty) |
 |---|---|---|---|---|---|---|---|---|---|---|---|
