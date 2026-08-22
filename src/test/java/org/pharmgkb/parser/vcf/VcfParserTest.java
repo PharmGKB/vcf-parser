@@ -236,6 +236,16 @@ public class VcfParserTest {
   }
 
   @Test
+  void testDuplicateFileFormatThrowsEvenWithWhitespaceAroundEquals() throws IOException {
+    // regression test: the duplicate check used to be a raw line.startsWith("##fileformat=") scan, which
+    // disagreed with parseMetadata()'s own trimmed-key routing -- "##fileformat =VCFv4.3" (space before '=')
+    // bypassed the duplicate check entirely and was silently applied as if it were the only declaration
+    String vcf = "##fileformat=VCFv4.3\n##fileformat =VCFv4.3\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
+  }
+
+  @Test
   void testFileFormatNotFirstThrows() throws IOException {
     String vcf = "##INFO=<ID=NS,Number=1,Type=Integer,Description=\"n\">\n##fileformat=VCFv4.2\n" +
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";

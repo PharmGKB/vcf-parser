@@ -60,6 +60,13 @@ public class VcfParser implements Closeable {
 
   private int m_lineNumber;
   private boolean m_alreadyFinished;
+  // set once physical line 1's ##fileformat has been fed through parseMetadata() below, so a second
+  // ##fileformat line -- however it's spelled -- can be rejected as a duplicate at the point parseMetadata()
+  // actually recognizes and applies it, rather than via a separate raw startsWith() check that can disagree
+  // with parseMetadata()'s own trimmed-key matching (see parseMetadata()'s "fileformat" case for why that
+  // disagreement was a real bug: a duplicate padded with whitespace around '=', e.g. "##fileformat =VCFv4.3",
+  // used to bypass the duplicate check entirely and get silently applied)
+  private boolean m_sawFileFormat;
   private VcfWarnings m_warnings = VcfWarnings.DEFAULT;
   private @Nullable String m_lastChromosome;
   private long m_lastPosition;
@@ -137,9 +144,6 @@ public class VcfParser implements Closeable {
     while ((line = m_reader.readLine()) != null) {
       m_lineNumber++;
       if (line.startsWith("##")) {
-        if (line.startsWith("##fileformat=")) {
-          throw new VcfFormatException("Duplicate ##fileformat line", m_lineNumber);
-        }
         parseMetadataLine(mdBuilder, line);
       } else if (line.startsWith("#")) {
         try {
@@ -559,6 +563,12 @@ public class VcfParser implements Closeable {
 
     switch (propName) {
       case "fileformat":
+        // see m_sawFileFormat's own field comment for why the duplicate check lives here rather than a
+        // separate raw startsWith("##fileformat=") scan
+        if (m_sawFileFormat) {
+          throw new VcfFormatException("Duplicate ##fileformat line");
+        }
+        m_sawFileFormat = true;
         mdBuilder.setFileFormat(propValue);
         break;
 
