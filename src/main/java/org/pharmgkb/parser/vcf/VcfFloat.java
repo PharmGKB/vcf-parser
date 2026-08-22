@@ -139,21 +139,21 @@ public final class VcfFloat {
    * message, matching {@link org.pharmgkb.parser.vcf.InternalUtils#dropEmptyEntries}'s established
    * shared-warning-with-a-field-name-parameter convention -- rather than rejecting if {@code value} doesn't
    * match VCFv4.3.tex line 100's Float grammar but {@link BigDecimal} accepts it anyway (see {@link
-   * #FLOAT_PATTERN}'s own comment for why, e.g. {@code "5."}). Package-private: shared by this class's own
-   * {@link #parse} and {@link VcfPosition#getQuality()}, which need the
-   * identical grammar check but different unparseable-input handling ({@link #parse} throws {@link
-   * VcfFormatException}; {@code getQuality()} warns and falls back to the missing value) -- left as a bare
-   * {@link NumberFormatException} here so each caller applies its own policy instead of this method picking
-   * one for both.
+   * #FLOAT_PATTERN}'s own comment for why, e.g. {@code "5."}). Package-private: {@link #parse} is this
+   * method's sole caller (it always passes the literal {@code "Float"} for {@code fieldName}) -- left as a
+   * bare {@link NumberFormatException} here, rather than {@link #parse}'s own {@link VcfFormatException}, so
+   * {@link #parse} applies its own catch-and-rethrow policy instead of this method picking one on its
+   * behalf. {@link VcfPosition#getQuality()} used to call this method directly instead of {@link #parse}
+   * (before it supported the Special Float grammar); it now goes through {@link #parse} like every other
+   * Float-typed reserved key.
    *
    * @throws NumberFormatException if {@code value} is not a valid decimal number at all
    */
   static BigDecimal parseDecimal(String fieldName, String value, VcfWarnings warnings) {
     // checked before attempting new BigDecimal(value) below -- see MAX_DECIMAL_LENGTH's own comment for why.
     // A NumberFormatException here is indistinguishable to callers from BigDecimal's own "not a number at
-    // all" rejection, which is exactly the existing policy dispatch this reuses (VcfPosition.getQuality()
-    // warns and falls back to the missing value; parse() throws VcfFormatException) -- no new warning/error
-    // shape is introduced for this case.
+    // all" rejection -- parse() (this method's sole caller) catches it and rethrows VcfFormatException, so
+    // no new warning/error shape is introduced for this case.
     if (value.length() > MAX_DECIMAL_LENGTH) {
       throw new NumberFormatException("Value is too long to be a valid VCF Float (" + value.length() +
           " characters, max " + MAX_DECIMAL_LENGTH + ")");

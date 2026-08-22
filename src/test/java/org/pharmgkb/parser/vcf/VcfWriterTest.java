@@ -194,6 +194,54 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testDefaultWriteEmitsNoWarningForGrammarMismatchedQualAndWritesRawText() throws Exception {
+    // mirrors testValidateBeforeWriteWarnsForGrammarMismatchedQualButStillWritesRawText, minus
+    // validateBeforeWrite() -- pins the other half of d569cd5's own BREAKING CHANGE: in DEFAULT mode,
+    // writeLine() no longer calls getQuality() at all when raw text exists, so this grammar-mismatch
+    // warning must NOT fire merely by writing the record
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", null, -1).toBuilder()
+        .rawQuality("5.")
+        .build();
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertFalse(appender.hasWarnOrHigher());
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(sw.toString().contains("\t5.\t"));
+  }
+
+  @Test
+  public void testDefaultWriteDoesNotThrowForUnparseableQualAndWritesRawText() throws Exception {
+    // mirrors testValidateBeforeWriteWarnsForUnparseableQualButStillWritesRawText, minus
+    // validateBeforeWrite() -- pins AGENTS.md's Writer Round-Trip Policy ("a record accepted by the parser
+    // must be writable without losing fields") for QUAL specifically in DEFAULT mode: writeLine() must not
+    // throw here, and must preserve the malformed text verbatim, even though it never calls getQuality() at
+    // all on this path
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
+    writer.writeHeader(metadata);
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", null, -1).toBuilder()
+        .rawQuality("not-a-number")
+        .build();
+    assertDoesNotThrow(() -> writer.writeLine(metadata, position, Collections.emptyList()));
+    assertTrue(sw.toString().contains("\tnot-a-number\t"));
+  }
+
+  @Test
   public void testDefaultWriteDropsEmptyIdEntry() throws Exception {
     // regression test: the default path previously only null-checked ID/FILTER/ALT entries, silently writing a
     // zero-length VCF field for a non-null empty string. ID is position-independent (nothing indexes into it), so

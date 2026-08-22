@@ -46,7 +46,7 @@ public class VcfPositionTest {
     // Builder#quality overrides any pending raw value
     VcfPosition override = newPosition().toBuilder().rawQuality("1").quality(VcfFloat.of(new BigDecimal("2"))).build();
     assertEquals(VcfFloat.of(new BigDecimal("2")), override.getQuality());
-    // no raw text ever existed for this position -- it was constructed directly from a BigDecimal
+    // no raw text ever existed for this position -- it was constructed directly from a VcfFloat
     assertNull(override.getRawQuality());
   }
 

@@ -939,8 +939,8 @@ public final class VcfPosition {
 
   /**
    * @throws VcfFormatException if the raw QUAL text is neither a normal decimal number nor one of VCFv4.3.tex
-   * line 100's Special Float values ({@code NAN}/{@code INF}/{@code INFINITY}, case-insensitive, optionally
-   * signed) -- unconditionally, regardless of context (this is a genuinely deferred check: {@code VcfParser}
+   * line 100's Special Float values (the line's own regex: {@code ^[-+]?(INF|INFINITY|NAN)$}, case
+   * insensitively) -- unconditionally, regardless of context (this is a genuinely deferred check: {@code VcfParser}
    * itself stays lenient and finishes parsing the file regardless of what this throws later). Matches
    * {@link InternalUtils#convertElement}'s identical unconditional-throw-for-an-unparseable-value decision for
    * INFO/FORMAT reserved keys, for the same reason: there is no sane value to preserve or normalize to, and
@@ -954,8 +954,9 @@ public final class VcfPosition {
       if (raw != null && !raw.isEmpty() && !raw.equals(".")) {
         try {
           // QUAL is VCF-spec-typed Float; VcfFloat.parse() also accepts NAN/INF/INFINITY (case-insensitive,
-          // optionally signed) per VCFv4.3.tex line 100, exactly like every other Float-typed reserved key
-          // (see InternalUtils.convertElement's own identical VcfFloat.parse(value, warnings) call).
+          // optionally signed) per VCFv4.3.tex line 100's own regex, ^[-+]?(INF|INFINITY|NAN)$ case
+          // insensitively -- exactly like every other Float-typed reserved key (see
+          // InternalUtils.convertElement's own identical VcfFloat.parse(value, warnings) call).
           m_quality = VcfFloat.parse(raw, m_warnings);
           m_qualityResolved = true;
         } catch (VcfFormatException e) {

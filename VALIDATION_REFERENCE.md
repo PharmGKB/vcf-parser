@@ -471,10 +471,13 @@ is a structural failure and still throws -- see the strict section above):
   regardless of what a later typed-getter call throws. Before 2026-08-20, `getQuality()` instead warned and
   treated an unparseable QUAL as the missing value, silently conflating "genuinely absent" with "present but
   malformed" -- changed to match `convertElement`'s pre-existing behavior for the identical failure mode elsewhere.
-  **Known gap:** `getQuality()` still does not accept VCFv4.3.tex line 100's Special Float values
-  (`NAN`/`INF`/`INFINITY`), unlike every other Float-typed field (which reach `VcfFloat.parse()`, not
-  `getQuality()`'s own direct `VcfFloat.parseDecimal` call) -- filed in `TODO.md`, since a real fix needs
-  `getQuality()`'s return type to change from `BigDecimal` (which cannot represent `Infinity`/`NaN`) to `VcfFloat`.
+  As of this fix, `getQuality()` returns `VcfFloat` (not `BigDecimal`) and calls `VcfFloat.parse()` directly,
+  matching every other Float-typed field, so it now accepts VCFv4.3.tex line 100's Special Float values
+  (`NAN`/`INF`/`INFINITY`) too. One side effect: the grammar-mismatch warning text for a value `BigDecimal`
+  accepts but the Float grammar doesn't (e.g. `"5."`) changed from `"QUAL value '5.' does not match..."` to
+  the generic `"Float value '5.' does not match..."`, since `getQuality()` no longer passes `"QUAL"` as a
+  field-name parameter -- it's now identical to every other Float-typed field's warning wording. No test
+  asserts the field-specific wording, so this was a deliberate, accepted simplification, not an oversight.
 - **The same reserved-key `Type` check also runs eagerly at manual construction time**, not just lazily at read
   time, for `VcfPosition`/`VcfSample` alike -- `VcfPosition.checkReservedInfoTypes` (called only when a caller
   passes an already-split `ListMultimap` directly to `Builder.info(...)`/`VcfContext.newPosition`, never on the
