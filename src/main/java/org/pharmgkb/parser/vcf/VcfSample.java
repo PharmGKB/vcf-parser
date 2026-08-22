@@ -71,9 +71,12 @@ public final class VcfSample {
    *
    * @param trusted when {@code true}, skips the per-key/value {@link #checkNoStructuralDelimiter} scan, which
    * micro-benchmarking measured as ~92% of the plain path's cost (43.4% of all execution samples on a
-   * 163-sample-per-record JFR profile). The non-null/matching-length checks still run; only the O(n)
-   * structural-delimiter scan is skipped. Its premise is NOT simply "a parser-produced key/value can never
-   * contain a colon, tab, or line terminator" -- a legacy (pre-4.3) GLE value deliberately can, and does,
+   * 163-sample-per-record JFR profile), and also skips {@link #checkReservedFormatTypes(List, List, VcfContext)}
+   * (never reachable from {@code VcfParser}, whose own {@code Number}/{@code Type} content checks already cover
+   * a reserved key's value -- see that method's own Javadoc). The non-null/matching-length checks still run;
+   * only the delimiter scan and the reserved-type probe are skipped. The delimiter scan's premise is NOT simply
+   * "a parser-produced key/value can never contain a colon, tab, or line terminator" -- a legacy (pre-4.3)
+   * GLE value deliberately can, and does,
    * contain an internal {@code ':'} (see {@code VcfContext.newTrustedSample}'s Javadoc for the full,
    * two-part premise this depends on). Rather than re-deriving that premise by hand, this constructor
    * self-verifies it below whenever Java assertions are enabled (this project's own {@code test} task runs

@@ -261,8 +261,10 @@ public final class VcfContext {
 
   /**
    * Internal fast path for {@code VcfParser}'s own per-record sample splitting. Skips the
-   * structural-delimiter scan ({@link VcfSample#checkNoStructuralDelimiter}) and the defensive copies the plain
-   * factory performs.
+   * structural-delimiter scan ({@link VcfSample#checkNoStructuralDelimiter}), the reserved-key {@code Number}/
+   * {@code Type} probe ({@code VcfSample.checkReservedFormatTypes} -- redundant here since {@code VcfParser}'s
+   * own content checks already cover a reserved key's value, per that method's own Javadoc), and the defensive
+   * copies the plain factory performs.
    * <p>
    * Safe for tab, and for {@code ':'} in a key, unconditionally: both are produced by splitting {@code
    * VcfParser}'s own tab-delimited line on {@code ':'}/tab, so neither can appear in what results. Safe for
