@@ -767,10 +767,17 @@ public class VcfWriter implements Closeable {
       for (String key : formatKeys) {
         String value = sample.getProperty(key);
         FormatMetadata format = metadata.getFormats().get(key);
+        // format==null and value==null are independent conditions, checked separately rather than as one
+        // if/else-if chain, so both warnings fire when both apply -- matching addSampleConditionally's default
+        // write path, which warns about an undeclared FORMAT key unconditionally (before even checking whether
+        // the value is null). Without this, a null value for an undeclared key silently dropped the "no FORMAT
+        // metadata with that name" warning here, even though the default path always emits it.
+        if (format == null) {
+          m_warnings.warn("Sample #{} contains FORMAT {}, but there is no FORMAT metadata with that name", sampleIndex, key);
+        }
         if (value == null) {
           m_warnings.warn("Sample #{} is missing property {}", sampleIndex, key);
         } else if (format == null) {
-          m_warnings.warn("Sample #{} contains FORMAT {}, but there is no FORMAT metadata with that name", sampleIndex, key);
           // still validate a reserved key's value against its own canonical Number/Type, matching
           // getProperty(VcfPosition, VcfMetadata, String)'s identical read-path fallback for exactly this
           // situation -- see validateInfo's identical INFO-side fallback for the full rationale

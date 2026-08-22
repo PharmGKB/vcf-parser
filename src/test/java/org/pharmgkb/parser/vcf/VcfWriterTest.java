@@ -1464,6 +1464,41 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteWarnsUndeclaredFormatKeyEvenWhenValueIsMissing() throws Exception {
+    // Regression test for a prior bug: validateSamples()'s value==null/format==null branches were mutually
+    // exclusive (if/else-if), so an undeclared FORMAT key whose value is also missing (VCF's spec-permitted
+    // trailing-field omission) warned only "is missing property", silently dropping the "no FORMAT metadata
+    // with that name" warning -- even though the default (non-validating) write path always emits that warning
+    // for an undeclared key, regardless of whether the value is present. XY is listed in FORMAT but never
+    // declared via ##FORMAT=<ID=XY,...>, and the sample supplies only GT, so sample.getProperty("XY") is null.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .addFormat(new FormatMetadata(LENIENT_CONTEXT, "GT", "Genotype", "1", FormatType.String))
+        .build();
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), VcfFloat.of(new BigDecimal("0")), null,
+        null, List.of("GT", "XY"), -1);
+    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, Collections.singletonList(sample));
+      assertTrue(appender.anyMessageContains("no FORMAT metadata with that name"));
+      assertTrue(appender.anyMessageContains("Sample #0 is missing property XY"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testValidateBeforeWriteRejectsMetadataDelimiterInjectedThroughRawView() throws Exception {
     InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "NS", "d", InfoType.Integer, "1", null, null);
     info.trustedMutableProperties().put("Description", "unquoted,comma");
