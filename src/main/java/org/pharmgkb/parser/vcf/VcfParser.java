@@ -60,6 +60,11 @@ public class VcfParser implements Closeable {
 
   private int m_lineNumber;
   private boolean m_alreadyFinished;
+  // one-shot: set the first time activateWarningsFile() actually opens m_warningsFile, and never cleared, so a
+  // resumed parse() (see activateWarningsFile()'s own comment) can never reopen it. Distinct from
+  // m_warnings == VcfWarnings.DEFAULT, which closeWarningsFile() resets on every parse -- that alone can't tell
+  // "never opened" apart from "opened once, now closed."
+  private boolean m_warningsFileOpened;
   // set once physical line 1's ##fileformat has been fed through parseMetadata() below, so a second
   // ##fileformat line -- however it's spelled -- can be rejected as a duplicate at the point parseMetadata()
   // actually recognizes and applies it, rather than via a separate raw startsWith() check that can disagree
@@ -213,6 +218,13 @@ public class VcfParser implements Closeable {
    * This is the preferred way to read a VCF file.
    */
   public void parse() throws IOException {
+    // checked before activateWarningsFile() below, not after: a second parse() call following a *successful*
+    // first parse must not reopen (and truncate) the warnings file only to then throw from parseNextLine()'s
+    // own m_alreadyFinished check -- see m_warningsFileOpened's field comment for the other half of this, a
+    // retry after a mid-file exception, where m_alreadyFinished is still false here
+    if (m_alreadyFinished) {
+      throw new IllegalStateException("Already finished reading the stream");
+    }
     if (m_warningsFile == null) {
       doParse();
       return;
@@ -228,14 +240,27 @@ public class VcfParser implements Closeable {
   }
 
   /**
-   * Opens the configured warnings file, if there is one and it is not already open. Idempotent, and called
-   * from both {@link #parse()} and {@link #parseMetadata()} so that a single parse has exactly one warnings
-   * destination regardless of which of the two the caller reaches first -- see {@code parseMetadata()}'s own
-   * comment for why the ordering matters.
+   * Opens the configured warnings file, if there is one and it hasn't already been opened during this parser's
+   * lifetime. Idempotent, and called from both {@link #parse()} and {@link #parseMetadata()} so that a single
+   * parse has exactly one warnings destination regardless of which of the two the caller reaches first -- see
+   * {@code parseMetadata()}'s own comment for why the ordering matters.
+   * <p>
+   * The "already opened" check is {@code m_warningsFileOpened}, not {@code m_warnings == VcfWarnings.DEFAULT}:
+   * {@link #closeWarningsFile()} resets {@code m_warnings} back to {@code DEFAULT} once a parse finishes or
+   * throws, so that check alone can't distinguish "never opened" from "opened once already, now closed" -- a
+   * caller retrying {@link #parse()} after a mid-file exception (where {@link #m_alreadyFinished} is still
+   * false, so the guard in {@link #parse()} above doesn't catch it) would otherwise reopen the same path in
+   * truncate mode, silently discarding every warning the first, partial parse had already written. Once this
+   * parser has opened its warnings file, a resumed parse's warnings fall back to the SLF4J logger instead
+   * (via {@code VcfWarnings.DEFAULT}) rather than risking that silent loss -- this also keeps the parser's own
+   * direct {@code m_warnings.warn(...)} calls and the model objects' {@code VcfContext}-captured sink (which
+   * still points at the first, now-closed instance) agreeing on where a resumed parse's warnings go, instead of
+   * one going to the abandoned file's now-closed instance and the other reopening a new one.
    */
   private void activateWarningsFile() throws IOException {
-    if (m_warningsFile != null && m_warnings == VcfWarnings.DEFAULT) {
+    if (m_warningsFile != null && m_warnings == VcfWarnings.DEFAULT && !m_warningsFileOpened) {
       m_warnings = VcfWarnings.openFile(m_warningsFile);
+      m_warningsFileOpened = true;
     }
   }
 

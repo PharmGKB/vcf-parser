@@ -2661,6 +2661,39 @@ public class VcfParserTest {
   }
 
   @Test
+  public void testSecondParseAfterMidFileExceptionDoesNotTruncateWarningsFile(
+      @org.junit.jupiter.api.io.TempDir Path tempDir) throws IOException {
+    // regression test: parse() used to reopen the warnings file (truncating it) on a second call, before
+    // parseNextLine()'s own m_alreadyFinished guard could ever fire -- so retrying parse() after a mid-file
+    // exception silently discarded every warning the first, partial parse had already written. "badline" (no
+    // tab, not blank) is a genuine structural violation that throws, leaving m_alreadyFinished false, exactly
+    // the retry shape the guard alone (checked only via m_alreadyFinished) can't catch.
+    String vcf = "##fileformat=VCFv4.3\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t100\t.\tA\tT\t.\t.\t.\n" +
+        "chr1\t50\t.\tA\tC\t.\t.\t.\n" + // POS out of order -- warns, doesn't throw
+        "badline\n";
+    Path vcfFile = tempDir.resolve("sample.vcf");
+    java.nio.file.Files.writeString(vcfFile, vcf);
+    Path warningsFile = tempDir.resolve("warnings.log");
+
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(vcfFile)
+        .warningsToFile(warningsFile)
+        .parseWith((metadata, record) -> { })
+        .build()) {
+      assertThrows(VcfFormatException.class, parser::parse);
+      String afterFirstParse = java.nio.file.Files.readString(warningsFile);
+      assertTrue(afterFirstParse.contains("is out of order"));
+
+      // retry: must not wipe the warning the first (partial) parse already wrote
+      parser.parse();
+      String afterSecondParse = java.nio.file.Files.readString(warningsFile);
+      assertTrue(afterSecondParse.contains("is out of order"));
+    }
+  }
+
+  @Test
   public void testWarningsToFileWithNoArgAndFromReaderThrowsIllegalState() {
     assertThrows(IllegalStateException.class, () ->
         new VcfParser.Builder()
