@@ -62,7 +62,7 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   check (`findings37.md` item 1's deliberate leniency, matching bcftools' own measured tolerance -- confirmed
   live that bcftools only warns on a space/VT/FF-corrupted key, exit 0, no column shift, no data loss). Tab
   and LF/CR are different in kind: `VcfWriter.addFormatConditionally` appends a `FORMAT` key verbatim
-  (`VcfWriter.java:463`), so an embedded tab adds a column (tab is the record's own column delimiter) and an
+  (`VcfWriter.java:486`), so an embedded tab adds a column (tab is the record's own column delimiter) and an
   embedded LF/CR ends the record early on write, corrupting record structure rather than merely the key text
   -- confirmed live (bcftools 1.23.1) that a tab-corrupted `FORMAT` key makes bcftools fail outright to read
   the file at all (`[E::vcf_parse_format_fill5]`, exit code 8), a worse outcome than either of the two

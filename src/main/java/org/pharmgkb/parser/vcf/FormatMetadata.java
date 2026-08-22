@@ -53,7 +53,8 @@ public final class FormatMetadata extends IdDescriptionMetadata {
       putPropertyRaw(TYPE, type.name());
     }
     // Description inserted last -- see InfoMetadata's identical constructor for why (matches canonical
-    // ID, Number, Type, Description order per VCFv4.2.tex line 94).
+    // ID, Number, Type, Description order per VCFv4.2.tex line 94, "##FORMAT=<ID=ID,Number=number,
+    // Type=type,Description=\"description\">").
     if (description == null) {
       warnOrThrow("{} required metadata property \"{}\" is missing", getLabel(), DESCRIPTION);
     } else {

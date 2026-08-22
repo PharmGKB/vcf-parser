@@ -15,7 +15,8 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * VCFv4.2 does not define {@code Float}'s literal grammar at all (it's only named as a type). VCFv4.3.tex line 100
  * clarifies it (the earliest version to do so -- the identical sentence carries through unchanged to
- * VCFv4.4.tex line 100 and VCFv4.5.tex line 98): a value matches either a normal decimal number, or
+ * VCFv4.4.tex line 100 and VCFv4.5.tex line 98), "Float (32-bit IEEE-754, formatted to match one of the
+ * regular expressions ... case insensitively)": a value matches either a normal decimal number, or
  * (case-insensitively) {@code NAN}, {@code INF}, or {@code INFINITY} with an optional leading sign. A plain
  * {@link BigDecimal} cannot represent the special values at all, so this class holds either a {@link BigDecimal}
  * or one of {@link Special}'s markers.
@@ -32,8 +33,9 @@ public final class VcfFloat {
           + "part of this library's supported public API and may change or be removed without notice.";
 
   private static final Pattern SPECIAL_PATTERN = Pattern.compile("[-+]?(?:INF|INFINITY|NAN)", Pattern.CASE_INSENSITIVE);
-  // VCFv4.3.tex line 100's non-special-case Float grammar (see this class's own Javadoc for why VCFv4.3, not
-  // VCFv4.5, is cited). BigDecimal's own string grammar is looser than this -- e.g. it accepts "5." (a trailing
+  // VCFv4.3.tex line 100's non-special-case Float grammar ("Float (32-bit IEEE-754, formatted to match one of
+  // the regular expressions ^[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?$ or ..."; see this class's own Javadoc for
+  // why VCFv4.3, not VCFv4.5, is cited). BigDecimal's own string grammar is looser than this -- e.g. it accepts "5." (a trailing
   // decimal point with no digits after it), which this pattern rejects -- so parseDecimal() below warns rather
   // than rejecting when BigDecimal accepts a value this pattern doesn't match, per this project's permissive
   // warn-and-preserve parser policy.
@@ -96,7 +98,8 @@ public final class VcfFloat {
 
   /**
    * Parses a VCF {@code Float} value, accepting {@code NAN}/{@code INF}/{@code INFINITY} (case-insensitive,
-   * optionally signed) per VCFv4.3.tex line 100's clarification of the {@code Float} grammar (see this class's
+   * optionally signed) per VCFv4.3.tex line 100's clarification of the {@code Float} grammar ("Float (32-bit
+   * IEEE-754, formatted to match one of the regular expressions ... case insensitively)"; see this class's
    * own Javadoc for why VCFv4.3, not VCFv4.5, is cited as the source), in addition to a normal decimal number.
    *
    * @throws VcfFormatException if {@code value} is neither a normal decimal number nor one of the special values
@@ -107,7 +110,8 @@ public final class VcfFloat {
 
   /**
    * Parses a VCF {@code Float} value, accepting {@code NAN}/{@code INF}/{@code INFINITY} (case-insensitive,
-   * optionally signed) per VCFv4.3.tex line 100's clarification of the {@code Float} grammar (see this class's
+   * optionally signed) per VCFv4.3.tex line 100's clarification of the {@code Float} grammar ("Float (32-bit
+   * IEEE-754, formatted to match one of the regular expressions ... case insensitively)"; see this class's
    * own Javadoc for why VCFv4.3, not VCFv4.5, is cited as the source), in addition to a normal decimal number.
    * Routes grammar-mismatch warnings to {@code warnings} instead of the shared SLF4J logger.
    * <p>Public only because {@link org.pharmgkb.parser.vcf.InternalUtils} needs cross-package access; not part of
@@ -160,6 +164,9 @@ public final class VcfFloat {
     }
     BigDecimal decimal = new BigDecimal(value);
     if (!FLOAT_PATTERN.matcher(value).matches()) {
+      // VCFv4.3.tex line 100, "Float (32-bit IEEE-754, formatted to match one of the regular expressions ...
+      // case insensitively)" -- kept short in the warning text itself; see FLOAT_PATTERN's own comment for the
+      // full quoted grammar.
       warnings.warn("{} value '{}' does not match the VCF Float grammar (VCFv4.3.tex line 100); " +
           "accepting it anyway", fieldName, value);
     }

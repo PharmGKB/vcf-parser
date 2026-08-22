@@ -453,7 +453,7 @@ public final class VcfPosition {
    */
   private static List<String> checkAltBases(List<String> altBases, @Nullable VcfWarnings warnings) {
     // ALT is position-dependent: GT genotype values index into it positionally (VCFv4.2.tex line 217: "1 for the
-    // first allele listed in ALT, 2 for the second allele listed in ALT and so on"; see getAllele(int)). Dropping
+    // first allele listed in ALT, 2 for the second allele list [sic] in ALT and so on"; see getAllele(int)). Dropping
     // an empty entry (the previous behavior) would shift every subsequent allele's index down by one, silently
     // misdirecting a GT value referencing a position after the dropped entry to the wrong allele. Substituting
     // '.' instead preserves every index, matching bcftools 1.23.1 exactly (confirmed empirically: "T,,C" becomes

@@ -12,10 +12,12 @@ import org.jspecify.annotations.Nullable;
  * {@code : ; = % , CR LF TAB} respectively.
  * <p>
  * Per that same section (and {@code VCFv4.3.tex:365}'s INFO-value grammar note, and the "Changes between
- * VCFv4.2 and VCFv4.3" errata at {@code VCFv4.3.tex:2152}), percent-encoding is only meaningful within an INFO
- * value, a sample (FORMAT) value, or a structured metadata declaration's attribute value -- never within an ID,
- * a FILTER code, a FORMAT/INFO key, a metadata declaration ID, or a symbolic ALT allele, none of which permit a
- * literal delimiter character in the first place (see {@code VCF_SPEC_AMBIGUITIES.md}'s "Percent-encoding field
+ * VCFv4.2 and VCFv4.3" errata at {@code VCFv4.3.tex:2152}, "Characters with special meaning (such as `;' in
+ * INFO, `:' in FORMAT, and `%' in both) can be encoded using percent encoding"), percent-encoding is only
+ * meaningful within an INFO value, a sample (FORMAT) value, or a structured metadata declaration's attribute
+ * value -- never within an ID, a FILTER code, a FORMAT/INFO key, a metadata declaration ID, or a symbolic ALT
+ * allele, none of which permit a literal delimiter character in the first place (see
+ * {@code VCF_SPEC_AMBIGUITIES.md}'s "Percent-encoding field
  * scope" entry for the full citation trail). This class is a pure {@code String} function with no way to know
  * which field it was handed, so it does not and cannot enforce that scope -- restricting its use to the fields
  * above is the caller's own responsibility.

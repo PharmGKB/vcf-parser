@@ -31,7 +31,7 @@ before assuming it generalizes to a similar-looking case.
 
 | Topic | Decision | Status |
 |---|---|---|
-| Duplicate attribute within one metadata declaration | Keep first (library choice; diverges from bcftools for a non-`ID` attribute) | ✅ |
+| Duplicate attribute within one metadata declaration | Keep first (library choice; matches bcftools for `##contig`, diverges from it for every attribute of `##INFO`/`##FILTER`/`##FORMAT`, `ID` included) | ✅ |
 | Malformed attribute inside a metadata declaration's `<...>` list | Warn and drop just that attribute (matches bcftools; more lenient than two hts-specs `failed/` fixtures) -- an unquoted `=` in a value is no longer one of the malformed shapes this covers; see below | ✅ |
 | Whitespace in `##FILTER`/`##SAMPLE` declaration IDs | Reject (bcftools's silence is a coverage gap) | ✅ |
 | `##FORMAT`/`##INFO` ID grammar vs. `##FILTER`/`##SAMPLE`/`##ALT` | Stricter grammar for FORMAT/INFO only | ✅ |
@@ -85,14 +85,24 @@ is therefore no spec to defer to, and this is a library choice rather than a spe
 keep-last/overwrite"). Implemented in `InternalUtils.foldAttributes`, shared by `extractPropertiesFromLine`
 (real parsing) and `extractProperties` (the test-facing array-based entry point).
 
-This is a deliberate, documented divergence from bcftools rather than an oversight: confirmed live against
-bcftools 1.23.1 by forcing conversion to binary BCF (which enforces the declared type, unlike plain-text VCF,
-making the survivor observable), declaring `Type` twice resolves to the **last**-declared value regardless of
-which type came first, while declaring `ID` twice resolves to the **first**-declared value (control-verified
-against the same mechanism). Per `AGENTS.md`'s Spec Ambiguity Decision Hierarchy, declining to adopt a
-measured tool behavior must be written down rather than left implicit — this entry is that record. vcf_validator
-rejects the `Type`-duplicate case outright, but per the tie-breaker hierarchy its stricter structural-field
-reading is non-authoritative here regardless.
+This is a deliberate, documented divergence from bcftools rather than an oversight -- but the divergence is
+declaration-type-dependent, not uniform. Confirmed by reading `bcf_hdr_register_hrec` in htslib 1.23.1's
+`vcf.c` (`~/Dev/htslib`, tag `1.23.1`) and then verifying each reading live by forcing conversion to binary
+BCF (which enforces the declared type/registered ID, unlike plain-text VCF, making the survivor observable):
+- **`##contig`**: its `ID` is read via `bcf_hrec_find_key`, a first-match linear scan -- a duplicate `ID`
+  resolves to the **first**-declared value. Matches this library's choice.
+- **`##INFO`/`##FILTER`/`##FORMAT`**: `ID`, `Type`, and `Number` are all read via one forward loop that
+  unconditionally overwrites a local variable on every match, so whichever occurrence is parsed **last**
+  wins -- the same mechanism, and the same result, for `ID` as for `Type`/`Number`. Diverges from this
+  library's uniform "keep first" choice for every attribute, `ID` included, not only non-`ID` ones.
+
+Per `AGENTS.md`'s Spec Ambiguity Decision Hierarchy, declining to adopt a measured tool behavior must be
+written down rather than left implicit -- this entry is that record. vcf_validator rejects the `Type`-duplicate
+case outright, but per the tie-breaker hierarchy its stricter structural-field reading is non-authoritative
+here regardless. `##FILTER`/`##ALT`/`##SAMPLE`/`##META`/`##PEDIGREE` (generic `BCF_HL_STR`-typed declarations)
+were not checked this way -- `bcf_hdr_register_hrec` doesn't dedupe their attributes at all, so their actual
+resolution mechanism, if any, is a separate question left to the deferred full VCF 4.3 compliance
+re-derivation (see `TODO.md`).
 
 ### Malformed attribute inside a metadata declaration's `<...>` list
 

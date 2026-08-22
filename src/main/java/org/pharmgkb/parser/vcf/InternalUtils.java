@@ -968,7 +968,8 @@ public class InternalUtils {
    * -2^31+7 cannot be stored in the binary version and therefore are disallowed in both VCF and BCF");
    * identical text at {@code VCFv4.4.tex:100}/{@code :103}, shifted to {@code VCFv4.5.tex:98}/{@code :101}.
    * {@code VCFv4.2.tex} states no general bound (only {@link #checkNonNegative32BitInteger}'s narrower,
-   * {@code PS}-specific rule at {@code VCFv4.2.tex:230}) -- this check is applied unconditionally regardless
+   * {@code PS}-specific rule at {@code VCFv4.2.tex:230}, whose PS entry ends "(Non-negative 32-bit
+   * Integer)") -- this check is applied unconditionally regardless
    * of declared version anyway, since it is not a case where the *meaning* of Integer genuinely differs
    * across versions, only whether the spec bothered to state it.
    * <p>

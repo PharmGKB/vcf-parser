@@ -137,7 +137,8 @@ public final class ContigMetadata extends IdMetadata {
    * value/encoding rule. Use {@link #getPropertyRaw(String) getPropertyRaw(assembly)} for the original
    * spelling as it appeared in the file.
    * <p>
-   * Null when the optional {@code assembly} tag is absent (spec-compliant -- see VCFv4.2.tex line 121) or
+   * Null when the optional {@code assembly} tag is absent (spec-compliant -- see VCFv4.2.tex line 121,
+   * "all tags are optional") or
    * otherwise unusable.
    */
   @Nullable
@@ -152,7 +153,8 @@ public final class ContigMetadata extends IdMetadata {
    * {@link #getPropertyRaw(String) getPropertyRaw(taxonomy)} for the original spelling as it appeared in the
    * file.
    * <p>
-   * Null when the optional {@code taxonomy} tag is absent (spec-compliant -- see VCFv4.2.tex line 121).
+   * Null when the optional {@code taxonomy} tag is absent (spec-compliant -- see VCFv4.2.tex line 121,
+   * "all tags are optional").
    */
   @Nullable
   public String getTaxonomy() {
@@ -170,7 +172,8 @@ public final class ContigMetadata extends IdMetadata {
    * header syntax, not part of the value -- see VALIDATION_PHILOSOPHY.md's value/encoding rule. Use
    * {@link #getPropertyRaw(String) getPropertyRaw(md5)} for the original spelling as it appeared in the file.
    * <p>
-   * Null when the optional {@code md5} tag is absent (spec-compliant -- see VCFv4.2.tex line 121).
+   * Null when the optional {@code md5} tag is absent (spec-compliant -- see VCFv4.2.tex line 121,
+   * "all tags are optional").
    */
   @Nullable
   public String getMd5() {
@@ -183,7 +186,8 @@ public final class ContigMetadata extends IdMetadata {
    * the header syntax, not part of the value -- see VALIDATION_PHILOSOPHY.md's value/encoding rule. Use
    * {@link #getPropertyRaw(String) getPropertyRaw(URL)} for the original spelling as it appeared in the file.
    * <p>
-   * Null when the optional {@code URL} tag is absent (spec-compliant -- see VCFv4.2.tex line 121).
+   * Null when the optional {@code URL} tag is absent (spec-compliant -- see VCFv4.2.tex line 121,
+   * "all tags are optional").
    */
   @Nullable
   public String getUrl() {

@@ -648,18 +648,18 @@ version ever re-adds and tightens GLE's grammar.
 
 `VcfWriter.writeHeader()`'s `validateBeforeWrite()` branch (`VcfWriter.java:162-166`) calls
 `validateMetadataPropertyEncodings(metadata)` exactly once, from `writeHeader()` only. Its own Javadoc
-(`VcfWriter.java:672-684`) states this is deliberate: `VcfMetadata` is immutable, so the check's result
+(`VcfWriter.java:695-707`) states this is deliberate: `VcfMetadata` is immutable, so the check's result
 cannot change between calls, and re-running it from `validateMetadata()` (which `writeLine()` also calls,
 once per record) would multiply an invalid-property-name warning by (bad properties) x (declarations) x
 (records) on a large VCF.
 
-`validateMetadata()`'s own `validateKeyedMetadataEntries()` ID-drift check (`VcfWriter.java:663-668` --
+`validateMetadata()`'s own `validateKeyedMetadataEntries()` ID-drift check (`VcfWriter.java:670-691` --
 confirms each entry's own `ID` property still matches the map key it's stored under) is not given the same
 hoist -- it runs from both
-`writeHeader()` (`:163`) and every `writeLine()` call (`:343`), and a comment at the duplicate-ID-warning
-site (`VcfWriter.java:517-520`) names that repetition as an accepted tradeoff for this check specifically.
-So the two checks inside the same `validateBeforeWrite()` diagnostics pass disagree about how often they
-re-run, and nothing states why one earned the hoist and the other didn't.
+`writeHeader()` (`:163`) and every `writeLine()` call (`:343`), and a comment at the PEDIGREE
+duplicate-ID-warning site (`VcfWriter.java:536-544`) names that repetition as an accepted tradeoff for this
+check specifically. So the two checks inside the same `validateBeforeWrite()` diagnostics pass disagree
+about how often they re-run, and nothing states why one earned the hoist and the other didn't.
 
 This asymmetry is reachable only through the package-private, test-only `BaseMetadata.trustedMutableProperties()`
 bypass (`BaseMetadata.java:211-224`, "Not for production code: nothing in `src/main` calls it" -- confirmed

@@ -224,8 +224,9 @@ public class VcfWriter implements Closeable {
     addMetadataLines(lines, "FORMAT", metadata.getFormats().values());
     addMetadataLines(lines, "ALT", metadata.getAlts().values());
     addMetadataLines(lines, "contig", metadata.getContigs().values());
-    // VCFv4.3.tex's Meta-information lines subsection documents META (lines 273-276) between contig and
-    // SAMPLE (lines 277-278), so this keeps the same order.
+    // VCFv4.3.tex's Meta-information lines subsection documents META (lines 273-276, e.g. "##META=<ID=Assay,
+    // Type=String,Number=.,Values=[WholeGenome, Exome]>") between contig and SAMPLE (lines 277-278, e.g.
+    // "##SAMPLE=<ID=Sample1,Assay=WholeGenome,...>"), so this keeps the same order.
     addMetadataLines(lines, "META", metadata.getMetas().values());
     addMetadataLines(lines, "SAMPLE", metadata.getSamples().values());
     addMetadataLines(lines, "PEDIGREE", metadata.getPedigrees());
