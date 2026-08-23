@@ -372,6 +372,48 @@ public class VcfMetadataTest {
   }
 
   @Test
+  public void testBuilderAddRawPropertyWarnsAndDropsUnclosedAngleBracket() {
+    // regression test: "##foo=<abc" (no closing '>') previously parsed with zero warnings --
+    // collidesWithAttributeListGrammar's own endsWith(">") guard never even looked at it. Confirmed
+    // separately (bcftools 1.23.1) that this genuinely breaks bcftools too -- see
+    // BcftoolsDependencyTest#testGenericPropertyUnclosedBracketNoEqualsBcftoolsRejects.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addRawProperty("foo", "<abc").build();
+      assertTrue(appender.anyMessageContains("has no closing '>'"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(metadata.getRawProperties().get("foo").isEmpty());
+  }
+
+  @Test
+  public void testBuilderAddRawPropertyThrowsForUnclosedAngleBracketUnderStrictContext() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addRawProperty("foo", "<abc"));
+  }
+
+  @Test
+  public void testHasUnclosedAngleBracket() {
+    assertTrue(VcfMetadata.hasUnclosedAngleBracket("<abc"));
+    assertTrue(VcfMetadata.hasUnclosedAngleBracket("<a=b"));
+    // well-formed shapes must not be flagged -- collidesWithAttributeListGrammar's own domain, not this one's
+    assertFalse(VcfMetadata.hasUnclosedAngleBracket("<ID=foo>"));
+    assertFalse(VcfMetadata.hasUnclosedAngleBracket("<>"));
+    assertFalse(VcfMetadata.hasUnclosedAngleBracket("http://foo.com"));
+    // doesn't start with '<' at all
+    assertFalse(VcfMetadata.hasUnclosedAngleBracket("abc>"));
+  }
+
+  @Test
   public void testBuilderAddRawPropertyWarnsAndDropsBracketedValue() {
     // regression test: confirms the bracket-collision check applies to an arbitrary generic property key, not
     // just "assembly"/"pedigreeDB" -- htslib's own header-line parser special-cases any generic property value

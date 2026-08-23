@@ -43,6 +43,7 @@ before assuming it generalizes to a similar-looking case.
 | Generic metadata property with an empty value | Drop (deliberately stricter than bcftools) | ✅ |
 | Generic metadata property with an empty key (`##=value`) | Drop (matches bcftools, which rejects the line outright) | ✅ |
 | `##pedigreeDB`/`##assembly` bracket-wrapped values colliding with attribute-list grammar | Reject when empty or no `=` inside the brackets; accept when it contains `=` | ✅ |
+| Generic metadata property value starting with `<` but never closed with `>` | Drop (matches bcftools, which either hard-errors or garble-recovers depending on whether an `=` is present) | ✅ |
 | A literal `%` in a metadata declaration ID | No code change; existing `##ALT`/`##FILTER`/`##SAMPLE` looser-grammar decision stands despite vcf_validator flagging `%` in `##FILTER`/`##SAMPLE` | ✅ |
 | Metadata attribute NAME grammar (parse and write warn, construction throws) | `^[A-Za-z_][0-9A-Za-z_.]*$` (matches bcftools); warn at parse time, throw at construction, warn at `validateBeforeWrite()` | ✅ |
 | Unquoted metadata attribute value: malformed bracket vs. `<`/`>`/`;` | Throw (both modes) for an unquoted comma or malformed bracket value; warn at `validateBeforeWrite()` only for `<`/`>`/`"`/space; no check for `;` (bcftools gives it no special meaning here) -- whether a `,` *inside* an unquoted `<...>` span still ends the attribute (it does) is a separate question, see "Angle brackets are not a quoting form in a metadata attribute value" below | ✅ |
@@ -296,6 +297,25 @@ since bcftools genuinely accepts and round-trips both. Separately: `##pedigreeDB
 (VCFv4.2/4.3/4.4.tex) is bracket-*less* (`##pedigreeDB=URL`), confirmed by hts-specs' own passing fixture and
 live bcftools acceptance of the bracket-less form — brackets are not this field's own syntax, unlike
 `##ALT`/`##INFO`'s `<ID=...>` structure.
+
+### Generic metadata property value starting with `<` but never closed with `>`
+
+`collidesWithAttributeListGrammar` (the decision just above) requires BOTH a leading `<` and a trailing `>`
+before it even inspects what's between them -- so `##foo=<abc` (no `>` at all) skips that check entirely and
+parsed with zero warnings. Confirmed directly against bcftools 1.23.1 that this is genuinely malformed too,
+in two different ways depending on whether the value happens to contain an `=`: `##foo=<abc` (no `=`)
+hard-errors (`"[E::bcf_hdr_parse_line] Could not parse the header line"`) and the whole declaration is
+dropped, exit 0; `##foo=<a=b` (has one) instead warns (`"Incomplete header line, trying to proceed anyway"`)
+and salvage-reconstructs a closed `##foo=<a=b>` from it -- measured live to still exit 0 with the following
+`##contig`/`#CHROM` lines recovering correctly in the final output, so this is not the genuinely fatal,
+read-aborting failure the unterminated-`[` case elsewhere in this document is.
+
+**Decision:** `VcfMetadata.hasUnclosedAngleBracket(String value)` rejects (warn-and-drop under a lenient
+context, throw under a strict one) a trimmed value that starts with `<` but does not end with `>` --
+regardless of whether it contains `=`, since bcftools treats both sub-shapes as malformed, just via
+different recovery paths. This is warn-and-drop, not an unconditional throw, precisely because neither
+sub-shape is bcftools-fatal the way an unterminated `[` is -- see "General bracket-list quoting beyond
+`##META`'s `Values`" below for that unconditional-throw case and why its severity is different.
 
 ### A literal `%` in a metadata declaration ID (vcf_validator vs. hts-specs)
 

@@ -250,6 +250,17 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
   started tolerating an empty key, this library's stricter rejection would become a gratuitous divergence
   rather than a matched one.
 
+### Generic metadata property value starting with `<` but never closed with `>`
+- Test: `BcftoolsDependencyTest#testGenericPropertyUnclosedBracketNoEqualsBcftoolsRejects`,
+  `#testGenericPropertyUnclosedBracketWithEqualsBcftoolsGarbleRecovers`
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Generic metadata property value starting with `<` but never closed
+  with `>`" entry. Round-trip-critical: this library now rejects the shape at construction time, matching
+  bcftools' own rejection/garbled-recovery of it, so it will never originate a header line bcftools can't
+  read cleanly. Must be re-checked on a bcftools upgrade: if a future bcftools started tolerating either
+  sub-shape cleanly, this library's rejection would become a gratuitous divergence rather than a matched
+  one; if a future bcftools instead made either sub-shape genuinely fatal (like the unterminated-`[` case),
+  this decision's warn-and-drop treatment (rather than an unconditional throw) would need revisiting.
+
 ### Duplicate `##PEDIGREE` lines with no `ID` property
 - Test: `BcftoolsDependencyTest#testPedigreeNoIdDuplicatesBcftoolsKeepsBoth`
 - Reasoning: `DUPLICATE_METADATA_ID_HANDLING.md`, "`##PEDIGREE`: a conditional case" section

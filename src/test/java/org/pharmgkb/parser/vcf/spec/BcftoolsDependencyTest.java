@@ -97,6 +97,34 @@ class BcftoolsDependencyTest {
   }
 
   @Test
+  void testGenericPropertyUnclosedBracketNoEqualsBcftoolsRejects() throws IOException, InterruptedException {
+    // round-trip-critical, same reasoning as testGenericPropertyEmptyBracketsBcftoolsRejects above, but for a
+    // value collidesWithAttributeListGrammar's own endsWith(">") guard never even looks at: a leading '<'
+    // with no closing '>' at all. bcftools 1.23.1 hard-errors and drops the whole declaration, exit 0.
+    String vcf = "##fileformat=VCFv4.3\n##foo=<abc\n##contig=<ID=chr1,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("Could not parse the header line"), result.output());
+    assertTrue(result.output().lines().noneMatch(line -> line.equals("##foo=<abc")), result.output());
+  }
+
+  @Test
+  void testGenericPropertyUnclosedBracketWithEqualsBcftoolsGarbleRecovers() throws IOException, InterruptedException {
+    // the other unclosed-bracket sub-shape: unlike the '=' -free case above, htslib's recovery here is a
+    // warning (not a hard error) that salvage-reconstructs a closed bracket -- and, measured live, swallows
+    // the following header lines into the same malformed token before recovering. Still exit 0 and NOT the
+    // genuinely fatal unterminated-'[' failure this file's own "Unterminated bracket value" test pins --
+    // confirmed the subsequent #CHROM header line still survives in the final output.
+    String vcf = "##fileformat=VCFv4.3\n##foo=<a=b\n##contig=<ID=chr1,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("Incomplete header line"), result.output());
+    assertTrue(result.output().contains("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO"), result.output());
+  }
+
+  @Test
   void testPercentEncodingBcftoolsDecodesNothingAnywhere() throws IOException, InterruptedException {
     // round-trip-critical: VcfPercentEncoding's whole design (Task 4) rests on there being no tool precedent
     // for automatic percent-decoding -- confirmed here for both a structured metadata attribute value (##INFO's

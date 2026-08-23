@@ -453,6 +453,33 @@ public final class VcfMetadata {
   }
 
   /**
+   * @return Whether {@code value} (trimmed) starts with {@code <} but does not end with a closing {@code >}
+   * -- distinct from {@link #collidesWithAttributeListGrammar}, which requires BOTH a leading {@code <} and a
+   * trailing {@code >} before it even looks at what's between them. A value like {@code "<abc"} (VCFv4.3.tex
+   * line 109: an unstructured value "may not be empty and must not start with a '<' character") never reaches
+   * that method's own check at all, since it fails the {@code endsWith(">")} half immediately -- so it was
+   * never rejected by anything and parsed with zero warnings.
+   * <p>Confirmed directly (bcftools 1.23.1) that this shape is genuinely malformed to bcftools too, in two
+   * different ways depending on whether it happens to contain an {@code =}: {@code ##foo=<abc} (no {@code =})
+   * hard-errors ("[E::bcf_hdr_parse_line] Could not parse the header line") and the whole declaration is
+   * dropped, exit 0; {@code ##foo=<a=b} (has one) instead warns ("Incomplete header line, trying to proceed
+   * anyway") and salvage-reconstructs a closed {@code ##foo=<a=b>} from it, exit 0 -- neither is the
+   * genuinely fatal, read-aborting failure the unterminated-{@code [} case elsewhere in this file is (see
+   * {@code InternalUtils}'s own "unterminated bracket" handling and {@code VCF_SPEC_AMBIGUITIES.md}'s entry
+   * for that unconditional-throw case), so this one is warn-and-drop like every other malformed-generic-
+   * property shape in this method, not an unconditional throw.
+   * <p>Public only because {@link org.pharmgkb.parser.vcf.VcfWriter} needs cross-package access; not part of
+   * this library's supported public API.
+   *
+   * @hidden
+   */
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
+  public static boolean hasUnclosedAngleBracket(String value) {
+    String trimmed = value.trim();
+    return trimmed.startsWith("<") && !trimmed.endsWith(">");
+  }
+
+  /**
    * Guards every {@code addXxx}/{@code removeXxx} method (both {@code VcfMetadata}'s own instance methods and
    * {@code Builder}'s mirrors) against a null metadata object. Each parameter is typed non-@Nullable, but nothing
    * enforces that at runtime; without this, {@code value.getId()}/{@code value.getPropertiesRaw()} would throw a
@@ -1398,6 +1425,13 @@ public final class VcfMetadata {
         // like this regardless of key, so this is not scoped to "assembly"/"pedigreeDB" specifically
         warnOrThrow(m_context, "Metadata property \"{}\" is wrapped in angle brackets with no key=value content, " +
             "which bcftools cannot parse as a generic property value, and was dropped: {}", name, value);
+        return this;
+      }
+      if (hasUnclosedAngleBracket(value)) {
+        // see hasUnclosedAngleBracket's own comment: this is the shape collidesWithAttributeListGrammar's own
+        // endsWith(">") guard lets straight through unchecked
+        warnOrThrow(m_context, "Metadata property \"{}\" starts with '<' but has no closing '>', which " +
+            "bcftools cannot parse as a generic property value, and was dropped: {}", name, value);
         return this;
       }
       m_properties.put(name, value);
