@@ -643,12 +643,29 @@ public class VcfParserTest {
 
   @Test
   void testDuplicateSampleNameMessageEscapesEmbeddedCarriageReturn() throws IOException {
-    // same gap as the two tests above, for the third message in parseColumnInfo: duplicate sample names
+    // same gap as the two tests above, for the third message in parseColumnInfo: duplicate sample names.
+    // Two DISTINCT names are used (not the same name repeated) specifically so the duplicate check -- not
+    // testEmbeddedCarriageReturnInSampleNameIsRejectedAtParseTime's own line-terminator check below, which
+    // fires per-name on the first occurrence, before a second occurrence could ever be compared -- is what
+    // actually produces this message; a repeated CR-containing name would be rejected by that other check
+    // first, never reaching "Duplicate sample name" at all.
     String vcf = "##fileformat=VCFv4.2\n" +
-        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\r1\tS\r1\n";
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\tS1\n";
     VcfFormatException ex = assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
-    assertTrue(ex.getMessage().contains("Duplicate sample name 'S\\r1'"), "Message was: " + ex.getMessage());
-    assertFalse(ex.getMessage().contains("Duplicate sample name 'S\r1'"));
+    assertTrue(ex.getMessage().contains("Duplicate sample name 'S1'"), "Message was: " + ex.getMessage());
+  }
+
+  @Test
+  void testEmbeddedCarriageReturnInSampleNameIsRejectedAtParseTime() throws IOException {
+    // regression test found by the Phase 2 review's third re-verification round: since readPhysicalLine()
+    // stopped treating a lone CR as a line separator, an embedded CR in a #CHROM header sample name used to
+    // parse with zero warnings, only caught later at VcfWriter.validateBeforeWrite() -- the default write
+    // path had no check at all, matching the same round-trip-violation shape the QUAL/sample-value fix
+    // closed elsewhere. Checked unconditionally at parse time instead, via InternalUtils.checkNoLineTerminator.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\r1\n";
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
+    assertTrue(ex.getMessage().contains("contains a line terminator"), "Message was: " + ex.getMessage());
   }
 
   @Test

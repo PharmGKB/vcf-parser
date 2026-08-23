@@ -922,6 +922,14 @@ public class VcfParser implements Closeable {
         throw new VcfFormatException("Duplicate sample name '" + InternalUtils.truncateAndEscapeForMessage(cols.get(i)) +
             "' in header", m_lineNumber);
       }
+      // A lone CR/LF embedded in a sample name (ordinary content since readPhysicalLine() stopped treating a
+      // lone CR as a line separator) previously parsed with zero warnings, then crashed VcfWriter.printLine's
+      // defense-in-depth check when the header was written back out -- the same round-trip-violation shape
+      // the QUAL/sample-value fix closed elsewhere; found by the Phase 2 review's third re-verification
+      // round. Checked unconditionally, matching every other column's own tab/CR/LF check. Ordered after the
+      // duplicate check above (not before), so a name that violates both reports "Duplicate sample name"
+      // first, matching this method's pre-existing message-priority for that shape.
+      InternalUtils.checkNoLineTerminator("sample name", cols.get(i));
     }
     mdBuilder.setColumns(cols);
   }
