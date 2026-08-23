@@ -1427,6 +1427,53 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testGetInfoReservedFlagPropertyTreatsAnyExplicitValueAsPresentNotAsBoolean() {
+    // regression test found by the Phase 2 review's third re-verification round: InternalUtils.convertElement's
+    // Boolean branch previously interpreted "0"/"false" as Java false and "1"/"true" as true, inverting a
+    // Flag's meaning for "0" -- a Flag's truth is its PRESENCE (VCFv4.3.tex line 171), not any value string
+    // attached to it, confirmed by htslib 1.23.1 (a Flag with a value stays present, value ignored) and
+    // hts-specs' own failed_body_info_012.vcf ("DB=2", ##CauseOfFailure=INFO DB value is not a flag -- "2" was
+    // never special; "0" is exactly as wrong). VcfWriter.validateInfoValue already warns "has Type=Flag but
+    // has a value" for this same shape on the write side without inspecting the value's content either; this
+    // brings the read side into agreement instead of silently inverting.
+    StringWriter sink0 = new StringWriter();
+    ListMultimap<String, String> info0 = ArrayListMultimap.create();
+    info0.put("DB", "0");
+    VcfPosition position0 = lenientContext(new VcfWarnings(sink0)).newPosition("chr", 1, null, "C", null, null,
+        null, info0, null, -1);
+    assertEquals(Boolean.TRUE, position0.getInfo(ReservedInfoProperty.Dbsnp));
+    assertTrue(sink0.toString().contains("Flag value \"0\" is not empty"));
+
+    StringWriter sink1 = new StringWriter();
+    ListMultimap<String, String> info1 = ArrayListMultimap.create();
+    info1.put("DB", "1");
+    VcfPosition position1 = lenientContext(new VcfWarnings(sink1)).newPosition("chr", 1, null, "C", null, null,
+        null, info1, null, -1);
+    // "1" is just as much an explicit value as "0" is -- it must warn too, not be treated as the "correct" case
+    assertEquals(Boolean.TRUE, position1.getInfo(ReservedInfoProperty.Dbsnp));
+    assertTrue(sink1.toString().contains("Flag value \"1\" is not empty"));
+
+    StringWriter sinkGarbage = new StringWriter();
+    ListMultimap<String, String> infoGarbage = ArrayListMultimap.create();
+    infoGarbage.put("DB", "garbage");
+    VcfPosition positionGarbage = lenientContext(new VcfWarnings(sinkGarbage)).newPosition("chr", 1, null, "C",
+        null, null, null, infoGarbage, null, -1);
+    // any non-empty content warns and is still treated as present -- not a parse failure, matching htslib's
+    // "treat it as a string" behavior rather than throwing "Invalid boolean value"
+    assertEquals(Boolean.TRUE, positionGarbage.getInfo(ReservedInfoProperty.Dbsnp));
+    assertTrue(sinkGarbage.toString().contains("Flag value \"garbage\" is not empty"));
+
+    // a bare flag (no value at all) is the only shape that must NOT warn
+    StringWriter sinkBare = new StringWriter();
+    ListMultimap<String, String> infoBare = ArrayListMultimap.create();
+    infoBare.put("DB", "");
+    VcfPosition positionBare = lenientContext(new VcfWarnings(sinkBare)).newPosition("chr", 1, null, "C", null,
+        null, null, infoBare, null, -1);
+    assertEquals(Boolean.TRUE, positionBare.getInfo(ReservedInfoProperty.Dbsnp));
+    assertFalse(sinkBare.toString().contains("is not empty"));
+  }
+
+  @Test
   public void testGetInfoReservedInfoPropertyEmptyValueThrowsUnderStrictContext() {
     // end-to-end: a strict VcfContext must throw VcfFormatException, not warn-and-substitute, when a reserved
     // key's value is empty -- InternalUtils.convertProperty(Class, String, boolean, VcfWarnings, VcfWarnings)'s

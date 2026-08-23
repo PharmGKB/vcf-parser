@@ -478,3 +478,13 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
   re-checked on a bcftools upgrade: if a future bcftools started accepting a negative length and keeping the
   declaration, the strength of this decision's supporting evidence would need revisiting (though the
   underlying "a negative length is meaningless" reasoning would still stand on its own).
+
+### A `Type=Flag` INFO value carrying an explicit value
+- Test: `BcftoolsDependencyTest#testFlagInfoValueWithExplicitContentBcftoolsTreatsAsPresentRegardlessOfContent`
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`'s "A `Type=Flag` INFO value carrying an explicit value" entry. No VCF
+  version states what an explicit Flag value means (only that it shouldn't exist at all), so whether `"0"`
+  specifically means "false" needed live consultation. bcftools 1.23.1's presence filter (`-i 'DB=1'`)
+  matches `DB=0`, `DB=1`, and a bare `DB` alike, and excludes only a record with no `DB` at all -- confirming
+  it never inspects a Flag's value content, only its presence. Must be re-checked on a bcftools upgrade: if a
+  future bcftools started treating `DB=0` as absent for filtering purposes, this library's "always resolve to
+  `true`" decision would need revisiting.

@@ -71,6 +71,7 @@ before assuming it generalizes to a similar-looking case.
 | Percent-encoding field scope, and the eight-sequence limit | INFO/FORMAT/structured-attribute values only, not ID/FILTER/keys/IDs/ALT; decode only the eight tabled sequences | ✅ |
 | INFO value containing a bare `=` | Warn, don't throw (matches bcftools) | ✅ |
 | Duplicate INFO key within one record | Warn, keep first occurrence (matches bcftools) | ✅ |
+| A `Type=Flag` INFO value carrying an explicit value | Warn, always resolve to `true` (presence, not value content -- matches bcftools/htslib) | ✅ |
 | Negative/out-of-range values for reserved INFO keys `AC`/`AN`/`DP`/`END`/`MQ0`/`NS`/`AF` | Warn in lenient mode, throw in strict mode (vcf_validator-sourced; bcftools silent) | ✅ |
 | CIGAR grammar (SAM compliance) | Warn in lenient mode, throw in strict mode (vcf_validator-sourced; bcftools silent) | ✅ |
 | `FORMAT="."` meaning no per-sample fields | Accept (matches bcftools) | ✅ |
@@ -1207,6 +1208,30 @@ list.
 
 **Decision:** warn (not throw), and keep only the first occurrence, matching bcftools exactly instead of
 silently merging into what looked like a legitimate multi-value list. Implemented in `VcfPosition`.
+
+### A `Type=Flag` INFO value carrying an explicit value
+
+`##INFO=<ID=DB,Number=0,Type=Flag,...>` with a record's INFO containing `DB=0` was read via
+`getInfo(ReservedInfoProperty)`/`getInfo(VcfMetadata, String)` as Java `false`, inverting the flag --
+`InternalUtils.convertElement`'s `Boolean` branch treated `"0"`/`"false"` as `false` and `"1"`/`"true"` as
+`true`. `VCFv4.3.tex:171` -- "the `Flag' type indicates that the INFO field does not contain a Value entry,
+and hence the Number must be 0 in this case" -- ties a Flag's truth to its presence, not to any value string
+attached to it, and hts-specs' own `failed_body_info_012.vcf` (`##CauseOfFailure=INFO DB value is not a
+flag`, value `DB=2`) treats an explicit value as wrong regardless of what it says, not specifically "not a
+valid boolean."
+
+Confirmed live against bcftools 1.23.1 (htslib 1.23.1 `vcf.c`'s `BCF_HT_FLAG` handling): `bcftools view -H
+-i 'DB=1'` (a presence filter) matches records with `DB=0`, `DB=1`, and a bare `DB`, and excludes only a
+record with no `DB` at all -- confirming bcftools treats `DB=0` as present, exactly like `DB=1` or a bare
+flag, never inspecting the value's content. `VcfWriter.validateInfoValue` (the write side) already warns
+"has Type=Flag but has a value" for this exact shape without trying to interpret the value's content either
+-- this decision brings the read side into agreement instead of leaving it silently wrong.
+
+**Decision:** warn (unconditionally, matching the write side's own unconditional warn) for any non-empty
+value, and always resolve to `true` -- never inspect the value's content as a boolean. Removes the previous
+`"0"`/`"1"`/`"true"`/`"false"` special-casing (and the "Invalid boolean value" throw for anything else)
+entirely, since per this decision there is no such thing as an invalid Flag value, only a non-compliant one.
+Implemented in `InternalUtils.convertElement`.
 
 ### Negative/out-of-range values for reserved INFO keys `AC`/`AN`/`DP`/`END`/`MQ0`/`NS`/`AF`
 

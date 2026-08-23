@@ -1628,17 +1628,24 @@ public class InternalUtils {
         throw new VcfFormatException("Invalid character value '" + value + "'");
       }
     } else if (clas == Boolean.class) {
+      // VCFv4.3.tex line 171: "the 'Flag' type indicates that the INFO field does not contain a Value entry,
+      // and hence the Number must be 0 in this case" -- a Flag's truth is its PRESENCE, not any value string
+      // attached to it. Confirmed live (htslib 1.23.1, vcf.c bcf_hdr_check_sanity's BCF_HT_FLAG branch): when a
+      // Flag key does carry an explicit value, htslib treats the value as opaque and the tag simply stays
+      // present -- it never inspects the string's content, so "0" carries no more (or less) special meaning
+      // than "1", "false", or any other text. This method previously treated "0"/"false" as false and
+      // "1"/"true" as true, inverting a Flag's meaning for exactly the "0" shape hts-specs' own
+      // failed_body_info_012/019/020/025/026/027.vcf fixtures use (##CauseOfFailure=INFO <KEY> value is not a
+      // flag) -- found by the Phase 2 review's third re-verification round. The write side
+      // (VcfWriter.validateInfoValue) already warns "has Type=Flag but has a value" for this same shape
+      // without trying to interpret the value's content either; this mirrors that on the read side.
       value = StringUtils.stripToNull(value);
       if (value == null) {
         return true;
       }
-      if (value.equals("0") || value.equalsIgnoreCase("false")) {
-        return false;
-      }
-      if (value.equals("1") || value.equalsIgnoreCase("true")) {
-        return true;
-      }
-      throw new VcfFormatException("Invalid boolean value: '" + value + "'");
+      warnings.warn("Flag value \"{}\" is not empty, but a Flag's truth is its presence, not any attached " +
+          "value; treating it as present regardless of the value's content", value);
+      return true;
 
     } else if (clas == VcfFloat.class) {
       // unlike plain BigDecimal, this also accepts NAN/INF/INFINITY (case-insensitive, optionally signed), which
