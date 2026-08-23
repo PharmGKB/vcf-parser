@@ -339,6 +339,30 @@ public class IdDescriptionMetadataTest {
   }
 
   @Test
+  public void testFilterIdDotWarnsAsMissingValueSentinel() {
+    // regression test: a lone "." in the FILTER data-line column is normalized to an empty filter list
+    // (VcfPosition's own MISSING-value handling), so a ##FILTER declaration whose ID is exactly "." could
+    // never legally be referenced from a real record's FILTER column -- the same practical defect shape as
+    // the "0" case above, though not spec-named the way "0" is (VCF_SPEC_AMBIGUITIES.md's "FILTER
+    // declaration ID equal to '.'" entry has the full reasoning).
+    StringWriter typedSink = new StringWriter();
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(typedSink)), "FILTER", ".", "d");
+    assertTrue(typedSink.toString().contains("ID \".\" is the FILTER column's own MISSING-value sentinel"));
+
+    Map<String, String> props = InternalUtils.extractProperties(
+        new String[] {"ID=.", "Description=\"d\""}, VcfWarnings.DEFAULT);
+    StringWriter mapSink = new StringWriter();
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(mapSink)), "FILTER", props);
+    assertTrue(mapSink.toString().contains("ID \".\" is the FILTER column's own MISSING-value sentinel"));
+  }
+
+  @Test
+  public void testStrictConstructorThrowsForFilterIdDot() {
+    assertThrows(VcfFormatException.class,
+        () -> new IdDescriptionMetadata(STRICT_CONTEXT, "FILTER", ".", "d"));
+  }
+
+  @Test
   public void testFilterIdWithSemicolonWarns() {
     // regression test: VCFv4.3.tex:362, "String, no whitespace or semicolons permitted" for the FILTER
     // column -- a semicolon inside one declared FILTER ID would be indistinguishable from two IDs when a
@@ -373,6 +397,10 @@ public class IdDescriptionMetadataTest {
     StringWriter sampleSink = new StringWriter();
     new IdDescriptionMetadata(lenientContext(new VcfWarnings(sampleSink)), "SAMPLE", "a;b", "d");
     assertFalse(sampleSink.toString().contains("must not contain a semicolon"));
+
+    StringWriter altDotSink = new StringWriter();
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(altDotSink)), "ALT", ".", "d");
+    assertFalse(altDotSink.toString().contains("MISSING-value sentinel"));
   }
 
 }

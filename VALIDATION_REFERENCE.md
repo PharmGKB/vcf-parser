@@ -710,14 +710,17 @@ is a structural failure and still throws -- see the strict section above):
   share), not a per-type policy choice, so it needs no bcftools/vcf_validator corroboration the way the
   whitespace check above does.
 - A `##FILTER` declaration's `ID` that is exactly `"0"` (VCFv4.3.tex line 360, "`0' is reserved and must not
-  be used as a filter String") or that contains a semicolon (VCFv4.3.tex line 362, "String, no whitespace or
-  semicolons permitted" -- restated verbatim at VCFv4.4.tex lines 376/378 and VCFv4.5.tex lines 425/427):
-  warns. Both rules are already enforced for the FILTER data-line column itself (`VcfPosition`'s own FILTER
-  checks); this closes the matching gap at declaration time, so a `##FILTER` declaration a real record could
-  never legally use is flagged when it's declared, not left silently unusable. `##FILTER`-specific: not
-  extended to `##ALT`/`##SAMPLE`, which share this class (`IdDescriptionMetadata`) but have no such
-  column-level rule of their own. Whitespace and comma in a `##FILTER` ID are already covered by the two
-  bullets above (shared with the other six ID-bearing types); this adds only the two rules those don't cover.
+  be used as a filter String"), that is exactly `"."` (not spec-named the way `"0"` is -- see
+  `VCF_SPEC_AMBIGUITIES.md`'s "FILTER declaration ID equal to '.'" entry for why this is a decision, not a
+  cited rule), or that contains a semicolon (VCFv4.3.tex line 362, "String, no whitespace or semicolons
+  permitted" -- restated verbatim at VCFv4.4.tex lines 376/378 and VCFv4.5.tex lines 425/427): warns. All
+  three rules are already enforced for the FILTER data-line column itself (`VcfPosition`'s own FILTER
+  checks -- for `"."`, via its normalization of a lone `.` to an empty filter list, not a per-entry check);
+  this closes the matching gap at declaration time, so a `##FILTER` declaration a real record could never
+  legally use is flagged when it's declared, not left silently unusable. `##FILTER`-specific: not extended
+  to `##ALT`/`##SAMPLE`, which share this class (`IdDescriptionMetadata`) but have no such column-level rule
+  of their own. Whitespace and comma in a `##FILTER` ID are already covered by the two bullets above (shared
+  with the other six ID-bearing types); this adds only the three rules those don't cover.
 
 ### Other lenient behavior
 

@@ -118,14 +118,23 @@ public sealed class IdDescriptionMetadata extends IdMetadata permits InfoMetadat
    * declaration's own {@code ID} -- so a declared filter code that could never legally appear in a real
    * record's FILTER column went unflagged at declaration time. Whitespace and comma are already covered
    * by {@code IdMetadata}'s own shared checks (this class's superclass), which run before this method for
-   * every ID-bearing type, {@code ##FILTER} included -- this adds only the two rules those don't cover: the
-   * reserved value {@code "0"}, and the semicolon delimiter (the FILTER column's own list separator, so a
-   * semicolon inside one declared ID would be indistinguishable from two IDs when a record uses it).
+   * every ID-bearing type, {@code ##FILTER} included -- this adds only the rules those don't cover: the
+   * reserved value {@code "0"}, the semicolon delimiter (the FILTER column's own list separator, so a
+   * semicolon inside one declared ID would be indistinguishable from two IDs when a record uses it), and a
+   * lone {@code "."} (the FILTER column's own MISSING-value sentinel -- see {@code VcfPosition}'s own
+   * lone-"." normalization to an empty filter list -- so a declared FILTER whose ID is exactly {@code "."}
+   * could never legally be referenced from a real record's FILTER column either; not spec-cited the way
+   * {@code "0"} is (no VCF version names {@code "."} in this sentence), but the same practical defect shape,
+   * see {@code VCF_SPEC_AMBIGUITIES.md}'s "FILTER declaration ID equal to '.'" entry for the full reasoning).
    * {@code unquotedId} is only ever non-null here, per both call sites' own guards.
    */
   private void checkFilterIdAgainstColumnRules(String unquotedId) {
     if ("0".equals(unquotedId)) {
       warnOrThrow("{} ID \"0\" is reserved and must not be used as a filter code", getLabel());
+    }
+    if (".".equals(unquotedId)) {
+      warnOrThrow("{} ID \".\" is the FILTER column's own MISSING-value sentinel and must not be used as a " +
+          "filter code", getLabel());
     }
     if (unquotedId.contains(";")) {
       warnOrThrow("{} ID \"{}\" must not contain a semicolon", getLabel(), unquotedId);
