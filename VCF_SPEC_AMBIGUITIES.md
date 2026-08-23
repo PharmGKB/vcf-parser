@@ -63,6 +63,7 @@ before assuming it generalizes to a similar-looking case.
 | BOM-prefixed file / `+`-prefixed POS | Existing behavior already matches both tools | ✅ |
 | ALT breakend contig-ID shorthand (`AC<ctg1>GT`, `<ctg1><ctg2>`) | Left permissive; neither tool is decisive | ✅ (judgment call) |
 | Reserved structural variant code re-used as a subtype (`DUP:INV`) | Reject (deliberately stricter than bcftools) | ✅ |
+| ALT allele identical to REF | Warn (lenient) / throw (strict), case-sensitive (vcf_validator-sourced; bcftools silent) | ✅ |
 | CHROM containing a reserved symbolic allele name | Warn (lenient) / throw (strict), matching `##contig`'s existing check (sibling consistency; bcftools gives no signal either way) | ✅ |
 | FILTER value `"0"` | Reject (reserved value) | ✅ |
 | `PASS` combined with other FILTER codes | Warn (lenient), throw (strict/direct construction) | ✅ |
@@ -1046,6 +1047,26 @@ used at the wrong level (a plausible typo, e.g. writing `TANDEM` instead of `DUP
 reused as a subtype is a sufficiently unusual construction that treating it as suspect is a reasonable,
 conservative default even though the spec doesn't mandate it. Revisit if a real-world VCF is ever found using
 this construction legitimately. Implemented in `AltStructuralVariant`'s constructor.
+
+### ALT allele identical to REF
+
+`VCFv4.3.tex:348` -- "ALT --- alternate base(s): Comma-separated list of alternate non-reference alleles"
+(identical wording at VCFv4.1.tex:166/VCFv4.2.tex:183/VCFv4.4.tex:364/VCFv4.5.tex:413, so version-independent,
+not a 4.3-only rule) -- was never checked: `REF=C, ALT=C` parsed with zero warnings. No hts-specs fixture
+covers this exact cause.
+
+Confirmed live against vcf_validator 0.10.2, which has a dedicated, specific error for exactly this shape
+("Reference and alternate alleles must not be the same") -- not a generic grammar failure, so outside both
+of vcf_validator's known token-capture defects. It fires for the allele in any position of a multi-allelic
+list (`REF=C, ALT=T,C`), for multi-base alleles (`REF=AT, ALT=AT`), and is **case-sensitive** (`REF=C, ALT=c`
+is reported valid). bcftools 1.23.1 is silent (weak evidence, consistent with its general silence on
+non-structural ALT content).
+
+**Decision:** warn (lenient) / throw (strict), case-sensitive, matching vcf_validator's own measured
+case-sensitivity rather than an unmeasured stricter reading. Skips the missing-value sentinel (`.`), the
+spanning-deletion `*`, any angle-bracket-wrapped symbolic allele (including the unspecified `<*>`), and any
+breakend replacement string (contains `[`/`]`) -- none of these can equal REF as plain text anyway, since
+REF must match `[AaCcGgTtNn]+`. Implemented in `VcfPosition.checkAltBases`.
 
 ### CHROM containing a reserved symbolic allele name
 

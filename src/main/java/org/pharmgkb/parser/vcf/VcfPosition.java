@@ -175,7 +175,7 @@ public final class VcfPosition {
     }
     checkRef(ref);
     if (altBases != null && !trustedFields) {
-      altBases = checkAltBases(altBases, checkWarnings);
+      altBases = checkAltBases(altBases, ref, checkWarnings);
     }
     if (filter != null && !trustedFields) {
       filter = checkFilters(filter, checkWarnings);
@@ -505,11 +505,16 @@ public final class VcfPosition {
   }
 
   /**
+   * @param refBases this record's own {@code REF} value, used only for the reference-identical-allele check
+   * below; {@code null} skips that one check entirely (never reached with {@code null} from any real call
+   * site, since {@code REF} is mandatory and always checked/set before this method runs -- accepted as
+   * {@code @Nullable} purely so a caller with no {@code REF} in scope yet isn't forced to fabricate one)
    * @return {@code altBases} unchanged, or a new list derived from it with any empty entry substituted with
    * {@code "."} (with a warning, or a thrown {@link VcfFormatException} if {@code warnings} is {@code null} --
    * strict mode); see {@code EMPTY_FIELD_HANDLING.md}
    */
-  private static List<String> checkAltBases(List<String> altBases, @Nullable VcfWarnings warnings) {
+  private static List<String> checkAltBases(List<String> altBases, @Nullable String refBases,
+      @Nullable VcfWarnings warnings) {
     // ALT is position-dependent: GT genotype values index into it positionally (VCFv4.2.tex line 217: "1 for the
     // first allele listed in ALT, 2 for the second allele list [sic] in ALT and so on"; see getAllele(int)). Dropping
     // an empty entry (the previous behavior) would shift every subsequent allele's index down by one, silently
@@ -531,6 +536,27 @@ public final class VcfPosition {
       }
       if (!InternalUtils.ALT_BASE_PATTERN.matcher(base).matches()) {
         throw new VcfFormatException("Invalid alternate base '" + base + "' (must match " + InternalUtils.ALT_BASE_PATTERN + ")");
+      }
+      // VCFv4.3.tex line 348: "ALT --- alternate base(s): Comma-separated list of alternate non-reference
+      // alleles" -- identical wording at VCFv4.1.tex:166/VCFv4.2.tex:183/VCFv4.4.tex:364/VCFv4.5.tex:413, so
+      // this is a version-independent rule, not a 4.3-only one. Only an ordinary base-sequence entry can
+      // collide with REF this way -- skip the missing-value sentinel, the spanning-deletion "*", any
+      // angle-bracket-wrapped symbolic allele (including the unspecified "<*>"), and any breakend
+      // replacement string (always contains "[" or "]"), none of which can equal REF as plain text anyway.
+      // Case-sensitive: VCFv4.3.tex:344/:353 ("Tools processing VCF files are not required to preserve case
+      // in the allele Strings") means case is not spec-guaranteed significant, but confirmed live that
+      // vcf_validator 0.10.2 -- whose own dedicated check for exactly this shape ("Reference and alternate
+      // alleles must not be the same") is the sole evidence for this rule at all, since no hts-specs fixture
+      // covers it and bcftools 1.23.1 is silent -- itself treats REF=C/ALT=c as valid, so this matches that
+      // tool's own case-sensitivity rather than picking an unmeasured stricter reading. Found by the Phase 2
+      // review's third re-verification round.
+      if (refBases != null && base.equals(refBases) && !base.equals(".") && !base.equals("*") &&
+          base.indexOf('<') != 0 && base.indexOf('[') < 0 && base.indexOf(']') < 0) {
+        String message = "ALT allele \"" + base + "\" is identical to REF; alleles must be non-reference";
+        if (warnings == null) {
+          throw new VcfFormatException(message);
+        }
+        warnings.warn(message);
       }
     }
     return altBases;
@@ -936,7 +962,7 @@ public final class VcfPosition {
       checkPosition(m_position);
       m_ids = checkIds(m_ids, m_warnings);
       checkRef(m_refBases);
-      m_altBases = checkAltBases(m_altBases, m_warnings);
+      m_altBases = checkAltBases(m_altBases, m_refBases, m_warnings);
       m_filter = checkFilters(m_filter, m_warnings);
       normalizeFilters();
       m_info = checkInfoEntries(info(), m_warnings);
@@ -1673,7 +1699,7 @@ public final class VcfPosition {
         m_ids = checkIds(m_ids, checkWarnings);
       }
       if (m_altBasesDirty && m_altBases != null) {
-        m_altBases = checkAltBases(m_altBases, checkWarnings);
+        m_altBases = checkAltBases(m_altBases, m_ref, checkWarnings);
       }
       if (m_filterDirty && m_filter != null) {
         m_filter = checkFilters(m_filter, checkWarnings);

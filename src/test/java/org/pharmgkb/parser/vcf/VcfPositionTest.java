@@ -278,7 +278,7 @@ public class VcfPositionTest {
   public void testGetInfoCigarIsListValued() {
     // VCFv4.2 only describes CIGAR in prose with no formal Number, but VCFv4.3/4.4/4.5 all declare it Number=A
     // (one value per ALT allele); a multi-allelic record's CIGAR must therefore convert to a List, not a scalar
-    VcfPosition p = newPosition().toBuilder().altBases(List.of("T", "C")).rawInfo("CIGAR=1M,2M").build();
+    VcfPosition p = newPosition().toBuilder().altBases(List.of("T", "G")).rawInfo("CIGAR=1M,2M").build();
     assertEquals(Arrays.asList("1M", "2M"), p.getInfo(ReservedInfoProperty.Cigar));
   }
 
@@ -379,7 +379,7 @@ public class VcfPositionTest {
     appender.start();
     root.addAppender(appender);
     try {
-      VcfPosition p = newPosition().toBuilder().altBases(List.of("T", "C")).rawInfo("AC=1,2").build();
+      VcfPosition p = newPosition().toBuilder().altBases(List.of("T", "G")).rawInfo("AC=1,2").build();
       assertEquals(Arrays.asList(1L, 2L), p.getInfo(ReservedInfoProperty.AlleleCount));
       assertFalse(appender.anyMessageContains("value(s), but Number="));
     } finally {
@@ -1133,11 +1133,11 @@ public class VcfPositionTest {
     // VcfContext.newPosition defensively copies every mutable input, so a caller mutating their own reference
     // afterward can never reach the position's backing state -- an immutable List.of(...) argument can't be
     // mutated to prove that either way, so this uses a caller-owned mutable list instead.
-    List<String> callerOwned = new ArrayList<>(List.of("T", "C"));
+    List<String> callerOwned = new ArrayList<>(List.of("T", "G"));
     VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "C", callerOwned, null, null, null, null, -1);
-    assertEquals(Arrays.asList("T", "C"), position.getAltBases());
+    assertEquals(Arrays.asList("T", "G"), position.getAltBases());
     callerOwned.add("G");
-    assertEquals(Arrays.asList("T", "C"), position.getAltBases());
+    assertEquals(Arrays.asList("T", "G"), position.getAltBases());
   }
 
   @Test
@@ -1170,6 +1170,72 @@ public class VcfPositionTest {
     VcfFormatException lenientEx = assertThrows(VcfFormatException.class,
         () -> LENIENT_CONTEXT.newPosition("1", 100, null, "A", List.of("T,C"), null, null, null, null, -1));
     assertTrue(lenientEx.getMessage().contains("Invalid alternate base"));
+  }
+
+  @Test
+  public void testConstructorWarnsForAltAlleleIdenticalToRef() {
+    // regression test found by the Phase 2 review's third re-verification round: VCFv4.3.tex:348 requires ALT
+    // alleles to be "non-reference" (identical wording at VCFv4.1.tex:166/VCFv4.2.tex:183/VCFv4.4.tex:364/
+    // VCFv4.5.tex:413 -- version-independent, not 4.3-only), and vcf_validator 0.10.2 has a dedicated check for
+    // exactly this ("Reference and alternate alleles must not be the same"), confirmed live -- but nothing in
+    // this library ever compared ALT to REF.
+    StringWriter sink = new StringWriter();
+    VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("1", 100, null, "C", List.of("C"),
+        null, null, null, null, -1);
+    assertEquals(List.of("C"), position.getAltBases()); // warn-and-keep, not dropped
+    assertTrue(sink.toString().contains("ALT allele \"C\" is identical to REF"));
+
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newPosition("1", 100, null, "C", List.of("C"), null, null, null, null, -1));
+    assertTrue(ex.getMessage().contains("ALT allele \"C\" is identical to REF"));
+  }
+
+  @Test
+  public void testAltAlleleIdenticalToRefCheckIsCaseSensitive() {
+    // vcf_validator 0.10.2 itself treats REF=C/ALT=c as valid, confirmed live -- VCFv4.3.tex:344/:353 ("Tools
+    // processing VCF files are not required to preserve case in the allele Strings") means case isn't
+    // spec-guaranteed significant, so this matches that tool's own case-sensitivity rather than an unmeasured
+    // stricter reading
+    StringWriter sink = new StringWriter();
+    VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("1", 100, null, "C", List.of("c"),
+        null, null, null, null, -1);
+    assertFalse(sink.toString().contains("is identical to REF"));
+    assertEquals(List.of("c"), position.getAltBases());
+  }
+
+  @Test
+  public void testAltAlleleIdenticalToRefCheckFiresForAnyAlleleInAMultiAllelicList() {
+    // confirmed live against vcf_validator 0.10.2: REF=C, ALT=T,C is flagged even though C is the SECOND
+    // allele, not the first
+    StringWriter sink = new StringWriter();
+    VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("1", 100, null, "C",
+        List.of("T", "C"), null, null, null, null, -1);
+    assertTrue(sink.toString().contains("ALT allele \"C\" is identical to REF"));
+    assertEquals(List.of("T", "C"), position.getAltBases());
+  }
+
+  @Test
+  public void testAltAlleleIdenticalToRefCheckFiresForMultiBaseAlleles() {
+    // confirmed live against vcf_validator 0.10.2: REF=AT, ALT=AT is flagged, not just single-base REF/ALT
+    StringWriter sink = new StringWriter();
+    VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("1", 100, null, "AT",
+        List.of("AT"), null, null, null, null, -1);
+    assertTrue(sink.toString().contains("ALT allele \"AT\" is identical to REF"));
+  }
+
+  @Test
+  public void testAltAlleleIdenticalToRefCheckSkipsNonBaseSequenceShapes() {
+    // the missing-value sentinel, the spanning-deletion "*", and a symbolic allele can never legally equal a
+    // valid REF (REF must match [AaCcGgTtNn]+) -- confirm the check simply never fires for any of them,
+    // alongside an ordinary allele that legitimately does trigger it, so the absence of a warning here isn't
+    // just "the check never ran at all"
+    StringWriter sink = new StringWriter();
+    VcfContext context = lenientContext(new VcfWarnings(sink));
+    context.newPosition("1", 100, null, "A", List.of("*"), null, null, null, null, -1);
+    context.newPosition("1", 100, null, "A", List.of("<DEL>"), null, null, null, null, -1);
+    assertFalse(sink.toString().contains("is identical to REF"));
+    context.newPosition("1", 100, null, "A", List.of("A"), null, null, null, null, -1);
+    assertTrue(sink.toString().contains("is identical to REF"));
   }
 
   @Test

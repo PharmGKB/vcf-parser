@@ -820,6 +820,11 @@ check (the "Strict" section above): bcftools 1.23.1 itself only warns on this on
 Invalid contig name`), never rejects. See `VCF_SPEC_AMBIGUITIES.md`'s "CHROM / contig ID containing a
 character outside the printable-ASCII range" entry.
 
+An ALT allele identical to REF (e.g. `REF=C, ALT=C`) warns (or throws under a strict context), case-
+sensitively -- skipping the missing-value sentinel, `*`, a symbolic allele, and a breakend replacement
+string, none of which can equal REF as plain text. Implemented in `VcfPosition.checkAltBases`. See
+`VCF_SPEC_AMBIGUITIES.md`'s "ALT allele identical to REF" entry.
+
 ## Rules applied at every declared version
 
 This library targets VCFv4.3. The eight rules indexed below are all target-spec rules that this library
