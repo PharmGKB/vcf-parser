@@ -67,6 +67,22 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testRawInfoContainingLineTerminatorThrowsAtConstructionNotAtWriteTime() {
+    // rawInfo's own sibling of testRawQualityContainingLineTerminatorThrowsAtConstructionNotAtWriteTime above:
+    // the third re-verification round's rawQuality fix had an identical, unfixed gap on its own INFO sibling,
+    // found by the fourth re-verification round. checkInfoEntries's own whitespace check is deferred to first
+    // getInfo()/info() call, but a raw CR/LF surviving unchecked into m_rawInfo reached VcfWriter's default
+    // write path completely unvalidated and crashed VcfWriter.printLine's own defense-in-depth check instead,
+    // producing a truncated output file for a record the parser accepted with zero warnings.
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> newPosition().toBuilder().rawInfo("DP=1\r0").build());
+    assertTrue(ex.getMessage().contains("contains a line terminator"));
+    VcfFormatException ex2 = assertThrows(VcfFormatException.class,
+        () -> lenientPosition().toBuilder().rawInfo("DP=1\n0").build());
+    assertTrue(ex2.getMessage().contains("contains a line terminator"));
+  }
+
+  @Test
   public void testGetRawQualityIsPreservedAfterSuccessfulParseAndUnderLenientContextToo() {
     // full symmetry with INFO's own permanently-available raw per-key values: getRawQuality() keeps returning
     // the original wire text even after getQuality() has already parsed it successfully -- not just for the

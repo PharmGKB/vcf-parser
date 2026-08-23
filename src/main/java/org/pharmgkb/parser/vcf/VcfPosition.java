@@ -248,6 +248,16 @@ public final class VcfPosition {
       m_rawQuality = rawQual;
     }
     if (info == null && rawInfo != null) {
+      // Unconditional, matching the rawQual check just above -- see that check's own comment for the full
+      // rationale, which applies identically here: INFO's own value-parsing (checkInfoEntries) is deferred to
+      // first getInfo()/info() call for performance, but that deferral must not also defer this check, since
+      // an unchecked CR reaches VcfWriter's default write path unvalidated (that path writes each INFO
+      // key/value pair from rawInfo's own split pieces, never re-scanning the whole raw text for a line
+      // terminator) and crashes VcfWriter.printLine's own defense-in-depth check later, producing a truncated
+      // output file for a record the parser accepted with zero warnings. Found by the Phase 2 review's fourth
+      // re-verification round: the QUAL fix above (third round) closed this identical gap for QUAL but missed
+      // its own INFO sibling.
+      InternalUtils.checkNoLineTerminator("INFO", rawInfo);
       m_rawInfo = rawInfo;
     }
   }

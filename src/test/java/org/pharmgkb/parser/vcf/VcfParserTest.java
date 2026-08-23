@@ -708,6 +708,28 @@ public class VcfParserTest {
   }
 
   @Test
+  void testEmbeddedCarriageReturnInInfoIsRejectedAtParseTimeNotWriteTime() throws IOException {
+    // same regression as testEmbeddedCarriageReturnInQualIsRejectedAtParseTimeNotWriteTime above, for INFO's
+    // own raw text: found by the fourth re-verification round, since the third round's rawQuality fix had an
+    // identical, unfixed gap on its own INFO sibling -- see VcfPosition's own rawInfo attachment comment.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##INFO=<ID=DP,Number=1,Type=Integer,Description=\"depth\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT\t.\t.\tDP=1\r0\n";
+    List<VcfPosition> positions = new ArrayList<>();
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> {
+      try (VcfParser parser = new VcfParser.Builder()
+          .fromReader(new BufferedReader(new StringReader(vcf)))
+          .parseWith((metadata, record) -> positions.add(record.getPosition()))
+          .build()) {
+        parser.parse();
+      }
+    });
+    assertTrue(ex.getMessage().contains("contains a line terminator"));
+    assertTrue(positions.isEmpty(), "the malformed record must never reach the line parser callback");
+  }
+
+  @Test
   void testEmbeddedCarriageReturnInSampleValueIsRejectedAtParseTimeNotWriteTime() throws IOException {
     // same regression as testEmbeddedCarriageReturnInQualIsRejectedAtParseTimeNotWriteTime above, for a
     // sample value: VcfContext.newTrustedSample used to skip VcfSample.checkNoStructuralDelimiter entirely

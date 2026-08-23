@@ -144,9 +144,13 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   be CR+LF or LF and they are allowed only as line separators at end of line") -- verbatim at VCFv4.4.tex lines
   81/82 and VCFv4.5.tex lines 79/80 -- state this generally; VCFv4.2 is silent. Applied via `InternalUtils.checkNoLineTerminator`
   (metadata keys and values, and -- since the Phase 2 review's third re-verification round -- `VcfPosition`'s
-  own QUAL raw text at construction time), `VcfSample.checkNoStructuralDelimiter` (a tab or line terminator in
-  a sample key or value), and `VcfPosition.checkInfoEntries`'s value-side check (tab, LF, CR, vertical tab, or
-  form feed in an INFO value). Unlike the tab/colon half of `checkNoStructuralDelimiter`,
+  own QUAL raw text, and -- since the fourth re-verification round found the third round's fix had left an
+  identical, unfixed gap on its own INFO sibling -- `VcfPosition`'s own INFO raw text too, both at
+  construction time), `VcfSample.checkNoStructuralDelimiter` (a tab or line terminator in a sample key or
+  value), and `VcfPosition.checkInfoEntries`'s value-side check (tab, LF, CR, vertical tab, or form feed in an
+  INFO value, but only on first `getInfo()`/`info()` access, not at construction -- the eager
+  `checkNoLineTerminator` call just mentioned is what closes that gap for a raw CR/LF specifically, ahead of
+  that deferred check ever running). Unlike the tab/colon half of `checkNoStructuralDelimiter`,
   `VcfContext.newTrustedSample` (`VcfParser`'s own per-record fast path) does NOT skip this line-terminator
   half: a lone CR is ordinary content once `readPhysicalLine()` stopped treating it as a line separator, so
   it is not excluded by the parser's own tab/colon splitting the way a colon or tab structurally is, and would
