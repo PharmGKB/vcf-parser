@@ -96,6 +96,17 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
   (`[W::bcf_hrec_check] Invalid contig name: "*chr"`) but still exits 0 and preserves the declaration for a
   **leading** asterisk, which is the boundary the control test pins.
 
+### CHROM / contig ID containing a non-printable-ASCII character
+- Test: `BcftoolsDependencyTest#testContigIdWithDelCharacterBcftoolsWarnsButPreserves`,
+  `#testContigIdWithNonAsciiCharacterBcftoolsWarnsButPreserves`
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "CHROM / contig ID containing a character outside the printable-ASCII
+  range" entry. Same warn-but-preserve shape as the leading-asterisk pair above (bcftools 1.23.1 warns via
+  `bcf_hrec_check`, exit 0, declaration preserved verbatim), which is why this library's own fix warns rather
+  than throwing unconditionally, even though every OTHER character-set check in `VcfPosition.checkChromosome`
+  is an unconditional throw. Must be re-checked on a bcftools upgrade: if a future bcftools started rejecting
+  either shape outright, this library's warn-only treatment would need to become a throw to stay round-trip
+  safe.
+
 ### SAMPLE ID with a non-leading asterisk
 - Test: `BcftoolsDependencyTest#testSampleIdWithNonLeadingAsteriskBcftoolsAccepts`
 - Reasoning: `HTS_SPECS_BASELINE_STATUS.md`'s "`##SAMPLE` ID contains illegal character (a non-leading `*`)"

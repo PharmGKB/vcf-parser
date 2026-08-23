@@ -788,6 +788,42 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testStrictConstructorThrowsForNonPrintableAsciiInChromosome() {
+    // regression test: VCFv4.3.tex:258-259, "they may contain any printable ASCII characters in the range
+    // [!-~]" -- previously unenforced (INVALID_CONTIG_NAME_CHAR_PATTERN only blocklists specific punctuation
+    // WITHIN that range, never the range's own outer bound), so a DEL character (0x7F) or non-ASCII
+    // character in CHROM parsed with zero warnings. Confirmed live that bcftools 1.23.1 warns on both.
+    assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newPosition("chr\u007F1", 100, null, "A", null, null, null, null, null, -1));
+    assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newPosition("chr\u00E41", 100, null, "A", null, null, null, null, null, -1));
+  }
+
+  @Test
+  public void testLenientConstructorWarnsInsteadOfThrowingForNonPrintableAsciiInChromosome() {
+    // unlike every other CHROM character-set check in checkChromosome (all unconditional throws, matching
+    // this method's own established "CHROM is structural" floor), this ONE check has a warn path, because
+    // bcftools itself only warns (never rejects) on it -- see checkChromosome's own checkWarnings parameter
+    // comment for why this single check is the exception, not the rule, in that method.
+    StringWriter sink = new StringWriter();
+    VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("chr\u007F1", 100, null, "A", null,
+        null, null, null, null, -1);
+    assertEquals("chr\u007F1", position.getChromosome());
+    assertTrue(sink.toString().contains("non-printable-ASCII character"));
+  }
+
+  @Test
+  public void testValidateWarnsInsteadOfThrowingForNonPrintableAsciiInChromosomeEvenUnderStrictContext() {
+    // validate() always warns for a recoverable condition rather than throwing, even under a strict context
+    // -- matching checkIds/checkAltBases/checkFilters/checkFormat's identical existing treatment
+    StringWriter sink = new StringWriter();
+    VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("chr\u007F1", 100, null, "A", null,
+        null, null, null, null, -1);
+    position.validate();
+    assertTrue(sink.toString().contains("non-printable-ASCII character"));
+  }
+
+  @Test
   public void testConstructorRejectsNullRefInsteadOfThrowingNpe() {
     assertThrows(VcfFormatException.class,
         () -> STRICT_CONTEXT.newPosition("chr", 1, null, null, null, null, null, null, null, -1));

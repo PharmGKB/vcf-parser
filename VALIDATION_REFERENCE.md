@@ -101,7 +101,9 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   lines 321/2781). A colon is explicitly valid (VCFv4.3.tex lines 2140-2141, "this was unnecessary"). VCFv4.2.tex
   line 179 states only "no whitespace permitted" for `CHROM` and says nothing at all about `##contig` IDs.
   Applied via `InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN` in both `VcfPosition.checkChromosome` (this
-  check) and `ContigMetadata` (the `##contig` ID check below).
+  check) and `ContigMetadata` (the `##contig` ID check below). This blocklist does not enforce that same
+  errata's *outer* bound (VCFv4.3.tex:258-259's `[!-~]` printable-ASCII range) -- see the "Other lenient
+  behavior" section below for that check, which warns rather than throwing.
 - A sample with more sub-fields than its `FORMAT` declares (trailing sub-fields may be dropped, but not added).
 - A malformed or out-of-range `GT` allele index looked up through `VcfSample.getGenotype(VcfPosition)` (or
   `MemoryMappedVcfDataStore`'s `getGenotypeForId`/`getGenotypeAtLocus`, which delegate to it), or a failed
@@ -181,9 +183,12 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   `VcfSample.validate()` throws via `checkNoStructuralDelimiter` (`VcfSample.java`) for a null property
   key, a line terminator, or a `:`/tab in a key or (non-`GLE`-under-VCFv4.2-and-earlier) value;
   `VcfPosition.validate()` throws via
-  `checkChromosome`/`checkPosition`/`checkRef` (none of which take a warnings sink at all) and via
-  `checkFormat`'s null-sub-field-name, duplicate-key, and GT-not-first checks, none of which consult the
-  warnings sink either. Neither class can be mutated after construction any more: Task 8 froze `VcfPosition`
+  `checkChromosome`/`checkPosition`/`checkRef` and via `checkFormat`'s null-sub-field-name, duplicate-key, and
+  GT-not-first checks. `checkPosition`/`checkRef` and `checkFormat`'s three checks take no warnings sink at
+  all and always throw; `checkChromosome` is the one exception -- it takes a warnings sink for its single
+  printable-ASCII-range check (see "Other lenient behavior" below), which `validate()` always warns through
+  rather than throwing, matching this same paragraph's own "always warns for a recoverable condition" rule.
+  Neither class can be mutated after construction any more: Task 8 froze `VcfPosition`
   (no setters, every getter an unmodifiable view) and Task 9 did the identical freeze for `VcfSample` (no
   mutators; `getPropertyKeys()`/`propertyEntrySet()` are unmodifiable views whose entries also reject
   `setValue`). A sample or position obtained through the public API -- whether via a constructor or
@@ -752,6 +757,12 @@ A `FORMAT` value of `.` (with one or more samples present) means no per-sample f
 record; each sample is read as having zero properties, and any raw sample-column content there is ignored (with a
 warning). See `VCF_SPEC_AMBIGUITIES.md`'s "`FORMAT=\".\"` meaning no per-sample fields" entry for the
 bcftools-confirmed rationale.
+
+A `CHROM` value or `##contig` `ID` containing a character outside VCFv4.3.tex:258-259's printable-ASCII
+range (`[!-~]`) warns rather than throwing, deliberately unlike every OTHER `CHROM`/`##contig` character-set
+check (the "Strict" section above): bcftools 1.23.1 itself only warns on this one (`[W::bcf_hrec_check]
+Invalid contig name`), never rejects. See `VCF_SPEC_AMBIGUITIES.md`'s "CHROM / contig ID containing a
+character outside the printable-ASCII range" entry.
 
 ## Rules applied at every declared version
 

@@ -288,6 +288,52 @@ public class ContigMetadataTest {
   }
 
   @Test
+  public void testTypedConstructorWarnsForNonPrintableAsciiInId() {
+    // regression test: VCFv4.3.tex:258-259, "they may contain any printable ASCII characters in the range
+    // [!-~]" -- previously unenforced (INVALID_CONTIG_NAME_CHAR_PATTERN only blocklists specific punctuation
+    // WITHIN that range), so a DEL character (0x7F) or non-ASCII character in a ##contig ID parsed with zero
+    // warnings. Confirmed live that bcftools 1.23.1 warns on both.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new ContigMetadata(LENIENT_CONTEXT, "chr\u007F1", 100L, null, null, null, null, null);
+      assertTrue(appender.anyMessageContains("non-printable-ASCII character"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testMapConstructorWarnsForNonAsciiCharacterInId() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      Map<String, String> map = new HashMap<>();
+      map.put(ContigMetadata.ID, "chr\u00E41");
+      new ContigMetadata(LENIENT_CONTEXT, map);
+      assertTrue(appender.anyMessageContains("non-printable-ASCII character"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testStrictConstructorThrowsForNonPrintableAsciiInId() {
+    assertThrows(VcfFormatException.class,
+        () -> new ContigMetadata(STRICT_CONTEXT, "chr\u007F1", 100L, null, null, null, null, null));
+  }
+
+  @Test
   public void testMapConstructorWarnsOnceForCommaOnlyId() {
     // regression guard: a comma-containing id must warn only once (IdMetadata's own dedicated comma check),
     // not also trigger this class's own character-set warning for the same comma -- init()'s pattern-match

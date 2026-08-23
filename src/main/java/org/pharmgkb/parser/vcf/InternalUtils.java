@@ -198,6 +198,15 @@ public class InternalUtils {
   // errata explicitly confirms it's valid at VCFv4.3.tex lines 2140-2141 ("this was unnecessary"); see
   // HTS_SPECS_BASELINE_STATUS.md for the fixtures this knowingly diverges from.
   public static final Pattern INVALID_CONTIG_NAME_CHAR_PATTERN = Pattern.compile("[\\\\,\"`'(){}\\[\\]<>]");
+  // The same errata's own outer bound, never enforced by the blocklist just above: a VCF contig name "may
+  // contain any printable ASCII characters in the range [!-~]" (VCFv4.3.tex:258-259, carried verbatim into
+  // VCFv4.4.tex:273/VCFv4.5.tex:322). INVALID_CONTIG_NAME_CHAR_PATTERN only blocklists the specific punctuation
+  // characters EXCLUDED from that range; it says nothing about the range's own edges, so a C0 control
+  // character, DEL (0x7F), or any non-ASCII character silently passed both checks. [!-~] is exactly 0x21-0x7E
+  // in ASCII. Confirmed live that bcftools 1.23.1 warns ("[W::bcf_hrec_check] Invalid contig name") on both a
+  // DEL character and a non-ASCII character in a contig name, where this library previously warned about
+  // neither.
+  public static final Pattern NON_PRINTABLE_ASCII_CONTIG_NAME_CHAR_PATTERN = Pattern.compile("[^\\x21-\\x7E]");
 
   // No VCF spec version (checked VCFv4.2.tex through VCFv4.5.tex directly -- unlike CHROM/contig names, which
   // 4.3+ explicitly ties to "the same rules as the SAM format's reference sequence names") ever states that

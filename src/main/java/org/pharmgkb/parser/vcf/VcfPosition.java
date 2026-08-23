@@ -168,7 +168,7 @@ public final class VcfPosition {
      */
     VcfWarnings checkWarnings = context.isLenient() ? context.getWarnings() : null;
 
-    checkChromosome(chr);
+    checkChromosome(chr, checkWarnings);
     checkPosition(pos);
     if (ids != null && !trustedFields) {
       ids = checkIds(ids, checkWarnings);
@@ -252,7 +252,7 @@ public final class VcfPosition {
       int lineNumber) {
     m_context = Preconditions.checkNotNull(context, "context must not be null");
     m_warnings = context.getWarnings();
-    checkChromosome(chromosome);
+    checkChromosome(chromosome, context.isLenient() ? m_warnings : null);
     checkPosition(position);
     checkRef(refBases);
     m_chromosome = chromosome;
@@ -312,7 +312,17 @@ public final class VcfPosition {
     return builder;
   }
 
-  private static void checkChromosome(String chr) {
+  /**
+   * @param checkWarnings null-means-strict, matching this class's own established convention (see the
+   * constructor's own comment on {@code checkWarnings}) -- used only by the trailing printable-ASCII-range
+   * check below. Every OTHER check in this method remains an unconditional throw regardless of this
+   * parameter: CHROM's whitespace/leading-character/blocklisted-punctuation violations are treated as
+   * structural (this is a fixed, mandatory column), matching {@code checkAltBases}'s identical unconditional
+   * treatment of a malformed ALT. Only the printable-ASCII outer bound gets a warn path, because bcftools
+   * itself only warns (never rejects) on it -- see {@code InternalUtils.NON_PRINTABLE_ASCII_CONTIG_NAME_CHAR_PATTERN}'s
+   * own comment.
+   */
+  private static void checkChromosome(String chr, @Nullable VcfWarnings checkWarnings) {
     // chr is typed non-@Nullable, but nothing enforces that at runtime -- a caller can still pass null to the
     // public VcfContext.newPosition factory. Guard here rather than letting chr.isEmpty() below throw a raw
     // NullPointerException, per AGENTS.md's Public API Null-Safety Policy; this runs from both constructors and
@@ -348,6 +358,19 @@ public final class VcfPosition {
     if (matcher.find()) {
       throw new VcfFormatException("CHROM column \"" + chr + "\" contains the invalid character '" +
           matcher.group() + "'");
+    }
+    // see NON_PRINTABLE_ASCII_CONTIG_NAME_CHAR_PATTERN's own comment -- same errata's outer bound
+    // ([!-~], VCFv4.3.tex:258-259). Unlike every check above, bcftools 1.23.1 only warns on this one (never
+    // rejects), so this is the one check in this method with a warn path -- see this method's own
+    // checkWarnings parameter comment.
+    Matcher nonPrintableMatcher = InternalUtils.NON_PRINTABLE_ASCII_CONTIG_NAME_CHAR_PATTERN.matcher(content);
+    if (nonPrintableMatcher.find()) {
+      String message = "CHROM column \"" + chr + "\" contains a non-printable-ASCII character (code point " +
+          (int) nonPrintableMatcher.group().charAt(0) + ")";
+      if (checkWarnings == null) {
+        throw new VcfFormatException(message);
+      }
+      checkWarnings.warn(message);
     }
   }
 
@@ -860,7 +883,10 @@ public final class VcfPosition {
     m_infoView = null;
     m_infoKeysView = null;
     try {
-      checkChromosome(m_chromosome);
+      // m_warnings, not the null-means-strict checkWarnings convention: validate() always warns for a
+      // recoverable condition rather than throwing, even under a strict context -- matching checkIds/
+      // checkAltBases/checkFilters/checkFormat below, which are already passed m_warnings unconditionally.
+      checkChromosome(m_chromosome, m_warnings);
       checkPosition(m_position);
       m_ids = checkIds(m_ids, m_warnings);
       checkRef(m_refBases);

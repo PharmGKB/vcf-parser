@@ -103,6 +103,13 @@ public final class ContigMetadata extends IdMetadata {
             warnOrThrow("{} ID \"{}\" contains the invalid character '{}'", getLabel(), unquotedId, invalid);
           }
         }
+        // see InternalUtils.NON_PRINTABLE_ASCII_CONTIG_NAME_CHAR_PATTERN's own comment -- the same errata's
+        // outer bound ([!-~], VCFv4.3.tex:258-259), never enforced by the blocklist just above
+        Matcher nonPrintableMatcher = InternalUtils.NON_PRINTABLE_ASCII_CONTIG_NAME_CHAR_PATTERN.matcher(unquotedId);
+        if (nonPrintableMatcher.find()) {
+          warnOrThrow("{} ID \"{}\" contains a non-printable-ASCII character (code point {})", getLabel(),
+              unquotedId, (int) nonPrintableMatcher.group().charAt(0));
+        }
         // VCFv4.3.tex line 266 (the target, unchanged through 4.4/4.5): "The contig names must not use a
         // reserved symbolic allele name." New at 4.3 -- the sentence doesn't appear in VCFv4.1.tex/VCFv4.2.tex.
         // See ReservedStructuralVariantCode.isReservedSymbolicAlleleName's own comment for exactly which names
@@ -261,6 +268,12 @@ public final class ContigMetadata extends IdMetadata {
         if (warnedChars.add(invalid)) {
           warnOrThrow("{} ID \"{}\" contains the invalid character '{}'", getLabel(), id, invalid);
         }
+      }
+      // see the typed constructor's identical check for the citation
+      Matcher nonPrintableMatcher = InternalUtils.NON_PRINTABLE_ASCII_CONTIG_NAME_CHAR_PATTERN.matcher(id);
+      if (nonPrintableMatcher.find()) {
+        warnOrThrow("{} ID \"{}\" contains a non-printable-ASCII character (code point {})", getLabel(), id,
+            (int) nonPrintableMatcher.group().charAt(0));
       }
       // see the typed constructor's identical check for the VCFv4.3.tex:266 citation
       if (ReservedStructuralVariantCode.isReservedSymbolicAlleleName(id)) {

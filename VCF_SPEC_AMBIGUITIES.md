@@ -38,6 +38,7 @@ before assuming it generalizes to a similar-looking case.
 | `"1000G"` legacy INFO tag-name exception | Allowed (matches bcftools) | ✅ |
 | `##contig` ID character set | SAM reference-name rules; does not extend to INFO/FORMAT tag names | ✅ |
 | Contig ID with a non-leading asterisk (hts-specs' `failed/` fixtures vs. VCFv4.3 errata) | Accept (matches bcftools; matches this library's existing implementation) | ✅ |
+| CHROM / contig ID containing a character outside the printable-ASCII range | Warn (matches bcftools' own warn-but-preserve, not the unconditional throw every other CHROM character-set check uses) | ✅ |
 | `##contig` extra/unmodeled attributes | Allowed, no warning | ✅ |
 | Optional metadata fields must be quoted (`VCFv4.3.tex:128`) vs. `##contig`'s own unquoted examples | No optional-field quoting check added; unquoted is valid | ✅ |
 | Generic metadata property with an empty value | Drop (deliberately stricter than bcftools) | ✅ |
@@ -214,6 +215,28 @@ character) — no production code change was required, only recording the ruling
 `BcftoolsDependencyTest#testContigIdWithNonLeadingAsteriskBcftoolsAccepts` and
 `#testContigIdWithLeadingAsteriskBcftoolsWarnsButPreserves`. See `HTS_SPECS_BASELINE_STATUS.md`'s "Contig ID
 asterisk fixture" section for the two baseline rows this resolves.
+
+### CHROM / contig ID containing a character outside the printable-ASCII range
+
+VCFv4.3.tex:258-259 (unchanged through 4.4/4.5): a VCF contig name "may contain any printable ASCII
+characters in the range `[!-~]`" apart from the blocklisted punctuation the entry above already covers.
+`INVALID_CONTIG_NAME_CHAR_PATTERN` only ever enforced the blocklist; it never enforced this range's own
+outer bound, so a DEL character (0x7F) or any non-ASCII character in a `CHROM` value or `##contig` ID
+parsed with zero warnings.
+
+**Decision:** warn (never throw unconditionally), on both `VcfPosition.checkChromosome` and
+`ContigMetadata`. This is deliberately inconsistent with every OTHER character-set check in
+`checkChromosome` (whitespace, leading `*`/`=`, the blocklist), which are all unconditional throws treating
+CHROM as a purely structural field with no warn path -- the inconsistency is intentional, not an oversight:
+confirmed live that bcftools 1.23.1 only *warns* on this specific violation (`[W::bcf_hrec_check] Invalid
+contig name`), exit 0, declaration/record preserved -- the same warn-but-preserve shape as the leading-
+asterisk case in the entry above, not the "genuinely rejected" shape the blocklisted-punctuation checks
+share. `ContigMetadata` already had a warn path for its sibling checks (`warnOrThrow`), so this one simply
+joins them there; `checkChromosome` needed a new `checkWarnings` parameter threaded through its three call
+sites (the two constructors and `validate()`) specifically for this one check, following this class's own
+existing null-means-strict convention. Pinned by
+`BcftoolsDependencyTest#testContigIdWithDelCharacterBcftoolsWarnsButPreserves` and
+`#testContigIdWithNonAsciiCharacterBcftoolsWarnsButPreserves`.
 
 ### `##contig` extra/unmodeled attributes
 

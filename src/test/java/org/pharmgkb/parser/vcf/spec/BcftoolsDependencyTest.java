@@ -1201,6 +1201,35 @@ class BcftoolsDependencyTest {
   }
 
   @Test
+  void testContigIdWithDelCharacterBcftoolsWarnsButPreserves() throws IOException, InterruptedException {
+    // VCFv4.3.tex:258-259's outer bound ([!-~], printable ASCII only) was never enforced by this library --
+    // confirmed live that bcftools 1.23.1 warns (never rejects) on a DEL character (0x7F) in a contig ID, the
+    // same warn-but-preserve shape as the leading-asterisk control above, which is why this library's own fix
+    // also warns rather than throwing unconditionally.
+    String vcf = "##fileformat=VCFv4.3\n##contig=<ID=chr\u007F1,length=123456>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("Invalid contig name"), result.output());
+    assertTrue(result.output().contains("##contig=<ID=chr\u007F1"),
+        "bcftools warns but preserves the declaration; if it now drops it, this decision needs re-checking: "
+            + result.output());
+  }
+
+  @Test
+  void testContigIdWithNonAsciiCharacterBcftoolsWarnsButPreserves() throws IOException, InterruptedException {
+    // same shape as the DEL-character test above, for a non-ASCII character instead
+    String vcf = "##fileformat=VCFv4.3\n##contig=<ID=chr\u00E41,length=123456>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("Invalid contig name"), result.output());
+    assertTrue(result.output().contains("##contig=<ID=chr\u00E41"),
+        "bcftools warns but preserves the declaration; if it now drops it, this decision needs re-checking: "
+            + result.output());
+  }
+
+  @Test
   void testSampleIdWithNonLeadingAsteriskBcftoolsAccepts() throws IOException, InterruptedException {
     // round-trip-critical, same reasoning as testContigIdWithNonLeadingAsteriskBcftoolsAccepts above: unlike
     // ##contig, ##SAMPLE's ID goes through IdMetadata's shared init(), which checks only whitespace and comma
