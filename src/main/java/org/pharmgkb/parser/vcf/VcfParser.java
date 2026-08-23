@@ -562,10 +562,14 @@ public class VcfParser implements Closeable {
    * {@code chromosome} is not contiguous (its records were interrupted by a different CHROM and have now
    * reappeared). VCFv4.2.tex line 179/180: CHROM entries "should" form a contiguous block, and POS values
    * "are sorted numerically, in increasing order" within a CHROM (multiple records at the same POS are
-   * explicitly permitted). Neither violates this library's structural floor -- record/column boundaries stay
-   * unambiguous either way -- and neither bcftools 1.23.1 nor vcf_validator 0.10.2 treats either as
-   * rejection-worthy (vcf_validator's own severity classification puts both at warning-tier, not
-   * error-tier), so this warns and recovers rather than throwing.
+   * explicitly permitted). The target upgrades the CHROM half from a recommendation to a requirement
+   * (VCFv4.3.tex line 327: "All entries for a specific CHROM must form a contiguous block within the VCF
+   * file."; line 330 restates the POS-ordering sentence unchanged) -- that "must" doesn't change the
+   * decision below, though: this is warn-and-recover, not because the rule is merely a recommendation, but
+   * because neither violation makes a record/column boundary ambiguous, which is this library's actual
+   * structural floor (AGENTS.md's Parser Validation Policy). Neither bcftools 1.23.1 nor vcf_validator 0.10.2
+   * treats either as rejection-worthy (vcf_validator's own severity classification puts both at warning-tier,
+   * not error-tier), consistent with that floor rather than the reason for it.
    */
   private void checkPositionOrdering(String chromosome, long position) {
     if (m_lastChromosome != null) {

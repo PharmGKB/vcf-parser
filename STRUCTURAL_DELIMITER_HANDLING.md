@@ -287,9 +287,9 @@ map -- see `AttributeListTokenizerTest#degenerateAttributesAreDroppedIndividuall
    sibling per kind (`addAltTrusted`, `addFilterTrusted`, `addInfoTrusted`, `addFormatTrusted`,
    `addContigTrusted`, `addSampleTrusted`, `addMetaTrusted`, `addPedigreeTrusted`), each a thin wrapper that
    calls the same private `addXxx(properties, validateContent)` helper with `validateContent = false`.
-   `VcfParser.parseMetadataProperty` (`VcfParser.java:612-649`) calls these trusted variants exclusively -- see
-   the `switch` at lines 623-648 -- never the public, checked `addXxx(Map)` overloads. `VcfParser.parseMetadata`
-   (`VcfParser.java:549-596`) is the caller one level up: for a generic property it splits the whole `##`
+   `VcfParser.parseMetadataProperty` (`VcfParser.java:695-732`) calls these trusted variants exclusively -- see
+   the `switch` at lines 706-728 -- never the public, checked `addXxx(Map)` overloads. `VcfParser.parseMetadata`
+   (`VcfParser.java:626-679`) is the caller one level up: for a generic property it splits the whole `##`
    line on the first `=` (`VcfParser.java:551`, `int idx = line.indexOf("=");`) and hands the two halves to
    `addRawProperty`, which
    has its own, separately-checked rule (below); for one of the eight reserved keywords it strips the

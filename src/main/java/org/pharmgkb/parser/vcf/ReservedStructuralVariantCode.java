@@ -23,11 +23,12 @@ public enum ReservedStructuralVariantCode {
   Duplication("DUP"),
   Inversion("INV"),
   Cnv("CNV"),
-  // VCFv4.2.tex lines 107-111's top-level list is exactly DEL/INS/DUP/INV/CNV; VCFv4.3.tex line 208
-  // (unchanged through 4.5) adds BND (Breakend) as a sixth. Accepted here even though the target spec
-  // (4.2) doesn't list it: this is a purely additive extension of the recognized-code vocabulary, not a
-  // conflict with any 4.2 rule, and breakend notation is near-universal in real-world structural-variant
-  // VCFs -- matching this library's general "accept 4.x before/after the target where representable" policy.
+  // VCFv4.2.tex lines 107-111's top-level list is exactly DEL/INS/DUP/INV/CNV; VCFv4.3.tex line 208 (the
+  // target) adds BND (Breakend) as a sixth -- target-mandated, not a permissive extension beyond it.
+  // VCFv4.4.tex:2585/VCFv4.5.tex:2767 both explicitly REMOVE BND from the level-0 list ("Disallowed BND ALT
+  // records (these should use breakpoint notation anyway)"), so keeping it here is correct specifically
+  // because the target is 4.3, not "unchanged through 4.5" -- do not "correct" this toward 4.4/4.5 by
+  // dropping BND.
   Breakend("BND"),
   Tandem("TANDEM", 1, Duplication),
   MobileElement("ME", 1, Insertion, Deletion);

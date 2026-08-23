@@ -588,10 +588,15 @@ public final class VcfSample {
     }
     // Scanned manually (not String.split("[\\|/]", -1)) so each separator's identity ('|' vs '/') is captured per
     // allele boundary -- split() discards which delimiter matched, which previously collapsed mixed phasing (e.g.
-    // "0|1/2") into one whole-genotype boolean and silently corrupted it on toString(). The manual scan still
-    // preserves a trailing empty allele (e.g. a trailing '/', which should have been '.') the same way split's -1
-    // limit did, rather than silently dropping it -- dropping it would silently change the call's ploidy. VCF does
-    // not allow zero-length fields. See EMPTY_FIELD_HANDLING.md.
+    // "0|1/2") into one whole-genotype boolean and silently corrupted it on toString(). VCFv4.3.tex's GT prose
+    // (line 500-501, "genotype unphased"/"genotype phased") reads as whole-genotype language on its own, but the
+    // spec's BCF encoding section disambiguates a MIXED genotype per allele: line 1868, "each integer in the
+    // vector is organized as $(allele+1) << 1 \mid phased$" (one phased bit per allele, not one per genotype),
+    // and its own worked example at line 1884, "$0/1\mid2$ ... is triploid with a single phased allele" --
+    // confirming a per-allele boundary (this scan's own unit), not a per-genotype one, is the correct reading.
+    // The manual scan still preserves a trailing empty allele (e.g. a trailing '/', which should have been '.')
+    // the same way split's -1 limit did, rather than silently dropping it -- dropping it would silently change
+    // the call's ploidy. VCF does not allow zero-length fields. See EMPTY_FIELD_HANDLING.md.
     int separatorCount = 0;
     for (int i = 0; i < genotype.length(); i++) {
       char c = genotype.charAt(i);

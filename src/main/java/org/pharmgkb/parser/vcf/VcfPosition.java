@@ -532,7 +532,7 @@ public final class VcfPosition {
       // TWO FILTER codes, exit 0, no warning at all (see BcftoolsDependencyTest#testFilterSemicolonEntryBcftoolsAcceptsAsTwoCodes,
       // added in Task 2). This check can only ever fire on content reaching VcfPosition via public
       // construction (Builder.filters() or a direct VcfContext.newPosition call): VcfParser.toList
-      // (VcfParser.java:661-689) is a plain, no-escaping split, so no filter entry produced by parsing a real
+      // (VcfParser.java:744-772) is a plain, no-escaping split, so no filter entry produced by parsing a real
       // file's FILTER column can ever itself contain the ';' it would have been split on.
       if (f.contains(";")) {
         throw new VcfFormatException("FILTER column entry \"" + f + "\" contains a semicolon");
@@ -762,7 +762,7 @@ public final class VcfPosition {
       }
       // Deliberately narrower than checkIds()/checkFilters()'s full containsWhitespace() throw: a tab or
       // line terminator embedded in a FORMAT key is structural -- VcfWriter.addFormatConditionally appends a
-      // FORMAT key verbatim (VcfWriter.java:463), so an embedded tab adds a column (tab is the record's own
+      // FORMAT key verbatim (VcfWriter.java:486), so an embedded tab adds a column (tab is the record's own
       // column delimiter) and an embedded LF/CR ends the record early on write; nothing downstream guards
       // against either (InternalUtils.checkNoLineTerminator is only ever called on the metadata and
       // sample-name/value paths, never here). Confirmed live (bcftools 1.23.1): a tab-corrupted FORMAT key
@@ -793,7 +793,7 @@ public final class VcfPosition {
       // worse than the tag-name-grammar case below, which never corrupts alignment this way. Unconditional
       // (not gated on warnings == null), unlike the tag-name-grammar check: this is a distinct question from
       // "is this a valid identifier" and gets its own floor. This check can only ever fire on content
-      // reaching VcfPosition via public construction: VcfParser.toList (VcfParser.java:661-689) is a plain,
+      // reaching VcfPosition via public construction: VcfParser.toList (VcfParser.java:744-772) is a plain,
       // no-escaping split, so no FORMAT key produced by parsing a real file's FORMAT column can ever itself
       // contain the ':' it would have been split on.
       if (f.contains(":")) {
@@ -1101,9 +1101,12 @@ public final class VcfPosition {
           }
           props.add(prop);
         }
-        // "." (missing value: no INFO at all) cannot be combined with a real property, the same as ALT/FILTER's
-        // exclusivity rule for their own "." sentinel; unlike an empty prop (dropped above), this isn't a stray
-        // delimiter artifact, it directly contradicts "." meaning "nothing here"
+        // "." (missing value: no INFO at all) cannot be combined with a real property, the same as FILTER's
+        // exclusivity rule for its own "." sentinel (checkFilters below) -- NOT the same as ALT, which
+        // deliberately allows "." as a valid per-entry token even combined with others (EMPTY_FIELD_HANDLING.md's
+        // "position-independent list" section; e.g. "ALT=.,A" parses as a two-element list with no warning).
+        // Unlike an empty prop (dropped above), this isn't a stray delimiter artifact, it directly contradicts
+        // "." meaning "nothing here"
         if (props.contains(".") && props.size() > 1) {
           throw withLineNumber(new VcfFormatException(
               "INFO contains '.' (missing value) along with other properties"));
