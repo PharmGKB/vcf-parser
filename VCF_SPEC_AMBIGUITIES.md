@@ -41,6 +41,7 @@ before assuming it generalizes to a similar-looking case.
 | `##contig` extra/unmodeled attributes | Allowed, no warning | ✅ |
 | Optional metadata fields must be quoted (`VCFv4.3.tex:128`) vs. `##contig`'s own unquoted examples | No optional-field quoting check added; unquoted is valid | ✅ |
 | Generic metadata property with an empty value | Drop (deliberately stricter than bcftools) | ✅ |
+| Generic metadata property with an empty key (`##=value`) | Drop (matches bcftools, which rejects the line outright) | ✅ |
 | `##pedigreeDB`/`##assembly` bracket-wrapped values colliding with attribute-list grammar | Reject when empty or no `=` inside the brackets; accept when it contains `=` | ✅ |
 | A literal `%` in a metadata declaration ID | No code change; existing `##ALT`/`##FILTER`/`##SAMPLE` looser-grammar decision stands despite vcf_validator flagging `%` in `##FILTER`/`##SAMPLE` | ✅ |
 | Metadata attribute NAME grammar (parse and write warn, construction throws) | `^[A-Za-z_][0-9A-Za-z_.]*$` (matches bcftools); warn at parse time, throw at construction, warn at `validateBeforeWrite()` | ✅ |
@@ -265,6 +266,19 @@ generic metadata line unchanged (confirmed live: `##reference=` round-trips thro
 verbatim, no warning) — a deliberate choice to be stricter than bcftools here. Full reasoning (the `VCFv4.3.tex`
 line 39 citation, and why this row's drop-the-whole-line behavior differs from every other empty-field row) and
 implementation pointer live in `EMPTY_FIELD_HANDLING.md`'s Row 23 ("Generic metadata property").
+
+### Generic metadata property with an empty key
+
+**Decision:** drop the property with a warning under a lenient context, throw under a strict one --
+`##=somevalue` has a genuinely empty key, not merely a malformed one (`VCFv4.3.tex` line 109's "consists of
+a key ... and a value ... separated by an '=' character", plus line 39's general zero-length-fields rule).
+Unlike the empty-*value* case above, this one matches bcftools rather than diverging from it: bcftools
+1.23.1 rejects the line outright (`[E::bcf_hdr_parse_line] Could not parse the header line: "##=somevalue"`,
+confirmed live) and the declaration is absent from its output. Deliberately scoped to a literally
+zero-length key, not a whitespace-only one (`##  =x`) -- bcftools tolerates and preserves the
+whitespace-only case verbatim, so only the empty case has the bcftools evidence this decision needs. Full
+reasoning and implementation pointer live in `EMPTY_FIELD_HANDLING.md`'s Row 24 ("Generic metadata property,
+empty key").
 
 ### `##pedigreeDB`/`##assembly` bracket-wrapped values colliding with attribute-list grammar
 

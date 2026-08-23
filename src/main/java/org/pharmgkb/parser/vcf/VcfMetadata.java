@@ -1356,6 +1356,21 @@ public final class VcfMetadata {
             + "re-parse split point: " + name);
       }
       InternalUtils.checkNoLineTerminator(name, value);
+      if (name.isEmpty()) {
+        // VCFv4.3.tex line 109: an unstructured meta-information line "consists of a key ... and a value ...
+        // separated by an '=' character" -- a genuinely empty key (##=value) has no key at all, not just a
+        // malformed one. VCFv4.3.tex line 39's general "Zero length fields are not allowed" applies the same
+        // way it already does to the empty-value case just below. Deliberately scoped to a literally
+        // zero-length name, not a whitespace-only one: bcftools 1.23.1 tolerates "##  =x" (a whitespace-only
+        // key) and keeps it verbatim, but rejects "##=x" outright -- confirmed live
+        // ([E::bcf_hdr_parse_line] Could not parse the header line, declaration absent from output) -- so only
+        // the empty case has the bcftools evidence AGENTS.md's Decision Hierarchy requires for a stricter-
+        // than-parse-alone rule. Warn-and-drop, not throw-unconditionally, mirrors the empty-value branch just
+        // below: this is an originated-content route too (addRawProperty is the Builder's own public API), so
+        // under a strict context warnOrThrow still throws.
+        warnOrThrow(m_context, "Metadata property name is empty and was dropped: {}", value);
+        return this;
+      }
       if (InternalUtils.isReservedMetadataKey(name, m_context.getVersion())) {
         // for every reserved name except a pre-4.3 "META", this cannot currently be reached through normal
         // parsing -- VcfParser.parseMetadata's switch routes every other reserved name to the structured path,

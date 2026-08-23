@@ -1,0 +1,11 @@
+##fileformat=VCFv4.3
+##CauseOfFailure=Generic metadata property has an empty key ("##=somevalue"), a zero-length field
+##Authority=VCFv4.3.tex:109: "An unstructured meta-information line consists of a key ... and a value ... separated by an '=' character."
+##Authority=VCFv4.3.tex:39: "Zero length fields are not allowed, a dot (``.'') must be used instead."
+##Authority=bcftools 1.23.1 rejects this line outright ("[E::bcf_hdr_parse_line] Could not parse the header line: \"##=somevalue\""), and the declaration is absent from bcftools view -h output -- confirmed live via bcftools view -h on 2026-08-22, matching BcftoolsDependencyTest#testGenericPropertyEmptyKeyBcftoolsRejectsOutright (see that method for the exact invocation). Unlike the empty-VALUE case (EMPTY_FIELD_HANDLING.md's Row 23), which bcftools silently preserves and this library deliberately diverges from, this decision matches bcftools rather than diverging from it -- see EMPTY_FIELD_HANDLING.md's Row 24 for the full reasoning.
+##ExpectParser=warn
+##ExpectWarnContains=Metadata property name is empty
+##=somevalue
+##contig=<ID=chr1,length=1000000>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1	rs1	A	T	.	PASS	.

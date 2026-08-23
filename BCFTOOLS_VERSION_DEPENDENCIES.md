@@ -241,6 +241,15 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
 - Test: `BcftoolsDependencyTest#testGenericPropertyEmptyValueBcftoolsPreservesButWeAreStricter`
 - Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Generic metadata property with an empty value" entry
 
+### Generic metadata property with an empty key
+- Test: `BcftoolsDependencyTest#testGenericPropertyEmptyKeyBcftoolsRejectsOutright`
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Generic metadata property with an empty key" entry. Unlike the empty-
+  value row directly above (bcftools preserves; this library diverges), this decision matches bcftools: it
+  rejects `##=somevalue` outright (`[E::bcf_hdr_parse_line] Could not parse the header line`), and this
+  library now drops it with a warning too. Must be re-checked on a bcftools upgrade: if a future bcftools
+  started tolerating an empty key, this library's stricter rejection would become a gratuitous divergence
+  rather than a matched one.
+
 ### Duplicate `##PEDIGREE` lines with no `ID` property
 - Test: `BcftoolsDependencyTest#testPedigreeNoIdDuplicatesBcftoolsKeepsBoth`
 - Reasoning: `DUPLICATE_METADATA_ID_HANDLING.md`, "`##PEDIGREE`: a conditional case" section

@@ -194,6 +194,7 @@ round-trip untouched" input the standard requires. Row 18 ("INFO flag `DB;DP=10`
 | [21](#row-21----reserved-formatft-value-q10q20-interior-empty-code) | Reserved FORMAT/FT | `q10;;q20` (interior) | Decision-bearing | warn + drop code, read-side only |
 | [22](#row-22----reserved-formatft-value--all-codes-empty) | Reserved FORMAT/FT | `;;` (all empty) | Decision-bearing | warn + drop all, normalize to `.`, read-side only |
 | [23](#row-23----generic-metadata-property-reference-empty-value) | Generic metadata property | `##reference=` | Decision-bearing | warn + drop entire property |
+| [24](#row-24----generic-metadata-property-value-empty-key) | Generic metadata property | `##=value` (empty key) | Decision-bearing | warn + drop entire property |
 
 **A note on rows 15-17's `AD` label:** those three rows are headed and indexed with `AD` because that is the
 key `BcftoolsDependencyTest` measures them on, but each row's own `local-fixtures/` fixture and its
@@ -940,6 +941,46 @@ from rows 1-12's pattern:
   construction already dropped it).
 - **Test/fixture evidence:** `BcftoolsDependencyTest#testGenericPropertyEmptyValueBcftoolsPreservesButWeAreStricter`
   (pre-existing); `local-fixtures/failed/generic-property-empty-value.vcf`.
+
+### Row 24 -- Generic metadata property `##=value` (empty key)
+
+- **Classification:** Decision-bearing, and structurally the mirror image of Row 23: that row is about an
+  empty *value*; this one is about an empty *key*. Both are checked in the same method
+  (`VcfMetadata.Builder.addRawProperty()`), but this row's bcftools verdict is the opposite of Row 23's --
+  bcftools does **not** silently preserve an empty key, so this decision matches bcftools rather than
+  diverging from it.
+- **Probe shape:** a generic (non-structured) metadata line with nothing before the `=`, `##=somevalue` --
+  generalizes to any value, since the defect is the key, not the value.
+- **4.2:** `silent` on both rules -- same reasoning as Row 23's 4.2 entry (no zero-length-fields statement,
+  no unstructured-line key/value statement at that version).
+- **4.3:** `VCFv4.3.tex:109`: "An \emph{unstructured} meta-information line consists of a~\emph{key}
+  (denoting the type of meta-information recorded) and a~\emph{value} (which may not be empty and must not
+  start with a `\verb|<|' character), separated by an `\verb|=|' character" -- the sentence's own key/value
+  structure implies a key must be present the same way it explicitly says a value must not be empty, plus
+  `VCFv4.3.tex:39`'s general zero-length-fields rule.
+- **4.4:** `VCFv4.4.tex:109` -- identical wording to the 4.3 citation above.
+- **4.5:** `VCFv4.5.tex:107` -- identical wording.
+- **bcftools 1.23.1:** rejects the line outright -- `[E::bcf_hdr_parse_line] Could not parse the header
+  line: "##=somevalue"` -- and the declaration is absent from `bcftools view -h` output (exit 0, the rest of
+  the header and file still parse). Confirmed live. Unlike Row 23, bcftools does **not** silently preserve
+  this shape.
+- **vcf_validator 0.10.2 (4.3):** not consulted separately -- bcftools alone already settles this (matches,
+  not merely breaks a tie), and AGENTS.md's "'if still in doubt' is a precondition, not a formality" applies
+  in the other direction here too: there is no genuine doubt to resolve once bcftools's rejection agrees with
+  the spec's own key/value structure.
+- **Deliberately scoped to a literally zero-length key, not a whitespace-only one** (`##  =x`): bcftools
+  tolerates and preserves a whitespace-only key verbatim (measured), so only the empty case has the bcftools
+  evidence this decision needs -- a whitespace-only key is left as pre-existing, unaudited leniency, not
+  newly decided here either way.
+- **Parse / Public construction:** warn and **drop** the entire property
+  (`VcfMetadata.Builder.addRawProperty()`, checked via `name.isEmpty()`) under a lenient `VcfContext`; throws
+  `VcfFormatException` under a strict one -- same shape as Row 23's empty-value check, reached from the same
+  method.
+- **Validated write (`VcfWriter.Builder.validateBeforeWrite()`):** not reachable with an empty key by
+  construction -- `addRawProperty()` already rejects it before a `VcfMetadata` holding one could exist.
+- **Default write:** not reachable, same reason.
+- **Test/fixture evidence:** `BcftoolsDependencyTest#testGenericPropertyEmptyKeyBcftoolsRejectsOutright`;
+  `local-fixtures/failed/generic-property-empty-key.vcf`.
 
 ## A related, but distinct, fix: duplicate FORMAT keys
 

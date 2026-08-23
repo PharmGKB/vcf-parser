@@ -323,6 +323,55 @@ public class VcfMetadataTest {
   }
 
   @Test
+  public void testBuilderAddRawPropertyWarnsAndDropsEmptyKey() {
+    // regression test: reproduces hts-specs-style "##=value" (an empty key, the mirror image of the empty-
+    // value test just above) -- previously silently accepted with no warning at all. VCFv4.3.tex:109's
+    // key/value structure implies a key must be present; bcftools 1.23.1 rejects the line outright.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+          .addRawProperty("", "somevalue").build();
+      assertTrue(appender.anyMessageContains("Metadata property name is empty"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertFalse(metadata.getRawPropertyKeys().contains(""));
+  }
+
+  @Test
+  public void testBuilderAddRawPropertyThrowsForEmptyKeyUnderStrictContext() {
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2");
+    assertThrows(VcfFormatException.class, () -> builder.addRawProperty("", "somevalue"));
+  }
+
+  @Test
+  public void testBuilderAddRawPropertyDoesNotWarnForWhitespaceOnlyKey() {
+    // deliberately scoped to a literally empty key, not a whitespace-only one -- bcftools 1.23.1 tolerates
+    // and preserves a whitespace-only key verbatim, unlike a truly empty one (see EMPTY_FIELD_HANDLING.md's
+    // Row 24), so this is pre-existing, unaudited leniency, not newly decided either way by this fix
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addRawProperty("  ", "x").build();
+      assertFalse(appender.anyMessageContains("Metadata property name is empty"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testBuilderAddRawPropertyWarnsAndDropsBracketedValue() {
     // regression test: confirms the bracket-collision check applies to an arbitrary generic property key, not
     // just "assembly"/"pedigreeDB" -- htslib's own header-line parser special-cases any generic property value

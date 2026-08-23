@@ -259,6 +259,21 @@ class BcftoolsDependencyTest {
   }
 
   @Test
+  void testGenericPropertyEmptyKeyBcftoolsRejectsOutright() throws IOException, InterruptedException {
+    // the converse of testGenericPropertyEmptyValueBcftoolsPreservesButWeAreStricter above: unlike an empty
+    // VALUE (bcftools preserves it, this library diverges and drops it), an empty KEY is rejected by bcftools
+    // itself -- this library's drop-with-warning here MATCHES bcftools rather than diverging from it.
+    String vcf = "##fileformat=VCFv4.3\n##=somevalue\n##contig=<ID=chr1,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT\t.\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    // the error message itself quotes the rejected line ("...header line: \"##=somevalue\""), so check for
+    // the declaration as its own re-emitted header LINE, not merely as a substring anywhere in the output
+    assertTrue(result.output().lines().noneMatch(line -> line.equals("##=somevalue")), result.output());
+    assertTrue(result.output().contains("Could not parse the header line"), result.output());
+  }
+
+  @Test
   void testPedigreeNoIdDuplicatesBcftoolsKeepsBoth() throws IOException, InterruptedException {
     String vcf = "##fileformat=VCFv4.2\n##PEDIGREE=<Name_0=A,Name_1=B>\n##PEDIGREE=<Name_0=A,Name_1=B>\n" +
         "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
