@@ -684,16 +684,18 @@ is a structural failure and still throws -- see the strict section above):
   parser's own drop-before-storage check never sees. A whitespace-only `ID` falls under this bullet, not the
   whitespace-containing-`ID` bullet below (which fires only when trimming the `ID` would leave usable
   content).
-- A `##contig`/`##INFO`/`##FORMAT`/`##FILTER`/`##SAMPLE`/`##ALT`/`##META` declaration's `ID` containing
-  whitespace (as opposed to being entirely blank/missing, handled by the two bullets above): warns uniformly
-  across all seven types, since every one of them extends `IdMetadata` and shares its `init()` check. See
+- A `##contig`/`##INFO`/`##FORMAT`/`##FILTER`/`##SAMPLE`/`##ALT`/`##META`/`##PEDIGREE` declaration's `ID`
+  containing whitespace (as opposed to being entirely blank/missing, handled by the two bullets above): warns
+  uniformly across all eight types. The first seven extend `IdMetadata` and share its `init()` check;
+  `##PEDIGREE` extends `BaseMetadata` directly instead (pre-4.3 it may legitimately have no `ID` at all), so
+  `VcfMetadata.Builder.addPedigree` carries its own, equivalent check rather than inheriting one. See
   `VCF_SPEC_AMBIGUITIES.md`'s "Whitespace in `##FILTER`/`##SAMPLE` declaration IDs" entry (titled after the two
-  types with the least direct spec support, but the decision covers all seven) for the full
-  per-version spec/hts-specs-fixture/bcftools/vcf_validator comparison (`##META` was not itself part of that
-  comparison, since it did not yet route through this check at the time -- it inherits the same rule as the
-  same code path). `##ALT` IDs also separately warn on angle brackets (`<`/`>`), per VCFv4.2.tex line 105 -- an
-  `##ALT`-specific restriction not extended to the other six types, since no fixture or spec passage evidences
-  it for them.
+  types with the least direct spec support, but the decision covers all eight) for the full
+  per-version spec/hts-specs-fixture/bcftools/vcf_validator comparison (`##META`/`##PEDIGREE` were not
+  themselves part of that comparison, since neither yet routed through a whitespace check at the time -- each
+  inherits the same rule once it gained one). `##ALT` IDs also separately warn on angle brackets (`<`/`>`),
+  per VCFv4.2.tex line 105 -- an `##ALT`-specific restriction not extended to the other seven types, since no
+  fixture or spec passage evidences it for them.
 - Any of those same seven declaration types' `ID` containing a comma: warns, with no exception for `##ALT`
   (unlike angle brackets above) — a comma is never part of `##ALT`'s own colon-delimited structural-variant-code
   grammar or its colonless conventions (an IUPAC ambiguity code or a `CN0`-style copy-number allele) either.

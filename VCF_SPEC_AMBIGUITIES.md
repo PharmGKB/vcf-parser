@@ -160,7 +160,14 @@ contradicting hts-specs' own `failed_meta_sample_001.vcf` fixture.
 
 **Decision:** this is treated as a bcftools *coverage gap*, not a considered position — the hts-specs fixture
 and vcf_validator's uniform rejection govern instead, so whitespace warns across every structured metadata ID
-type, `##FILTER`/`##SAMPLE` included. Implemented in `IdMetadata`'s shared ID-whitespace check.
+type, `##FILTER`/`##SAMPLE` included. Implemented in `IdMetadata`'s shared ID-whitespace check. `##PEDIGREE`
+is the one type that extends `BaseMetadata` directly rather than `IdMetadata` (pre-4.3 it may legitimately
+have no `ID` at all), so it never inherited this check until `VcfMetadata.Builder.addPedigree` was given its
+own, equivalent one -- unconditional (not gated on `isAtLeast(V4_3)` the way the missing-ID check is), for
+the same uniform-across-every-type reasoning: a *present* `ID`'s whitespace is invalid at every version,
+even though whether an `ID` is required at all is version-dependent. Confirmed live that bcftools 1.23.1
+also accepts a whitespace-containing `##PEDIGREE` ID silently -- the same coverage-gap shape as `##FILTER`/
+`##SAMPLE`, not a considered position to defer to.
 
 ### `##FORMAT`/`##INFO` declaration ID grammar is stricter than `##FILTER`/`##SAMPLE`/`##ALT`
 

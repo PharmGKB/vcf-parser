@@ -1089,6 +1089,72 @@ public class VcfMetadataTest {
   }
 
   @Test
+  public void testAddPedigreeWarnsButKeepsPresentIdContainingWhitespace() {
+    // regression test: every other one of the seven ID-bearing declaration types warns on whitespace in a
+    // present (non-blank) ID via IdMetadata's shared init() check (VCF_SPEC_AMBIGUITIES.md's "Whitespace in
+    // ##FILTER/##SAMPLE declaration IDs" entry). PedigreeMetadata extends BaseMetadata directly, not
+    // IdMetadata, so it never inherited that check -- "A B" (present, non-blank, but containing whitespace)
+    // previously parsed with zero warnings.
+    VcfContext lenient43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
+    Map<String, String> props = new java.util.LinkedHashMap<>();
+    props.put("ID", "A B");
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try {
+      metadata = new VcfMetadata.Builder(lenient43).setFileFormat("VCFv4.3")
+          .addPedigree(new PedigreeMetadata(lenient43, props))
+          .build();
+      assertTrue(appender.anyMessageContains("PEDIGREE metadata ID \"A B\" must not contain whitespace"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    // warn-and-keep, matching every other whitespace-in-ID warning elsewhere in this codebase -- not dropped
+    assertEquals(1, metadata.getPedigrees().size());
+  }
+
+  @Test
+  public void testAddPedigreeThrowsOnPresentIdContainingWhitespaceUnderStrictContext() {
+    VcfContext strict43 = VcfContext.strict("VCFv4.3");
+    Map<String, String> props = new java.util.LinkedHashMap<>();
+    props.put("ID", "A B");
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(strict43).setFileFormat("VCFv4.3");
+    assertThrows(VcfFormatException.class,
+        () -> builder.addPedigree(new PedigreeMetadata(strict43, props)));
+  }
+
+  @Test
+  public void testAddPedigreeWhitespaceCheckIsNotGatedOnVersion() {
+    // unlike the missing-ID check (isAtLeast(V4_3)-gated, since ID itself isn't required before 4.3), the
+    // whitespace check is unconditional -- matching the other six ID-bearing types' own unconditional
+    // treatment: a PRESENT ID's whitespace is invalid at every version, even though whether an ID is
+    // required at all is version-dependent
+    VcfContext lenient42 = VcfContext.lenient("VCFv4.2", VcfWarnings.DEFAULT);
+    Map<String, String> props = new java.util.LinkedHashMap<>();
+    props.put("ID", "A B");
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new VcfMetadata.Builder(lenient42).setFileFormat("VCFv4.2")
+          .addPedigree(new PedigreeMetadata(lenient42, props))
+          .build();
+      assertTrue(appender.anyMessageContains("must not contain whitespace"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testAddPedigreeKeepsBothWhenIdAbsent() {
     // VCFv4.2.tex line 152's own grammar (##PEDIGREE=<Name_0=G0-ID,...,Name_N=GN-ID>) has no mandatory ID
     // attribute; confirmed bcftools 1.23.1 keeps both of two ID-less duplicate PEDIGREE lines (no dedup key to

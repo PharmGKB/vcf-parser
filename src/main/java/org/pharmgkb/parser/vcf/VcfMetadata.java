@@ -1226,6 +1226,17 @@ public final class VcfMetadata {
         m_pedigree.add(md);
         return this;
       }
+      // Every other one of the seven ID-bearing declaration types warns on whitespace in ID via IdMetadata's
+      // shared init() check (VCF_SPEC_AMBIGUITIES.md's "Whitespace in ##FILTER/##SAMPLE declaration IDs"
+      // entry -- treated as a bcftools coverage gap, not a considered position, so this warns uniformly
+      // across every structured metadata ID type). PedigreeMetadata extends BaseMetadata directly, not
+      // IdMetadata (pre-4.3 it may legitimately have no ID at all), so it never inherited that check --
+      // unconditional, not gated on isAtLeast(V4_3) like the missing-ID check above, matching the other six
+      // types' own unconditional treatment: a present ID's whitespace is invalid at every version, even
+      // though whether an ID is REQUIRED at all is version-dependent.
+      if (id != null && InternalUtils.containsWhitespace(id)) {
+        warnOrThrow(m_context, "PEDIGREE metadata ID \"{}\" must not contain whitespace", id);
+      }
       // Set.add reports whether the ID was new, so this is one lookup rather than a contains-then-add pair. On
       // the duplicate branch the set is unchanged (add returned false because the ID was already there), so it
       // stays consistent with m_pedigree whether warnOrThrow warns or throws.
