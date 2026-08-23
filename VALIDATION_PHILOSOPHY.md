@@ -79,16 +79,21 @@ One shape implements principles 1 and 2, uniformly:
   `checkInteger32BitRange` calls, none of which ever see a `null`).
 
 **A genuinely unparseable value is dispatched differently from every check above: unconditionally, never gated
-on `isLenient()` at all.** `InternalUtils.convertElement`'s `Character`/`Boolean`/`Long`/`VcfFloat` branches and
+on `isLenient()` at all.** `InternalUtils.convertElement`'s `Character`/`Long`/`VcfFloat` branches and
 `VcfPosition.getQuality()` both throw `VcfFormatException` regardless of context when the raw text cannot be
 parsed as the target type at all -- not merely out of range (`checkInteger32BitRange`) or the wrong cardinality
 (`warnIfWrongCardinality`), both of which still warn-and-recover under a lenient context because the value itself
 is still valid, just non-compliant. The reason this one check breaks from the universal `isLenient()` contract is
-that there is no sane value to preserve or normalize a non-numeric/non-boolean/non-single-character string to --
+that there is no sane value to preserve or normalize a non-numeric/non-single-character string to --
 recovering the way the checks above do would mean inventing data, not recovering it. This is deliberately made
 safe rather than merely tolerated: a sibling raw accessor the typed conversion never mutates
 (`VcfPosition.getRawQuality()`/`getInfo(String)`/`getInfo()`; `VcfSample.getProperty(String)`) keeps the original
-wire text permanently retrievable, so nothing is lost by throwing instead of returning `null`. This also answers
+wire text permanently retrievable, so nothing is lost by throwing instead of returning `null`. `convertElement`'s
+`Boolean` branch (an INFO `Type=Flag` value) is the deliberate exception to this same unconditional-dispatch
+idea, in the opposite direction: it unconditionally warns and returns `true` for a non-empty value, never throws,
+because unlike the other three there is no genuinely non-conforming Flag value at all -- a Flag's truth is its
+presence, not its content (see `VCF_SPEC_AMBIGUITIES.md`'s "A `Type=Flag` INFO value carrying an explicit
+value" entry). This also answers
 the question this shape might otherwise raise -- "doesn't `VcfParser` need to stay lenient?" -- by keeping the two
 axes separate: *parsing* a file is unaffected either way, since `VcfParser` never calls these typed getters itself
 and stays lenient regardless; it is *accessing* an already-parsed value through its typed getter that can throw,

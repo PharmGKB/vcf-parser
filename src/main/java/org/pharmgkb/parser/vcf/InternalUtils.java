@@ -1569,7 +1569,14 @@ public class InternalUtils {
   @SuppressWarnings("unchecked")
   public static @Nullable <T> T convertProperty(Class<?> clas, @Nullable String value, boolean isList,
       VcfWarnings warnings, @Nullable VcfWarnings checkWarnings) {
-    if (value == null || ".".equals(value)) {
+    // clas != Boolean.class: the exact same reason the isEmpty() check a few lines below already excludes
+    // Boolean, one layer earlier -- a Flag key's "." is just another attached-value string, not this method's
+    // ordinary "value genuinely absent" sentinel, since reaching this method at all already proves the key is
+    // present (see convertElement's own Boolean branch, which this delegates straight through to and which
+    // handles null/"."/empty/any-value uniformly by itself). Found missing here too by the Phase 2 review's
+    // fourth re-verification round -- the same DB=. gap convertElement's own reordering fixed one layer
+    // down, left open one layer up in this method's independent null/"." early return.
+    if (clas != Boolean.class && (value == null || ".".equals(value))) {
       return null;
     }
     if (!isList) {
@@ -1583,7 +1590,11 @@ public class InternalUtils {
       // (e.g. a live-mutated INFO AA="") or throwing a confusing "Expected integer; got " for a numeric one
       // (e.g. INFO DP="") instead of the graceful null this library's missing-value convention specifies
       // elsewhere. See EMPTY_FIELD_HANDLING.md.
-      if (value.isEmpty() && clas != Boolean.class) {
+      // clas != Boolean.class checked first (short-circuiting before value.isEmpty()): a null value only ever
+      // reaches this point when clas == Boolean.class, per the top-level guard above, so evaluating
+      // value.isEmpty() first here would raw-crash with NullPointerException instead of falling through to
+      // convertElement (which handles a null value for Boolean safely, via StringUtils.stripToNull).
+      if (clas != Boolean.class && value.isEmpty()) {
         // this shared method has no key/field-name context to report (see its own Javadoc: it serves callers
         // as different as a reserved-property getter and a generic declared-Type conversion) -- the expected
         // Java type is the only identifying detail available here.
@@ -1695,6 +1706,56 @@ public class InternalUtils {
   }
 
   private static @Nullable Object convertElement(Class<?> clas, @Nullable String value, VcfWarnings warnings) {
+    if (clas == Boolean.class) {
+      // Checked before the generic null/"." early return just below, unlike every other clas branch: for
+      // every other type, "." is the missing-value sentinel (this key's value is genuinely absent), but a
+      // Flag's own missing-value sentinel would be indistinguishable from an ordinary explicit value, since a
+      // Flag's truth is its PRESENCE in the map -- reaching this method at all already proves the key is
+      // present (see this method's own callers, which never call it for an absent key), so "." here is just
+      // another attached-value string, no different from "0"/"2"/anything else. Before this reordering,
+      // DB=. read back as null (indistinguishable from DB being entirely absent), contradicting bcftools
+      // 1.23.1 (measured: `-i 'DB=1'` matches DB=. exactly like DB=0/DB=1/bare DB), and contradicting this
+      // method's own write-side sibling (VcfWriter.validateInfoValue warns "has Type=Flag but has a value"
+      // for DB=. exactly like any other non-empty value) -- found by the Phase 2 review's fourth
+      // re-verification round.
+      //
+      // VCFv4.3.tex line 171: "the 'Flag' type indicates that the INFO field does not contain a Value entry,
+      // and hence the Number must be 0 in this case" -- a Flag's truth is its PRESENCE, not any value string
+      // attached to it. Confirmed live (htslib 1.23.1, vcf.c's vcf_parse_info, "if Flag has a value, treat it
+      // as a string", and bcf_get_info_values's presence-only BCF_HT_FLAG read): when a Flag key does carry
+      // an explicit value, htslib treats the value as opaque and the tag simply stays present -- it never
+      // inspects the string's content, so "0" carries no more (or less) special meaning than "1", "false", or
+      // any other text. This method previously treated "0"/"false" as false and "1"/"true" as true, inverting
+      // a Flag's meaning for exactly the "0" shape hts-specs' own
+      // failed_body_info_012/019/020/025/026/027.vcf fixtures use (##CauseOfFailure=INFO <KEY> value is not a
+      // flag) -- found by the Phase 2 review's third re-verification round. The write side
+      // (VcfWriter.validateInfoValue) already warns "has Type=Flag but has a value" for this same shape
+      // without trying to interpret the value's content either; this mirrors that on the read side.
+      //
+      // bcftools and vcf_validator 0.10.2 disagree here, and this deliberately follows bcftools (AGENTS.md's
+      // decision hierarchy: bcftools is the tie-breaker when the spec itself is silent, which it is on what a
+      // spec-nonconforming attached Flag value means). vcf_validator's own Ragel grammar (record.cpp's Flag
+      // handling) accepts only "0"/"1"/no-value as well-formed and rejects any other literal -- so "2" is NOT
+      // "never specifically the problem" the way this comment previously (and wrongly) claimed; measured live,
+      // vcf_validator 0.10.2 flags DB=2 invalid ("a flag value must be 0, 1 or none") while accepting DB=0 and
+      // DB=1. vcf_validator also then reads "0" as semantically false downstream: measured, a
+      // POS=100/REF=A/IMPRECISE=0/END=105 record is REJECTED ("END value must be equal to POS + length of REF
+      // - 1 for a precise variant (where IMPRECISE is set to 0)", since 105 != 100), while the identical
+      // END=105 under IMPRECISE=1 or bare IMPRECISE (not subject to that precise-variant formula at all) is
+      // accepted -- i.e. vcf_validator's own semantic check treats IMPRECISE=0 as equivalent to IMPRECISE
+      // being false/absent, the literal inversion this fix removed. Both are genuine, measured facts about
+      // vcf_validator, not a defect in it
+      // (neither of AGENTS.md's two confirmed vcf_validator token-capture defects applies to a Flag literal),
+      // so this is a real bcftools/vcf_validator split, documented here per AGENTS.md's requirement to record
+      // a disagreement rather than silently pick a side.
+      value = StringUtils.stripToNull(value);
+      if (value == null) {
+        return true;
+      }
+      warnings.warn("Flag value \"{}\" is not empty, but a Flag's truth is its presence, not any attached " +
+          "value; treating it as present regardless of the value's content", value);
+      return true;
+    }
     if (value == null || ".".equals(value)) {
       return null;
     }
@@ -1706,26 +1767,6 @@ public class InternalUtils {
       } else {
         throw new VcfFormatException("Invalid character value '" + value + "'");
       }
-    } else if (clas == Boolean.class) {
-      // VCFv4.3.tex line 171: "the 'Flag' type indicates that the INFO field does not contain a Value entry,
-      // and hence the Number must be 0 in this case" -- a Flag's truth is its PRESENCE, not any value string
-      // attached to it. Confirmed live (htslib 1.23.1, vcf.c bcf_hdr_check_sanity's BCF_HT_FLAG branch): when a
-      // Flag key does carry an explicit value, htslib treats the value as opaque and the tag simply stays
-      // present -- it never inspects the string's content, so "0" carries no more (or less) special meaning
-      // than "1", "false", or any other text. This method previously treated "0"/"false" as false and
-      // "1"/"true" as true, inverting a Flag's meaning for exactly the "0" shape hts-specs' own
-      // failed_body_info_012/019/020/025/026/027.vcf fixtures use (##CauseOfFailure=INFO <KEY> value is not a
-      // flag) -- found by the Phase 2 review's third re-verification round. The write side
-      // (VcfWriter.validateInfoValue) already warns "has Type=Flag but has a value" for this same shape
-      // without trying to interpret the value's content either; this mirrors that on the read side.
-      value = StringUtils.stripToNull(value);
-      if (value == null) {
-        return true;
-      }
-      warnings.warn("Flag value \"{}\" is not empty, but a Flag's truth is its presence, not any attached " +
-          "value; treating it as present regardless of the value's content", value);
-      return true;
-
     } else if (clas == VcfFloat.class) {
       // unlike plain BigDecimal, this also accepts NAN/INF/INFINITY (case-insensitive, optionally signed), which
       // VCFv4.3.tex (the target) states are valid Float literals; VCFv4.2 leaves Float's grammar undefined

@@ -1559,6 +1559,24 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testGetInfoReservedFlagPropertyTreatsDotAsPresentNotAsAbsent() {
+    // regression test found by the Phase 2 review's fourth re-verification round: InternalUtils.convertElement's
+    // generic null/"." early return ran BEFORE the Boolean branch above, so DB=. (the missing-value sentinel
+    // every other type uses to mean "absent") short-circuited to null there too -- indistinguishable from DB
+    // not being present in INFO at all. bcftools 1.23.1 disagrees (measured: -i 'DB=1' matches DB=. exactly
+    // like DB=0/DB=1/bare DB), and so does this method's own write-side sibling (VcfWriter.validateInfoValue
+    // warns "has Type=Flag but has a value" for DB=. exactly like any other non-empty value). Fixed by moving
+    // the Boolean branch before that generic early return.
+    StringWriter sink = new StringWriter();
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("DB", ".");
+    VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("chr", 1, null, "C", null, null,
+        null, info, null, -1);
+    assertEquals(Boolean.TRUE, position.getInfo(ReservedInfoProperty.Dbsnp));
+    assertTrue(sink.toString().contains("Flag value \".\" is not empty"));
+  }
+
+  @Test
   public void testGetInfoReservedInfoPropertyEmptyValueThrowsUnderStrictContext() {
     // end-to-end: a strict VcfContext must throw VcfFormatException, not warn-and-substitute, when a reserved
     // key's value is empty -- InternalUtils.convertProperty(Class, String, boolean, VcfWarnings, VcfWarnings)'s

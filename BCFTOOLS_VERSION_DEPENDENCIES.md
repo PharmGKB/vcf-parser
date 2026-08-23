@@ -484,10 +484,12 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
 - Reasoning: `VCF_SPEC_AMBIGUITIES.md`'s "A `Type=Flag` INFO value carrying an explicit value" entry. No VCF
   version states what an explicit Flag value means (only that it shouldn't exist at all), so whether `"0"`
   specifically means "false" needed live consultation. bcftools 1.23.1's presence filter (`-i 'DB=1'`)
-  matches `DB=0`, `DB=1`, and a bare `DB` alike, and excludes only a record with no `DB` at all -- confirming
-  it never inspects a Flag's value content, only its presence. Must be re-checked on a bcftools upgrade: if a
-  future bcftools started treating `DB=0` as absent for filtering purposes, this library's "always resolve to
-  `true`" decision would need revisiting.
+  matches `DB=0`, `DB=1`, `DB=.`, and a bare `DB` alike, and excludes only a record with no `DB` at all --
+  confirming it never inspects a Flag's value content, only its presence. (The `DB=.` row was added by the
+  Phase 2 review's fourth re-verification round, which found `InternalUtils.convertElement`/`convertProperty`
+  still read `DB=.` back as absent even after this decision was implemented -- see `VCF_SPEC_AMBIGUITIES.md`'s
+  entry for the fix.) Must be re-checked on a bcftools upgrade: if a future bcftools started treating `DB=0`
+  as absent for filtering purposes, this library's "always resolve to `true`" decision would need revisiting.
 
 ### Undeclared CHROM (no matching `##contig`) dedup granularity
 - Test: `BcftoolsDependencyTest#testUndeclaredContigBcftoolsWarnsOncePerDistinctValueNotOncePerRecord`

@@ -504,19 +504,25 @@ is a structural failure and still throws -- see the strict section above):
 - **A `QUAL`/reserved INFO/FORMAT value that cannot be parsed as its declared `Type` at all** -- distinct from a
   value that parses fine but is out of range or the wrong cardinality (both of which warn-and-recover under a
   lenient `VcfContext`, per the bullets below): `VcfPosition.getQuality()`, `InternalUtils.convertElement`'s
-  `Character`/`Boolean`/`Long`/`VcfFloat` branches (reached from `getInfo(ReservedInfoProperty)`,
+  `Character`/`Long`/`VcfFloat` branches (reached from `getInfo(ReservedInfoProperty)`,
   `getInfo(VcfMetadata, String)`, `VcfSample.getProperty(ReservedFormatProperty)`, and
   `getProperty(VcfPosition, VcfMetadata, String)`) all throw `VcfFormatException` **unconditionally, regardless of
   context** -- not gated by `isLenient()` the way every other check in this section is. This is deliberate, not an
   oversight: unlike an out-of-range number (still a real, storable value) or a wrong-cardinality list (the raw
   pieces are all individually still valid), there is no sane value to preserve or normalize a genuinely
-  non-numeric/non-boolean/non-single-character string to. Nothing is lost by throwing either way: the original
+  non-numeric/non-single-character string to. Nothing is lost by throwing either way: the original
   wire text remains permanently retrievable afterward via a sibling raw accessor the typed conversion never
   mutates -- `VcfPosition.getRawQuality()`/`getInfo(String)`/`getInfo()` for QUAL/INFO, `VcfSample.getProperty(String)`
   for FORMAT. This is a genuinely deferred check: `VcfParser` itself stays lenient and finishes parsing the file
   regardless of what a later typed-getter call throws. Before 2026-08-20, `getQuality()` instead warned and
   treated an unparseable QUAL as the missing value, silently conflating "genuinely absent" with "present but
   malformed" -- changed to match `convertElement`'s pre-existing behavior for the identical failure mode elsewhere.
+  **`convertElement`'s `Boolean` branch (an INFO `Type=Flag` value) is the one exception, and never throws at
+  all**: unlike the other three, a Flag has no "genuinely non-conforming, unrecoverable" shape, since its truth
+  is its presence, not any value string attached to it -- see `VCF_SPEC_AMBIGUITIES.md`'s "A `Type=Flag` INFO
+  value carrying an explicit value" entry. It warns for any non-empty (including `"."`) value and always
+  resolves to `true`, unconditionally regardless of context, the mirror image of the other three branches'
+  unconditional throw.
   As of this fix, `getQuality()` returns `VcfFloat` (not `BigDecimal`) and calls `VcfFloat.parse()` directly,
   matching every other Float-typed field, so it now accepts VCFv4.3.tex line 100's Special Float values
   (`NAN`/`INF`/`INFINITY`) too. One side effect: the grammar-mismatch warning text for a value `BigDecimal`

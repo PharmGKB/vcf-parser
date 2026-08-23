@@ -1287,21 +1287,43 @@ silently merging into what looked like a legitimate multi-value list. Implemente
 `true`. `VCFv4.3.tex:171` -- "the `Flag' type indicates that the INFO field does not contain a Value entry,
 and hence the Number must be 0 in this case" -- ties a Flag's truth to its presence, not to any value string
 attached to it, and hts-specs' own `failed_body_info_012.vcf` (`##CauseOfFailure=INFO DB value is not a
-flag`, value `DB=2`) treats an explicit value as wrong regardless of what it says, not specifically "not a
-valid boolean."
+flag`, value `DB=2`) treats `DB=2` as wrong regardless of what it says, not specifically "not a valid
+boolean." (A separate re-verification round found `"2" was never specifically the problem`, this section's
+own original phrasing here, overstates what that one fixture actually shows -- see the vcf_validator
+paragraph below, which does treat `"2"` specifically differently from `"0"`/`"1"`.)
 
-Confirmed live against bcftools 1.23.1 (htslib 1.23.1 `vcf.c`'s `BCF_HT_FLAG` handling): `bcftools view -H
--i 'DB=1'` (a presence filter) matches records with `DB=0`, `DB=1`, and a bare `DB`, and excludes only a
+Confirmed live against bcftools 1.23.1 (htslib 1.23.1 `vcf.c`'s `vcf_parse_info`, "if Flag has a value, treat
+it as a string", and `bcf_get_info_values`'s presence-only `BCF_HT_FLAG` read): `bcftools view -H -i
+'DB=1'` (a presence filter) matches records with `DB=0`, `DB=1`, `DB=.`, and a bare `DB`, and excludes only a
 record with no `DB` at all -- confirming bcftools treats `DB=0` as present, exactly like `DB=1` or a bare
 flag, never inspecting the value's content. `VcfWriter.validateInfoValue` (the write side) already warns
 "has Type=Flag but has a value" for this exact shape without trying to interpret the value's content either
 -- this decision brings the read side into agreement instead of leaving it silently wrong.
 
+**bcftools and vcf_validator 0.10.2 disagree here**, documented per AGENTS.md's requirement rather than
+silently picking a side. vcf_validator's own grammar (`record.cpp`'s Flag handling) accepts only
+`"0"`/`"1"`/no-value as well-formed and rejects any other literal -- measured live: `DB=2` is reported
+invalid ("a flag value must be 0, 1 or none") while `DB=0` and `DB=1` are accepted, so vcf_validator's
+grammar-level acceptance genuinely does treat `"2"` specifically differently from `"0"`/`"1"`. vcf_validator
+then reads an accepted `"0"` as semantically false downstream: a `POS=100`/`REF=A`/`IMPRECISE=0`/`END=105`
+record is rejected ("END value must be equal to POS + length of REF - 1 for a precise variant (where
+IMPRECISE is set to 0)", since `105 != 100`), while the identical `END=105` under `IMPRECISE=1` or bare
+`IMPRECISE` (not subject to that precise-variant formula at all) is accepted -- i.e. vcf_validator's own
+semantic check treats `IMPRECISE=0` as equivalent to `IMPRECISE` being false/absent, the exact inversion this
+decision otherwise removes. Per AGENTS.md's hierarchy, bcftools remains the tie-breaker (the spec itself is
+silent on what a spec-nonconforming attached Flag value means, so this is a genuine tie, not a case where
+bcftools contradicts explicit spec text) -- this decision follows bcftools, not vcf_validator, and that
+choice is deliberate, not an oversight.
+
 **Decision:** warn (unconditionally, matching the write side's own unconditional warn) for any non-empty
-value, and always resolve to `true` -- never inspect the value's content as a boolean. Removes the previous
+value, and always resolve to `true` -- never inspect the value's content as a boolean, including `"."` (the
+missing-value sentinel every other type uses to mean "absent," but which a Flag key can't use that way,
+since reaching this code at all already proves the key is present in INFO). Removes the previous
 `"0"`/`"1"`/`"true"`/`"false"` special-casing (and the "Invalid boolean value" throw for anything else)
 entirely, since per this decision there is no such thing as an invalid Flag value, only a non-compliant one.
-Implemented in `InternalUtils.convertElement`.
+Implemented in `InternalUtils.convertElement`, which checks the `Boolean` branch before its generic
+null/`"."`-means-absent early return, unlike every other type -- found missing (`DB=.` incorrectly read back
+indistinguishable from `DB` being absent) by the Phase 2 review's fourth re-verification round.
 
 ### Negative/out-of-range values for reserved INFO keys `AC`/`AN`/`DP`/`END`/`MQ0`/`NS`/`AF`/`AD`/`ADF`/`ADR`/`CN`/`CNADJ`/`HOMLEN`/`DPADJ`
 

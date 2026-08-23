@@ -1759,22 +1759,24 @@ class BcftoolsDependencyTest {
     // No VCF version explicitly states what a Type=Flag value carrying explicit content MEANS (only that it
     // shouldn't happen at all -- VCFv4.3.tex:171), so whether "0" specifically means "false" needed live
     // consultation, per AGENTS.md's Decision Hierarchy. A presence filter (-i 'DB=1') must match every record
-    // where DB is present at all -- DB=0, DB=1, and a bare DB -- and exclude only a record with no DB,
-    // confirming bcftools 1.23.1 never inspects a Flag's value content; presence is all that matters.
+    // where DB is present at all -- DB=0, DB=1, DB=. (found not to be covered by the original probe here by
+    // the Phase 2 review's fourth re-verification round), and a bare DB -- and exclude only a record with no
+    // DB, confirming bcftools 1.23.1 never inspects a Flag's value content; presence is all that matters.
     String vcf = "##fileformat=VCFv4.2\n" +
         "##INFO=<ID=DB,Number=0,Type=Flag,Description=\"dbSNP membership\">\n" +
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
         "1\t100\t.\tA\tT\t.\t.\tDB=0\n" +
         "1\t200\t.\tA\tT\t.\t.\tDB=1\n" +
         "1\t300\t.\tA\tT\t.\t.\tDB\n" +
-        "1\t400\t.\tA\tT\t.\t.\t.\n";
+        "1\t400\t.\tA\tT\t.\t.\tDB=.\n" +
+        "1\t500\t.\tA\tT\t.\t.\t.\n";
     BcftoolsResult result = runBcftools(vcf, "view", "-H", "-i", "DB=1");
     assertEquals(0, result.exitCode(), result.output());
     List<String> matchedPositions = result.output().lines()
         .filter(line -> line.startsWith("1\t"))
         .map(line -> line.split("\t")[1])
         .toList();
-    assertEquals(List.of("100", "200", "300"), matchedPositions, result.output());
+    assertEquals(List.of("100", "200", "300", "400"), matchedPositions, result.output());
   }
 
   @Test
