@@ -135,9 +135,17 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   characters U+0000--U+0008, U+000B--U+000C, U+000E--U+001F are disallowed") and line 82 ("Line separators must
   be CR+LF or LF and they are allowed only as line separators at end of line") -- verbatim at VCFv4.4.tex lines
   81/82 and VCFv4.5.tex lines 79/80 -- state this generally; VCFv4.2 is silent. Applied via `InternalUtils.checkNoLineTerminator`
-  (metadata keys and values), `VcfSample.checkNoStructuralDelimiter` (a tab or line terminator in a sample key
-  or value), and `VcfPosition.checkInfoEntries`'s value-side check (tab, LF, CR, vertical tab, or form feed in
-  an INFO value). See "Rules applied at every declared version" below for the known gap in this check's range.
+  (metadata keys and values, and -- since the Phase 2 review's third re-verification round -- `VcfPosition`'s
+  own QUAL raw text at construction time), `VcfSample.checkNoStructuralDelimiter` (a tab or line terminator in
+  a sample key or value), and `VcfPosition.checkInfoEntries`'s value-side check (tab, LF, CR, vertical tab, or
+  form feed in an INFO value). Unlike the tab/colon half of `checkNoStructuralDelimiter`,
+  `VcfContext.newTrustedSample` (`VcfParser`'s own per-record fast path) does NOT skip this line-terminator
+  half: a lone CR is ordinary content once `readPhysicalLine()` stopped treating it as a line separator, so
+  it is not excluded by the parser's own tab/colon splitting the way a colon or tab structurally is, and would
+  otherwise reach a constructed `VcfSample`/`VcfPosition` unchecked and crash `VcfWriter.printLine`'s own
+  defense-in-depth check at write time instead of being rejected at parse time -- a round-trip violation this
+  library must not allow (see the Writer Validation and Round-Trip Policy in `AGENTS.md`). See "Rules applied
+  at every declared version" below for the known gap in this check's range.
 - A `VcfSample` key or value set through its constructors or `Builder#property` (validated at `build()` time, not
   at `property()`'s own call site) containing a colon or tab, which would otherwise add a spurious FORMAT
   sub-field or sample column when written back out. The one exception, **under VCFv4.2 and earlier only**, is a

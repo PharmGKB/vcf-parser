@@ -104,6 +104,25 @@ class VcfSampleTest {
   }
 
   @Test
+  void testNewTrustedRejectsLineTerminatorEvenThoughItSkipsTheColonTabCheck() {
+    // regression test found by the Phase 2 review's third re-verification round: unlike the colon/tab half
+    // of checkNoStructuralDelimiter (safely skippable here -- see newTrustedSample's own Javadoc for why
+    // VcfParser's own splitting already excludes both), a lone CR/LF is NOT excluded by that splitting, since
+    // readPhysicalLine() stopped treating a lone CR as a line separator. Contrast with the colon test above
+    // (testNewTrustedSkipsStructuralDelimiterCheckInProductionButSelfVerifiesUnderAssertions): the
+    // doubly-unchecked bypass proves this is a REAL, always-on check, not just the assertions-only
+    // self-verification catching it in this test JVM specifically.
+    List<String> keys = Collections.singletonList("key1");
+    List<String> valuesCr = Collections.singletonList("value1\rvalue2");
+    assertThrows(VcfFormatException.class, () -> VcfSample.newDoublyUncheckedForTest(STRICT_CONTEXT, keys, valuesCr));
+    assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newTrustedSample(keys, valuesCr));
+
+    List<String> valuesLf = Collections.singletonList("value1\nvalue2");
+    assertThrows(VcfFormatException.class, () -> VcfSample.newDoublyUncheckedForTest(STRICT_CONTEXT, keys, valuesLf));
+    assertThrows(VcfFormatException.class, () -> STRICT_CONTEXT.newTrustedSample(keys, valuesLf));
+  }
+
+  @Test
   void testNewTrustedStillRejectsMismatchedKeyValueLengths() {
     // the cheap, O(1) length-mismatch check is NOT part of what newTrusted() skips -- only the O(n) per-element
     // structural-delimiter scan is

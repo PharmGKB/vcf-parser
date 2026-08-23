@@ -69,13 +69,18 @@ public final class VcfSample {
    * this class's own Javadoc for the parse-then-read performance rationale). {@link VcfContext#newSample} is
    * where the copy for an externally-supplied list happens.
    *
-   * @param trusted when {@code true}, skips the per-key/value {@link #checkNoStructuralDelimiter} scan, which
-   * micro-benchmarking measured as ~92% of the plain path's cost (43.4% of all execution samples on a
-   * 163-sample-per-record JFR profile), and also skips {@link #checkReservedFormatTypes(List, List, VcfContext)}
-   * (never reachable from {@code VcfParser}, whose own {@code Number}/{@code Type} content checks already cover
-   * a reserved key's value -- see that method's own Javadoc). The non-null/matching-length checks still run;
-   * only the delimiter scan and the reserved-type probe are skipped. The delimiter scan's premise is NOT simply
-   * "a parser-produced key/value can never contain a colon, tab, or line terminator" -- a legacy (pre-4.3)
+   * @param trusted when {@code true}, skips the tab/colon half of the per-key/value
+   * {@link #checkNoStructuralDelimiter} scan, which micro-benchmarking measured as ~92% of the plain path's
+   * cost (43.4% of all execution samples on a 163-sample-per-record JFR profile), and also skips
+   * {@link #checkReservedFormatTypes(List, List, VcfContext)} (never reachable from {@code VcfParser}, whose
+   * own {@code Number}/{@code Type} content checks already cover a reserved key's value -- see that method's
+   * own Javadoc). The non-null/matching-length checks still run, and so does the line-terminator half of the
+   * delimiter scan ({@link InternalUtils#checkNoLineTerminator}) -- unlike tab/colon, a lone CR/LF is NOT
+   * excluded by {@code VcfParser}'s own tab/colon splitting (a lone CR is ordinary content once
+   * {@code readPhysicalLine()} stopped treating it as a line separator), so skipping it here would let an
+   * embedded line terminator reach a constructed sample unchecked and crash {@code VcfWriter.printLine} later
+   * instead. Only the tab/colon check and the reserved-type probe are actually skipped. The tab/colon skip's
+   * premise is NOT simply "a parser-produced key/value can never contain a colon or tab" -- a legacy (pre-4.3)
    * GLE value deliberately can, and does,
    * contain an internal {@code ':'} (see {@code VcfContext.newTrustedSample}'s Javadoc for the full,
    * two-part premise this depends on). Rather than re-deriving that premise by hand, this constructor
@@ -113,13 +118,30 @@ public final class VcfSample {
         checkNoStructuralDelimiter(keys.get(x), values.get(x), version);
       }
       checkReservedFormatTypes(keys, values, context);
-    } else if (selfVerify) {
-      // self-verification only, compiled out at runtime unless assertions are enabled (see this
-      // constructor's own Javadoc) -- runs the exact check the trusted path skips, so this constructor's
-      // premise is re-proven on every sample this project's test suite ever constructs, not just read once
-      // and trusted forever. Lets checkNoStructuralDelimiter's own VcfFormatException propagate rather than
-      // wrapping it in a generic AssertionError, so a violation is reported with the real, specific message.
-      assert verifyTrustedSamplePremise(context, keys, values);
+    } else {
+      // Unlike the tab/colon checks checkNoStructuralDelimiter also runs (safely skippable here -- see
+      // VcfContext.newTrustedSample's own Javadoc for why VcfParser's own tab/colon splitting already
+      // excludes both from what reaches this constructor), a line terminator is NOT excluded by that
+      // splitting: a lone CR is ordinary content since readPhysicalLine() stopped treating it as a line
+      // separator, so it survives untouched into a sample value and would otherwise reach this constructor
+      // unchecked, then crash VcfWriter.printLine when the record is written back out -- a round-trip
+      // violation of AGENTS.md's Writer Validation and Round-Trip Policy ("a record accepted by the parser
+      // must be writable"). Found by the Phase 2 review's third re-verification round. Always run, even
+      // though the tab/colon checks are skipped, and even when assertions are disabled (unlike the
+      // self-verifying assert just below, which exists only to catch a future regression in THIS
+      // constructor's own premise, not to substitute for validating untrusted input).
+      for (int x = 0; x < keys.size(); x++) {
+        InternalUtils.checkNoLineTerminator(keys.get(x), values.get(x));
+      }
+      if (selfVerify) {
+        // self-verification only, compiled out at runtime unless assertions are enabled (see this
+        // constructor's own Javadoc) -- runs the exact tab/colon check the trusted path skips, so this
+        // constructor's premise is re-proven on every sample this project's test suite ever constructs, not
+        // just read once and trusted forever. Lets checkNoStructuralDelimiter's own VcfFormatException
+        // propagate rather than wrapping it in a generic AssertionError, so a violation is reported with the
+        // real, specific message.
+        assert verifyTrustedSamplePremise(context, keys, values);
+      }
     }
     m_keys = keys;
     m_values = values;
@@ -134,10 +156,13 @@ public final class VcfSample {
   }
 
   /**
-   * Test-only, doubly-unchecked construction: skips {@link #checkNoStructuralDelimiter} entirely, INCLUDING
-   * the self-verifying assert the {@code trusted} constructor above now runs in its place. Not for production
-   * code -- nothing in {@code src/main} calls this; {@code VcfContext.newTrustedSample} (which DOES
-   * self-verify) is the real production fast path.
+   * Test-only, doubly-unchecked construction: skips {@link #checkNoStructuralDelimiter}'s tab/colon half
+   * entirely, INCLUDING the self-verifying assert the {@code trusted} constructor above now runs in its
+   * place -- but still runs that same constructor's unconditional line-terminator check (see its own
+   * Javadoc), since this method's every current use site constructs a colon/semicolon violation, never a
+   * line-terminator one, and there is no reason for this bypass to be any more permissive than the
+   * production trusted path it stands in for. Not for production code -- nothing in {@code src/main} calls
+   * this; {@code VcfContext.newTrustedSample} (which DOES self-verify) is the real production fast path.
    * <p>
    * Exists because {@code VcfSample} has no other post-construction mutation route (Task 9 froze it -- no
    * setters, no live-mutable views), so once the {@code trusted} constructor started self-verifying its own

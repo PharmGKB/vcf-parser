@@ -232,6 +232,19 @@ public final class VcfPosition {
       constructor's own rawQual/rawInfo Javadoc.
      */
     if (qual == null && rawQual != null) {
+      // Unconditional, matching every other column's own tab/CR/LF check (CHROM/POS/REF/ALT/FILTER/FORMAT
+      // keys) -- an embedded line terminator is a structural violation regardless of which column it's in.
+      // QUAL's own value-parsing (VcfFloat) is deferred to first getQuality() call for performance (many
+      // consumers never read QUAL), but that deferral must not also defer THIS check: unlike a malformed-
+      // but-otherwise-ordinary QUAL value, a raw CR/LF surviving unchecked into m_rawQuality reaches
+      // VcfWriter's default write path completely unvalidated (that path writes rawQuality verbatim and only
+      // calls getQuality() under validateBeforeWrite() -- see VcfWriter.writeLine's own comment), and crashes
+      // VcfWriter.printLine's own defense-in-depth check later instead, producing a truncated output file for
+      // a record the parser accepted with zero warnings -- a round-trip violation of AGENTS.md's Writer
+      // Validation and Round-Trip Policy. Found by the Phase 2 review's third re-verification round, the same
+      // shape as VcfSample's own newTrustedSample-skips-the-line-terminator-check gap (see that class's
+      // trusted-constructor Javadoc).
+      InternalUtils.checkNoLineTerminator("QUAL", rawQual);
       m_rawQuality = rawQual;
     }
     if (info == null && rawInfo != null) {

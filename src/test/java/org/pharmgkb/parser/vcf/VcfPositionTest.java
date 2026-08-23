@@ -51,6 +51,22 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testRawQualityContainingLineTerminatorThrowsAtConstructionNotAtWriteTime() {
+    // regression test found by the Phase 2 review's third re-verification round: rawQuality previously had
+    // no line-terminator check at all -- a CR/LF surviving into it (e.g. from an embedded lone CR, ordinary
+    // content since readPhysicalLine() stopped treating it as a line separator) was silently accepted here
+    // and only crashed later, at VcfWriter.printLine's own defense-in-depth check, producing a truncated
+    // output file. Unconditional, matching every other column's own tab/CR/LF check -- fires even under a
+    // lenient context, the same as getQuality()'s own unconditional-throw treatment of unparseable text.
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> newPosition().toBuilder().rawQuality("1\r0").build());
+    assertTrue(ex.getMessage().contains("contains a line terminator"));
+    VcfFormatException ex2 = assertThrows(VcfFormatException.class,
+        () -> lenientPosition().toBuilder().rawQuality("1\n0").build());
+    assertTrue(ex2.getMessage().contains("contains a line terminator"));
+  }
+
+  @Test
   public void testGetRawQualityIsPreservedAfterSuccessfulParseAndUnderLenientContextToo() {
     // full symmetry with INFO's own permanently-available raw per-key values: getRawQuality() keeps returning
     // the original wire text even after getQuality() has already parsed it successfully -- not just for the

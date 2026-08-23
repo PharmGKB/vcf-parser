@@ -630,6 +630,52 @@ public class VcfParserTest {
   }
 
   @Test
+  void testEmbeddedCarriageReturnInQualIsRejectedAtParseTimeNotWriteTime() throws IOException {
+    // regression test found by the Phase 2 review's third re-verification round: since readPhysicalLine()
+    // stopped treating a lone CR as a line separator (d451d51), an embedded CR in QUAL's raw text used to
+    // parse with zero warnings, then crash VcfWriter.printLine's defense-in-depth check when the record was
+    // written back out -- producing a truncated output file for a record the parser had silently accepted, a
+    // round-trip violation of AGENTS.md's Writer Validation and Round-Trip Policy. Now rejected at parse
+    // time instead, matching every other column's own unconditional tab/CR/LF check.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT\t1\r0\t.\t.\n";
+    List<VcfPosition> positions = new ArrayList<>();
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> {
+      try (VcfParser parser = new VcfParser.Builder()
+          .fromReader(new BufferedReader(new StringReader(vcf)))
+          .parseWith((metadata, record) -> positions.add(record.getPosition()))
+          .build()) {
+        parser.parse();
+      }
+    });
+    assertTrue(ex.getMessage().contains("contains a line terminator"));
+    assertTrue(positions.isEmpty(), "the malformed record must never reach the line parser callback");
+  }
+
+  @Test
+  void testEmbeddedCarriageReturnInSampleValueIsRejectedAtParseTimeNotWriteTime() throws IOException {
+    // same regression as testEmbeddedCarriageReturnInQualIsRejectedAtParseTimeNotWriteTime above, for a
+    // sample value: VcfContext.newTrustedSample used to skip VcfSample.checkNoStructuralDelimiter entirely
+    // (including its line-terminator half), so an embedded CR in a sample value also parsed with zero
+    // warnings and crashed VcfWriter.printLine at write time instead. Now rejected at parse time.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "1\t100\t.\tA\tT\t.\t.\t.\tGT:AB\t0/1:x\ry\n";
+    List<VcfPosition> positions = new ArrayList<>();
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> {
+      try (VcfParser parser = new VcfParser.Builder()
+          .fromReader(new BufferedReader(new StringReader(vcf)))
+          .parseWith((metadata, record) -> positions.add(record.getPosition()))
+          .build()) {
+        parser.parse();
+      }
+    });
+    assertTrue(ex.getMessage().contains("contains a line terminator"));
+    assertTrue(positions.isEmpty(), "the malformed record must never reach the line parser callback");
+  }
+
+  @Test
   void testFreeformMetaLineBeforeV4_3IsPreservedAsRawProperty() throws IOException {
     // ##META does not exist before VCFv4.3 (0 occurrences in VCFv4.1.tex/VCFv4.2.tex; VCFv4.3.tex's changelog
     // line 2155 reads "Introduced ##META header lines for defining phenotype metadata"). Regression: this used
