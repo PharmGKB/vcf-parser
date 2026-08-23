@@ -1143,10 +1143,29 @@ public class InternalUtils {
   // validates reserved-key semantics, only structural presence). Neither VCFv4.2.tex nor the VCFv4.3.tex target
   // tables this constraint directly, but each key's own reserved-key description implies a count/depth/position
   // can't be negative.
+  //
+  // AD/ADF/ADR/CN/CNADJ/HOMLEN/DPADJ (found by the Phase 2 review's third re-verification round): same
+  // reasoning, same authority -- vcf_validator 0.10.2 gives the identical "value must be a non-negative
+  // integer number" message for a negative value of each, confirmed live (no hts-specs fixture covers these
+  // seven; the probe used the same undeclared-key shape the original six were sourced from, since
+  // vcf_validator only applies its reserved-key semantic checks when the key has no ##INFO declaration of its
+  // own). bcftools 1.23.1 is silent on all seven, same as the original six. Spec citations for "a depth/copy
+  // number/length can't be negative": AD/ADF/ADR -- VCFv4.3.tex:397-399, "Total read depth for each allele" /
+  // "Read depth for each allele on the forward/reverse strand"; CN/CNADJ -- VCFv4.3.tex:665-666, "Copy number
+  // of segment containing breakend" / "Copy number of adjacency"; HOMLEN -- VCFv4.3.tex:644, "Length of base
+  // pair identical micro-homology at event breakpoints"; DPADJ -- VCFv4.3.tex:664, "Read Depth of adjacency".
+  // CICN (a sibling reserved key, confidence interval around copy number) is deliberately NOT included:
+  // vcf_validator gives two mutually-contradictory rules for it (this same non-negative-integer rule, plus a
+  // separate confidence-interval-shape rule satisfied only by a first value <= 0) -- looks like a
+  // vcf_validator defect, not a clean signal, so it needs its own separate, more careful decision.
   private static final Set<String> NON_NEGATIVE_INTEGER_INFO_KEYS = Set.of(
       ReservedInfoProperty.AlleleCount.getId(), ReservedInfoProperty.AlleleNumber.getId(),
       ReservedInfoProperty.Depth.getId(), ReservedInfoProperty.End.getId(),
-      ReservedInfoProperty.MappingQualityZeroCount.getId(), ReservedInfoProperty.NumberOfSamples.getId());
+      ReservedInfoProperty.MappingQualityZeroCount.getId(), ReservedInfoProperty.NumberOfSamples.getId(),
+      ReservedInfoProperty.AlleleDepth.getId(), ReservedInfoProperty.AlleleDepthForward.getId(),
+      ReservedInfoProperty.AlleleDepthReverse.getId(), ReservedInfoProperty.CopyNumberOfSegment.getId(),
+      ReservedInfoProperty.CopyNumberOfAdjacency.getId(), ReservedInfoProperty.HomologyLength.getId(),
+      ReservedInfoProperty.ReadDepthOfAdjacency.getId());
 
   /**
    * Warns or throws if {@code value} violates a constraint that a reserved INFO key's own description implies
@@ -1155,8 +1174,11 @@ public class InternalUtils {
    * <ul>
    *   <li>{@link ReservedInfoProperty#AlleleCount AC}, {@link ReservedInfoProperty#AlleleNumber AN},
    *   {@link ReservedInfoProperty#Depth DP}, {@link ReservedInfoProperty#End END},
-   *   {@link ReservedInfoProperty#MappingQualityZeroCount MQ0}, and {@link ReservedInfoProperty#NumberOfSamples NS}
-   *   must each be a non-negative integer.</li>
+   *   {@link ReservedInfoProperty#MappingQualityZeroCount MQ0}, {@link ReservedInfoProperty#NumberOfSamples NS},
+   *   {@link ReservedInfoProperty#AlleleDepth AD}, {@link ReservedInfoProperty#AlleleDepthForward ADF},
+   *   {@link ReservedInfoProperty#AlleleDepthReverse ADR}, {@link ReservedInfoProperty#CopyNumberOfSegment CN},
+   *   {@link ReservedInfoProperty#CopyNumberOfAdjacency CNADJ}, {@link ReservedInfoProperty#HomologyLength HOMLEN},
+   *   and {@link ReservedInfoProperty#ReadDepthOfAdjacency DPADJ} must each be a non-negative integer.</li>
    *   <li>{@link ReservedInfoProperty#AlleleFrequency AF} must lie in the interval [0, 1] -- confirmed directly
    *   against vcf_validator 0.10.2 with both a negative value (test/vcf/4.2/failed/failed_body_info_004.vcf,
    *   AF=-0.01) and a value above 1 (a hand-built AF=1.5 file, since hts-specs has no fixture for that side of

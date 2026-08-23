@@ -615,14 +615,31 @@ public class InternalUtilsTest {
   public void testCheckReservedInfoConstraintsNonNegativeKeysWarnButDoNotThrow() {
     // AC/AN/DP/END/MQ0/NS's declared Long Type accepts a negative value, but each is semantically a count/depth/
     // position that can't be negative -- checked separately, warning rather than throwing (non-structural INFO
-    // content)
-    for (String key : new String[] { "AC", "AN", "DP", "END", "MQ0", "NS" }) {
+    // content). AD/ADF/ADR/CN/CNADJ/HOMLEN/DPADJ added by the Phase 2 review's third re-verification round --
+    // same reasoning, same vcf_validator 0.10.2-sourced authority (confirmed live, since no hts-specs fixture
+    // covers these seven); CICN deliberately excluded, see NON_NEGATIVE_INTEGER_INFO_KEYS's own comment.
+    for (String key : new String[] { "AC", "AN", "DP", "END", "MQ0", "NS", "AD", "ADF", "ADR", "CN", "CNADJ",
+        "HOMLEN", "DPADJ" }) {
       InternalUtils.checkReservedInfoConstraints(key, "0", VcfVersion.V4_2, VcfWarnings.DEFAULT); // valid: does not throw
       InternalUtils.checkReservedInfoConstraints(key, "5", VcfVersion.V4_2, VcfWarnings.DEFAULT); // valid: does not throw
       InternalUtils.checkReservedInfoConstraints(key, "-1", VcfVersion.V4_2, VcfWarnings.DEFAULT); // negative: warns, does not throw
     }
     InternalUtils.checkReservedInfoConstraints("AC", null, VcfVersion.V4_2, VcfWarnings.DEFAULT); // no value set: nothing to check
     InternalUtils.checkReservedInfoConstraints("AC", ".", VcfVersion.V4_2, VcfWarnings.DEFAULT); // missing value: nothing to check
+  }
+
+  @Test
+  public void testCheckReservedInfoConstraintsNonNegativeKeysThrowUnderStrict() {
+    // regression test found by the Phase 2 review's third re-verification round: the seven newly-added keys
+    // must also throw (not just warn) under a strict (null) checkWarnings, matching AC/AN/DP/END/MQ0/NS's
+    // existing treatment (see testCheckReservedInfoConstraintsNonNegativeKeyThrowsUnderStrictContext below for
+    // the original six's own dedicated test)
+    for (String key : new String[] { "AD", "ADF", "ADR", "CN", "CNADJ", "HOMLEN", "DPADJ" }) {
+      VcfFormatException ex = assertThrows(VcfFormatException.class,
+          () -> InternalUtils.checkReservedInfoConstraints(key, "-5", VcfVersion.V4_2, null));
+      assertTrue(ex.getMessage().contains("is a negative number"), "key " + key + ": " + ex.getMessage());
+      InternalUtils.checkReservedInfoConstraints(key, "5", VcfVersion.V4_2, null); // valid: does not throw
+    }
   }
 
   @Test

@@ -72,7 +72,7 @@ before assuming it generalizes to a similar-looking case.
 | INFO value containing a bare `=` | Warn, don't throw (matches bcftools) | ✅ |
 | Duplicate INFO key within one record | Warn, keep first occurrence (matches bcftools) | ✅ |
 | A `Type=Flag` INFO value carrying an explicit value | Warn, always resolve to `true` (presence, not value content -- matches bcftools/htslib) | ✅ |
-| Negative/out-of-range values for reserved INFO keys `AC`/`AN`/`DP`/`END`/`MQ0`/`NS`/`AF` | Warn in lenient mode, throw in strict mode (vcf_validator-sourced; bcftools silent) | ✅ |
+| Negative/out-of-range values for reserved INFO keys `AC`/`AN`/`DP`/`END`/`MQ0`/`NS`/`AF`/`AD`/`ADF`/`ADR`/`CN`/`CNADJ`/`HOMLEN`/`DPADJ` | Warn in lenient mode, throw in strict mode (vcf_validator-sourced; bcftools silent) | ✅ |
 | CIGAR grammar (SAM compliance) | Warn in lenient mode, throw in strict mode (vcf_validator-sourced; bcftools silent) | ✅ |
 | `FORMAT="."` meaning no per-sample fields | Accept (matches bcftools) | ✅ |
 | Data-line FORMAT key fails tag-name grammar | Warn (lenient), throw (strict/direct construction) -- matches bcftools | ✅ |
@@ -1233,12 +1233,28 @@ value, and always resolve to `true` -- never inspect the value's content as a bo
 entirely, since per this decision there is no such thing as an invalid Flag value, only a non-compliant one.
 Implemented in `InternalUtils.convertElement`.
 
-### Negative/out-of-range values for reserved INFO keys `AC`/`AN`/`DP`/`END`/`MQ0`/`NS`/`AF`
+### Negative/out-of-range values for reserved INFO keys `AC`/`AN`/`DP`/`END`/`MQ0`/`NS`/`AF`/`AD`/`ADF`/`ADR`/`CN`/`CNADJ`/`HOMLEN`/`DPADJ`
 
 These keys' declared `Long`/`Float` `Type` accepts a negative value with no exception; no separate range
 check existed anywhere. Confirmed via vcf_validator against the relevant hts-specs fixtures:
 `AC`/`AN`/`DP`/`END`/`MQ0`/`NS` must be non-negative integers; `AF` must lie in `[0, 1]` inclusive (both
 bounds verified). bcftools is silent on all seven.
+
+Found by the Phase 2 review's third re-verification round: the identical gap existed for seven more `Long`-
+typed reserved keys -- `AD`, `ADF`, `ADR`, `CN`, `CNADJ`, `HOMLEN`, `DPADJ` -- each a count/depth/length that
+can't be negative by its own reserved-key description (`VCFv4.3.tex:397-399` for `AD`/`ADF`/`ADR`,
+`:665-666` for `CN`/`CNADJ`, `:644` for `HOMLEN`, `:664` for `DPADJ`). No hts-specs fixture covers any of the
+seven, so confirmed live instead, using vcf_validator's own undeclared-key shape (it only applies its
+reserved-key semantic checks when the key has no `##INFO` declaration of its own -- a declared header
+re-routes it to that declaration's own `Type` check instead, per this same method's other measurements
+elsewhere in this file): all seven give the identical "value must be a non-negative integer number" message
+for a negative value. bcftools 1.23.1 is silent on all seven, same as the original six.
+
+A sibling reserved key, `CICN` (confidence interval around copy number, also `Long`-typed), is deliberately
+**not** included: vcf_validator gives two mutually-contradictory rules for it in the same probe -- this same
+non-negative-integer rule, and a separate confidence-interval-shape rule ("first value <= 0 and second value
+>= 0") that only a first value of exactly `0` satisfies -- which looks like a vcf_validator defect rather
+than a clean signal. Left for a separate, more careful decision if picked up later.
 
 **Decision:** warn on violation (vcf_validator-sourced, since bcftools offers no signal either way).
 Implemented in `InternalUtils.checkReservedInfoConstraints`, reachable from both the read path
