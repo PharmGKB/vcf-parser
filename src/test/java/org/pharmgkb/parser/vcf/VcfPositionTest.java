@@ -824,6 +824,44 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testStrictConstructorThrowsForReservedSymbolicAlleleNameInChromosome() {
+    // regression test: VCFv4.3.tex:266, "The contig names must not use a reserved symbolic allele name" --
+    // previously unenforced for CHROM (already enforced for a ##contig declaration's own ID by
+    // ContigMetadata's identical check), so CHROM="DEL" or CHROM="<DEL>" (the angle-bracket-wrapped symbolic
+    // form, textually identical to how "DEL" is written as a symbolic ALT allele) parsed with zero warnings.
+    // Confirmed live that bcftools 1.23.1 gives no signal either way for this specific rule (accepts both
+    // with only an unrelated "contig not defined in header" warning) -- this decision is sibling consistency
+    // with ContigMetadata's own warn-or-throw shape for the identical spec sentence, not a bcftools tie-break.
+    assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newPosition("DEL", 100, null, "A", null, null, null, null, null, -1));
+    assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newPosition("<DEL>", 100, null, "A", null, null, null, null, null, -1));
+    // a reserved level-1 combination (subtype + its reserved parent), not just a bare level-0 code
+    assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newPosition("DUP:TANDEM", 100, null, "A", null, null, null, null, null, -1));
+  }
+
+  @Test
+  public void testLenientConstructorWarnsInsteadOfThrowingForReservedSymbolicAlleleNameInChromosome() {
+    StringWriter sink = new StringWriter();
+    VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("DEL", 100, null, "A", null,
+        null, null, null, null, -1);
+    assertEquals("DEL", position.getChromosome());
+    assertTrue(sink.toString().contains("must not use a reserved symbolic allele name"));
+  }
+
+  @Test
+  public void testTypedConstructorDoesNotWarnForCustomSubtypeUnderReservedParentInChromosome() {
+    // a custom subtype under a reserved parent is NOT itself reserved (VCFv4.4.tex:221, "Implementations are
+    // free to define their own subtypes") and must not warn -- mirrors ContigMetadataTest's identical case
+    StringWriter sink = new StringWriter();
+    VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("INS:ME:LINE", 100, null, "A",
+        null, null, null, null, null, -1);
+    assertEquals("INS:ME:LINE", position.getChromosome());
+    assertFalse(sink.toString().contains("must not use a reserved symbolic allele name"));
+  }
+
+  @Test
   public void testConstructorRejectsNullRefInsteadOfThrowingNpe() {
     assertThrows(VcfFormatException.class,
         () -> STRICT_CONTEXT.newPosition("chr", 1, null, null, null, null, null, null, null, -1));

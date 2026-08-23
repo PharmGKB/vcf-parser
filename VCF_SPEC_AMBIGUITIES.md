@@ -35,6 +35,7 @@ before assuming it generalizes to a similar-looking case.
 | Malformed attribute inside a metadata declaration's `<...>` list | Warn and drop just that attribute (matches bcftools; more lenient than two hts-specs `failed/` fixtures) -- an unquoted `=` in a value is no longer one of the malformed shapes this covers; see below | ✅ |
 | Whitespace in `##FILTER`/`##SAMPLE` declaration IDs | Reject (bcftools's silence is a coverage gap) | ✅ |
 | `##FORMAT`/`##INFO` ID grammar vs. `##FILTER`/`##SAMPLE`/`##ALT` | Stricter grammar for FORMAT/INFO only | ✅ |
+| FILTER declaration ID equal to `.` | Reject (same shape as `"0"`, not spec-named; vcf_validator's "invalid" verdict excluded as a known defect) | ✅ |
 | `"1000G"` legacy INFO tag-name exception | Allowed (matches bcftools) | ✅ |
 | `##contig` ID character set | SAM reference-name rules; does not extend to INFO/FORMAT tag names | ✅ |
 | Contig ID with a non-leading asterisk (hts-specs' `failed/` fixtures vs. VCFv4.3 errata) | Accept (matches bcftools; matches this library's existing implementation) | ✅ |
@@ -60,6 +61,7 @@ before assuming it generalizes to a similar-looking case.
 | BOM-prefixed file / `+`-prefixed POS | Existing behavior already matches both tools | ✅ |
 | ALT breakend contig-ID shorthand (`AC<ctg1>GT`, `<ctg1><ctg2>`) | Left permissive; neither tool is decisive | ✅ (judgment call) |
 | Reserved structural variant code re-used as a subtype (`DUP:INV`) | Reject (deliberately stricter than bcftools) | ✅ |
+| CHROM containing a reserved symbolic allele name | Warn (lenient) / throw (strict), matching `##contig`'s existing check (sibling consistency; bcftools gives no signal either way) | ✅ |
 | FILTER value `"0"` | Reject (reserved value) | ✅ |
 | `PASS` combined with other FILTER codes | Warn (lenient), throw (strict/direct construction) | ✅ |
 | FILTER status (`PASSED`/`FAILED`/`NONE`) derivation | Derive purely from list contents, matching bcftools's clear-never-promotes-to-PASS convention | ✅ |
@@ -183,6 +185,28 @@ character triggers "Invalid tag name") — but accepts the identical character s
 **Decision:** the stricter grammar applies only to `##FORMAT`/`##INFO` IDs (and to a data-line FORMAT key);
 `##FILTER`/`##SAMPLE`/`##ALT` IDs are only held to `IdMetadata`'s shared, looser whitespace/comma check.
 Implemented via `InternalUtils.FORMAT_PATTERN`/`INFO_PATTERN`.
+
+### FILTER declaration ID equal to `.`
+
+`##FILTER=<ID=.,...>` was accepted with zero warnings. `.` is the FILTER data-line column's own MISSING-value
+sentinel (`VcfPosition` normalizes a lone `.` FILTER entry to an empty filter list, not a per-entry code
+comparison), so a declared FILTER whose `ID` is exactly `.` could never legally be referenced from a real
+record's FILTER column — the same practical defect shape `IdDescriptionMetadata.checkFilterIdAgainstColumnRules`
+already rejects for the reserved value `"0"` (VCFv4.3.tex:360, `VALIDATION_REFERENCE.md`'s FILTER-declaration
+bullet). Unlike `"0"`, no VCF version names `.` in that sentence or anywhere else — this is an inference from
+the column's own sentinel convention, not a cited rule.
+
+Tool evidence doesn't settle it either way: bcftools 1.23.1 accepts `##FILTER=<ID=.,...>` silently, exit 0 —
+weak by design, per `AGENTS.md`'s "bcftools is asymmetric evidence" (never infer valid from "didn't
+complain"). vcf_validator 0.10.2 reports it invalid, but that verdict is unusable here, not merely weak: its
+error text names `.` as an *allowed* character for the position it's checking, which places this squarely
+inside `AGENTS.md`'s documented leading-punctuation-truncation defect (a single-character ID gets captured as
+empty) — excluded outright, not downgraded to corroborating.
+
+**Decision:** reject (warn lenient / throw strict), matching `"0"`'s existing `warnOrThrow` shape in the same
+method — the reasoning is identical (a declared code that could never legally appear as itself in the column
+it declares), just not yet spec-cited the way `"0"` is. Implemented in
+`IdDescriptionMetadata.checkFilterIdAgainstColumnRules`.
 
 ### `"1000G"` legacy INFO tag-name exception
 
@@ -982,6 +1006,30 @@ used at the wrong level (a plausible typo, e.g. writing `TANDEM` instead of `DUP
 reused as a subtype is a sufficiently unusual construction that treating it as suspect is a reasonable,
 conservative default even though the spec doesn't mandate it. Revisit if a real-world VCF is ever found using
 this construction legitimately. Implemented in `AltStructuralVariant`'s constructor.
+
+### CHROM containing a reserved symbolic allele name
+
+VCFv4.3.tex:266 ("The contig names must not use a reserved symbolic allele name") was already enforced for a
+`##contig` declaration's own `ID` (`ContigMetadata`'s `warnOrThrow` check), but not for CHROM itself, even
+though `InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN`'s own comment documents CHROM and `##contig` as
+sharing the same "VCF contig name" rules ("Used by both `VcfPosition.checkChromosome` (CHROM values) and
+`ContigMetadata` (`##contig` IDs) -- both are 'VCF contig names' per that same errata text"). The collision
+this rule guards against is sharpest for the angle-bracket-wrapped form: `CHROM=<DEL>` is character-for-
+character identical to how `<DEL>` is written as a symbolic ALT allele.
+
+Confirmed live against bcftools 1.23.1 (htslib 1.23.1): `CHROM=DEL` and `CHROM=<DEL>` are both accepted, exit
+0, with only an unrelated "contig not defined in header" warning -- bcftools gives no signal specifically
+about the reserved-name collision either way. Unlike the CHROM printable-ASCII-range decision above (where
+bcftools' own warning *is* about that same rule, settling the throw-vs-warn choice directly), this is not a
+case bcftools' behavior resolves -- its silence here is on an unrelated question, and per `AGENTS.md`,
+silence is weak evidence, not license to infer leniency.
+
+**Decision:** warn (lenient) / throw (strict), matching `ContigMetadata`'s existing `warnOrThrow` shape for
+the identical spec sentence, for sibling consistency between the two enforcements of the same rule -- not a
+bcftools-broken tie. This is a closer call than the printable-ASCII case, since there is no tool signal
+either way to lean on; the deciding factor was this codebase's own prior assertion that CHROM and `##contig`
+share identical contig-name rules, which would otherwise be contradicted by enforcing this one rule
+differently between them. Implemented in `VcfPosition.checkChromosome`.
 
 ## FILTER field
 

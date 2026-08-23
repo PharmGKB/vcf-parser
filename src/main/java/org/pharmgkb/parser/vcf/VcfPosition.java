@@ -314,13 +314,16 @@ public final class VcfPosition {
 
   /**
    * @param checkWarnings null-means-strict, matching this class's own established convention (see the
-   * constructor's own comment on {@code checkWarnings}) -- used only by the trailing printable-ASCII-range
-   * check below. Every OTHER check in this method remains an unconditional throw regardless of this
-   * parameter: CHROM's whitespace/leading-character/blocklisted-punctuation violations are treated as
-   * structural (this is a fixed, mandatory column), matching {@code checkAltBases}'s identical unconditional
-   * treatment of a malformed ALT. Only the printable-ASCII outer bound gets a warn path, because bcftools
-   * itself only warns (never rejects) on it -- see {@code InternalUtils.NON_PRINTABLE_ASCII_CONTIG_NAME_CHAR_PATTERN}'s
-   * own comment.
+   * constructor's own comment on {@code checkWarnings}) -- used only by the two trailing checks below
+   * (printable-ASCII range, reserved symbolic allele name). Every OTHER check in this method remains an
+   * unconditional throw regardless of this parameter: CHROM's whitespace/leading-character/blocklisted-
+   * punctuation violations are treated as structural (this is a fixed, mandatory column), matching
+   * {@code checkAltBases}'s identical unconditional treatment of a malformed ALT. The printable-ASCII outer
+   * bound gets a warn path because bcftools itself only warns (never rejects) on it -- see
+   * {@code InternalUtils.NON_PRINTABLE_ASCII_CONTIG_NAME_CHAR_PATTERN}'s own comment. The reserved-symbolic-
+   * allele-name check gets the same warn path for a different reason -- sibling consistency with
+   * {@code ContigMetadata}'s identical, already-warn-or-throw enforcement of the same spec sentence for
+   * {@code ##contig} -- see that check's own comment below.
    */
   private static void checkChromosome(String chr, @Nullable VcfWarnings checkWarnings) {
     // chr is typed non-@Nullable, but nothing enforces that at runtime -- a caller can still pass null to the
@@ -361,12 +364,31 @@ public final class VcfPosition {
     }
     // see NON_PRINTABLE_ASCII_CONTIG_NAME_CHAR_PATTERN's own comment -- same errata's outer bound
     // ([!-~], VCFv4.3.tex:258-259). Unlike every check above, bcftools 1.23.1 only warns on this one (never
-    // rejects), so this is the one check in this method with a warn path -- see this method's own
-    // checkWarnings parameter comment.
+    // rejects) -- see this method's own checkWarnings parameter comment.
     Matcher nonPrintableMatcher = InternalUtils.NON_PRINTABLE_ASCII_CONTIG_NAME_CHAR_PATTERN.matcher(content);
     if (nonPrintableMatcher.find()) {
       String message = "CHROM column \"" + chr + "\" contains a non-printable-ASCII character (code point " +
           (int) nonPrintableMatcher.group().charAt(0) + ")";
+      if (checkWarnings == null) {
+        throw new VcfFormatException(message);
+      }
+      checkWarnings.warn(message);
+    }
+    // VCFv4.3.tex line 266 (new at 4.3; absent from VCFv4.1.tex/VCFv4.2.tex): "The contig names must not use
+    // a reserved symbolic allele name." Enforced for a ##contig declaration's own ID by ContigMetadata.init()
+    // (warn-or-throw, not an unconditional throw -- see that method's own comment for exactly which names
+    // count as reserved, e.g. "DEL", "DUP:TANDEM", never a bare "TANDEM"). CHROM and ##contig are documented
+    // as sharing the same "VCF contig name" rules by InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN's own
+    // comment ("Used by both VcfPosition.checkChromosome (CHROM values) and ContigMetadata (##contig IDs) --
+    // both are 'VCF contig names' per that same errata text"), so this check is given the same warn-or-throw
+    // shape as ContigMetadata's, rather than this method's own otherwise-unconditional throw, for sibling
+    // consistency between the two enforcements of the identical spec sentence. bcftools 1.23.1 gives no
+    // signal either way for CHROM specifically here -- confirmed live, it accepts both "DEL" and "<DEL>" as
+    // CHROM with only an unrelated "contig not defined in header" warning, exit 0 -- so unlike the
+    // non-printable-ASCII check just above, this is a sibling-consistency decision, not one bcftools' own
+    // behavior settles.
+    if (ReservedStructuralVariantCode.isReservedSymbolicAlleleName(content)) {
+      String message = "CHROM column \"" + chr + "\" must not use a reserved symbolic allele name";
       if (checkWarnings == null) {
         throw new VcfFormatException(message);
       }
