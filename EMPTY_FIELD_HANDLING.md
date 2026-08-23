@@ -968,10 +968,16 @@ from rows 1-12's pattern:
   not merely breaks a tie), and AGENTS.md's "'if still in doubt' is a precondition, not a formality" applies
   in the other direction here too: there is no genuine doubt to resolve once bcftools's rejection agrees with
   the spec's own key/value structure.
-- **Deliberately scoped to a literally zero-length key, not a whitespace-only one** (`##  =x`): bcftools
-  tolerates and preserves a whitespace-only key verbatim (measured), so only the empty case has the bcftools
-  evidence this decision needs -- a whitespace-only key is left as pre-existing, unaudited leniency, not
-  newly decided here either way.
+- **Deliberately scoped to a literally zero-length key reaching `addRawProperty()`, not a whitespace-only
+  one** (`##  =x`): bcftools tolerates and preserves a whitespace-only key verbatim (measured), so only the
+  empty case has the bcftools evidence this decision needs. Via **direct construction**
+  (`addRawProperty("  ", "x")`), that distinction holds -- `"  ".isEmpty()` is `false`, so it's preserved
+  verbatim, matching bcftools. It does **not** hold via **real parsing**: `VcfParser.parseMetadata()` trims
+  the name before it ever reaches this check (needed so a structured-type keyword tolerates surrounding
+  whitespace, e.g. `"##fileformat =VCFv4.3"`), so a whitespace-only key from a real file already arrives as
+  `""` and is dropped too -- diverging from bcftools for that one input shape specifically when read from a
+  file, even though direct construction still matches it. Not a new decision either way for this shape; a
+  disclosed, pre-existing consequence of the parser's own trim, not of this check.
 - **Parse / Public construction:** warn and **drop** the entire property
   (`VcfMetadata.Builder.addRawProperty()`, checked via `name.isEmpty()`) under a lenient `VcfContext`; throws
   `VcfFormatException` under a strict one -- same shape as Row 23's empty-value check, reached from the same

@@ -1399,13 +1399,21 @@ public final class VcfMetadata {
         // separated by an '=' character" -- a genuinely empty key (##=value) has no key at all, not just a
         // malformed one. VCFv4.3.tex line 39's general "Zero length fields are not allowed" applies the same
         // way it already does to the empty-value case just below. Deliberately scoped to a literally
-        // zero-length name, not a whitespace-only one: bcftools 1.23.1 tolerates "##  =x" (a whitespace-only
-        // key) and keeps it verbatim, but rejects "##=x" outright -- confirmed live
+        // zero-length name reaching THIS check, not a whitespace-only one: bcftools 1.23.1 tolerates "##  =x"
+        // (a whitespace-only key) and keeps it verbatim, but rejects "##=x" outright -- confirmed live
         // ([E::bcf_hdr_parse_line] Could not parse the header line, declaration absent from output) -- so only
         // the empty case has the bcftools evidence AGENTS.md's Decision Hierarchy requires for a stricter-
-        // than-parse-alone rule. Warn-and-drop, not throw-unconditionally, mirrors the empty-value branch just
-        // below: this is an originated-content route too (addRawProperty is the Builder's own public API), so
-        // under a strict context warnOrThrow still throws.
+        // than-parse-alone rule. That distinction is real when this method is called directly (e.g.
+        // addRawProperty("  ", "x")): "  ".isEmpty() is false, so it's preserved verbatim, matching bcftools.
+        // It does NOT hold on the real parse path: VcfParser.parseMetadata() extracts this method's own name
+        // argument via line.substring(2, idx).trim() (needed so a structured-type keyword tolerates
+        // surrounding whitespace, e.g. "##fileformat =VCFv4.3" -- see m_sawFileFormat's own field comment),
+        // so a whitespace-only key from a real file already arrives here as "" and IS dropped by this check
+        // too -- diverging from bcftools for that one input shape when read from a file, even though direct
+        // construction still matches it. See EMPTY_FIELD_HANDLING.md's Row 24 for the same caveat spelled out.
+        // Warn-and-drop, not throw-unconditionally, mirrors the empty-value branch just below: this is an
+        // originated-content route too (addRawProperty is the Builder's own public API), so under a strict
+        // context warnOrThrow still throws.
         warnOrThrow(m_context, "Metadata property name is empty and was dropped: {}", value);
         return this;
       }

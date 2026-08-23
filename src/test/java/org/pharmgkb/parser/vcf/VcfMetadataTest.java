@@ -352,10 +352,12 @@ public class VcfMetadataTest {
   }
 
   @Test
-  public void testBuilderAddRawPropertyDoesNotWarnForWhitespaceOnlyKey() {
-    // deliberately scoped to a literally empty key, not a whitespace-only one -- bcftools 1.23.1 tolerates
-    // and preserves a whitespace-only key verbatim, unlike a truly empty one (see EMPTY_FIELD_HANDLING.md's
-    // Row 24), so this is pre-existing, unaudited leniency, not newly decided either way by this fix
+  public void testBuilderAddRawPropertyDoesNotWarnForWhitespaceOnlyKeyViaDirectConstruction() {
+    // deliberately scoped to a literally empty key, not a whitespace-only one, reaching THIS method directly
+    // -- bcftools 1.23.1 tolerates and preserves a whitespace-only key verbatim, unlike a truly empty one
+    // (see EMPTY_FIELD_HANDLING.md's Row 24), so calling addRawProperty("  ", "x") directly matches bcftools.
+    // This does NOT hold for the same input read from a real file -- see
+    // testParsingAWhitespaceOnlyMetadataKeyDropsItUnlikeBcftools below for that divergence.
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -363,12 +365,47 @@ public class VcfMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addRawProperty("  ", "x").build();
+      VcfMetadata metadata =
+          new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addRawProperty("  ", "x").build();
       assertFalse(appender.anyMessageContains("Metadata property name is empty"));
+      assertTrue(metadata.getRawPropertyKeys().contains("  "));
     } finally {
       root.detachAppender(appender);
       appender.stop();
     }
+  }
+
+  @Test
+  public void testParsingAWhitespaceOnlyMetadataKeyDropsItUnlikeBcftools() throws java.io.IOException {
+    // regression test for a documentation/test inaccuracy the Phase 2 review's re-verification round found:
+    // unlike direct construction (see the test above), VcfParser.parseMetadata() trims a generic metadata
+    // line's key via line.substring(2, idx).trim() BEFORE it ever reaches addRawProperty's name.isEmpty()
+    // check -- so a whitespace-only key from a real file arrives already reduced to "" and IS dropped, unlike
+    // bcftools (which preserves "##  =x" verbatim, per EMPTY_FIELD_HANDLING.md's Row 24). This is a disclosed,
+    // pre-existing consequence of the parser's own trim (needed so "##fileformat =VCFv4.3" still resolves to
+    // the "fileformat" case), not a new decision -- see VcfMetadata.Builder.addRawProperty's own comment.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##  =somevalue\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    VcfMetadata metadata;
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new java.io.BufferedReader(new java.io.StringReader(vcf)))
+        .parseWith((md, record) -> {})
+        .build()) {
+      metadata = parser.parseMetadata();
+      assertTrue(appender.anyMessageContains("Metadata property name is empty"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertFalse(metadata.getRawPropertyKeys().contains("  "));
+    assertFalse(metadata.getRawPropertyKeys().contains(""));
   }
 
   @Test
