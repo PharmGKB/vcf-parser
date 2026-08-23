@@ -811,7 +811,7 @@ appendix:
 - UTF-8, and no byte order mark -- see the new UTF-8/BOM bullet at the top of "File and record structure"
   above.
 
-Two of these are unimplemented rules of the VCFv4.3 target, not merely gaps relative to a later version:
+Three of these are unimplemented rules of the VCFv4.3 target, not merely gaps relative to a later version:
 
 - A data-line INFO *key* is checked for whitespace and `;`/`=` but is not matched against
   `InternalUtils.INFO_PATTERN`, so a key like `1BAD` is accepted. No fixture in the 4.3 corpus demands this; it
@@ -819,9 +819,18 @@ Two of these are unimplemented rules of the VCFv4.3 target, not merely gaps rela
 - The wider C0 control-character range (VCFv4.3.tex line 81) is not scanned outside the specific
   tab/LF/CR/vertical-tab/form-feed checks named above, so a NUL or other C0 control elsewhere in a value
   survives undetected. No fixture in the 4.3 corpus demands this; it remains unimplemented.
+- An unrecognized structured metadata line (a `##KEY=<...>` line for a key none of the eight modeled types
+  use) is stored as one opaque raw string (`VcfMetadata.Builder.addRawProperty`) rather than tokenized as an
+  attribute list, so neither VCFv4.3.tex line 129's "the only default field for such lines is the required
+  ID field" nor line 121's per-type uniqueness rule is checked against it -- two identical `##FOO=<ID=x>`
+  lines are both kept, and `##FOO=<Number=1>` (no ID at all) parses silently. This is deliberate, not an
+  oversight: implementing it would mean partially attribute-list-tokenizing any unrecognized structured
+  line purely to extract an ID, new parsing machinery that cuts against the specific reason unknown lines
+  are kept opaque in the first place (a guaranteed lossless round trip with zero reinterpretation risk). No
+  fixture in the 4.3 corpus demands this; it remains unimplemented.
 
-Do not treat this re-framing as an implementation trigger for either gap -- neither has 4.3 fixture pressure
-and both stay unimplemented. (Formerly the second entry in this list, the general 32-bit Integer range check
+Do not treat this re-framing as an implementation trigger for any of these gaps -- none has 4.3 fixture
+pressure and all three stay unimplemented. (Formerly the second entry in this list, the general 32-bit Integer range check
 did have fixture pressure and has since been implemented and removed from this list -- see the general 32-bit
 range check bullet in "INFO/FORMAT/sample value content" above and `HTS_SPECS_BASELINE_STATUS.md`'s "INFO
 reserved/non-reserved Integer value outside the 32-bit signed range" entry.)

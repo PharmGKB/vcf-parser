@@ -56,6 +56,7 @@ before assuming it generalizes to a similar-looking case.
 | CHROM contiguity / POS ordering within a CHROM block | Warn, don't reject (neither tool rejects it) | ✅ |
 | Trailing blank line at EOF | Reject (matches bcftools, stricter than vcf_validator) | ✅ |
 | A data line whose CHROM begins with `#` | Accept as ordinary data (matches bcftools; VCF has no comment syntax) | ✅ |
+| POS beyond the 32-bit signed Integer range | Accept (matches bcftools; parsed as a `long`) | ✅ |
 | BOM-prefixed file / `+`-prefixed POS | Existing behavior already matches both tools | ✅ |
 | ALT breakend contig-ID shorthand (`AC<ctg1>GT`, `<ctg1><ctg2>`) | Left permissive; neither tool is decisive | ✅ (judgment call) |
 | Reserved structural variant code re-used as a subtype (`DUP:INV`) | Reject (deliberately stricter than bcftools) | ✅ |
@@ -927,6 +928,21 @@ disagreement traces back to an actual "comment" concept, so this isn't a genuine
 the spec's own character grammar already settles it. A genuinely malformed `#`-led line (a stray repeated
 `#CHROM` header, a lone `#`) is still rejected, just via the ordinary column-count/per-field checks that run
 on every line, not a `#`-specific one.
+
+### POS beyond the 32-bit signed Integer range
+
+`VCFv4.3.tex:100` types the general `Integer` VCF data type as "32-bit, signed"; POS's own field
+description (`VCFv4.3.tex:333`, "(Integer, Required)") inherits that domain by reference, not a POS-specific
+bound of its own. `VcfParser`/`VcfPosition` parse POS as a Java `long` and only reject a negative value
+(`VcfPosition.checkPosition`), so `POS=2147483648` (one past `Integer.MAX_VALUE`) parses silently -- a
+letter-of-the-spec deviation.
+
+**Decision:** accept, no code change. Confirmed live that bcftools 1.23.1 also accepts
+`POS=2147483648` silently (exit 0, preserved verbatim) -- htslib's own position type (`hts_pos_t`) is
+64-bit by design, so real-world tooling already normalizes to the more permissive reading this library's
+existing `long`-based parsing happens to match. vcf_validator 0.10.2 crashes on it (an `stoi` overflow, not
+a considered rejection), which is discounted as uninformative per `AGENTS.md`, not corroborating evidence
+either way.
 
 ### BOM-prefixed file / `+`-prefixed POS
 

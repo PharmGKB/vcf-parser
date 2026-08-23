@@ -1724,5 +1724,19 @@ class BcftoolsDependencyTest {
     assertTrue(result.output().lines().anyMatch(line -> line.startsWith("#1\t100")), result.output());
   }
 
+  @Test
+  void testPosBeyond32BitSignedRangeBcftoolsAcceptsSilently() throws IOException, InterruptedException {
+    // VCFv4.3.tex:100 types the general Integer VCF data type as "32-bit, signed"; POS's own field
+    // description (VCFv4.3.tex:333) inherits that domain by reference. This library parses POS as a Java
+    // long and only rejects a negative value -- a letter-of-the-spec deviation, but confirmed live that
+    // bcftools 1.23.1 (htslib's own position type is 64-bit by design) also accepts POS one past
+    // Integer.MAX_VALUE silently, exit 0, preserved verbatim.
+    String vcf = "##fileformat=VCFv4.3\n##contig=<ID=1,length=3000000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n1\t2147483648\t.\tA\tC\t.\t.\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().lines().anyMatch(line -> line.startsWith("1\t2147483648\t")), result.output());
+  }
+
   private record BcftoolsResult(int exitCode, String output) {}
 }

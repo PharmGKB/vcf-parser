@@ -459,3 +459,12 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
   bcftools 1.23.1 accepts a `#`-led CHROM value as ordinary data (exit 0). Must be re-checked on a bcftools
   upgrade: if a future bcftools started rejecting this shape, this library's own acceptance would need
   revisiting.
+
+### POS beyond the 32-bit signed Integer range
+- Test: `BcftoolsDependencyTest#testPosBeyond32BitSignedRangeBcftoolsAcceptsSilently`
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "POS beyond the 32-bit signed Integer range" entry. This library
+  parses POS as a Java `long` and only rejects a negative value -- a letter-of-the-spec deviation from
+  `VCFv4.3.tex:100`'s general "Integer (32-bit, signed)" data type -- but bcftools 1.23.1 (whose own
+  position type, `hts_pos_t`, is 64-bit by design) also accepts a POS one past `Integer.MAX_VALUE` silently.
+  Must be re-checked on a bcftools upgrade: if a future bcftools started rejecting an out-of-32-bit-range
+  POS, this library's acceptance would become a round-trip mismatch against real-world bcftools behavior.
