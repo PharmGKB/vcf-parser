@@ -41,6 +41,12 @@ public sealed class IdDescriptionMetadata extends IdMetadata permits InfoMetadat
     } else {
       putAndQuoteProperty(DESCRIPTION, description);
     }
+    if (label.equals("FILTER") && id != null) {
+      // Checked unquoted -- see ContigMetadata's typed constructor's identical comment for why (there is no
+      // stored property to read yet, so this unquotes the constructor parameter directly via
+      // InternalUtils.unquote rather than getPropertyUnquoted).
+      checkFilterIdAgainstColumnRules(InternalUtils.unquote(id));
+    }
   }
 
   IdDescriptionMetadata(VcfContext context, String label, Map<String, String> properties) {
@@ -94,6 +100,36 @@ public sealed class IdDescriptionMetadata extends IdMetadata permits InfoMetadat
     // after the default fields" -- so an unrecognized property here is not itself non-compliant and must not warn.
     // This class is also used for ##SAMPLE (not named in that sentence, but its own extra fields, e.g. Genomes and
     // Mixture, aren't modeled by this class either way, so the same leniency applies rather than warning about them.)
+    if (getLabel().equals("FILTER")) {
+      // getPropertyUnquoted: this check compares content, not the raw quoted encoding -- see AGENTS.md's
+      // "Unquoting before internal use" policy.
+      String id = getPropertyUnquoted(ID);
+      if (id != null) {
+        checkFilterIdAgainstColumnRules(id);
+      }
+    }
+  }
+
+  /**
+   * VCFv4.3.tex line 360 ("`0' is reserved and must not be used as a filter String.") and line 362
+   * ("(String, no whitespace or semicolons permitted, duplicate values not allowed.)" -- restated verbatim
+   * at VCFv4.4.tex lines 376/378 and VCFv4.5.tex lines 425/427) are enforced for the FILTER data-line
+   * COLUMN itself (VcfPosition's own FILTER checks), but were never applied to a {@code ##FILTER}
+   * declaration's own {@code ID} -- so a declared filter code that could never legally appear in a real
+   * record's FILTER column went unflagged at declaration time. Whitespace and comma are already covered
+   * by {@code IdMetadata}'s own shared checks (this class's superclass), which run before this method for
+   * every ID-bearing type, {@code ##FILTER} included -- this adds only the two rules those don't cover: the
+   * reserved value {@code "0"}, and the semicolon delimiter (the FILTER column's own list separator, so a
+   * semicolon inside one declared ID would be indistinguishable from two IDs when a record uses it).
+   * {@code unquotedId} is only ever non-null here, per both call sites' own guards.
+   */
+  private void checkFilterIdAgainstColumnRules(String unquotedId) {
+    if ("0".equals(unquotedId)) {
+      warnOrThrow("{} ID \"0\" is reserved and must not be used as a filter code", getLabel());
+    }
+    if (unquotedId.contains(";")) {
+      warnOrThrow("{} ID \"{}\" must not contain a semicolon", getLabel(), unquotedId);
+    }
   }
 
   /**

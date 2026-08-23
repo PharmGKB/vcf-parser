@@ -322,4 +322,57 @@ public class IdDescriptionMetadataTest {
     assertTrue(sink.toString().contains("should be quoted"));
   }
 
+  @Test
+  public void testFilterIdZeroWarnsAsReserved() {
+    // regression test: VCFv4.3.tex:360, "'0' is reserved and must not be used as a filter String" -- already
+    // enforced for the FILTER data-line column (VcfPosition), but never for a ##FILTER declaration's own ID,
+    // so a declaration a real record's FILTER column could never legally use went unflagged.
+    StringWriter typedSink = new StringWriter();
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(typedSink)), "FILTER", "0", "d");
+    assertTrue(typedSink.toString().contains("ID \"0\" is reserved"));
+
+    Map<String, String> props = InternalUtils.extractProperties(
+        new String[] {"ID=0", "Description=\"d\""}, VcfWarnings.DEFAULT);
+    StringWriter mapSink = new StringWriter();
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(mapSink)), "FILTER", props);
+    assertTrue(mapSink.toString().contains("ID \"0\" is reserved"));
+  }
+
+  @Test
+  public void testFilterIdWithSemicolonWarns() {
+    // regression test: VCFv4.3.tex:362, "String, no whitespace or semicolons permitted" for the FILTER
+    // column -- a semicolon inside one declared FILTER ID would be indistinguishable from two IDs when a
+    // record actually uses it (FILTER's own list separator is ';')
+    StringWriter typedSink = new StringWriter();
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(typedSink)), "FILTER", "a;b", "d");
+    assertTrue(typedSink.toString().contains("must not contain a semicolon"));
+
+    Map<String, String> props = InternalUtils.extractProperties(
+        new String[] {"ID=a;b", "Description=\"d\""}, VcfWarnings.DEFAULT);
+    StringWriter mapSink = new StringWriter();
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(mapSink)), "FILTER", props);
+    assertTrue(mapSink.toString().contains("must not contain a semicolon"));
+  }
+
+  @Test
+  public void testStrictConstructorThrowsForFilterIdZeroOrSemicolon() {
+    assertThrows(VcfFormatException.class,
+        () -> new IdDescriptionMetadata(STRICT_CONTEXT, "FILTER", "0", "d"));
+    assertThrows(VcfFormatException.class,
+        () -> new IdDescriptionMetadata(STRICT_CONTEXT, "FILTER", "a;b", "d"));
+  }
+
+  @Test
+  public void testAltAndSampleDoNotApplyFilterColumnRulesToTheirOwnId() {
+    // regression guard: the new FILTER-specific checks must not leak to ALT/SAMPLE, which share this class
+    // but have no such reserved-value/semicolon rule of their own for their ID
+    StringWriter altSink = new StringWriter();
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(altSink)), "ALT", "0", "d");
+    assertFalse(altSink.toString().contains("is reserved"));
+
+    StringWriter sampleSink = new StringWriter();
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(sampleSink)), "SAMPLE", "a;b", "d");
+    assertFalse(sampleSink.toString().contains("must not contain a semicolon"));
+  }
+
 }
