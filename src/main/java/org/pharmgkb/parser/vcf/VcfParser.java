@@ -48,11 +48,6 @@ public class VcfParser implements Closeable {
   // the mandatory fixed fields, in order; in the column-header line CHROM is written as "#CHROM"
   private static final List<String> FIXED_FIELD_NAMES =
       List.of("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO");
-  // Caps the "Not a VCF file: fileformat is ..." exception message below, not readPhysicalLine() itself --
-  // see that message's own comment for why (a CR-only file has no line separator at all, so the "line" is
-  // the whole remaining file). No legitimate ##fileformat value is remotely this long, so this bound is
-  // never reached by real, even malformed-but-ordinary, content.
-  private static final int MAX_FILE_FORMAT_MESSAGE_LENGTH = 100;
 
   private final boolean m_rsidsOnly;
   private final BufferedReader m_reader;
@@ -157,19 +152,18 @@ public class VcfParser implements Closeable {
     // parseMetadataLine path below, so setFileFormat runs for it exactly as it does today.
     String declaredFileFormat = first.substring("##fileformat=".length()).trim();
     if (!InternalUtils.FILE_FORMAT_PATTERN.matcher(declaredFileFormat).matches()) {
-      // Truncated, not interpolated verbatim: readPhysicalLine() (per its own Javadoc) only splits on LF or
-      // CRLF, so a CR-only ("classic Mac") file has no line separator at all and this "line" is the entire
-      // remaining file content -- found by the Phase 2 review's re-verification round, which measured a
-      // 45,160-char CR-only file producing a 45,186-char exception message, scaling linearly with file size
-      // (a multi-GB CR-only file would heap-exhaust building this message string instead of failing cleanly).
-      // Rejecting such a file is correct (matches htslib); this bounds only the failure mode. A message this
-      // long is never useful for diagnosis regardless of cause, so the cap is deliberately not tied to any
-      // legitimate fileformat-value length.
-      String truncated = declaredFileFormat.length() > MAX_FILE_FORMAT_MESSAGE_LENGTH
-          ? declaredFileFormat.substring(0, MAX_FILE_FORMAT_MESSAGE_LENGTH) + "... (truncated, " +
-              declaredFileFormat.length() + " chars total)"
-          : declaredFileFormat;
-      throw new VcfFormatException("Not a VCF file: fileformat is " + truncated, m_lineNumber);
+      // Truncated and escaped, not interpolated verbatim: readPhysicalLine() (per its own Javadoc) only
+      // splits on LF or CRLF, so a CR-only ("classic Mac") file has no line separator at all and this "line"
+      // is the entire remaining file content -- found by the Phase 2 review's re-verification round, which
+      // measured a 45,160-char CR-only file producing a 45,186-char exception message, scaling linearly with
+      // file size (a multi-GB CR-only file would heap-exhaust building this message string instead of
+      // failing cleanly). Rejecting such a file is correct (matches htslib); this bounds only the failure
+      // mode. A message this long is never useful for diagnosis regardless of cause, so the cap is
+      // deliberately not tied to any legitimate fileformat-value length. Escaping (added by the third
+      // re-verification round, alongside three sibling sites that had the same gap) protects against the
+      // same embedded-CR case even within the first 100 characters.
+      throw new VcfFormatException("Not a VCF file: fileformat is " +
+          InternalUtils.truncateAndEscapeForMessage(declaredFileFormat), m_lineNumber);
     }
     // lenient: a parsed file's non-structural content violations warn and recover (AGENTS.md's Parser
     // Validation Policy), rather than aborting the parse
@@ -357,20 +351,6 @@ public class VcfParser implements Closeable {
       }
       return m_lineBuilder.toString();
     }
-  }
-
-  /**
-   * Escapes CR/LF/tab as their {@code \r}/{@code \n}/{@code \t} literal two-character sequences, for embedding
-   * untrusted field content in an exception message. Newly needed once {@link #readPhysicalLine()} stopped
-   * treating a lone CR as a line separator (it's preserved as ordinary content instead, per that method's own
-   * Javadoc) -- a {@code #CHROM} header column containing an embedded CR could otherwise survive verbatim into
-   * {@link #parseColumnInfo}'s "Header column ... must be ... but was ..." message and render as if it
-   * overwrote the text before it (a bare CR moves a terminal's cursor to the start of the line), making an
-   * already-malformed-input error look self-contradictory on top of that. Found by the Phase 2 review's
-   * re-verification round.
-   */
-  private static String escapeControlCharsForMessage(String value) {
-    return value.replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t");
   }
 
   private void doParse() throws IOException {
@@ -693,7 +673,11 @@ public class VcfParser implements Closeable {
 
     int idx = line.indexOf("=");
     if (idx < 0) {
-      throw new VcfFormatException("Metadata line is missing '=': " + line);
+      // Truncated and escaped, not interpolated verbatim -- see readPhysicalLine()'s own Javadoc and
+      // truncateAndEscapeForMessage's own comment: a CR-only file has no LF at all, so a metadata line with
+      // no "=" could be the entire remaining file content. Found by the Phase 2 review's third
+      // re-verification round, the same shape as the "Not a VCF file" message above.
+      throw new VcfFormatException("Metadata line is missing '=': " + InternalUtils.truncateAndEscapeForMessage(line));
     }
     String propName = line.substring(2, idx).trim();
     String propValue = line.substring(idx + 1).trim();
@@ -907,13 +891,16 @@ public class VcfParser implements Closeable {
       String expected = i == 0 ? "#" + FIXED_FIELD_NAMES.get(0) : FIXED_FIELD_NAMES.get(i);
       if (!cols.get(i).equals(expected)) {
         throw new VcfFormatException("Header column " + (i + 1) + " must be '" + expected +
-            "' but was '" + escapeControlCharsForMessage(cols.get(i)) + "'", m_lineNumber);
+            "' but was '" + InternalUtils.truncateAndEscapeForMessage(cols.get(i)) + "'", m_lineNumber);
       }
     }
     if (cols.size() > 8) {
       if (!cols.get(8).equals("FORMAT")) {
+        // truncated and escaped -- see truncateAndEscapeForMessage's own comment; found missing here by the
+        // Phase 2 review's third re-verification round, the same gap as the FIXED_FIELD_NAMES loop above
+        // (which was already fixed) and the duplicate-sample-name message below
         throw new VcfFormatException("Header column 9 must be 'FORMAT' when sample columns are present but was '" +
-            cols.get(8) + "'", m_lineNumber);
+            InternalUtils.truncateAndEscapeForMessage(cols.get(8)) + "'", m_lineNumber);
       }
       if (cols.size() == 9) {
         // FORMAT only has meaning relative to sample columns; confirmed bcftools 1.23.1 hard-errors on this
@@ -931,7 +918,9 @@ public class VcfParser implements Closeable {
             m_lineNumber);
       }
       if (!sampleNames.add(cols.get(i))) {
-        throw new VcfFormatException("Duplicate sample name '" + cols.get(i) + "' in header", m_lineNumber);
+        // truncated and escaped -- see truncateAndEscapeForMessage's own comment
+        throw new VcfFormatException("Duplicate sample name '" + InternalUtils.truncateAndEscapeForMessage(cols.get(i)) +
+            "' in header", m_lineNumber);
       }
     }
     mdBuilder.setColumns(cols);

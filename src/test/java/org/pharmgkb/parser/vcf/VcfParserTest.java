@@ -630,6 +630,43 @@ public class VcfParserTest {
   }
 
   @Test
+  void testFormatColumnMismatchMessageEscapesEmbeddedCarriageReturn() throws IOException {
+    // regression test found by the Phase 2 review's third re-verification round: the FIXED_FIELD_NAMES
+    // column-mismatch message (tested above) was already escaped, but the sibling "Header column 9 must be
+    // 'FORMAT'" message right below it in the same method was not.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFOR\rMAT\tS1\n";
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
+    assertTrue(ex.getMessage().contains("but was 'FOR\\rMAT'"), "Message was: " + ex.getMessage());
+    assertFalse(ex.getMessage().contains("but was 'FOR\rMAT'"));
+  }
+
+  @Test
+  void testDuplicateSampleNameMessageEscapesEmbeddedCarriageReturn() throws IOException {
+    // same gap as the two tests above, for the third message in parseColumnInfo: duplicate sample names
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\r1\tS\r1\n";
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
+    assertTrue(ex.getMessage().contains("Duplicate sample name 'S\\r1'"), "Message was: " + ex.getMessage());
+    assertFalse(ex.getMessage().contains("Duplicate sample name 'S\r1'"));
+  }
+
+  @Test
+  void testMetadataLineMissingEqualsMessageIsTruncatedNotUnbounded() throws IOException {
+    // regression test found by the Phase 2 review's third re-verification round: the same CR-only-file
+    // unbounded-message shape testCrOnlyFileExceptionMessageIsTruncatedNotUnbounded already fixed for the
+    // "Not a VCF file" message applies equally here -- a metadata line with no "=" at all can, for a CR-only
+    // file, be the entire remaining file content.
+    String hugeContent = "x".repeat(50_000);
+    String vcf = "##fileformat=VCFv4.2\n##" + hugeContent;
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
+    assertTrue(ex.getMessage().contains("Metadata line is missing '='"));
+    assertTrue(ex.getMessage().contains("truncated"));
+    assertTrue(ex.getMessage().length() < 500, "Exception message was not bounded: " + ex.getMessage().length() +
+        " chars");
+  }
+
+  @Test
   void testEmbeddedCarriageReturnInQualIsRejectedAtParseTimeNotWriteTime() throws IOException {
     // regression test found by the Phase 2 review's third re-verification round: since readPhysicalLine()
     // stopped treating a lone CR as a line separator (d451d51), an embedded CR in QUAL's raw text used to

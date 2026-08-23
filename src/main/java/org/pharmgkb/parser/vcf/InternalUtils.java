@@ -705,8 +705,34 @@ public class InternalUtils {
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static void checkNoLineTerminator(String key, @Nullable String value) {
     if (key.contains("\n") || key.contains("\r") || (value != null && (value.contains("\n") || value.contains("\r")))) {
-      throw new VcfFormatException("Property [[[" + key + "=" + value + "]]] contains a line terminator");
+      // truncated and escaped, not embedded verbatim: since readPhysicalLine() stopped treating a lone CR as
+      // a line separator, a CR-only file (or any file with no LF at all before EOF) makes one "line" the
+      // entire remaining file content, and that content can reach here as `key` or `value` -- found by the
+      // Phase 2 review's third re-verification round, the same shape f5f713e fixed for the "Not a VCF file"
+      // message specifically. See truncateAndEscapeForMessage's own comment.
+      throw new VcfFormatException("Property [[[" + truncateAndEscapeForMessage(key) + "=" +
+          truncateAndEscapeForMessage(value) + "]]] contains a line terminator");
     }
+  }
+
+  // Caps how much of an untrusted, potentially-unbounded string (see this method's own callers' comments for
+  // why a "line" isn't actually bounded by anything resembling a real VCF line's length) reaches an exception
+  // message, and escapes any embedded CR/LF/tab as literal \r/\n/\t so the message can't itself contain a raw
+  // control character that would visually render as if it overwrote preceding text. No legitimate field
+  // value is remotely this long, so this bound is never reached by real, even malformed-but-ordinary,
+  // content. Escapes BEFORE truncating (not after), so the final message length stays bounded regardless of
+  // how much a run of control characters would otherwise expand under escaping.
+  static final int MAX_MESSAGE_VALUE_LENGTH = 100;
+
+  @Nullable
+  static String truncateAndEscapeForMessage(@Nullable String value) {
+    if (value == null) {
+      return null;
+    }
+    String escaped = value.replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t");
+    return escaped.length() > MAX_MESSAGE_VALUE_LENGTH
+        ? escaped.substring(0, MAX_MESSAGE_VALUE_LENGTH) + "... (truncated, " + escaped.length() + " chars total)"
+        : escaped;
   }
 
   private static final Set<String> RESERVED_METADATA_KEYS =

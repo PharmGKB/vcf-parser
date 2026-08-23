@@ -357,6 +357,43 @@ public class InternalUtilsTest {
   }
 
   @Test
+  public void testCheckNoLineTerminatorMessageIsTruncatedAndEscaped() {
+    // regression test found by the Phase 2 review's third re-verification round: checkNoLineTerminator's own
+    // "Property [[[...]]]" message previously embedded key/value verbatim and unbounded -- reachable with an
+    // arbitrarily large value once VcfParser.readPhysicalLine() stopped treating a lone CR as a line
+    // separator (a CR-only file's "line" can be the entire remaining file content).
+    String hugeValue = "x".repeat(50_000) + "\r" + "y".repeat(50_000);
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> InternalUtils.checkNoLineTerminator("key", hugeValue));
+    assertTrue(ex.getMessage().contains("contains a line terminator"));
+    assertTrue(ex.getMessage().contains("truncated"));
+    assertTrue(ex.getMessage().length() < 500, "Exception message was not bounded: " + ex.getMessage().length() +
+        " chars");
+  }
+
+  @Test
+  public void testTruncateAndEscapeForMessage() {
+    assertNull(InternalUtils.truncateAndEscapeForMessage(null));
+    assertEquals("", InternalUtils.truncateAndEscapeForMessage(""));
+    assertEquals("plain", InternalUtils.truncateAndEscapeForMessage("plain"));
+    assertEquals("a\\rb\\nc\\td", InternalUtils.truncateAndEscapeForMessage("a\rb\nc\td"));
+    // exactly at the boundary: not truncated
+    String atLimit = "x".repeat(InternalUtils.MAX_MESSAGE_VALUE_LENGTH);
+    assertEquals(atLimit, InternalUtils.truncateAndEscapeForMessage(atLimit));
+    // one over the boundary: truncated, with the escaped (not raw) length reported
+    String overLimit = "x".repeat(InternalUtils.MAX_MESSAGE_VALUE_LENGTH + 1);
+    String result = InternalUtils.truncateAndEscapeForMessage(overLimit);
+    assertTrue(result.startsWith("x".repeat(InternalUtils.MAX_MESSAGE_VALUE_LENGTH) + "... (truncated, "));
+    assertTrue(result.endsWith(" chars total)"));
+    // escaping happens before truncation, so a run of control characters near the boundary is still fully
+    // escaped, and the reported length reflects the escaped (longer) string, not the raw one
+    String controlHeavy = "\r".repeat(InternalUtils.MAX_MESSAGE_VALUE_LENGTH);
+    String controlResult = InternalUtils.truncateAndEscapeForMessage(controlHeavy);
+    assertTrue(controlResult.contains("(truncated, " + (InternalUtils.MAX_MESSAGE_VALUE_LENGTH * 2) + " chars total)"),
+        controlResult);
+  }
+
+  @Test
   public void testConvertPropertyCharacterReturnsCharacterNotString() {
     // convertElement's Character.class branch previously returned the raw String; type erasure let that past
     // convertProperty() itself, but it then threw ClassCastException at the caller's assignment site below
