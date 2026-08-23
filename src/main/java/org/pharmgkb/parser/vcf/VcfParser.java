@@ -346,12 +346,15 @@ public class VcfParser implements Closeable {
       return false;
     }
     m_lineNumber++;
-    if (line.startsWith("#")) {
-      // the VCF spec has no comment syntax: "#" is significant only for "##" metadata lines and the single column
-      // header line, both of which are only valid before the first data line (and are already consumed by then)
-      throw new VcfFormatException("Unexpected line starting with '#' after the column header; VCF has no comment "
-          + "syntax", m_lineNumber);
-    }
+    // No special-case rejection for a line starting with '#' here: VCF has no comment syntax at all (grepped
+    // VCFv4.3/4.4/4.5.tex -- zero occurrences of "comment"), and the spec's own contig-name grammar
+    // (VCFv4.3.tex:262) explicitly permits '#' as an ordinary CHROM character, so a data line whose CHROM
+    // happens to start with '#' is spec-legal, not a comment. A prior version of this method rejected any
+    // such line outright, which this library's own reasoning ("#" is significant only for "##"/"#CHROM"
+    // lines) invented rather than cited -- confirmed live (bcftools 1.23.1) that it accepts a "#"-led CHROM
+    // value as an ordinary data line, exit 0. Nothing else is needed: a genuinely malformed line (a stray
+    // repeated "#CHROM" header, a lone "#") still gets rejected below by the ordinary column-count/per-field
+    // checks, just via a generic message instead of this specific one.
 
     String chromosome;
     long position;

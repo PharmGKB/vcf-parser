@@ -163,8 +163,15 @@ public class VcfParserTest {
 
 
   @Test
-  void testCommentAfterHeaderRejected() throws IOException {
-    // VCF has no comment syntax; a "#"-prefixed line after the column header must be rejected, not silently skipped
+  void testMalformedHashLedTrailingLineStillRejected() throws IOException {
+    // regression guard, not a "comment syntax" test: this library used to have a dedicated check rejecting
+    // ANY line starting with '#' after the column header, reasoning that VCF has no comment syntax -- but
+    // the spec never actually says a data line can't start with '#' (grepped VCFv4.3/4.4/4.5.tex: zero
+    // occurrences of "comment"), and its own contig-name grammar permits '#' as an ordinary CHROM character
+    // (VCFv4.3.tex:262) -- confirmed live that bcftools 1.23.1 accepts a "#"-led CHROM value as an ordinary
+    // data line. That dedicated check was removed; this fixture's trailing "# comment" line (no tabs at all)
+    // is still correctly rejected, just via the ordinary column-count check now, not a "#"-specific one --
+    // see testHashLedChromosomeIsAcceptedAsOrdinaryData below for the actual positive case this fix enables.
     try (BufferedReader reader = Files.newBufferedReader(PathUtils.getPathToResource("/has_comment.vcf"));
          VcfParser parser = new VcfParser.Builder()
              .fromReader(reader)
@@ -182,6 +189,27 @@ public class VcfParserTest {
              .build()) {
       assertThrows(VcfFormatException.class, parser::parse);
     }
+  }
+
+  @Test
+  void testHashLedChromosomeIsAcceptedAsOrdinaryData() throws IOException {
+    // the positive case testMalformedHashLedTrailingLineStillRejected's own comment refers to: a
+    // well-formed data line whose CHROM happens to start with '#' is spec-legal (VCFv4.3.tex:262's contig-
+    // name grammar includes '#'), matching bcftools 1.23.1's own acceptance, and must no longer be rejected
+    // outright the way this library's now-removed dedicated "#" check used to.
+    String vcf = "##fileformat=VCFv4.3\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "#1\t100\t.\tA\tC\t.\t.\t.\n";
+    List<VcfPosition> positions = new ArrayList<>();
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, record) -> positions.add(record.getPosition()))
+             .build()) {
+      parser.parse();
+    }
+    assertEquals(1, positions.size());
+    assertEquals("#1", positions.get(0).getChromosome());
   }
 
   @Test

@@ -1710,5 +1710,19 @@ class BcftoolsDependencyTest {
         result.output());
   }
 
+  @Test
+  void testHashLedChromosomeBcftoolsAcceptsAsOrdinaryData() throws IOException, InterruptedException {
+    // VcfParser used to reject any line starting with '#' after the column header outright ("VCF has no
+    // comment syntax"); VCFv4.3.tex:262's contig-name grammar already includes '#' as a legal CHROM
+    // character, and this library has never had any other route a '#'-led post-header line could belong to
+    // -- confirmed live that bcftools 1.23.1 accepts a data line whose CHROM begins with '#' as ordinary
+    // data, exit 0.
+    String vcf = "##fileformat=VCFv4.3\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "#1\t100\t.\tA\tC\t.\t.\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().lines().anyMatch(line -> line.startsWith("#1\t100")), result.output());
+  }
+
   private record BcftoolsResult(int exitCode, String output) {}
 }

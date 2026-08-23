@@ -450,3 +450,12 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
   ID/ALT/INFO rows document pre-existing, already-correct `VcfPosition` construction-time rejections
   (`checkIds()`, `checkAltBases()`, `checkInfoEntries()`) that had no bcftools evidence at all before this
   commit.
+
+### A data line whose CHROM begins with `#`
+- Test: `BcftoolsDependencyTest#testHashLedChromosomeBcftoolsAcceptsAsOrdinaryData`
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "A data line whose CHROM begins with `#`" entry. `VcfParser` used to
+  reject any post-header line starting with `#` outright; removed, since VCF has no comment syntax at all
+  and the spec's own contig-name grammar (`VCFv4.3.tex:262`) permits `#` as an ordinary CHROM character.
+  bcftools 1.23.1 accepts a `#`-led CHROM value as ordinary data (exit 0). Must be re-checked on a bcftools
+  upgrade: if a future bcftools started rejecting this shape, this library's own acceptance would need
+  revisiting.

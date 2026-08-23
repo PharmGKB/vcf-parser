@@ -55,6 +55,7 @@ before assuming it generalizes to a similar-looking case.
 | Empty sample name in `#CHROM` header | Reject (both tools agree) | ✅ |
 | CHROM contiguity / POS ordering within a CHROM block | Warn, don't reject (neither tool rejects it) | ✅ |
 | Trailing blank line at EOF | Reject (matches bcftools, stricter than vcf_validator) | ✅ |
+| A data line whose CHROM begins with `#` | Accept as ordinary data (matches bcftools; VCF has no comment syntax) | ✅ |
 | BOM-prefixed file / `+`-prefixed POS | Existing behavior already matches both tools | ✅ |
 | ALT breakend contig-ID shorthand (`AC<ctg1>GT`, `<ctg1><ctg2>`) | Left permissive; neither tool is decisive | ✅ (judgment call) |
 | Reserved structural variant code re-used as a subtype (`DUP:INV`) | Reject (deliberately stricter than bcftools) | ✅ |
@@ -905,6 +906,27 @@ live that bcftools **also hard-errors** on this input (exit code 8, "Invalid con
 
 **Decision:** keep the rejection — it's the bcftools-consistent choice per the tie-breaker hierarchy, not an
 unwarranted stricter-than-necessary reading of vcf_validator's more lenient verdict.
+
+### A data line whose CHROM begins with `#`
+
+`VcfParser.parseNextLine` used to reject any line starting with `#` after the column header outright, with
+the message "VCF has no comment syntax." That reasoning is correct as far as it goes -- no VCF version's
+`.tex` ever uses the word "comment" -- but the conclusion drawn from it (that a `#`-led line must therefore
+be rejected) was never actually grounded in spec text: VCFv4.3.tex's own contig-name grammar
+(`VCFv4.3.tex:262`, unchanged through 4.4/4.5) explicitly includes `#` as a legal character in a `CHROM`
+value: `[0-9A-Za-z!#$%&+./:;?@^_|~-][0-9A-Za-z!#$%&*+./:;=?@^_|~-]*`. Since VCF has no comment concept at
+all, there is no third category a `#`-led line could belong to that isn't just an ordinary (possibly
+malformed) data line.
+
+**Decision:** removed the dedicated rejection. Confirmed live that bcftools 1.23.1 accepts a data line
+`#1\t100\t.\tA\tC\t.\t.\t.` outright (exit 0, `CHROM=#1` preserved verbatim, only warning that `#1` isn't a
+declared contig -- unrelated). vcf_validator 0.10.2 instead misparses the same line as still being inside
+the header section ("Error in header section"), which is disqualified for the same reason `AGENTS.md`
+already discounts a black-box verdict that doesn't correspond to any cited rule -- neither tool's
+disagreement traces back to an actual "comment" concept, so this isn't a genuine tie for bcftools to break;
+the spec's own character grammar already settles it. A genuinely malformed `#`-led line (a stray repeated
+`#CHROM` header, a lone `#`) is still rejected, just via the ordinary column-count/per-field checks that run
+on every line, not a `#`-specific one.
 
 ### BOM-prefixed file / `+`-prefixed POS
 

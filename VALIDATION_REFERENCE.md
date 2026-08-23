@@ -29,8 +29,14 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   `VcfParser.Builder.fromReader(BufferedReader)` takes an already-decoded character stream, so the charset, and
   whether malformed input is reported or silently replaced with U+FFFD, are entirely the caller's to choose;
   this library cannot observe or enforce it on that route.
-- A missing, duplicate, or non-first `##fileformat`; a file format outside VCF 4.x; any line other than a `##`
-  metadata line before the `#CHROM` header; or a `#`-prefixed line after it (VCF has no comment syntax).
+- A missing, duplicate, or non-first `##fileformat`; a file format outside VCF 4.x; or any line other than a
+  `##` metadata line before the `#CHROM` header. A line starting with `#` **after** the header is no longer
+  specially rejected: VCF has no comment syntax at all (no version's `.tex` uses the word "comment"), and the
+  spec's own contig-name grammar permits `#` as an ordinary CHROM character (VCFv4.3.tex:262) -- confirmed
+  live that bcftools 1.23.1 accepts a `#`-led CHROM value as an ordinary data line. Such a line is now parsed
+  as ordinary data and rejected only if it's actually malformed by the usual column-count/per-field checks
+  below, the same as any other line -- see `VCF_SPEC_AMBIGUITIES.md`'s "A data line whose CHROM begins with
+  `#`" entry.
 - A structured metadata declaration (`##INFO`, `##FORMAT`, `##contig`, `##FILTER`, `##ALT`, `##SAMPLE`,
   `##PEDIGREE`) whose value is not wrapped in angle brackets (`<...>`).
 - A `##` metadata line with no `=` at all (e.g. a bare `##sometext` or `##INFO` with no `=`) -- distinct from the
