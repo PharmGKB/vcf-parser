@@ -122,6 +122,14 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   also throws here, for the same `isLenient()`-aware reason as every other reserved/non-reserved typed read's
   empty-value substitution below -- `getGenotype` reads `GT` through `getProperty(ReservedFormatProperty)`,
   which shares that dispatch; under a lenient `VcfContext` an empty `GT` still returns `null`, unchanged.
+- A physical line is split only on LF or CR+LF (`VcfParser.readPhysicalLine`); a lone CR not immediately
+  followed by LF is never treated as a line separator and is instead preserved as ordinary content within
+  whatever line it appears on -- VCFv4.3.tex line 82, "Line separators must be CR+LF or LF and they are
+  allowed only as line separators at end of line," names only those two forms. See
+  `VCF_SPEC_AMBIGUITIES.md`'s "A lone CR is not a line separator" entry for the bcftools-measured record-
+  count divergence this fixed. A lone CR preserved this way can still reach the line-terminator-in-value
+  bullet just below (e.g. inside a metadata value), which rejects it there as ordinary embedded content --
+  this bullet is about how the physical line is split in the first place, not a separate leniency.
 - A key or value set through `BaseMetadata`'s, `VcfSample`'s, or `VcfMetadata`'s mutators (e.g. a `Description`, a
   sample's `GT` value, or an `##assembly` line) containing a line terminator. VCFv4.3.tex line 81 ("non-printable
   characters U+0000--U+0008, U+000B--U+000C, U+000E--U+001F are disallowed") and line 82 ("Line separators must

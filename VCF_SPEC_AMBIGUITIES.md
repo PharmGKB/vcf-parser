@@ -56,6 +56,7 @@ before assuming it generalizes to a similar-looking case.
 | FORMAT declared but zero sample columns | Reject (both tools agree) | ✅ |
 | Empty sample name in `#CHROM` header | Reject (both tools agree) | ✅ |
 | CHROM contiguity / POS ordering within a CHROM block | Warn, don't reject (neither tool rejects it) | ✅ |
+| A lone CR is not a line separator | Split physical lines only on LF/CR+LF (matches bcftools) | ✅ |
 | Trailing blank line at EOF | Reject (matches bcftools, stricter than vcf_validator) | ✅ |
 | A data line whose CHROM begins with `#` | Accept as ordinary data (matches bcftools; VCF has no comment syntax) | ✅ |
 | POS beyond the 32-bit signed Integer range | Accept (matches bcftools; parsed as a `long`) | ✅ |
@@ -946,6 +947,22 @@ vcf_validator treats a violation of either as rejection-worthy.
 **Decision:** warn, don't throw — this doesn't cross this library's structural floor, and no reference tool
 rejects it either. Implemented in `VcfParser.checkPositionOrdering`.
 
+### A lone CR is not a line separator
+
+`VcfParser` used to read physical lines via `BufferedReader.readLine()`, whose own contract treats a bare CR
+(not immediately followed by LF) as a line terminator too. VCFv4.3.tex line 82 ("Line separators must be
+CR+LF or LF and they are allowed only as line separators at end of line") names only those two forms --
+`readLine()`'s extra leniency silently split one physical (and semantically single) line into two whenever a
+bare CR appeared anywhere in the content, fabricating a metadata line or data record that was never in the
+file. Confirmed live that this disagreed with bcftools 1.23.1 on the resulting record count for exactly this
+input: bcftools treats the bare CR as ordinary content (one record); this library previously produced two.
+
+**Decision:** match bcftools. `VcfParser.readPhysicalLine()` replaced the `readLine()`-based splitting with
+one that recognizes only LF and CR+LF as separators, preserving a lone CR as ordinary content within its
+line -- see `VALIDATION_REFERENCE.md`'s own bullet on this for how such an embedded CR can still be rejected
+downstream (e.g. by the line-terminator-in-value check) once it's no longer silently fabricating record
+boundaries.
+
 ### Trailing blank line at EOF
 
 `vcf-parser` rejects a trailing blank line as "Empty line"; vcf_validator reports the file valid. Confirmed
@@ -1045,6 +1062,14 @@ about the reserved-name collision either way. Unlike the CHROM printable-ASCII-r
 bcftools' own warning *is* about that same rule, settling the throw-vs-warn choice directly), this is not a
 case bcftools' behavior resolves -- its silence here is on an unrelated question, and per `AGENTS.md`,
 silence is weak evidence, not license to infer leniency.
+
+**The sibling `##contig` declaration-ID check this entry extends to CHROM was never itself measured against
+either tool** (only cited to `VCFv4.3.tex:266`) -- closing that gap here too: `##contig=<ID=DEL,length=1000>`
+is accepted silently by both bcftools 1.23.1 (exit 0, declaration re-emitted unchanged) and vcf_validator
+0.10.2 ("the input file is valid," no complaint about the `contig` declaration), confirmed live. This
+library's `ContigMetadata` check is deliberately stricter than both tools for this rule, the same way several
+other decisions in this file are (e.g. "Reserved structural variant code re-used as a subtype" above) --
+recorded as a measured divergence, not merely an unconsulted spec citation.
 
 **Decision:** warn (lenient) / throw (strict), matching `ContigMetadata`'s existing `warnOrThrow` shape for
 the identical spec sentence, for sibling consistency between the two enforcements of the same rule -- not a

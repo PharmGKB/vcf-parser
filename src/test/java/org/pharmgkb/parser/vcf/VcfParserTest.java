@@ -600,6 +600,36 @@ public class VcfParserTest {
   }
 
   @Test
+  void testCrOnlyFileExceptionMessageIsTruncatedNotUnbounded() throws IOException {
+    // regression test found by the Phase 2 review's re-verification round: readPhysicalLine() only splits on
+    // LF or CRLF (per its own Javadoc), so a CR-only ("classic Mac") file has no line separator at all -- the
+    // entire file becomes one "line", which used to be interpolated verbatim into the "Not a VCF file"
+    // exception message. Rejecting such a file is correct (matches htslib); a message that scales linearly
+    // with file size is not -- this confirms the message is bounded regardless of how large the file is.
+    String hugeCrOnlyContent = "x".repeat(50_000);
+    String vcf = "##fileformat=VCFv4.2\r" + hugeCrOnlyContent;
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
+    assertTrue(ex.getMessage().contains("Not a VCF file: fileformat is"));
+    assertTrue(ex.getMessage().contains("truncated"));
+    assertTrue(ex.getMessage().length() < 500, "Exception message was not bounded: " + ex.getMessage().length() +
+        " chars");
+  }
+
+  @Test
+  void testChromColumnMismatchMessageEscapesEmbeddedCarriageReturn() throws IOException {
+    // regression test found by the Phase 2 review's re-verification round: since readPhysicalLine() stopped
+    // treating a lone CR as a line separator (see testBareCarriageReturnInMetadataLineIsNotTreatedAsLineSeparator
+    // above), a #CHROM header column containing an embedded CR is preserved verbatim and can reach
+    // parseColumnInfo's own mismatch message -- which must escape it (as the literal two characters "\r"),
+    // not embed a real carriage return that would visually render as if it overwrote preceding text.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHR\rOM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
+    assertTrue(ex.getMessage().contains("but was '#CHR\\rOM'"), "Message was: " + ex.getMessage());
+    assertFalse(ex.getMessage().contains("but was '#CHR\rOM'"));
+  }
+
+  @Test
   void testFreeformMetaLineBeforeV4_3IsPreservedAsRawProperty() throws IOException {
     // ##META does not exist before VCFv4.3 (0 occurrences in VCFv4.1.tex/VCFv4.2.tex; VCFv4.3.tex's changelog
     // line 2155 reads "Introduced ##META header lines for defining phenotype metadata"). Regression: this used
