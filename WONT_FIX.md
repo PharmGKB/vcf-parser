@@ -690,20 +690,25 @@ hts-specs' VCF 4.3 `failed/` conformance corpus has five fixtures (`failed_body_
 `_004.vcf`) whose only documented `##CauseOfFailure=` is the absence of a trailing newline at end of file.
 This library parses all five without any warning or error.
 
-`VcfParser` reads every record via `BufferedReader.readLine()` (`VcfParser.java:110`, `:137`, `:274`), whose
-contract strips whatever line terminator it found before returning a line's content, and returns the final
-line's content identically whether or not that line was actually terminated. By the time this library sees a
-line, "ended with `\n`" and "ended right at EOF with no terminator at all" are indistinguishable through this
-API.
+`VcfParser` reads every record via its own `readPhysicalLine()` (`VcfParser.java:293`, called from `:126`,
+`:153`, `:343`) -- a hand-rolled line-boundary scan, not `BufferedReader.readLine()` any more (see the
+"Revisit" paragraph below for why it changed) -- but its return contract deliberately still matches
+`readLine()`'s exactly: it returns the final line's content identically whether or not that line was
+actually terminated. By the time this library sees a line, "ended with `\n`" and "ended right at EOF with no
+terminator at all" remain indistinguishable through this contract.
 
-**Decision: won't fix.** Detecting this would mean giving up `BufferedReader.readLine()` -- the parser's hot
-per-record read path -- for a lower-level, hand-rolled line-boundary scan, purely to observe an artifact with
-no practical consequence: bcftools itself does not warn or fail on a missing final newline either (confirmed
-live, bcftools 1.23.1, exit 0, no diagnostic naming the newline). The cost (restructuring a
-performance-sensitive read path) is judged not to be worth the benefit (flagging something no downstream tool
-cares about). See `HTS_SPECS_BASELINE_STATUS.md`'s "New 4.3-only `parser-throw-or-warn` clusters" table, "No
-newline at end of file" row, for these five fixtures' baseline status.
+**Decision: won't fix.** Detecting this now only needs a second return value from `readPhysicalLine()`
+(it already hand-scans character by character, so the information is available for free), not a hot-path
+restructure -- but it would still be a new, unrequested feature to observe an artifact with no practical
+consequence: bcftools itself does not warn or fail on a missing final newline either (confirmed live,
+bcftools 1.23.1, exit 0, no diagnostic naming the newline). The cost dropped; the benefit (flagging something
+no downstream tool cares about) did not change. See `HTS_SPECS_BASELINE_STATUS.md`'s "New 4.3-only
+`parser-throw-or-warn` clusters" table, "No newline at end of file" row, for these five fixtures' baseline
+status.
 
-Revisit if a future streaming-read redesign already needs to move `VcfParser` off `readLine()` for an
-unrelated reason, at which point detecting this becomes close to free, or if a concrete downstream consumer
-turns up that specifically needs to know whether the source file was properly terminated.
+Revisit if a concrete downstream consumer turns up that specifically needs to know whether the source file
+was properly terminated -- the previous revisit condition ("a future streaming-read redesign already needs to
+move `VcfParser` off `readLine()` for an unrelated reason") already happened, for an unrelated bug fix (a lone
+CR being wrongly treated as a line separator, since `readLine()`'s own contract can't distinguish that from a
+real terminator -- VCFv4.3.tex line 82), and detecting a missing trailing newline is now close to free as a
+result; it just wasn't part of that fix's own scope.

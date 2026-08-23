@@ -123,7 +123,7 @@ public class VcfParser implements Closeable {
     // two destinations -- records to the logger, this class's own direct warn() calls to the file.
     activateWarningsFile();
     // the first physical line must be the single ##fileformat declaration
-    String first = m_reader.readLine();
+    String first = readPhysicalLine();
     if (first == null) {
       throw new VcfFormatException("Not a VCF file: the first line must be ##fileformat", -1);
     }
@@ -150,7 +150,7 @@ public class VcfParser implements Closeable {
 
     String line;
     boolean foundHeader = false;
-    while ((line = m_reader.readLine()) != null) {
+    while ((line = readPhysicalLine()) != null) {
       m_lineNumber++;
       if (line.startsWith("##")) {
         parseMetadataLine(mdBuilder, line);
@@ -275,6 +275,42 @@ public class VcfParser implements Closeable {
     }
   }
 
+  /**
+   * Reads one physical line, splitting only on LF or CRLF -- {@code m_reader}'s own {@link
+   * java.io.BufferedReader#readLine()} cannot be used directly here, because its contract additionally treats a
+   * LONE CR as a line separator, which VCFv4.3.tex line 82 ("Line separators must be CR+LF or LF and they are
+   * allowed only as line separators at end of line") does not recognize as a separator at all. Using
+   * {@code readLine()} unmodified silently split one physical (and semantically single) line into two on a
+   * bare CR appearing anywhere in the content -- fabricating an extra metadata line or data record that was
+   * never in the file, and disagreeing with bcftools 1.23.1 on the resulting record count for exactly this
+   * input (measured: bcftools treats the bare CR as ordinary content, one record; this library previously
+   * produced two).
+   *
+   * @return the next physical line with its terminator stripped, or {@code null} at end of stream -- matching
+   * {@code readLine()}'s own contract, including returning a final, otherwise-unterminated line rather than
+   * {@code null}
+   */
+  private @Nullable String readPhysicalLine() throws IOException {
+    StringBuilder sb = new StringBuilder();
+    boolean anyRead = false;
+    int c;
+    while ((c = m_reader.read()) != -1) {
+      anyRead = true;
+      if (c == '\n') {
+        // strip a single CR immediately preceding this LF (the CRLF terminator) -- but only that one, and
+        // only right here: a CR anywhere else in sb is ordinary content this method must never treat as a
+        // separator, which is the whole point of not delegating to readLine()
+        int len = sb.length();
+        if (len > 0 && sb.charAt(len - 1) == '\r') {
+          sb.setLength(len - 1);
+        }
+        return sb.toString();
+      }
+      sb.append((char) c);
+    }
+    return anyRead ? sb.toString() : null;
+  }
+
   private void doParse() throws IOException {
     boolean hasNext = true;
     while (hasNext) {
@@ -304,7 +340,7 @@ public class VcfParser implements Closeable {
       parseMetadata();
     }
 
-    String line = m_reader.readLine();
+    String line = readPhysicalLine();
     if (line == null) {
       m_alreadyFinished = true;
       return false;

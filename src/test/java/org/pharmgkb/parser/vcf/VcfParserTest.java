@@ -531,6 +531,47 @@ public class VcfParserTest {
   }
 
   @Test
+  void testBareCarriageReturnInMetadataLineIsNotTreatedAsLineSeparator() throws IOException {
+    // regression test: VCFv4.3.tex line 82, "Line separators must be CR+LF or LF and they are allowed only as
+    // line separators at end of line" -- a lone CR (not immediately followed by LF) previously still split one
+    // physical line into two, because the parser read lines via BufferedReader.readLine(), whose own contract
+    // treats a bare CR as a terminator too, silently fabricating an extra metadata property that was never in
+    // the file ("##source=a\r##other=b\n" used to parse as source=[a] AND other=[b], two properties from one
+    // physical line). Fixed, this is correctly ONE physical line whose value genuinely contains an embedded
+    // CR -- which InternalUtils.checkNoLineTerminator (already, independently) rejects unconditionally, since
+    // an embedded line-terminator character in a metadata value is a structural violation on its own terms,
+    // not something to silently preserve. The regression is specifically that this must now be *rejected*,
+    // not that it must be *accepted* as one property -- silent record-boundary corruption is what's fixed.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##source=a\r##other=b\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
+    assertTrue(ex.getMessage().contains("contains a line terminator"));
+  }
+
+  @Test
+  void testCrlfAndBareLfLineSeparatorsBothStillWork() throws IOException {
+    // control for the test above: this fix must not regress the two separators VCFv4.3.tex line 82 DOES
+    // recognize -- CRLF and bare LF -- in a file that mixes both, matching AGENTS.md's own "VCF compliant
+    // implementations must support both LF and CR+LF" requirement (VCFv4.3.tex line 40).
+    String vcf = "##fileformat=VCFv4.2\r\n" +
+        "##source=a\n" +
+        "##other=b\r\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\r\n" +
+        "1\t100\t.\tA\tT\t.\t.\t.\n" +
+        "1\t200\t.\tA\tC\t.\t.\t.\r\n";
+    List<VcfPosition> positions = new ArrayList<>();
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, record) -> positions.add(record.getPosition()))
+             .build()) {
+      parser.parse();
+    }
+    assertEquals(List.of(100L, 200L), positions.stream().map(VcfPosition::getPosition).toList());
+  }
+
+  @Test
   void testFreeformMetaLineBeforeV4_3IsPreservedAsRawProperty() throws IOException {
     // ##META does not exist before VCFv4.3 (0 occurrences in VCFv4.1.tex/VCFv4.2.tex; VCFv4.3.tex's changelog
     // line 2155 reads "Introduced ##META header lines for defining phenotype metadata"). Regression: this used
