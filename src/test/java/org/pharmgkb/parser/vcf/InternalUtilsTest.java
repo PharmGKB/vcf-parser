@@ -786,6 +786,77 @@ public class InternalUtilsTest {
   }
 
   @Test
+  public void testCheckReservedFormatConstraintsCopyNumberPosteriorProbabilitiesRangeCheckIsUnconditional() {
+    // regression test found by the Phase 2 review's re-verification round: VCFv4.3.tex line 689 ("CNP is 0 to
+    // 1-scaled copy number posterior probabilities") and the 4.3 changelog at line 2156 ("Both CNP and GP use
+    // 0 to 1 encoding") pair CNP with GP explicitly, but only GP was range-checked. Unlike GP, CNP has no
+    // VCFv4.2 declaration at all, so this check is unconditional -- no version gate.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      InternalUtils.checkReservedFormatConstraints("CNP", "0.5", VcfVersion.V4_3, VcfWarnings.DEFAULT); // valid: no warn
+      assertEquals(0, appender.countMessagesContaining("does not lie in the interval"));
+      InternalUtils.checkReservedFormatConstraints("CNP", "5.0", VcfVersion.V4_3, VcfWarnings.DEFAULT); // warns
+      assertEquals(1, appender.countMessagesContaining("does not lie in the interval"));
+      assertTrue(appender.anyMessageContains("FORMAT CNP"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testCheckReservedFormatConstraintsCopyNumberPosteriorProbabilitiesChecksEachListElement() {
+    // per-element, not a scalar parse of the whole value -- mirrors GP's identical shape, since CNP is also
+    // Number=G and list-shaped
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      InternalUtils.checkReservedFormatConstraints("CNP", "0.2,5.0,0.8", VcfVersion.V4_3, VcfWarnings.DEFAULT);
+      assertEquals(1, appender.countMessagesContaining("does not lie in the interval"));
+      assertTrue(appender.anyMessageContains("5.0"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testCheckReservedFormatConstraintsCopyNumberLikelihoodIsNotRangeChecked() {
+    // regression guard: CNL is a list of log10 likelihoods, not a 0-1 probability (VCFv4.3.tex line 688,
+    // "CNL specifies a list of log10 likelihoods... starting from zero") -- the new CNP check must not leak
+    // to its sibling CNL, which shares no such constraint
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      InternalUtils.checkReservedFormatConstraints("CNL", "-5.0", VcfVersion.V4_3, VcfWarnings.DEFAULT);
+      assertEquals(0, appender.countMessagesContaining("does not lie in the interval"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testCheckReservedFormatConstraintsCopyNumberPosteriorProbabilitiesThrowsUnderStrict() {
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> InternalUtils.checkReservedFormatConstraints("CNP", "5.0", VcfVersion.V4_3, null));
+    assertTrue(e.getMessage().contains("does not lie in the interval [0, 1]"));
+  }
+
+  @Test
   public void testConvertPropertyGenotypePosteriorPreservesOutOfRangeValueUnder43() {
     // the typed accessor still returns the parsed VcfFloat even when it violates GP's 4.3+ [0, 1] constraint,
     // consistent with the "warn and preserve" policy for non-structural sample content; also confirms the

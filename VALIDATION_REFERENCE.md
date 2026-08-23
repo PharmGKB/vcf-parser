@@ -600,6 +600,12 @@ is a structural failure and still throws -- see the strict section above):
   value is requested and by `VcfWriter.Builder.validateBeforeWrite()`; the read side is `isLenient()`-aware
   (warns under a lenient `VcfContext`, throws `VcfFormatException` under a strict one, once the version gate
   above is satisfied) like every other reserved-key content check in this section, the write side always warns.
+- A reserved `FORMAT/CNP` value outside the interval `[0, 1]`, unconditionally, no version gate -- VCFv4.3.tex
+  line 689 ("CNP is 0 to 1-scaled copy number posterior probabilities") and the 4.3 changelog at line 2156
+  ("Both CNP and GP use 0 to 1 encoding") pair it with `GP` explicitly, but unlike `GP`, `CNP` has no VCFv4.2
+  declaration at all, so there is no pre-4.3 meaning to preserve. Same list-shaped, per-element checking and
+  read/write coverage as `GP` above. Deliberately not extended to `CNL`, a list of log10 likelihoods rather
+  than a 0-1 probability (VCFv4.3.tex line 688).
 - A read of the **removed** reserved key `GLE` under VCFv4.3 or later. VCFv4.3 removed it (VCFv4.3.tex line
   2168, "Removed unused and ill-defined GLE FORMAT tag"; present as a reserved key at VCFv4.1.tex line 208 and
   VCFv4.2.tex line 225), so from VCFv4.3 `GLE` has no reserved status at all: it is classified as an ordinary

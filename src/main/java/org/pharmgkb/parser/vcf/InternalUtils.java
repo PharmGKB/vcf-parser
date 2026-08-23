@@ -873,6 +873,14 @@ public class InternalUtils {
    *   -- the same helper and the same two exemptions (a special {@link VcfFloat} value, and a value too long to
    *   be worth {@code BigDecimal}-parsing) already established for {@link ReservedInfoProperty#AlleleFrequency
    *   AF}; see that method's own Javadoc.</li>
+   *   <li>{@link ReservedFormatProperty#CopyNumberPosteriorProbabilities CNP} must also lie in [0, 1] --
+   *   VCFv4.3.tex line 689 ("CNP is 0 to 1-scaled copy number posterior probabilities") and the 4.3 changelog
+   *   at line 2156 ("Both CNP and GP use 0 to 1 encoding") pair it with GP explicitly. Unconditional, unlike
+   *   GP: CNP has no VCFv4.2 declaration at all (see {@link ReservedFormatProperty#CopyNumberPosteriorProbabilities
+   *   CNP}'s own comment), so there is no pre-4.3 meaning to preserve. Deliberately NOT extended to
+   *   {@link ReservedFormatProperty#CopyNumberLikelihood CNL}: that key is a list of log10 likelihoods, not a
+   *   0-1 probability, per its own body-text sentence two lines above CNP's in the same table
+   *   ("CNL specifies a list of log10 likelihoods... starting from zero").</li>
    * </ul>
    *
    * @return the value to use for subsequent type conversion: unchanged, except for FT under a lenient
@@ -911,6 +919,10 @@ public class InternalUtils {
       // and convertProperty(ReservedProperty, ...) doesn't split at all here, only later, inside the generic
       // convertProperty(Class<?>, ...) it calls next. A scalar BigDecimal parse of e.g. "0.2,5.0,0.8" would throw
       // and be treated as "not a number at all" (see checkUnitInterval), silently skipping the whole check.
+      checkEachCommaElement(value, element -> checkUnitInterval("FORMAT", key, element, checkWarnings));
+    } else if (key.equals(ReservedFormatProperty.CopyNumberPosteriorProbabilities.getId())) {
+      // unconditional, unlike the GP branch above -- see this method's own Javadoc for why CNP needs no
+      // version gate (it doesn't exist before VCFv4.3 at all, unlike GP's pre-4.3 phred-scaled meaning)
       checkEachCommaElement(value, element -> checkUnitInterval("FORMAT", key, element, checkWarnings));
     }
     return value;

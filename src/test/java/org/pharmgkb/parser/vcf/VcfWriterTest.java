@@ -2320,6 +2320,42 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteCopyNumberPosteriorProbabilitiesRangeCheckIsUnconditional() throws Exception {
+    // regression test found by the Phase 2 review's re-verification round: CNP's [0, 1] range check
+    // (VCFv4.3.tex line 689) is unconditional -- unlike GP, CNP has no VCFv4.2 declaration at all, so there is
+    // no version gate to test here, just that validateBeforeWrite() catches an out-of-range value at all.
+    VcfContext context43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
+    FormatMetadata cnp = new FormatMetadata(context43,
+        ReservedFormatProperty.CopyNumberPosteriorProbabilities.getId(), "d", "G", FormatType.Float);
+    VcfMetadata metadata = new VcfMetadata.Builder(context43).setFileFormat("VCFv4.3")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .addFormat(cnp)
+        .build();
+    VcfPosition position = context43.newPosition("chr1", 1, null, "A", List.of("T"),
+        VcfFloat.of(new BigDecimal("0")), null, null, List.of("CNP"), -1);
+    VcfSample sample = context43.newSample(new LinkedHashMap<>(Map.of("CNP", "5.0")));
+
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, Collections.singletonList(sample));
+      assertTrue(appender.anyMessageContains("does not lie in the interval"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(sw.toString().contains("CNP\t5.0"));
+  }
+
+  @Test
   public void testValidateBeforeWriteGenotypePosteriorMultiValuedWarnsOnceForMiddleElement() throws Exception {
     // GP is Number=G; on a diploid (GT=0|1), one-ALT-allele record, Number=G expects exactly
     // combinationsWithRepetition(2, 2) = 3 values, so this correctly-sized 3-value GP list isolates the
