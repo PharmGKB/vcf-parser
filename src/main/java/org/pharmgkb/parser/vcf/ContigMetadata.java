@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 
@@ -21,6 +22,12 @@ public final class ContigMetadata extends IdMetadata {
   public static final String SPECIES = "species";
   public static final String TAXONOMY = "taxonomy";
   public static final String URL = "URL";
+
+  // VCFv4.3.tex line 247 (new at 4.3; unchanged at VCFv4.4.tex:261/VCFv4.5.tex:310; VCFv4.1/4.2 show md5= only
+  // in worked examples, with no accompanying format definition, predating this rule rather than conflicting
+  // with it): the MD5 digest "is calculated as described in RFC 1321 and presented as a 32 character
+  // lowercase hexadecimal number."
+  private static final Pattern MD5_PATTERN = Pattern.compile("^[0-9a-f]{32}$");
 
   /**
    * @param length {@code null} if absent -- VCFv4.2.tex line 138 documents {@code length} as "highly
@@ -62,6 +69,14 @@ public final class ContigMetadata extends IdMetadata {
         URI.create(unquotedUrl).toURL();
       } catch (IllegalArgumentException | MalformedURLException e) {
         warnOrThrow("{} URL {} is malformed: {}", getLabel(), unquotedUrl, e.getMessage());
+      }
+    }
+    if (md5 != null) {
+      // Checked unquoted, same reasoning as the URL check just above.
+      String unquotedMd5 = InternalUtils.unquote(md5);
+      if (!MD5_PATTERN.matcher(unquotedMd5).matches()) {
+        warnOrThrow("{} md5 \"{}\" is not a 32-character lowercase hexadecimal MD5 digest", getLabel(),
+            unquotedMd5);
       }
     }
     // VCFv4.3.tex (the target) states this fuller character-set grammar for ##contig IDs, beyond IdMetadata's
@@ -237,6 +252,11 @@ public final class ContigMetadata extends IdMetadata {
       } catch (IllegalArgumentException | MalformedURLException e) {
         warnOrThrow("{} URL {} is malformed: {}", getLabel(), url, e.getMessage());
       }
+    }
+    // see the typed constructor's identical check for the citation
+    String md5 = getPropertyUnquoted(MD5);
+    if (md5 != null && !MD5_PATTERN.matcher(md5).matches()) {
+      warnOrThrow("{} md5 \"{}\" is not a 32-character lowercase hexadecimal MD5 digest", getLabel(), md5);
     }
     // getPropertyUnquoted: the character-set/first-character checks below must see the ID's actual content,
     // per AGENTS.md's "Unquoting before internal use" policy -- see this method's own URL comment just above.

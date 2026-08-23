@@ -153,7 +153,8 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   no tag-name grammar for either: must start with a letter or underscore, followed
   only by letters, digits, underscores, or periods -- `##INFO` additionally allows the legacy value
   `1000G`), an invalid `Number`, a `Type=Flag`/non-zero-`Number` mismatch, a reserved property's Number/Type
-  mismatch, a malformed `##contig` URL, a `##contig` ID starting with `*`/`=` or containing an invalid
+  mismatch, a malformed `##contig` URL or `md5` (VCFv4.3.tex line 247, "a 32 character lowercase
+  hexadecimal number"), a `##contig` ID starting with `*`/`=` or containing an invalid
   character (see `VCF_SPEC_AMBIGUITIES.md`'s "`##contig` ID character set" entry), or a `##contig` ID that is
   exactly a reserved symbolic allele name (`VCFv4.3.tex` line 266, "The contig names must not use a reserved
   symbolic allele name," new at 4.3 -- see `ReservedStructuralVariantCode.isReservedSymbolicAlleleName`'s own

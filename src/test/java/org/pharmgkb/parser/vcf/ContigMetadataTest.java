@@ -689,6 +689,50 @@ public class ContigMetadataTest {
   }
 
   @Test
+  public void testTypedConstructorThrowsForMalformedMd5() {
+    // regression test: VCFv4.3.tex line 247 (new at 4.3), the MD5 digest is "presented as a 32 character
+    // lowercase hexadecimal number" -- ContigMetadata already validates length/URL but never checked md5's
+    // own format at all. Same treatment as the URL checks just above: throw via the typed constructor.
+    assertThrows(VcfFormatException.class,
+        () -> new ContigMetadata(STRICT_CONTEXT, "chr1", 100L, null, "not-a-valid-md5", null, null, null));
+    // too short
+    assertThrows(VcfFormatException.class,
+        () -> new ContigMetadata(STRICT_CONTEXT, "chr1", 100L, null, "f126cdf8a6e0c7f379d618ff66beb2d", null,
+            null, null));
+    // uppercase is not "lowercase hexadecimal" per the spec's own wording
+    assertThrows(VcfFormatException.class,
+        () -> new ContigMetadata(STRICT_CONTEXT, "chr1", 100L, null, "F126CDF8A6E0C7F379D618FF66BEB2DA", null,
+            null, null));
+  }
+
+  @Test
+  public void testMapConstructorWarnsForMalformedMd5() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      Map<String, String> map = new HashMap<>();
+      map.put(ContigMetadata.ID, "chr1");
+      map.put(ContigMetadata.MD5, "not-a-valid-md5");
+      new ContigMetadata(LENIENT_CONTEXT, map);
+      assertTrue(appender.anyMessageContains("is not a 32-character lowercase hexadecimal MD5 digest"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testTypedConstructorAcceptsValidMd5() {
+    ContigMetadata md = new ContigMetadata(STRICT_CONTEXT, "chr1", 100L, null,
+        "f126cdf8a6e0c7f379d618ff66beb2da", null, null, null);
+    assertEquals("f126cdf8a6e0c7f379d618ff66beb2da", md.getMd5());
+  }
+
+  @Test
   public void testTypedConstructorRejectsNullOrBlankId() {
     assertThrows(VcfFormatException.class,
         () -> new ContigMetadata(STRICT_CONTEXT, null, 100L, "GRCh38", null, null, null, null));
