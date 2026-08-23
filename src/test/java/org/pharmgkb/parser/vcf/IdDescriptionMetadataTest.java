@@ -10,6 +10,7 @@ import static org.pharmgkb.parser.vcf.TestUtils.LENIENT_CONTEXT;
 import static org.pharmgkb.parser.vcf.TestUtils.lenientContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -265,6 +266,60 @@ public class IdDescriptionMetadataTest {
     IdDescriptionMetadata md = new IdDescriptionMetadata(STRICT_CONTEXT, "FILTER", "q10", "quality below 10");
     assertEquals("q10", md.getId());
     assertEquals("quality below 10", md.getDescription());
+  }
+
+  @Test
+  public void testSampleWithMissingDescriptionDoesNotWarnEitherConstructor() {
+    // regression test: no VCF version (4.1-4.5) has a "required fields" sentence for ##SAMPLE, unlike
+    // ##ALT/##FILTER (VCFv4.4.tex:180/:201) -- HTS_SPECS_BASELINE_STATUS.md's own recorded reading is "no spec
+    // text (4.2-4.5) marks any ##SAMPLE field but ID as mandatory." A missing Description must not warn for
+    // SAMPLE, on either constructor shape, even under a lenient context.
+    StringWriter typedSink = new StringWriter();
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(typedSink)), "SAMPLE", "S1", null);
+    assertFalse(typedSink.toString().contains("required metadata property"));
+
+    Map<String, String> props = InternalUtils.extractProperties(
+        new String[] {"ID=S1", "Assay=WholeGenome"}, VcfWarnings.DEFAULT);
+    StringWriter mapSink = new StringWriter();
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(mapSink)), "SAMPLE", props);
+    assertFalse(mapSink.toString().contains("required metadata property"));
+  }
+
+  @Test
+  public void testSampleWithMissingDescriptionIsConstructibleUnderStrictContext() {
+    // the same content that must not warn under a lenient context (see the test just above) must also not
+    // throw under a strict one -- a spec-legal ##SAMPLE declaration must be constructible either way
+    IdDescriptionMetadata md = new IdDescriptionMetadata(STRICT_CONTEXT, "SAMPLE", "S1", null);
+    assertEquals("S1", md.getId());
+    assertNull(md.getDescription());
+  }
+
+  @Test
+  public void testAltAndFilterStillWarnForMissingDescription() {
+    // regression guard: the SAMPLE exemption above must not have loosened ALT/FILTER's genuine requirement
+    // (VCFv4.4.tex:180/:201) -- both still warn on either constructor shape
+    for (String label : new String[] { "ALT", "FILTER" }) {
+      StringWriter typedSink = new StringWriter();
+      new IdDescriptionMetadata(lenientContext(new VcfWarnings(typedSink)), label, "X", null);
+      assertTrue(typedSink.toString().contains("required metadata property"), label + " (typed) should warn");
+
+      Map<String, String> props = InternalUtils.extractProperties(new String[] {"ID=X"}, VcfWarnings.DEFAULT);
+      StringWriter mapSink = new StringWriter();
+      new IdDescriptionMetadata(lenientContext(new VcfWarnings(mapSink)), label, props);
+      assertTrue(mapSink.toString().contains("required metadata property"), label + " (map) should warn");
+    }
+  }
+
+  @Test
+  public void testSampleDescriptionStillCheckedForQuotingWhenPresent() {
+    // the SAMPLE exemption is scoped to the missing-Description requirement only -- a present-but-unquoted
+    // Description on ##SAMPLE must still warn, via the Map-based constructor's init() (the only shape that can
+    // even represent an unquoted Description -- the typed constructor always quotes it itself)
+    Map<String, String> props = InternalUtils.extractProperties(
+        new String[] {"ID=S1", "Description=unquoted"}, VcfWarnings.DEFAULT);
+    StringWriter sink = new StringWriter();
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(sink)), "SAMPLE", props);
+    assertTrue(sink.toString().contains("should be quoted"));
   }
 
 }

@@ -96,6 +96,15 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
   (`[W::bcf_hrec_check] Invalid contig name: "*chr"`) but still exits 0 and preserves the declaration for a
   **leading** asterisk, which is the boundary the control test pins.
 
+### SAMPLE ID with a non-leading asterisk
+- Test: `BcftoolsDependencyTest#testSampleIdWithNonLeadingAsteriskBcftoolsAccepts`
+- Reasoning: `HTS_SPECS_BASELINE_STATUS.md`'s "`##SAMPLE` ID contains illegal character (a non-leading `*`)"
+  row. `##SAMPLE`'s ID has no character-set check at all (unlike `##contig`'s dedicated one) -- this library
+  already accepts a non-leading `*` in a `##SAMPLE` ID and the default writer emits it verbatim, so if a
+  future bcftools started rejecting the form, this library's output would stop being readable by a real
+  consumer. bcftools 1.23.1 accepts `##SAMPLE=<ID=1.*,Assay=WholeGenome>` silently (no warning), consistent
+  with the contig-asterisk precedent above.
+
 ### Unterminated bracket value in a metadata attribute
 - Test: `BcftoolsDependencyTest#testUnterminatedBracketValueBcftoolsHardErrors`
 - Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "General bracket-list quoting beyond `##META`'s `Values`" entry (which

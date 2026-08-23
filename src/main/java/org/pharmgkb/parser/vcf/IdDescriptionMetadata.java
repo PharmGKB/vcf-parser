@@ -26,13 +26,18 @@ public sealed class IdDescriptionMetadata extends IdMetadata permits InfoMetadat
 
   IdDescriptionMetadata(VcfContext context, String label, @Nullable String id, @Nullable String description) {
     super(context, label, id);
-    // no init() call: init()'s only check (Description must be quoted) can never fail here -- putAndQuoteProperty
-    // below always wraps description in quotes itself. An absent Description is the one condition this shape
-    // shares with init(), so it reports it with init()'s own warnIfMissing message rather than letting
-    // putAndQuoteProperty's generic null rejection fire -- that would hard-throw even under a lenient context,
-    // which is exactly the overload-shape-decides-strictness coupling warnOrThrow exists to remove.
+    // no init() call: init()'s only unconditional check (Description must be quoted) can never fail here --
+    // putAndQuoteProperty below always wraps description in quotes itself. An absent Description is the one
+    // condition this shape shares with init(), so it reports it with init()'s own warnIfMissing message rather
+    // than letting putAndQuoteProperty's generic null rejection fire -- that would hard-throw even under a
+    // lenient context, which is exactly the overload-shape-decides-strictness coupling warnOrThrow exists to
+    // remove.
     if (description == null) {
-      warnOrThrow("{} required metadata property \"{}\" is missing", getLabel(), DESCRIPTION);
+      // ##SAMPLE shares this class with ##ALT/##FILTER but must not inherit their Description requirement --
+      // see init()'s own identical SAMPLE exemption for the citation.
+      if (!label.equals("SAMPLE")) {
+        warnOrThrow("{} required metadata property \"{}\" is missing", getLabel(), DESCRIPTION);
+      }
     } else {
       putAndQuoteProperty(DESCRIPTION, description);
     }
@@ -67,7 +72,20 @@ public sealed class IdDescriptionMetadata extends IdMetadata permits InfoMetadat
     // comparing content" case AGENTS.md's "Unquoting before internal use" policy covers -- unquoting first
     // would make startsWith/endsWith("\"") trivially false for every validly-quoted value.
     String description = getPropertyRaw(DESCRIPTION);
-    warnIfMissing(DESCRIPTION, description);
+    // Description is required for ##ALT/##FILTER (VCFv4.4.tex:180's "FILTER meta-information lines are
+    // structured lines with required fields ID and Description..." and :201's identical sentence for ALT,
+    // restated verbatim in VCFv4.5.tex:178/:250; VCFv4.3 gives the same two fields as ALT/FILTER's worked
+    // examples' only attributes without a dedicated required-fields sentence of its own, so 4.4/4.5 are cited
+    // here as a clarification of an already-4.3-consistent reading, not a version-dependent rule) -- but NOT
+    // for ##SAMPLE, which shares this class with ALT/FILTER purely for their common ID+Description+extra-
+    // fields shape. No VCF version (4.1-4.5) has an equivalent "required fields" sentence for ##SAMPLE; its own
+    // worked examples (VCFv4.3.tex:270-278) show Description present, but nothing marks it mandatory, and
+    // HTS_SPECS_BASELINE_STATUS.md's own recorded reading is "no spec text (4.2-4.5) marks any ##SAMPLE field
+    // but ID as mandatory." Warning here anyway meant a spec-legal ##SAMPLE (Description omitted) could not
+    // even be constructed under a strict context.
+    if (!getLabel().equals("SAMPLE")) {
+      warnIfMissing(DESCRIPTION, description);
+    }
     if (description != null && (!description.startsWith("\"") || !description.endsWith("\""))) {
       warnOrThrow("{} metadata property \"{}\" should be quoted but was: {}", getLabel(),
           DESCRIPTION, description);

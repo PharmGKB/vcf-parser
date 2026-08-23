@@ -1158,6 +1158,22 @@ class BcftoolsDependencyTest {
   }
 
   @Test
+  void testSampleIdWithNonLeadingAsteriskBcftoolsAccepts() throws IOException, InterruptedException {
+    // round-trip-critical, same reasoning as testContigIdWithNonLeadingAsteriskBcftoolsAccepts above: unlike
+    // ##contig, ##SAMPLE's ID goes through IdMetadata's shared init(), which checks only whitespace and comma
+    // -- no character-set check exists to accept or reject a non-leading '*' from at all (see
+    // HTS_SPECS_BASELINE_STATUS.md's "##SAMPLE ID contains illegal character" row). Confirms this library's
+    // silent acceptance still matches bcftools, the same tie-breaker precedent already established for contig.
+    String vcf = "##fileformat=VCFv4.3\n##SAMPLE=<ID=1.*,Assay=WholeGenome>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("##SAMPLE=<ID=1.*"),
+        "Expected bcftools to retain a non-leading-asterisk SAMPLE ID, got: " + result.output());
+    assertFalse(result.output().contains("[W::") || result.output().contains("[E::"), result.output());
+  }
+
+  @Test
   void testMetaAttributeOrderBcftoolsIgnoresCanonicalOrdering() throws IOException, InterruptedException {
     // control for the spec-order test below: the canonical ID,Number,Type,... order. If a future bcftools
     // started treating attribute order as significant, silence here (not just for the out-of-order shape

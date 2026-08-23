@@ -211,6 +211,7 @@ test/vcf/4.3/failed/failed_meta_meta_003.vcf	parser-throw-or-warn	silently-accep
 test/vcf/4.3/failed/failed_meta_pedigree_000.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Value with whitespace
 test/vcf/4.3/failed/failed_meta_pedigree_001.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Value with non-accepted punctuation character
 test/vcf/4.3/failed/failed_meta_pedigreedb_002.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: Non-valid URL
+test/vcf/4.3/failed/failed_meta_sample_003.vcf	parser-throw-or-warn	silently-accepted	CauseOfFailure: SAMPLE ID contains illegal character
 test/vcf/4.1/passed/complexfile_passed_000.vcf	writer-bytediff	byte-diff	57 of 75 lines differ, first difference at line 15: "##ALT=<ID=DEL,Description="Deletion">" original, "##INFO=<ID=AA,Number=1,Type=String,Description="Ancestral Allele, ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/pilot_data/technical/reference/ancestral_alignments/README">" written
 test/vcf/4.1/passed/passed_meta_contig.vcf	writer-bytediff	byte-diff	9 of 11 lines differ, first difference at line 3: "##contig=<ID=1,length=123456>" original, "##contig=<ID=1AC,length=123456>" written
 test/vcf/4.2/passed/complexfile_passed_000.vcf	writer-bytediff	byte-diff	57 of 75 lines differ, first difference at line 15: "##ALT=<ID=DEL,Description="Deletion">" original, "##INFO=<ID=AA,Number=1,Type=String,Description="Ancestral Allele, ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/pilot_data/technical/reference/ancestral_alignments/README">" written
