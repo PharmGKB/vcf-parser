@@ -96,6 +96,19 @@ public class VcfParser implements Closeable {
   // a defensive copy is made on write, not just on read.
   private @Nullable String m_lastFormatRawText;
   private @Nullable List<String> m_lastValidatedFormat;
+  // readPhysicalLine()'s own chunk buffer -- bulk-reads from m_reader (a BufferedReader) into this array instead
+  // of calling m_reader.read() one character at a time, which measured 13-26x slower for line-reading alone and
+  // caused an ~2x whole-parse regression on a 74 MB file (found by the Phase 2 review's re-verification round,
+  // after the original per-character loop was introduced by the lone-CR fix below). 8192 matches
+  // BufferedReader's own default internal buffer size, so this adds one bulk array-copy per underlying refill
+  // rather than a second, redundantly-sized buffering layer. m_lineReadBufferPos/m_lineReadBufferLen are the
+  // cursor and valid-length into m_lineReadBuffer; m_lineBuilder accumulates one physical line's content across
+  // possibly several buffer refills and is cleared (not reallocated) at the start of every readPhysicalLine()
+  // call, since only its toString() copy is ever handed to a caller.
+  private final char[] m_lineReadBuffer = new char[8192];
+  private int m_lineReadBufferPos;
+  private int m_lineReadBufferLen;
+  private final StringBuilder m_lineBuilder = new StringBuilder();
 
 
 
@@ -291,24 +304,42 @@ public class VcfParser implements Closeable {
    * {@code null}
    */
   private @Nullable String readPhysicalLine() throws IOException {
-    StringBuilder sb = new StringBuilder();
-    boolean anyRead = false;
-    int c;
-    while ((c = m_reader.read()) != -1) {
-      anyRead = true;
-      if (c == '\n') {
-        // strip a single CR immediately preceding this LF (the CRLF terminator) -- but only that one, and
-        // only right here: a CR anywhere else in sb is ordinary content this method must never treat as a
-        // separator, which is the whole point of not delegating to readLine()
-        int len = sb.length();
-        if (len > 0 && sb.charAt(len - 1) == '\r') {
-          sb.setLength(len - 1);
+    m_lineBuilder.setLength(0);
+    while (true) {
+      if (m_lineReadBufferPos >= m_lineReadBufferLen) {
+        m_lineReadBufferLen = m_reader.read(m_lineReadBuffer, 0, m_lineReadBuffer.length);
+        m_lineReadBufferPos = 0;
+        if (m_lineReadBufferLen == -1) {
+          // true EOF only when nothing has been accumulated for this line yet; otherwise this is the final,
+          // unterminated line -- returned as-is, without stripping a trailing lone CR, since that CR is
+          // ordinary content here, not a separator (see this method's own Javadoc)
+          return m_lineBuilder.length() == 0 ? null : m_lineBuilder.toString();
         }
-        return sb.toString();
       }
-      sb.append((char) c);
+      int start = m_lineReadBufferPos;
+      int newlineIdx = -1;
+      for (int i = start; i < m_lineReadBufferLen; i++) {
+        if (m_lineReadBuffer[i] == '\n') {
+          newlineIdx = i;
+          break;
+        }
+      }
+      if (newlineIdx < 0) {
+        m_lineBuilder.append(m_lineReadBuffer, start, m_lineReadBufferLen - start);
+        m_lineReadBufferPos = m_lineReadBufferLen;
+        continue;
+      }
+      m_lineBuilder.append(m_lineReadBuffer, start, newlineIdx - start);
+      m_lineReadBufferPos = newlineIdx + 1;
+      // strip a single CR immediately preceding this LF (the CRLF terminator) -- but only that one, and only
+      // right here: a CR anywhere else in m_lineBuilder is ordinary content this method must never treat as a
+      // separator, which is the whole point of not delegating to readLine()
+      int len = m_lineBuilder.length();
+      if (len > 0 && m_lineBuilder.charAt(len - 1) == '\r') {
+        m_lineBuilder.setLength(len - 1);
+      }
+      return m_lineBuilder.toString();
     }
-    return anyRead ? sb.toString() : null;
   }
 
   private void doParse() throws IOException {
