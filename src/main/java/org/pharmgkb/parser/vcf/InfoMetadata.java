@@ -91,6 +91,14 @@ public final class InfoMetadata extends IdDescriptionMetadata {
     if (type == InfoType.Flag && !"0".equals(unquotedNumber)) {
       warnOrThrow("INFO {} has Type=Flag but Number is '{}' (should be 0)", unquotedId, unquotedNumber);
     }
+    // the converse of the check just above (VCFv4.3.tex line 171, "the Number must be 0 in this case" --
+    // "this case" being Type=Flag specifically, not Number=0 in general): a non-Flag type declaring Number=0
+    // is equally non-compliant, since 0 has no meaning for a field that DOES carry a value. type != null
+    // guards against double-warning a missing Type, which this constructor already warns about separately.
+    if (type != null && type != InfoType.Flag && "0".equals(unquotedNumber)) {
+      warnOrThrow("INFO {} has Number '0' but Type is '{}' (Number=0 is only valid for Type=Flag)", unquotedId,
+          type);
+    }
     ReservedInfoProperty reserved = ReservedInfoProperty.fromId(unquotedId);
     if (reserved != null) {
       if (!reserved.getExpectedNumber().equals(unquotedNumber)) {
@@ -132,6 +140,11 @@ public final class InfoMetadata extends IdDescriptionMetadata {
     }
     if (m_type == InfoType.Flag && number != null && !"0".equals(number)) {
       warnOrThrow("{} {} has Type=Flag but Number is '{}' (should be 0)", getLabel(), getId(), number);
+    }
+    // see the typed constructor's identical check for the citation
+    if (m_type != null && m_type != InfoType.Flag && "0".equals(number)) {
+      warnOrThrow("{} {} has Number '0' but Type is '{}' (Number=0 is only valid for Type=Flag)", getLabel(),
+          getId(), m_type);
     }
     // getPropertyRaw here is deliberate, not an oversight -- see IdDescriptionMetadata.init()'s identical
     // Description check for why: this inspects the raw quoting itself, not content that must be unquoted first.

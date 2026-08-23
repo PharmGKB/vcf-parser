@@ -61,6 +61,35 @@ public class FormatMetadataTest {
   }
 
   @Test
+  public void testTypedConstructorRejectsZeroNumber() {
+    // regression test: FORMAT has no Flag type (VCFv4.3.tex:190 lists only Integer/Float/Character/String),
+    // so Number=0 -- spec-tied exclusively to Type=Flag (VCFv4.3.tex:171) -- can never legitimately appear on
+    // a real ##FORMAT declaration, regardless of the declared Type. Unlike INFO's Flag/Number=0 pairing, this
+    // fires unconditionally.
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> new FormatMetadata(STRICT_CONTEXT, "XYZ", "d", "0", FormatType.Integer));
+    assertTrue(ex.getMessage().contains("has Number '0', but FORMAT has no Flag type"));
+  }
+
+  @Test
+  public void testMapConstructorWarnsForZeroNumber() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=XYZ", "Number=0", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT));
+      assertTrue(appender.anyMessageContains("has Number '0', but FORMAT has no Flag type"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testExtraPropertyRetained() {
     // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included
     // after the default fields" -- an unrecognized property is compliant, not just tolerated, and must be preserved

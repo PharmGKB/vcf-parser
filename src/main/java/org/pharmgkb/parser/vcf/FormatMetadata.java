@@ -52,6 +52,16 @@ public final class FormatMetadata extends IdDescriptionMetadata {
     if (unquotedNumber == null || !InternalUtils.NUMBER_PATTERN.matcher(unquotedNumber).matches()) {
       warnOrThrow("FORMAT Number is not a valid VCF number: '{}'", unquotedNumber);
     }
+    // Number=0 is spec-tied exclusively to Type=Flag (VCFv4.3.tex line 171, "The 'Flag' type indicates that
+    // the INFO field does not contain a Value entry, and hence the Number must be 0 in this case"; line 190,
+    // "Possible Types for FORMAT fields are: Integer, Float, Character, and String" -- FORMAT has no Flag type
+    // at all), so it can never legitimately appear on a real ##FORMAT declaration, regardless of the declared
+    // Type. Unlike InfoMetadata's identical rule (checked the other direction there: Type=Flag implies
+    // Number=0), there is no valid Type to pair Number=0 with here, so this fires unconditionally.
+    if ("0".equals(unquotedNumber)) {
+      warnOrThrow("FORMAT {} has Number '0', but FORMAT has no Flag type for it to pair with (Number=0 is " +
+          "only valid for an INFO Flag)", unquotedId);
+    }
     if (number != null) {
       putPropertyRaw(NUMBER, number);
     }
@@ -104,6 +114,11 @@ public final class FormatMetadata extends IdDescriptionMetadata {
     // before internal use" policy.
     String number = getPropertyUnquoted(NUMBER);
     checkNumberProperty(number);
+    // see the typed constructor's identical check for the citation
+    if ("0".equals(number)) {
+      warnOrThrow("{} {} has Number '0', but FORMAT has no Flag type for it to pair with (Number=0 is only " +
+          "valid for an INFO Flag)", getLabel(), getId());
+    }
     String type = getPropertyUnquoted(TYPE);
     warnIfMissing(TYPE, type);
     if (type != null) {

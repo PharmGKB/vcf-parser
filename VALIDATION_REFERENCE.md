@@ -430,8 +430,11 @@ is a structural failure and still throws -- see the strict section above):
   raw property). This is a direct, unavoidable consequence of the non-gating decision, not a separate defect:
   constructing under a pre-4.3 version and expecting a structured round trip is a caller mistake, since
   `##META` genuinely isn't a structured type at that version.
-- A missing or invalid `Number`, `Type`, or `Description`; an unquoted `Description`; or `Type=Flag` with a `Number`
-  other than `0`. `Number`/`Type` validity is checked unquoted (a quoted `Number="1"` is treated the same as
+- A missing or invalid `Number`, `Type`, or `Description`; an unquoted `Description`; `Type=Flag` with a `Number`
+  other than `0` (`##INFO` only -- `##FORMAT` has no `Flag` type); or `Number=0` with a `Type` other than `Flag`
+  (both directions of `VCFv4.3.tex` line 171's "the Number must be 0 in this case" -- for `##FORMAT`, which has
+  no `Flag` type at all, `Number=0` is invalid unconditionally, regardless of the declared `Type`). `Number`/
+  `Type` validity is checked unquoted (a quoted `Number="1"` is treated the same as
   `Number=1`); the `Description` quoting check itself is deliberately the exception -- see AGENTS.md's
   "Unquoting before internal use" policy for why. An unparseable `Type` leaves the metadata's type `null`. A
   non-reserved `##FORMAT` declaration

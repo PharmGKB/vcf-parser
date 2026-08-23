@@ -263,6 +263,24 @@ public class InfoMetadataTest {
   }
 
   @Test
+  public void testTypedConstructorRejectsZeroNumberWithNonFlagType() {
+    // regression test: the converse of testTypedConstructorRejectsFlagWithNonZeroNumber above -- Number=0 is
+    // spec-tied exclusively to Type=Flag (VCFv4.3.tex line 171), so a non-Flag type declaring Number=0 is
+    // equally non-compliant, but only the Flag-implies-0 direction was checked, not this one.
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> new InfoMetadata(STRICT_CONTEXT, "XYZ", "desc", InfoType.Integer, "0", null, null));
+    assertTrue(ex.getMessage().contains("has Number '0' but Type is 'Integer'"));
+  }
+
+  @Test
+  public void testMapConstructorRejectsZeroNumberWithNonFlagType() {
+    StringWriter sink = new StringWriter();
+    new InfoMetadata(lenientContext(new VcfWarnings(sink)), InternalUtils.extractProperties(
+        new String[] {"ID=XYZ", "Number=0", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT));
+    assertTrue(sink.toString().contains("has Number '0' but Type is 'Integer'"));
+  }
+
+  @Test
   public void testTypedConstructorRejectsReservedNumberMismatch() {
     // AC is reserved with expected Number "A" (VCFv4.2.tex reserved INFO table)
     VcfFormatException ex = assertThrows(VcfFormatException.class,
