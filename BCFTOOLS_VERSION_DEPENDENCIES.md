@@ -488,3 +488,14 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
   it never inspects a Flag's value content, only its presence. Must be re-checked on a bcftools upgrade: if a
   future bcftools started treating `DB=0` as absent for filtering purposes, this library's "always resolve to
   `true`" decision would need revisiting.
+
+### Undeclared CHROM (no matching `##contig`) dedup granularity
+- Test: `BcftoolsDependencyTest#testUndeclaredContigBcftoolsWarnsOncePerDistinctValueNotOncePerRecord`
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`'s "Undeclared CHROM (no matching `##contig`)" entry. This library
+  dedups its own undeclared-CHROM warning to once per distinct value per `VcfWriter` instance, rather than
+  once per record -- a real design choice, not an arbitrary one, since it directly matches bcftools 1.23.1's
+  own measured behavior (two records sharing an undeclared contig produce only one "not defined in the
+  header" warning, not two). Must be re-checked on a bcftools upgrade: if a future bcftools switched to
+  warning once per record, this library's dedup granularity would no longer match bcftools' own -- though the
+  underlying noise-reduction rationale (VCFv4.3.tex:238 only recommends a `##contig` declaration) would still
+  independently justify keeping the dedup regardless.

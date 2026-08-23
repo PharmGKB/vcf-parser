@@ -825,6 +825,13 @@ sensitively -- skipping the missing-value sentinel, `*`, a symbolic allele, and 
 string, none of which can equal REF as plain text. Implemented in `VcfPosition.checkAltBases`. See
 `VCF_SPEC_AMBIGUITIES.md`'s "ALT allele identical to REF" entry.
 
+`VcfWriter.writeLine` also warns, unconditionally on every write (default or `validateBeforeWrite()`), for
+two more undeclared-reference shapes, matching the existing FILTER/FORMAT/INFO precedent: a symbolic ALT
+allele with no matching `##ALT` declaration (excluding the gVCF unspecified allele `<*>`), and a CHROM with
+no matching `##contig` declaration (deduped to once per distinct value per writer instance, unlike the
+FILTER/FORMAT/INFO/ALT checks, which warn on every occurrence). See `VCF_SPEC_AMBIGUITIES.md`'s "Undeclared
+symbolic ALT allele" and "Undeclared CHROM" entries.
+
 ## Rules applied at every declared version
 
 This library targets VCFv4.3. The eight rules indexed below are all target-spec rules that this library

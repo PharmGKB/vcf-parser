@@ -64,6 +64,8 @@ before assuming it generalizes to a similar-looking case.
 | ALT breakend contig-ID shorthand (`AC<ctg1>GT`, `<ctg1><ctg2>`) | Left permissive; neither tool is decisive | ✅ (judgment call) |
 | Reserved structural variant code re-used as a subtype (`DUP:INV`) | Reject (deliberately stricter than bcftools) | ✅ |
 | ALT allele identical to REF | Warn (lenient) / throw (strict), case-sensitive (vcf_validator-sourced; bcftools silent) | ✅ |
+| Undeclared symbolic ALT allele (no matching `##ALT`) | Warn, unconditionally, matching the FILTER/FORMAT/INFO precedent (vcf_validator-sourced; bcftools silent) | ✅ |
+| Undeclared CHROM (no matching `##contig`) | Warn, deduped once per distinct value per writer (both bcftools and vcf_validator warn; dedup granularity matches bcftools) | ✅ |
 | CHROM containing a reserved symbolic allele name | Warn (lenient) / throw (strict), matching `##contig`'s existing check (sibling consistency; bcftools gives no signal either way) | ✅ |
 | FILTER value `"0"` | Reject (reserved value) | ✅ |
 | `PASS` combined with other FILTER codes | Warn (lenient), throw (strict/direct construction) | ✅ |
@@ -1067,6 +1069,43 @@ case-sensitivity rather than an unmeasured stricter reading. Skips the missing-v
 spanning-deletion `*`, any angle-bracket-wrapped symbolic allele (including the unspecified `<*>`), and any
 breakend replacement string (contains `[`/`]`) -- none of these can equal REF as plain text anyway, since
 REF must match `[AaCcGgTtNn]+`. Implemented in `VcfPosition.checkAltBases`.
+
+### Undeclared symbolic ALT allele (no matching `##ALT`)
+
+A symbolic ALT allele (an angle-bracket-wrapped ID String, e.g. `<DEL>`) with no matching `##ALT` declaration
+produced no diagnostic at all, unlike the established precedent for FILTER, FORMAT, and INFO (`VcfWriter`
+already warns for an undeclared code/key in each of those three, unconditionally on every write). No
+hts-specs fixture covers this exact cause.
+
+Confirmed live against vcf_validator 0.10.2, which warns for exactly this ("Alternate '<DEL>' is not listed
+in a valid meta-data ALT entry"); bcftools 1.23.1 is silent.
+
+**Decision:** warn, matching the FILTER/FORMAT/INFO precedent's shape exactly (unconditional, not gated on
+`validateBeforeWrite()`). Excludes `<*>`, the gVCF "unspecified allele" (VCFv4.3.tex's "Representing
+unspecified alleles and REF-only blocks" section, ~line 1428-1447) -- every worked example there uses `<*>`
+with no `##ALT=<ID=*,...>` declaration anywhere, the same reserved-sentinel shape `PASS`/`.` are excluded for
+in the FILTER check. Implemented in `VcfWriter.writeLine`.
+
+### Undeclared CHROM (no matching `##contig`)
+
+A CHROM value with no matching `##contig` declaration produced no diagnostic at all. `VCFv4.3.tex:238` only
+recommends ("It is recommended for VCF, and required for BCF, that the header includes tags describing the
+contigs referred to in the file"), not requires, a `##contig` declaration -- the counter-argument, since many
+real-world VCFs have zero `##contig` lines at all, is that a per-record warning here could be very noisy.
+
+This is the one case in the whole review round where **both** reference tools agree and this library was
+the outlier: confirmed live that bcftools 1.23.1 ("Contig '1' is not defined in the header") and
+vcf_validator 0.10.2 ("Chromosome/contig '1' is not described in a 'contig' meta description") both warn.
+Also confirmed live that bcftools itself already warns only **once per distinct undeclared contig across a
+whole file**, not once per record (two records sharing an undeclared CHROM `1` produced only one bcftools
+warning) -- vcf_validator instead warns once per record.
+
+**Decision:** warn, deduped to once per distinct undeclared CHROM value per `VcfWriter` instance, matching
+bcftools' own measured dedup granularity rather than vcf_validator's per-record one -- addressing the
+noise-risk counter-argument above directly rather than declining to implement the check at all. An
+angle-bracket-wrapped symbolic CHROM reference (`<1>`, VCFv4.2.tex:179) is unwrapped before the lookup, the
+same unwrapping `VcfPosition.checkChromosome` already does for its own character-set checks. Implemented in
+`VcfWriter.writeLine`.
 
 ### CHROM containing a reserved symbolic allele name
 

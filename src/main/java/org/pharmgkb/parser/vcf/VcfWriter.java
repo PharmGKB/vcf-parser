@@ -61,6 +61,13 @@ public class VcfWriter implements Closeable {
   private int m_lineNumber;
   private boolean m_headerWritten;
   private @Nullable VcfMetadata m_headerMetadata;
+  // Dedup for the undeclared-CHROM warning below: both bcftools and vcf_validator warn once per record for
+  // an undeclared contig, but a real multi-million-record file with no ##contig section at all would make
+  // that warn-per-record here, since VCFv4.3.tex:238 only recommends (doesn't require) ##contig declarations
+  // -- so this warns once per distinct undeclared CHROM value instead, mirroring VcfParser's own
+  // m_closedChromosomes dedup for a different, unrelated check. One instance = one write session, so this
+  // never needs clearing.
+  private final Set<String> m_warnedUndeclaredChromosomes = new HashSet<>();
 
   private boolean m_closed;
   private @Nullable Exception m_invalidatingCause;
@@ -363,6 +370,28 @@ public class VcfWriter implements Closeable {
     String chromosome = position.getChromosome();
     String ref = position.getRef();
 
+    // VCFv4.3.tex:238 only recommends ("It is recommended..."), not requires, a ##contig declaration -- the
+    // reason this warns rather than throws, and the reason it dedups per distinct value below rather than
+    // firing once per record: many real-world VCFs have zero ##contig lines at all. Confirmed live that BOTH
+    // bcftools 1.23.1 ("Contig '1' is not defined in the header") and vcf_validator 0.10.2 ("Chromosome/contig
+    // '1' is not described in a 'contig' meta description") warn for this -- the one case in this whole
+    // review round where both tools agree and this library was the outlier. bcftools' own warning already
+    // fires only once per distinct contig across a whole file (measured: two records sharing an undeclared
+    // "1" produce only one bcftools warning), which is what this dedup matches; vcf_validator warns once per
+    // record instead. Unwraps an angle-bracket-wrapped symbolic CHROM reference first (VCFv4.2.tex:179's
+    // "<ID>" form), the same unwrapping VcfPosition.checkChromosome does for its own character-set checks, so
+    // "<1>" is looked up as "1", matching how it was declared. Found by the Phase 2 review's third
+    // re-verification round.
+    String unwrappedChromosome = chromosome.length() > 1 && chromosome.charAt(0) == '<' &&
+        chromosome.charAt(chromosome.length() - 1) == '>'
+        ? chromosome.substring(1, chromosome.length() - 1)
+        : chromosome;
+    if (!metadata.getContigs().containsKey(unwrappedChromosome) &&
+        m_warnedUndeclaredChromosomes.add(unwrappedChromosome)) {
+      m_warnings.warn("CHROM {} has no ##contig metadata with that name (on line {})", chromosome,
+          lineBeingWritten());
+    }
+
     StringBuilder sb = new StringBuilder();
 
     sb.append(chromosome).append("\t");
@@ -420,6 +449,22 @@ public class VcfWriter implements Closeable {
         .forEach(key ->
             m_warnings.warn("Position {}:{} has FILTER {}, but there is no FILTER metadata with that name (on line {})",
                 position.getChromosome(), position.getPosition(), key, lineBeingWritten()));
+
+    // Mirrors the FILTER check just above, for a symbolic ALT allele (an angle-bracket-wrapped ID String)
+    // with no matching ##ALT declaration -- confirmed live that vcf_validator 0.10.2 warns for exactly this
+    // ("Alternate '<DEL>' is not listed in a valid meta-data ALT entry"); bcftools 1.23.1 is silent. "<*>",
+    // the gVCF "unspecified allele" (VCFv4.3.tex's "Representing unspecified alleles and REF-only blocks"
+    // section, ~line 1428-1447), is excluded: every worked example there uses "<*>" with no
+    // ##ALT=<ID=*,...> declaration anywhere, the same reserved-sentinel shape "PASS"/"." are excluded for
+    // above. getAlt(String) already unwraps the angle brackets itself. A non-symbolic ALT (a plain base
+    // sequence, "*", ".", or a breakend replacement string) never starts with '<' and is skipped entirely --
+    // none of those reference a ##ALT declaration at all. Found by the Phase 2 review's third
+    // re-verification round.
+    position.getAltBases().stream()
+        .filter(base -> base.startsWith("<") && !base.equals("<*>") && metadata.getAlt(base) == null)
+        .forEach(base ->
+            m_warnings.warn("Position {}:{} has ALT {}, but there is no ALT metadata with that name (on line {})",
+                position.getChromosome(), position.getPosition(), base, lineBeingWritten()));
 
     // these columns can be skipped completely
     addFormatConditionally(position, numSamples, sb);

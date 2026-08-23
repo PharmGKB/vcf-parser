@@ -1777,5 +1777,25 @@ class BcftoolsDependencyTest {
     assertEquals(List.of("100", "200", "300"), matchedPositions, result.output());
   }
 
+  @Test
+  void testUndeclaredContigBcftoolsWarnsOncePerDistinctValueNotOncePerRecord() throws IOException,
+      InterruptedException {
+    // VCFv4.3.tex:238 only recommends, not requires, a ##contig declaration, so this library's decision to
+    // dedup its own equivalent warning (once per distinct undeclared CHROM value, not once per record) rests
+    // on bcftools' own measured dedup granularity, not just a design guess -- indexed here per AGENTS.md's
+    // Decision Hierarchy. Two records sharing the same undeclared contig "1" must produce only ONE
+    // "not defined in the header" warning line, not two.
+    String vcf = "##fileformat=VCFv4.3\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT\t.\t.\t.\n" +
+        "1\t200\t.\tA\tT\t.\t.\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    long warningCount = result.output().lines()
+        .filter(line -> line.contains("is not defined in the header"))
+        .count();
+    assertEquals(1, warningCount, result.output());
+  }
+
   private record BcftoolsResult(int exitCode, String output) {}
 }

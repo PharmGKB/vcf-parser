@@ -201,7 +201,12 @@ public class VcfWriterTest {
     // warning must NOT fire merely by writing the record
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
+    // ##contig declared so the unrelated undeclared-CHROM check (added by the Phase 2 review's third
+    // re-verification round) doesn't also fire here, which would break this test's own "no warning at all"
+    // assertion for an unrelated reason
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addContig("chr1", null, null, null, null, null, null)
+        .build();
     writer.writeHeader(metadata);
     VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, "A", null, -1).toBuilder()
         .rawQuality("5.")
@@ -1357,6 +1362,187 @@ public class VcfWriterTest {
       writer.writeLine(metadata, position, Collections.singletonList(sample));
       assertEquals(1, appender.countMessagesContaining("FORMAT XY for sample #0 contains an empty value"));
       assertFalse(appender.anyMessageContains("is an empty entry"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testWritingASymbolicAltAlleleWithNoMatchingAltDeclarationWarns() throws Exception {
+    // regression test found by the Phase 2 review's third re-verification round: mirrors the pre-existing,
+    // unconditional (not gated on validateBeforeWrite()) FILTER-undeclared-key check just above it in
+    // VcfWriter.writeLine -- a symbolic ALT allele (angle-bracket-wrapped ID) with no matching ##ALT
+    // declaration previously produced no diagnostic at all, unlike the established FILTER/FORMAT/INFO
+    // precedent for an undeclared key/code.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
+        .build();
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("<DEL>"), null, null, null,
+        null, -1);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertTrue(appender.anyMessageContains("has ALT <DEL>, but there is no ALT metadata with that name"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    assertTrue(sw.toString().contains("<DEL>"));
+  }
+
+  @Test
+  public void testWritingADeclaredSymbolicAltAlleleDoesNotWarn() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
+        .addAlt("DEL", "Deletion")
+        .build();
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("<DEL>"), null, null, null,
+        null, -1);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertFalse(appender.anyMessageContains("no ALT metadata with that name"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testWritingTheUnspecifiedAltAlleleNeverWarnsEvenWithoutADeclaration() throws Exception {
+    // "<*>" (VCFv4.3.tex's gVCF "Representing unspecified alleles and REF-only blocks" section) is a reserved
+    // sentinel, the same shape "PASS"/"." are for FILTER -- every worked spec example uses it with no
+    // ##ALT=<ID=*,...> declaration anywhere
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
+        .build();
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("<*>"), null, null, null,
+        null, -1);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertFalse(appender.anyMessageContains("no ALT metadata with that name"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testWritingAnUndeclaredChromWarnsOncePerDistinctValueNotOncePerRecord() throws Exception {
+    // judgment-call item from the Phase 2 review's third re-verification round (user pre-authorized
+    // proceeding without a check-in): the one case in that whole round where BOTH bcftools 1.23.1 ("Contig
+    // '1' is not defined in the header") and vcf_validator 0.10.2 ("Chromosome/contig '1' is not described
+    // in a 'contig' meta description") warn and this library didn't. Confirmed live that bcftools itself
+    // warns only once per distinct undeclared contig across a whole file (not once per record), which this
+    // dedup matches -- VCFv4.3.tex:238 only recommends, not requires, a ##contig declaration, so warning
+    // once per record on a real multi-million-record file with no ##contig section at all would be noisy.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
+        .build();
+    VcfPosition position1 = LENIENT_CONTEXT.newPosition("1", 100, null, "A", List.of("T"), null, null, null,
+        null, -1);
+    VcfPosition position2 = LENIENT_CONTEXT.newPosition("1", 200, null, "A", List.of("T"), null, null, null,
+        null, -1);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position1, Collections.emptyList());
+      writer.writeLine(metadata, position2, Collections.emptyList());
+      assertEquals(1, appender.countMessagesContaining("CHROM 1 has no ##contig metadata with that name"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testWritingADeclaredChromDoesNotWarn() throws Exception {
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
+        .addContig("1", null, null, null, null, null, null)
+        .build();
+    VcfPosition position = LENIENT_CONTEXT.newPosition("1", 100, null, "A", List.of("T"), null, null, null,
+        null, -1);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertFalse(appender.anyMessageContains("no ##contig metadata with that name"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testWritingAnUndeclaredAngleBracketWrappedChromUnwrapsBeforeLookup() throws Exception {
+    // a symbolic CHROM reference ("<1>", VCFv4.2.tex:179) must be unwrapped before the ##contig lookup, the
+    // same unwrapping VcfPosition.checkChromosome does for its own character-set checks -- a declared
+    // ##contig ID is never itself bracket-wrapped
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata declaredMetadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
+        .addContig("1", null, null, null, null, null, null)
+        .build();
+    VcfPosition declaredPosition = LENIENT_CONTEXT.newPosition("<1>", 100, null, "A", List.of("T"), null, null,
+        null, null, -1);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(declaredMetadata);
+      writer.writeLine(declaredMetadata, declaredPosition, Collections.emptyList());
+      assertFalse(appender.anyMessageContains("no ##contig metadata with that name"));
     } finally {
       root.detachAppender(appender);
       appender.stop();
