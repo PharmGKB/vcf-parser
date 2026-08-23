@@ -1607,17 +1607,22 @@ public class VcfPositionTest {
   }
 
   @Test
-  public void testLenientConstructorDoesNotFlagTwoInvalidFormatKeysAsDuplicates() {
-    // mirrors testMultipleEmptyFormatKeysNotTreatedAsDuplicates: a grammar-invalid key is excluded from the
-    // duplicate check the same way an empty key is (both continue past checkFormat's isDuplicateAt call for
-    // that index), so two identical malformed keys each warn about the grammar violation, not about being a
-    // duplicate
+  public void testLenientConstructorWarnsBothGrammarAndDuplicateForTwoInvalidFormatKeys() {
+    // regression test: a grammar-invalid key skips checkFormat's own unconditional-throw isDuplicateAt call
+    // (that check is deliberately fatal, too severe for content already downgraded to a warning) -- but a
+    // grammar-invalid duplicate is not silently un-flagged as a duplicate altogether: a second, warn-only
+    // isDuplicateAt check right alongside the grammar warning now catches it too, eagerly, rather than
+    // leaving it to be discovered only if a caller later reads that sample's properties (which independently,
+    // lazily, warns "Sample contains duplicate FORMAT key" via VcfSample.properties() regardless). Two
+    // identical malformed keys warn about BOTH the grammar violation (twice, once per occurrence) and the
+    // duplicate (once, for the second occurrence).
     StringWriter sink = new StringWriter();
     List<String> format = new java.util.ArrayList<>(List.of("GT", "1KG", "1KG"));
     VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("1", 100, null, "A", null, null, null,
         null, format, -1);
     assertEquals(List.of("GT", "1KG", "1KG"), position.getFormat());
-    assertFalse(sink.toString().contains("Duplicate FORMAT key"));
+    assertEquals(2, org.apache.commons.lang3.StringUtils.countMatches(sink.toString(), "tag-name grammar"));
+    assertTrue(sink.toString().contains("Duplicate FORMAT key \"1KG\""));
   }
 
   @Test

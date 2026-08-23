@@ -998,6 +998,17 @@ every occurrence after the first when that sample is read or written, with a war
 `VcfSample.properties()`). Two empty keys are not "duplicates" for rejection purposes, but they are still a
 data-loss case in practice.
 
+A grammar-invalid (but non-empty) key is excluded from `checkFormat`'s unconditional-throw duplicate check
+the same way an empty key is (both `continue` past the `isDuplicateAt` call for that index) -- the fatal
+duplicate check would be too severe for content already downgraded to a warning. But `checkFormat` now also
+runs a second, warn-only `isDuplicateAt` check right alongside the grammar warning for exactly this case, so
+two identical grammar-invalid keys (e.g. `GT:1KG:1KG`) warn about BOTH the grammar violation (once per
+occurrence) and the duplicate (once, eagerly, at construction time) -- rather than leaving the duplicate to
+be discovered only if a caller later happens to read that sample's properties, which independently and
+lazily warns "Sample contains duplicate FORMAT key" via `VcfSample.properties()` regardless (the same
+data-loss mechanics as the empty-key case above apply here too: the second occurrence's value is still
+silently dropped from the materialized property map, warning or not).
+
 ## A different kind of "empty": a metadata attribute-list value
 
 Every row above is about a VCF **data line** field (`ID`/`FILTER`/`ALT`/`INFO`/a sample value). A `##KEY=<...>`
