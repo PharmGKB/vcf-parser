@@ -706,6 +706,54 @@ public class ContigMetadataTest {
   }
 
   @Test
+  public void testTypedConstructorThrowsForNegativeLength() {
+    // regression test found by the Phase 2 review's re-verification round: no VCF version states this
+    // explicitly (unlike md5/URL above, which at least have a format to check against), but a negative
+    // sequence length is meaningless -- the same parity gap the md5/URL checks close for their own optional
+    // attributes. Confirmed live (bcftools 1.23.1): a negative length causes the entire ##contig declaration
+    // to be silently discarded on ingestion, not merely a warning about the length value itself.
+    assertThrows(VcfFormatException.class,
+        () -> new ContigMetadata(STRICT_CONTEXT, "chr1", -100L, null, null, null, null, null));
+  }
+
+  @Test
+  public void testMapConstructorWarnsForNegativeLength() {
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    ContigMetadata contig;
+    try {
+      Map<String, String> map = new HashMap<>();
+      map.put(ContigMetadata.ID, "chr1");
+      map.put(ContigMetadata.LENGTH, "-100");
+      contig = new ContigMetadata(LENIENT_CONTEXT, map);
+      assertTrue(appender.anyMessageContains("length \"-100\" is negative"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    // warn-and-keep, matching every other optional-attribute check in this class: the malformed value is
+    // still stored, and getLength() (a typed numeric getter) throws its own unconditional error when read,
+    // the same way it already does for a non-numeric length -- see testGetLengthNegativeThrowsVcfFormatException
+    assertThrows(VcfFormatException.class, contig::getLength);
+  }
+
+  @Test
+  public void testGetLengthNegativeThrowsVcfFormatException() {
+    // getLength() must throw for a negative value the same way it already does for a non-numeric one -- init()
+    // only warns under a lenient context and still stores the value, so a caller reading it back needs its
+    // own floor regardless
+    Map<String, String> map = new HashMap<>();
+    map.put(ContigMetadata.ID, "id");
+    map.put(ContigMetadata.LENGTH, "-1");
+    ContigMetadata contig = new ContigMetadata(LENIENT_CONTEXT, map);
+    assertThrows(VcfFormatException.class, contig::getLength);
+  }
+
+  @Test
   public void testMapConstructorWarnsForMalformedMd5() {
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);

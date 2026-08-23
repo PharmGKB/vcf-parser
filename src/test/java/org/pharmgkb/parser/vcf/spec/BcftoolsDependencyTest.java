@@ -1738,5 +1738,20 @@ class BcftoolsDependencyTest {
     assertTrue(result.output().lines().anyMatch(line -> line.startsWith("1\t2147483648\t")), result.output());
   }
 
+  @Test
+  void testNegativeContigLengthBcftoolsDiscardsTheDeclaration() throws IOException, InterruptedException {
+    // No VCF version explicitly forbids a negative ##contig length, unlike md5/URL which at least have a
+    // format this library checks against -- this decision rests on measured bcftools behavior rather than a
+    // cited spec line, so it's indexed here per AGENTS.md's Decision Hierarchy. Confirmed live: bcftools
+    // 1.23.1 silently discards the entire ##contig declaration on ingestion (not merely a warning about the
+    // length value) -- exit 0, but the declaration is absent from bcftools' own re-emitted header, and a
+    // record using that contig gets "Contig '1' is not defined in the header" instead.
+    String vcf = "##fileformat=VCFv4.3\n##contig=<ID=1,length=-100>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n1\t1\t.\tA\tT\t.\t.\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view", "-h");
+    assertEquals(0, result.exitCode(), result.output());
+    assertFalse(result.output().lines().anyMatch(line -> line.startsWith("##contig=<ID=1,")), result.output());
+  }
+
   private record BcftoolsResult(int exitCode, String output) {}
 }

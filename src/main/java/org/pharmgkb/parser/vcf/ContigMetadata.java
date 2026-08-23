@@ -59,7 +59,11 @@ public final class ContigMetadata extends IdMetadata {
     }
     // length's not-a-number check in init() is structurally unreachable here (length, if present, is already a
     // parsed Long, never a malformed string) -- no equivalent check added for it; a null length is legitimately
-    // absent per VCFv4.2.tex line 138, not malformed.
+    // absent per VCFv4.2.tex line 138, not malformed. The negative-length check IS reachable here, unlike the
+    // not-a-number one: a Long can still be negative, so this mirrors init()'s own check (see its comment).
+    if (length != null && length < 0) {
+      warnOrThrow("{} length \"{}\" is negative", getLabel(), length);
+    }
     if (url != null) {
       // Checked unquoted -- see IdMetadata's typed constructor's identical comment for why (there is no
       // stored property to read yet, so this unquotes the constructor parameter directly via
@@ -152,11 +156,21 @@ public final class ContigMetadata extends IdMetadata {
     // (e.g. length="249250621") is otherwise silently accepted at construction (init() already unquotes
     // before checking) but threw here, since this getter still parsed the raw, still-quoted value
     String length = getPropertyUnquoted(LENGTH);
+    long parsedLength;
     try {
-      return Long.parseLong(length);
+      parsedLength = Long.parseLong(length);
     } catch (NumberFormatException e) {
       throw new VcfFormatException("Contig " + getId() + " length '" + length + "' is not a number", e);
     }
+    // matches init()'s own negative-length check (see its comment): a negative sequence length is just as
+    // unusable to a caller asking for a real long value as a non-numeric one is, so this typed getter throws
+    // unconditionally for both -- the same shape init()'s own not-a-number branch above already uses, not a
+    // new leniency policy choice. init() itself only warns under a lenient context and still stores the
+    // value, so a caller reading it back here still needs its own floor.
+    if (parsedLength < 0) {
+      throw new VcfFormatException("Contig " + getId() + " length '" + length + "' is negative");
+    }
+    return parsedLength;
   }
 
   /**
@@ -231,8 +245,17 @@ public final class ContigMetadata extends IdMetadata {
     String length = getPropertyUnquoted(LENGTH);
     if (length != null) {
       try {
-        //noinspection ResultOfMethodCallIgnored
-        Long.parseLong(length);
+        long parsedLength = Long.parseLong(length);
+        // no VCF version states this explicitly (unlike md5/URL below, which at least have a format this
+        // library checks against), but a negative sequence length is meaningless -- the same parity gap the
+        // md5/URL checks below already close for their own optional attributes. Confirmed live (bcftools
+        // 1.23.1): a negative length causes the entire ##contig declaration to be silently discarded on
+        // ingestion ("Contig '1' is not defined in the header", declaration absent from bcftools' own
+        // re-emitted output) -- not merely a warning about the length value itself, so this is a case where
+        // bcftools' behavior is a real signal, not silence.
+        if (parsedLength < 0) {
+          warnOrThrow("{} length \"{}\" is negative", getLabel(), length);
+        }
       } catch (NumberFormatException e) {
         warnOrThrow("{} length \"{}\" is not a number", getLabel(), length);
       }

@@ -468,3 +468,13 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
   position type, `hts_pos_t`, is 64-bit by design) also accepts a POS one past `Integer.MAX_VALUE` silently.
   Must be re-checked on a bcftools upgrade: if a future bcftools started rejecting an out-of-32-bit-range
   POS, this library's acceptance would become a round-trip mismatch against real-world bcftools behavior.
+
+### Negative `##contig` `length`
+- Test: `BcftoolsDependencyTest#testNegativeContigLengthBcftoolsDiscardsTheDeclaration`
+- Reasoning: no VCF version explicitly forbids a negative `##contig` length (unlike `md5`/`URL`, which at
+  least have a format this library checks against), so this decision to reject it rests on measured bcftools
+  behavior rather than a cited spec line. bcftools 1.23.1 silently discards the entire `##contig` declaration
+  on ingestion for a negative length -- not merely a warning about the length value itself. Must be
+  re-checked on a bcftools upgrade: if a future bcftools started accepting a negative length and keeping the
+  declaration, the strength of this decision's supporting evidence would need revisiting (though the
+  underlying "a negative length is meaningless" reasoning would still stand on its own).

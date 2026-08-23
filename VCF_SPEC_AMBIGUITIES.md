@@ -41,6 +41,7 @@ before assuming it generalizes to a similar-looking case.
 | Contig ID with a non-leading asterisk (hts-specs' `failed/` fixtures vs. VCFv4.3 errata) | Accept (matches bcftools; matches this library's existing implementation) | ✅ |
 | CHROM / contig ID containing a character outside the printable-ASCII range | Warn (matches bcftools' own warn-but-preserve, not the unconditional throw every other CHROM character-set check uses) | ✅ |
 | `##contig` extra/unmodeled attributes | Allowed, no warning | ✅ |
+| Negative `##contig` `length` | Reject (bcftools silently discards the whole declaration) | ✅ |
 | Optional metadata fields must be quoted (`VCFv4.3.tex:128`) vs. `##contig`'s own unquoted examples | No optional-field quoting check added; unquoted is valid | ✅ |
 | Generic metadata property with an empty value | Drop (deliberately stricter than bcftools) | ✅ |
 | Generic metadata property with an empty key (`##=value`) | Drop (matches bcftools, which rejects the line outright) | ✅ |
@@ -282,6 +283,27 @@ package still calling `ensureNoExtras()`, warning about attributes the others to
 attribute, expected to parse cleanly) and live bcftools testing (silently round-trips a custom contig
 attribute with zero warning) that `##contig` should tolerate extra attributes the same as every other
 declaration type. `ContigMetadata.ensureNoExtras()` call removed.
+
+### Negative `##contig` `length`
+
+`##contig=<ID=1,length=-100>` parsed with zero warnings. No VCF version states a sign constraint on `length`
+at all -- unlike `md5`/`URL`, which at least have a format this library validates against, there is no spec
+text to cite here either way, so this genuinely needed the tool-consultation step rather than a direct
+citation.
+
+Confirmed live against bcftools 1.23.1 (htslib 1.23.1): a negative `length` causes the **entire** `##contig`
+declaration to be silently discarded on ingestion -- not merely a warning about the `length` value itself.
+`bcftools view -h` omits the declaration entirely, and a record referencing that contig then gets "Contig
+'1' is not defined in the header" instead of being recognized. This is a real signal, not bcftools staying
+silent on a case it never considered -- the declaration provably doesn't survive ingestion as-is.
+
+**Decision:** reject (warn lenient / throw strict), matching the parity `md5`/`URL`'s own checks already
+establish for `##contig`'s other optional attributes -- a negative sequence length is meaningless the same
+way a malformed digest or URL is. Implemented in `ContigMetadata.init()` and its typed constructor; also
+extended to the typed `getLength()` getter (which already threw unconditionally for a non-numeric value, so
+throwing for a negative one too is the same typed-conversion-must-produce-a-usable-value shape, not a new
+leniency-policy decision). Indexed in `BCFTOOLS_VERSION_DEPENDENCIES.md` since the decision's strength rests
+on this measured bcftools behavior.
 
 ### Optional metadata fields must be quoted (`VCFv4.3.tex:128`) vs. `##contig`'s own unquoted examples
 
