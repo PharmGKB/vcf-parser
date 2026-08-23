@@ -1935,6 +1935,58 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteWarnsOnPedigreeIdContainingWhitespace() throws Exception {
+    // regression test found by the Phase 2 review's re-verification round: unlike the sibling missing/blank-ID
+    // check just above (which IS mirrored at write time), validateMetadata()'s PEDIGREE loop had no
+    // whitespace-in-ID check at all -- a present, non-blank whitespace-containing ID (e.g. "A B") warns at
+    // construction (VcfMetadataTest.testAddPedigreeWarnsButKeepsPresentIdContainingWhitespace) but produced no
+    // warning here, unlike every other structured metadata ID type's identical rule. Same "no appender around
+    // construction" structure as the blank-ID test above, since addPedigree() itself already warns for this ID
+    // at construction time.
+    VcfContext lenient43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
+    Map<String, String> props = new LinkedHashMap<>();
+    props.put("ID", "A B");
+    VcfMetadata metadata = new VcfMetadata.Builder(lenient43).setFileFormat("VCFv4.3")
+        .addPedigree(new PedigreeMetadata(lenient43, props))
+        .build();
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+
+    StringWriter diagnosticsSw = new StringWriter();
+    VcfWriter diagnosticsWriter = new VcfWriter.Builder().toWriter(new PrintWriter(diagnosticsSw))
+        .validateBeforeWrite().build();
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender diagnosticsAppender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    diagnosticsAppender.start();
+    root.addAppender(diagnosticsAppender);
+    try {
+      diagnosticsWriter.writeHeader(metadata);
+      assertTrue(diagnosticsAppender.anyMessageContains("PEDIGREE metadata ID \"A B\" must not contain whitespace"));
+    } finally {
+      root.detachAppender(diagnosticsAppender);
+      diagnosticsAppender.stop();
+    }
+
+    StringWriter defaultSw = new StringWriter();
+    VcfWriter defaultWriter = new VcfWriter.Builder().toWriter(new PrintWriter(defaultSw)).build();
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender defaultAppender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    defaultAppender.start();
+    root.addAppender(defaultAppender);
+    try {
+      defaultWriter.writeHeader(metadata);
+      assertFalse(defaultAppender.anyMessageContains("must not contain whitespace"));
+    } finally {
+      root.detachAppender(defaultAppender);
+      defaultAppender.stop();
+    }
+
+    assertTrue(diagnosticsSw.toString().contains("ID=\"A B\"") || diagnosticsSw.toString().contains("ID=A B"));
+    assertTrue(defaultSw.toString().contains("ID=\"A B\"") || defaultSw.toString().contains("ID=A B"));
+  }
+
+  @Test
   public void testValidateBeforeWriteWarnsOnQuotedWhitespaceOnlyPedigreeIdUnder43() throws Exception {
     // regression test for the retired WONT_FIX.md entry, write-time side: validateMetadata()'s own PEDIGREE
     // loop mirrors VcfMetadata.Builder.addPedigree's blank check (see that method's comment) and must unquote

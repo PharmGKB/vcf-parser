@@ -1517,6 +1517,12 @@ public class VcfMetadataTest {
     assertEquals(1, metadata.getPedigrees().size());
     assertTrue(appender.anyMessageContains("Duplicate ID"));
     assertFalse(appender.anyMessageContains("has no ID"));
+    // regression test found by the Phase 2 review's re-verification round: this whitespace-only ID must NOT
+    // also be misdiagnosed as "must not contain whitespace" -- there is no usable ID content once trimmed, so
+    // that message would misleadingly imply trimming it fixes the declaration (matching IdMetadata.init()'s
+    // own reasoning for treating blank-when-trimmed and whitespace-in-otherwise-valid-content as mutually
+    // exclusive). Only the "Duplicate ID" message (checked above) should fire for the second declaration.
+    assertFalse(appender.anyMessageContains("must not contain whitespace"));
   }
 
   @Test

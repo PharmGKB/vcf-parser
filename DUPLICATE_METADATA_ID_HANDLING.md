@@ -274,7 +274,11 @@ all** is added and kept unconditionally: it reaches neither the missing-`ID` bra
 the duplicate-`ID` branch (which is itself guarded on `id != null`). A declaration whose **`ID=` is present
 but blank** instead falls straight through to the duplicate-`ID` branch, where the blank value is deduped like
 any other shared `ID` -- so two blank-`ID=` `##PEDIGREE` lines under VCFv4.2 warn `Duplicate ID ""` and keep
-only the first, rather than each independently warning "has no ID" the way they do at VCFv4.3+. See "The
+only the first, rather than each independently warning "has no ID" the way they do at VCFv4.3+. "Blank"
+here means trim-empty, not just literally zero-length: a whitespace-only `ID="   "` takes the identical
+present-but-blank path (dedupes the same way, e.g. two `ID="   "` lines collide as `Duplicate ID "   "`) --
+it is not also flagged by the separate whitespace-in-ID check below, which is guarded off specifically for a
+blank-when-trimmed value so it doesn't misleadingly imply trimming would produce a valid ID. See "The
 empty-`ID=` row is version-split" at the end of this document.
 
 ### Quoting is not part of the identity

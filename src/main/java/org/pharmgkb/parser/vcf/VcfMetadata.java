@@ -1220,7 +1220,8 @@ public final class VcfMetadata {
       // for them ("cannot be stored"), and ##PEDIGREE is List-backed. See DUPLICATE_METADATA_ID_HANDLING.md.
       // Checked BEFORE the duplicate branch, and deliberately not added to m_pedigreeIds, so two blank-ID
       // declarations each report their own missing ID instead of colliding as a spurious Duplicate ID "".
-      if ((id == null || id.trim().isEmpty()) && m_context.getVersion().isAtLeast(VcfVersion.V4_3)) {
+      boolean idBlankWhenTrimmed = id != null && id.trim().isEmpty();
+      if ((id == null || idBlankWhenTrimmed) && m_context.getVersion().isAtLeast(VcfVersion.V4_3)) {
         warnOrThrow(m_context, "PEDIGREE metadata declaration has no ID, which VCF {} requires; keeping it: {}",
             m_context.getVersion().getId(), md.getPropertiesRaw());
         m_pedigree.add(md);
@@ -1234,7 +1235,18 @@ public final class VcfMetadata {
       // unconditional, not gated on isAtLeast(V4_3) like the missing-ID check above, matching the other six
       // types' own unconditional treatment: a present ID's whitespace is invalid at every version, even
       // though whether an ID is REQUIRED at all is version-dependent.
-      if (id != null && InternalUtils.containsWhitespace(id)) {
+      //
+      // Guarded on !idBlankWhenTrimmed (not just id != null, as originally written): a pre-4.3 whitespace-only
+      // ID (e.g. "   ") is blank-when-trimmed but doesn't take the branch above (that branch requires
+      // isAtLeast(V4_3)), so it used to fall through here unconditionally and get misdiagnosed as "must not
+      // contain whitespace" -- misleading, since trimming it would leave nothing, not a valid ID, matching
+      // IdMetadata.init()'s own reasoning for ordering its equivalent blank-vs-whitespace checks as a mutually
+      // exclusive else-if (see that method's own comment). This guard suppresses only that one message for
+      // that one shape; the duplicate-check/dedupe-participation logic below this block is untouched, so a
+      // pre-4.3 blank or whitespace-only ID still participates in m_pedigreeIds exactly as before (see
+      // DUPLICATE_METADATA_ID_HANDLING.md and VcfMetadataTest's testAddPedigree*Under42IsSilentAndStillDedupes
+      // tests) -- unlike a null ID, which was never added to m_pedigreeIds and still isn't.
+      if (id != null && !idBlankWhenTrimmed && InternalUtils.containsWhitespace(id)) {
         warnOrThrow(m_context, "PEDIGREE metadata ID \"{}\" must not contain whitespace", id);
       }
       // Set.add reports whether the ID was new, so this is one lookup rather than a contains-then-add pair. On

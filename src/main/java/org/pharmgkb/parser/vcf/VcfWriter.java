@@ -521,7 +521,8 @@ public class VcfWriter implements Closeable {
       // VcfMetadata.Builder.addPedigree's own blank-ID/dedupe check, so it must unquote first for the same
       // reason -- see that method's comment and AGENTS.md's "Unquoting before internal use" policy.
       String id = pedigree.getPropertyUnquoted("ID");
-      if ((id == null || id.trim().isEmpty())
+      boolean idBlankWhenTrimmed = id != null && id.trim().isEmpty();
+      if ((id == null || idBlankWhenTrimmed)
           && metadata.getContext().getVersion().isAtLeast(VcfVersion.V4_3)) {
         // Same rule VcfMetadata.Builder.addPedigree enforces at construction, re-checked here because this is
         // the full-output diagnostics pass and must report what it can detect about the object it was handed.
@@ -533,6 +534,17 @@ public class VcfWriter implements Closeable {
         m_warnings.warn("PEDIGREE metadata declaration has no ID, which VCF {} requires",
             metadata.getContext().getVersion().getId());
         continue;
+      }
+      // Mirrors addPedigree's own whitespace check (VcfMetadata.java), including its !idBlankWhenTrimmed
+      // guard: a pre-4.3 whitespace-only ID is blank-when-trimmed but doesn't take the branch above (which
+      // requires isAtLeast(V4_3)), so without this guard it would be misdiagnosed as "must not contain
+      // whitespace" here too -- see addPedigree's own comment for the full reasoning. Previously missing
+      // entirely at this write-time diagnostics pass (unlike the construction-time check, and unlike the
+      // sibling missing/blank-ID check just above, which IS mirrored here) -- found by the Phase 2 review's
+      // re-verification round: a whitespace-containing PEDIGREE ID written via validateBeforeWrite() produced
+      // no warning at all, unlike every other structured metadata ID type's identical rule.
+      if (id != null && !idBlankWhenTrimmed && InternalUtils.containsWhitespace(id)) {
+        m_warnings.warn("PEDIGREE metadata ID \"{}\" must not contain whitespace", id);
       }
       if (id != null && !pedigreeIds.add(id)) {
         // unlike VcfMetadata.Builder.addPedigree() (which warns and drops a duplicate ID at construction time),
