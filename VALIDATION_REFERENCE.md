@@ -628,6 +628,19 @@ is a structural failure and still throws -- see the strict section above):
   `null`, and `VcfSample.containsProperty(ReservedFormatProperty)` warns and returns `false`. Use the
   `String`-keyed overloads to reach a VCFv4.3+ custom key literally named `GLE`. Unchanged under VCFv4.2 and
   earlier.
+- A read of one of the five reserved keys VCFv4.3 **added** -- `AD`, `ADF`, `ADR`, `PP`, `CNP` -- under a
+  version that predates VCFv4.3, the mirror image of `GLE`'s removal above. None of the five has any
+  VCFv4.1/4.2 declaration at all (see each constant's own comment in `ReservedFormatProperty.java`), so under
+  those versions each is classified as an ordinary custom key (the same "validated against its own
+  `##FORMAT` declaration when declared, standard 'no metadata declaration' treatment when not" shape `GLE`
+  gets from VCFv4.3 on), not this library's reserved-canonical fallback. The same two enum-key accessors as
+  `GLE`'s entry above (`VcfSample.getProperty(ReservedFormatProperty)`/`containsProperty(ReservedFormatProperty)`)
+  warn and return `null`/`false` rather than misapplying the wrong version's reserved definition when a
+  caller names one of these five constants directly under a pre-4.3 context; `ReservedFormatProperty.fromId(
+  String, VcfVersion)` gives the same answer for the `String`-keyed classification route. Found and fixed as
+  a real bug (not merely characterized): a VCFv4.2 file's own custom `##FORMAT=<ID=PP,...>` (or `AD`/`ADF`/
+  `ADR`/`CNP`) previously got checked against, and could throw trying to convert to, the wrong (4.3-only)
+  reserved definition.
 - A reserved `FORMAT/PL`/`GL`/`GP`/`PP` value whose element count doesn't match the `Number=G` cardinality
   implied by the sample's ploidy and the record's ALT allele count. When `GT` is absent, ploidy can't
   otherwise be determined at all, but these four keys specifically default to assumed diploidy rather than

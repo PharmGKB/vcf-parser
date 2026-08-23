@@ -1261,19 +1261,25 @@ public class VcfParserTest {
   }
 
   @Test
-  void testThousandGenomesChrYFixtureProducesExactlyThreeKnownWarnings() throws IOException {
+  void testThousandGenomesChrYFixtureProducesExactlyTwoKnownWarnings() throws IOException {
     // Real-world regression fixture: the unmodified header (125 metadata lines + #CHROM, 1233 samples) plus 20
     // real data records from 1000 Genomes Phase 3 chrY
     // (ALL.chrY.phase3_integrated_v2b.20130502.genotypes.vcf.gz, downloaded from
-    // https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/). All three warnings below are metadata-level
-    // (fire once during header parsing, independent of how many data records follow), each a genuine quirk in
-    // the real file's own header: `##INFO=<ID=DP,...>` is declared twice with different descriptions;
-    // `##FORMAT=<ID=CNP,Number=.,...>` doesn't match `CNP`'s reserved Number=G; and no `##SAMPLE` declarations
-    // exist for the 1233 samples in `#CHROM`. Confirmed directly that bcftools 1.23.1 emits none of these three
-    // (silently keeps the first `DP` declaration -- same outcome as this library, just no diagnostic; accepts
-    // `CNP`'s declared `Number=.` unquestioned; doesn't check for `##SAMPLE` declarations at all) -- this test
-    // pins the exact warning set so a regression (either a new warning appearing, or one of these three
-    // silently stopping) is caught, not just "a warning fired."
+    // https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/). This file declares ##fileformat=VCFv4.1.
+    // Both warnings below are metadata-level (fire once during header parsing, independent of how many data
+    // records follow), each a genuine quirk in the real file's own header: `##INFO=<ID=DP,...>` is declared
+    // twice with different descriptions; and no `##SAMPLE` declarations exist for the 1233 samples in
+    // `#CHROM`. Confirmed directly that bcftools 1.23.1 emits neither (silently keeps the first `DP`
+    // declaration -- same outcome as this library, just no diagnostic; doesn't check for `##SAMPLE`
+    // declarations at all) -- this test pins the exact warning set so a regression (either a new warning
+    // appearing, or one of these two silently stopping) is caught, not just "a warning fired."
+    //
+    // A third warning ("FORMAT CNP has Number '.' but the reserved definition expects 'G'") previously fired
+    // here too, but was itself a bug this fixture exposed: this VCFv4.1 file's own `##FORMAT=<ID=CNP,
+    // Number=.,...>` declares an ordinary custom key, since CNP has no VCFv4.1/4.2 declaration at all
+    // (ReservedFormatProperty.isAddedAtV4_3) -- there is no VCFv4.3 "reserved definition" for a VCFv4.1 file
+    // to be checked against. bcftools 1.23.1 already accepted this file's declared `Number=.` unquestioned;
+    // this library now matches that, closing the divergence rather than merely noting it.
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -1291,8 +1297,7 @@ public class VcfParserTest {
       Set<String> actual = new HashSet<>(appender.getRelevantWarnOrHigherMessages(Set.of()));
       Set<String> expected = Set.of(
           "There are 1233 samples in the header but 0 in the metadata",
-          "Duplicate ID \"DP\" for INFO metadata declaration ignored; keeping the first declaration",
-          "FORMAT CNP has Number '.' but the reserved definition expects 'G'");
+          "Duplicate ID \"DP\" for INFO metadata declaration ignored; keeping the first declaration");
       assertEquals(expected, actual);
     } finally {
       root.detachAppender(appender);

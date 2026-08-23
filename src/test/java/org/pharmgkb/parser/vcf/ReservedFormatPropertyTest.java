@@ -21,16 +21,18 @@ public class ReservedFormatPropertyTest {
   public void testVersionAwareFromIdDropsGleFrom43() {
     // GLE is reserved in VCFv4.1.tex line 208 and VCFv4.2.tex line 225, and was removed by VCFv4.3
     // (VCFv4.3.tex line 2168, "Removed unused and ill-defined GLE FORMAT tag", restated in VCFv4.4.tex line
-    // 2630 and VCFv4.5.tex line 2812). It is the only key this overload treats differently from fromId(String).
+    // 2630 and VCFv4.5.tex line 2812).
     assertEquals(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy,
         ReservedFormatProperty.fromId("GLE", VcfVersion.V4_1));
     assertEquals(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy,
         ReservedFormatProperty.fromId("GLE", VcfVersion.V4_2));
     assertNull(ReservedFormatProperty.fromId("GLE", VcfVersion.V4_3));
-    // every other reserved key resolves identically at both versions -- this overload is a GLE-specific
-    // existence check, not a version-aware reserved-key table
+    // every other reserved key EXCEPT the five VCFv4.3 additions (see the next test) resolves identically at
+    // both versions -- this overload's existence checks are GLE removal and the five additions' introduction,
+    // not a version-aware reserved-key table covering meaning drift
     for (ReservedFormatProperty property : ReservedFormatProperty.values()) {
-      if (property == ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy) {
+      if (property == ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy ||
+          ReservedFormatProperty.isAddedAtV4_3(property)) {
         continue;
       }
       assertEquals(property, ReservedFormatProperty.fromId(property.getId(), VcfVersion.V4_2));
@@ -38,6 +40,29 @@ public class ReservedFormatPropertyTest {
     }
     assertNull(ReservedFormatProperty.fromId(null, VcfVersion.V4_3));
     assertNull(ReservedFormatProperty.fromId("NOT_A_RESERVED_KEY", VcfVersion.V4_2));
+  }
+
+  @Test
+  public void testVersionAwareFromIdWithholdsKeysAddedAtV4_3() {
+    // regression test: the mirror image of GLE's removal -- AD/ADF/ADR/PP/CNP have no VCFv4.2 declaration at
+    // all (see each constant's own comment and ReservedFormatProperty.isAddedAtV4_3), so fromId(String,
+    // VcfVersion) must not classify them as reserved under a version that predates their introduction.
+    // Previously this method gated key REMOVAL only (GLE), so a VCFv4.2 file's own, unrelated custom key
+    // named e.g. "PP" was misclassified as the reserved 4.3 key.
+    for (ReservedFormatProperty property : java.util.List.of(
+        ReservedFormatProperty.AlleleDepth, ReservedFormatProperty.AlleleDepthForward,
+        ReservedFormatProperty.AlleleDepthReverse, ReservedFormatProperty.PhredScaledPosteriorProbabilities,
+        ReservedFormatProperty.CopyNumberPosteriorProbabilities)) {
+      assertTrue(ReservedFormatProperty.isAddedAtV4_3(property));
+      assertNull(ReservedFormatProperty.fromId(property.getId(), VcfVersion.V4_1));
+      assertNull(ReservedFormatProperty.fromId(property.getId(), VcfVersion.V4_2));
+      assertEquals(property, ReservedFormatProperty.fromId(property.getId(), VcfVersion.V4_3));
+    }
+    // GLE, and every other reserved key, is unaffected by isAddedAtV4_3
+    assertFalse(ReservedFormatProperty.isAddedAtV4_3(
+        ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy));
+    assertFalse(ReservedFormatProperty.isAddedAtV4_3(ReservedFormatProperty.Genotype));
+    assertFalse(ReservedFormatProperty.isAddedAtV4_3(null));
   }
 
   @Test

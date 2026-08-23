@@ -1399,19 +1399,21 @@ public class VcfWriterTest {
   public void testValidateBeforeWriteChecksUndeclaredReservedFormatKeyCardinality() throws Exception {
     // AD is reserved (Number=R) but has no ##FORMAT=<ID=AD,...> declaration at all here -- validateSamples must
     // still fall back to AD's own canonical Number/Type, matching getProperty(VcfPosition, VcfMetadata,
-    // String)'s identical read-path fallback
+    // String)'s identical read-path fallback. AD has no VCFv4.2 declaration at all
+    // (ReservedFormatProperty.isAddedAtV4_3), so this must use a VCFv4.3+ context.
+    VcfContext context43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+    VcfMetadata metadata = new VcfMetadata.Builder(context43).setFileFormat("VCFv4.3")
         .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
-        .addFormat(new FormatMetadata(LENIENT_CONTEXT, "GT", "Genotype", "1", FormatType.String))
+        .addFormat(new FormatMetadata(context43, "GT", "Genotype", "1", FormatType.String))
         .build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), VcfFloat.of(new BigDecimal("0")), null,
+    VcfPosition position = context43.newPosition("chr1", 1, null, "A", List.of("T"), VcfFloat.of(new BigDecimal("0")), null,
         null, List.of("GT", "AD"), -1);
     LinkedHashMap<String, String> sampleProps = new LinkedHashMap<>();
     sampleProps.put("GT", "0/1");
     sampleProps.put("AD", "10"); // Number=R with 1 ALT allele expects 2 values, only 1 given
-    VcfSample sample = LENIENT_CONTEXT.newSample(sampleProps);
+    VcfSample sample = context43.newSample(sampleProps);
 
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);

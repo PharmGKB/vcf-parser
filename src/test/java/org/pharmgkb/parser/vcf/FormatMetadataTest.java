@@ -238,7 +238,10 @@ public class FormatMetadataTest {
   @Test
   public void testIncorrectlyDeclaredCnpWarns() {
     // a CNP declared with a Number other than "G" is still a real mismatch worth flagging, even though the
-    // generic value-cardinality check itself is skipped for CNP
+    // generic value-cardinality check itself is skipped for CNP -- CNP has no VCFv4.2 declaration at all
+    // (ReservedFormatProperty.isAddedAtV4_3), so this must be checked under a VCFv4.3+ context, not
+    // LENIENT_CONTEXT's VCFv4.2 (see testCnpReservedNumberTypeCheckIsVersionGated for the pre-4.3 side)
+    VcfContext lenient43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
@@ -246,7 +249,7 @@ public class FormatMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+      new FormatMetadata(lenient43, InternalUtils.extractProperties(
           new String[]{"ID=CNP", "Number=1", "Type=Float", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertTrue(appender.anyMessageContains("reserved definition expects"));
     } finally {
@@ -256,78 +259,88 @@ public class FormatMetadataTest {
   }
 
   @Test
-  public void testPpReservedNumberTypeMismatchWarnsAndPreservesUnder42EvenThoughV42DoesNotTablePp() {
-    // Characterization test, not a fix: PP is reserved (Number=G, Type=Integer, i.e. Long.class) only as of
-    // VCFv4.3.tex's Reserved genotype keys table (table:reserved-genotypes, line 475: "PP & G & Integer &
-    // Phred-scaled genotype posterior probabilities rounded to the closest integer"); VCFv4.2.tex does not
-    // table -- or mention at all -- PP. But ReservedFormatProperty.fromId(String, VcfVersion) gates key
-    // REMOVAL only (GLE, dropped by VCFv4.3 -- see that method's own Javadoc), not key INTRODUCTION, so a
-    // VCFv4.2 ##FORMAT=<ID=PP,...> is still checked against PP's 4.3 reserved definition. That asymmetry is
-    // pre-existing and deliberately deferred to the per-version reserved-key table project tracked by
-    // TODO.md's "Investigate bumping the target VCF spec to 4.4 or 4.5" entry. This test pins the current,
-    // asymmetric behavior; it does not endorse it.
+  public void testPpReservedNumberTypeCheckIsVersionGated() {
+    // Mirror image of testGleReservedNumberTypeCheckIsVersionGated above: PP is reserved (Number=G,
+    // Type=Integer, i.e. Long.class) only as of VCFv4.3.tex's Reserved genotype keys table
+    // (table:reserved-genotypes, line 475: "PP & G & Integer & Phred-scaled genotype posterior probabilities
+    // rounded to the closest integer"); VCFv4.2.tex does not table -- or mention at all -- PP. Regression
+    // test: ReservedFormatProperty.fromId(String, VcfVersion) previously gated key REMOVAL only (GLE), not
+    // key INTRODUCTION, so a VCFv4.2 ##FORMAT=<ID=PP,...> was incorrectly checked against PP's 4.3 reserved
+    // definition -- see ReservedFormatProperty.isAddedAtV4_3's own comment for the fix.
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    FormatMetadata md;
     try {
-      md = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+      // under 4.2, PP is not yet reserved, so a mismatched declaration is an ordinary custom key and must
+      // not warn
+      FormatMetadata md42 = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=PP", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
+      assertFalse(appender.hasWarnOrHigher());
+      assertEquals("1", md42.getNumber());
+      assertEquals(FormatType.String, md42.getType());
+
+      // under 4.3+, PP is reserved and the same mismatch must warn (but still preserve the caller's own
+      // declared values, not substitute the reserved definition's)
+      VcfContext lenient43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
+      FormatMetadata md43 = new FormatMetadata(lenient43, InternalUtils.extractProperties(
           new String[]{"ID=PP", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertTrue(appender.anyMessageContains("has Number '1' but the reserved definition expects 'G'"));
       assertTrue(appender.anyMessageContains("has Type 'String' but the reserved definition expects 'Long'"));
+      assertEquals("1", md43.getNumber());
+      assertEquals(FormatType.String, md43.getType());
     } finally {
       root.detachAppender(appender);
       appender.stop();
     }
-    // the mismatch check only warns; it never substitutes the reserved definition's Number/Type in for the
-    // caller's own declared values
-    assertEquals("1", md.getNumber());
-    assertEquals(FormatType.String, md.getType());
-    // a strict VCFv4.2 context throws instead of warning, exactly as it would for any other reserved-key
-    // mismatch (see testTypedConstructorRejectsReservedNumberMismatch above)
+    // a strict 4.2 context accepts the same declaration outright (PP isn't reserved there); a strict 4.3
+    // context throws instead of warning, exactly as it would for any other reserved-key mismatch (see
+    // testTypedConstructorRejectsReservedNumberMismatch above)
+    FormatMetadata strictMd42 = new FormatMetadata(STRICT_CONTEXT, "PP", "d", "1", FormatType.String);
+    assertEquals("1", strictMd42.getNumber());
+    VcfContext strict43 = VcfContext.strict("VCFv4.3");
     VcfFormatException ex = assertThrows(VcfFormatException.class,
-        () -> new FormatMetadata(STRICT_CONTEXT, "PP", "d", "1", FormatType.String));
+        () -> new FormatMetadata(strict43, "PP", "d", "1", FormatType.String));
     assertTrue(ex.getMessage().contains("reserved definition expects"));
   }
 
   @Test
-  public void testCnpReservedNumberTypeMismatchWarnsAndPreservesUnder42EvenThoughV42DoesNotTableCnp() {
-    // Same asymmetry as testPpReservedNumberTypeMismatchWarnsAndPreservesUnder42EvenThoughV42DoesNotTablePp
-    // above, for CNP: reserved as of VCFv4.3.tex's "FORMAT keys used for structural variants" section
-    // (sv-format-keys, line 679: "##FORMAT=<ID=CNP,Number=G,Type=Float,Description=\"Copy number posterior
-    // probabilities\">"). VCFv4.2.tex does not mention CNP at all.
-    // ReservedFormatProperty.fromId(String, VcfVersion) gates key REMOVAL only (GLE) and not key
-    // INTRODUCTION -- see its own Javadoc and TODO.md's "Investigate bumping the target VCF spec to 4.4 or
-    // 4.5" entry for the deferred per-version reserved-key table this belongs to -- so a VCFv4.2
-    // ##FORMAT=<ID=CNP,...> is still checked against CNP's 4.3 reserved definition. This test pins the
-    // current, asymmetric behavior; it does not endorse it.
+  public void testCnpReservedNumberTypeCheckIsVersionGated() {
+    // Same shape as testPpReservedNumberTypeCheckIsVersionGated above, for CNP: reserved as of VCFv4.3.tex's
+    // "FORMAT keys used for structural variants" section (sv-format-keys, line 679:
+    // "##FORMAT=<ID=CNP,Number=G,Type=Float,Description=\"Copy number posterior probabilities\">").
+    // VCFv4.2.tex does not mention CNP at all. Regression test for the same fix as the PP test above.
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    FormatMetadata md;
     try {
-      md = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+      FormatMetadata md42 = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=CNP", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
+      assertFalse(appender.hasWarnOrHigher());
+      assertEquals("1", md42.getNumber());
+      assertEquals(FormatType.String, md42.getType());
+
+      VcfContext lenient43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
+      FormatMetadata md43 = new FormatMetadata(lenient43, InternalUtils.extractProperties(
           new String[]{"ID=CNP", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertTrue(appender.anyMessageContains("has Number '1' but the reserved definition expects 'G'"));
       assertTrue(appender.anyMessageContains("has Type 'String' but the reserved definition expects 'VcfFloat'"));
+      assertEquals("1", md43.getNumber());
+      assertEquals(FormatType.String, md43.getType());
     } finally {
       root.detachAppender(appender);
       appender.stop();
     }
-    // the mismatch check only warns; it never substitutes the reserved definition's Number/Type in for the
-    // caller's own declared values
-    assertEquals("1", md.getNumber());
-    assertEquals(FormatType.String, md.getType());
-    // a strict VCFv4.2 context throws instead of warning, exactly as it would for any other reserved-key
-    // mismatch (see testTypedConstructorRejectsReservedNumberMismatch above)
+    FormatMetadata strictMd42 = new FormatMetadata(STRICT_CONTEXT, "CNP", "d", "1", FormatType.String);
+    assertEquals("1", strictMd42.getNumber());
+    VcfContext strict43 = VcfContext.strict("VCFv4.3");
     VcfFormatException ex = assertThrows(VcfFormatException.class,
-        () -> new FormatMetadata(STRICT_CONTEXT, "CNP", "d", "1", FormatType.String));
+        () -> new FormatMetadata(strict43, "CNP", "d", "1", FormatType.String));
     assertTrue(ex.getMessage().contains("reserved definition expects"));
   }
 
@@ -510,35 +523,38 @@ public class FormatMetadataTest {
   }
 
   @Test
-  public void testTypedConstructorRejectsAdDeclaredWithNumberDot() {
-    // AD is now reserved with expected Number "R" (VCFv4.3.tex's Reserved genotype keys table); "Number=." is
-    // the form many real-world pipelines emit for AD, and previously constructed fine since AD wasn't reserved
-    // at all
-    VcfFormatException ex = assertThrows(VcfFormatException.class,
-        () -> new FormatMetadata(STRICT_CONTEXT, "AD", "desc", ".", FormatType.Integer));
-    assertTrue(ex.getMessage().contains("reserved definition expects"));
-  }
-
-  @Test
-  public void testAdDeclaredWithNumberDotWarnsAndPreservesValueViaLenientPath() {
-    // same mismatch as above, but via the lenient map constructor (the parser's own path): warn and preserve,
-    // not reject
+  public void testAdReservedNumberCheckIsVersionGated() {
+    // AD is reserved with expected Number "R" only as of VCFv4.3.tex's Reserved genotype keys table --
+    // VCFv4.2.tex does not table FORMAT AD at all (ReservedFormatProperty.isAddedAtV4_3). "Number=." is the
+    // form many real-world 4.2 pipelines emit for a custom AD-named key; regression test for the same fix as
+    // the PP/CNP version-gating tests above -- this must not warn/throw under 4.2, but must under 4.3+.
     ch.qos.logback.classic.Logger root =
         (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
         new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
     appender.start();
     root.addAppender(appender);
-    FormatMetadata md;
     try {
-      md = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+      FormatMetadata md42 = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
           new String[]{"ID=AD", "Number=.", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT));
-      assertTrue(appender.hasWarnOrHigher());
+      assertFalse(appender.hasWarnOrHigher());
+      assertEquals(".", md42.getNumber());
+
+      VcfContext lenient43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
+      FormatMetadata md43 = new FormatMetadata(lenient43, InternalUtils.extractProperties(
+          new String[]{"ID=AD", "Number=.", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT));
+      assertTrue(appender.anyMessageContains("reserved definition expects"));
+      assertEquals(".", md43.getNumber());
     } finally {
       root.detachAppender(appender);
       appender.stop();
     }
-    assertEquals(".", md.getNumber());
+    FormatMetadata strictMd42 = new FormatMetadata(STRICT_CONTEXT, "AD", "desc", ".", FormatType.Integer);
+    assertEquals(".", strictMd42.getNumber());
+    VcfContext strict43 = VcfContext.strict("VCFv4.3");
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> new FormatMetadata(strict43, "AD", "desc", ".", FormatType.Integer));
+    assertTrue(ex.getMessage().contains("reserved definition expects"));
   }
 
   @Test

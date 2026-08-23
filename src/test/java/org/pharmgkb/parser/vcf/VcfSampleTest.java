@@ -322,13 +322,16 @@ class VcfSampleTest {
   @Test
   void testAlleleDepthAndPosteriorProbabilityKeysAreListTyped() {
     // AD/ADF/ADR/PP were previously missing from ReservedFormatProperty entirely, so getProperty(
-    // ReservedFormatProperty) could not be called with them at all
+    // ReservedFormatProperty) could not be called with them at all. All four are VCFv4.3 additions
+    // (ReservedFormatProperty.isAddedAtV4_3), so this must use a VCFv4.3+ context -- STRICT_CONTEXT is
+    // VCFv4.2, under which these keys are not yet reserved.
+    VcfContext strict43 = VcfContext.strict("VCFv4.3");
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("AD", "10,5");
     map.put("ADF", "6,3");
     map.put("ADR", "4,2");
     map.put("PP", "0,3,10");
-    VcfSample sample = STRICT_CONTEXT.newSample(map);
+    VcfSample sample = strict43.newSample(map);
     assertEquals(Arrays.asList(10L, 5L), sample.getProperty(ReservedFormatProperty.AlleleDepth));
     assertEquals(Arrays.asList(6L, 3L), sample.getProperty(ReservedFormatProperty.AlleleDepthForward));
     assertEquals(Arrays.asList(4L, 2L), sample.getProperty(ReservedFormatProperty.AlleleDepthReverse));
@@ -838,13 +841,16 @@ class VcfSampleTest {
   void testGetPropertyWithPositionAndMetadataExemptsCnpFromCardinalityCheck() {
     // CNP's Number=G means "one value per potential copy number," not the ploidy-derived genotype ordering
     // this codebase's Number=G formula computes -- GT=0|1 (ploidy 2), 1 ALT allele would make the formula
-    // expect 3 values, but a real CNP for 5 possible copy-number states legitimately has 5; must not warn
+    // expect 3 values, but a real CNP for 5 possible copy-number states legitimately has 5; must not warn.
+    // CNP has no VCFv4.2 declaration at all (ReservedFormatProperty.isAddedAtV4_3), so this must use a
+    // VCFv4.3+ context -- STRICT_CONTEXT is VCFv4.2, under which CNP is not yet reserved at all.
+    VcfContext context43 = VcfContext.strict("VCFv4.3");
     LinkedHashMap<String, String> map = new LinkedHashMap<>();
     map.put("GT", "0|1");
     map.put("CNP", "0.1,0.2,0.3,0.2,0.2");
-    VcfSample sample = STRICT_CONTEXT.newSample(map);
-    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
-    VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2").build();
+    VcfSample sample = context43.newSample(map);
+    VcfPosition position = context43.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
+    VcfMetadata metadata = new VcfMetadata.Builder(context43).setFileFormat("VCFv4.3").build();
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();

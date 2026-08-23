@@ -782,26 +782,33 @@ public final class VcfSample {
    * later this always returns {@code false} for
    * {@link ReservedFormatProperty#GenotypeLikelihoodsOfHeterogenousPloidy GLE}, with a warning: VCFv4.3 removed
    * that key (VCFv4.3.tex line 2168), so the reserved property being asked about does not exist, even if this
-   * sample does carry a custom key literally named {@code GLE}. Use {@link #containsProperty(String)} to ask that
-   * other question. Warned rather than silent because a bare {@code false} is indistinguishable from "key absent"
-   * and would send a caller hunting for a key that is actually there; the noise is bounded, since it fires only
-   * when this specific constant is passed under 4.3+, which is always a mistake. Unchanged under VCFv4.2 and
-   * earlier.
+   * sample does carry a custom key literally named {@code GLE}. The mirror image also applies, before VCFv4.3,
+   * to the five FORMAT keys VCFv4.3 added ({@link ReservedFormatProperty#isAddedAtV4_3}) -- the reserved
+   * property does not exist <em>yet</em>, even if this sample carries a custom key of the same name (e.g. a
+   * VCFv4.2 file's own, unrelated {@code PP} key). Use {@link #containsProperty(String)} to ask that other
+   * question in either direction. Warned rather than silent because a bare {@code false} is indistinguishable
+   * from "key absent" and would send a caller hunting for a key that is actually there; the noise is bounded,
+   * since it fires only when one of these six specific constants is passed under the version where it isn't
+   * reserved, which is always a mistake.
    */
   public boolean containsProperty(ReservedFormatProperty key) {
     // null-tolerant, matching containsProperty(String)'s own documented contract above
     if (key == null) {
       return false;
     }
-    // A predicate never converts, so this cannot ride on InternalUtils.convertProperty's identical GLE guard the
-    // way getProperty(ReservedFormatProperty) does; it needs its own.
-    if (key == ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy) {
-      VcfVersion version = m_context.getVersion();
-      if (version.isAtLeast(VcfVersion.V4_3)) {
-        m_warnings.warn("FORMAT GLE is not a reserved key under VCF {} (VCFv4.3 removed it); answering false -- " +
-            "use containsProperty(String) to ask whether a custom key named GLE is present", version.getId());
-        return false;
-      }
+    // A predicate never converts, so this cannot ride on InternalUtils.convertProperty's identical GLE/
+    // isAddedAtV4_3 guards the way getProperty(ReservedFormatProperty) does; it needs its own.
+    VcfVersion version = m_context.getVersion();
+    if (key == ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy && version.isAtLeast(VcfVersion.V4_3)) {
+      m_warnings.warn("FORMAT GLE is not a reserved key under VCF {} (VCFv4.3 removed it); answering false -- " +
+          "use containsProperty(String) to ask whether a custom key named GLE is present", version.getId());
+      return false;
+    }
+    if (ReservedFormatProperty.isAddedAtV4_3(key) && !version.isAtLeast(VcfVersion.V4_3)) {
+      m_warnings.warn("FORMAT {} is not a reserved key under VCF {} (VCFv4.3 introduced it); answering false -- " +
+          "use containsProperty(String) to ask whether a custom key named {} is present", key.getId(),
+          version.getId(), key.getId());
+      return false;
     }
     return containsProperty(key.getId());
   }

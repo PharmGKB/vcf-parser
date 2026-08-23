@@ -806,10 +806,13 @@ public class InternalUtils {
    * @return {@code null}, after warning, when {@code key} is
    * {@link ReservedFormatProperty#GenotypeLikelihoodsOfHeterogenousPloidy GLE} and {@code version} is VCFv4.3 or
    * later: VCFv4.3 removed that key (VCFv4.3.tex line 2168, "Removed unused and ill-defined GLE FORMAT tag"), so
-   * there is no reserved property to convert against. Warn-and-{@code null} rather than throwing, because the
-   * only public route in is {@link VcfSample#getProperty(ReservedFormatProperty)}, a lookup-style accessor whose
-   * {@code String}-keyed sibling is null-tolerant "not present" (AGENTS.md's Public API Null-Safety Policy);
-   * silence would be indistinguishable from an absent value.
+   * there is no reserved property to convert against. Also {@code null}, after an analogous warning, when
+   * {@code key} is one of the five FORMAT keys VCFv4.3 added ({@link ReservedFormatProperty#isAddedAtV4_3}) and
+   * {@code version} predates VCFv4.3 -- the mirror-image case, where the reserved property does not exist
+   * <em>yet</em> rather than no longer existing. Warn-and-{@code null} rather than throwing in both cases,
+   * because the only public route in is {@link VcfSample#getProperty(ReservedFormatProperty)}, a lookup-style
+   * accessor whose {@code String}-keyed sibling is null-tolerant "not present" (AGENTS.md's Public API
+   * Null-Safety Policy); silence would be indistinguishable from an absent value.
    */
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static @Nullable <T> T convertProperty(ReservedProperty key, @Nullable String value, VcfContext context) {
@@ -841,6 +844,17 @@ public class InternalUtils {
             "reserved-property read -- use VcfSample.getProperty(String) for the raw value, or " +
             "getProperty(VcfPosition, VcfMetadata, String) to interpret it against its own ##FORMAT declaration",
             version.getId());
+        return null;
+      }
+      // The mirror image of the GLE check just above: a caller already holds one of the five FORMAT
+      // constants VCFv4.3 added (see ReservedFormatProperty.isAddedAtV4_3's own comment), so
+      // ReservedFormatProperty.fromId(String, VcfVersion) is never consulted here -- this needs its own
+      // check, the same reason the GLE check above cannot rely on fromId alone either.
+      if (ReservedFormatProperty.isAddedAtV4_3((ReservedFormatProperty) key) && !version.isAtLeast(VcfVersion.V4_3)) {
+        warnings.warn("FORMAT {} is not a reserved key under VCF {} (VCFv4.3 introduced it); ignoring this " +
+            "reserved-property read -- use VcfSample.getProperty(String) for the raw value, or " +
+            "getProperty(VcfPosition, VcfMetadata, String) to interpret it against its own ##FORMAT declaration",
+            key.getId(), version.getId());
         return null;
       }
       normalized = checkReservedFormatConstraints(key.getId(), value, version, checkWarnings);

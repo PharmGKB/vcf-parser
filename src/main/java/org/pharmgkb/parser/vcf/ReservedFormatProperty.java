@@ -2,6 +2,7 @@ package org.pharmgkb.parser.vcf;
 
 import java.util.Arrays;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
@@ -186,6 +187,29 @@ public enum ReservedFormatProperty implements ReservedProperty {
 
   private static final Map<String, ReservedFormatProperty> BY_ID = Arrays.stream(values())
       .collect(Collectors.toUnmodifiableMap(ReservedFormatProperty::getId, Function.identity()));
+  // The mirror image of GLE (a key VCFv4.3 removed): these five have no VCFv4.2 declaration at all --
+  // VCFv4.3 additions, not drifts of an existing key -- so this library must not treat them as reserved
+  // under a version that predates their introduction, the same way it already doesn't treat GLE as reserved
+  // under a version that postdates its removal. See each constant's own comment for its own citation
+  // (AlleleDepth/AlleleDepthForward/AlleleDepthReverse: "VCFv4.2 does not table FORMAT AD/ADF/ADR at all";
+  // PhredScaledPosteriorProbabilities: "not in VCFv4.2, which does not table PP at all";
+  // CopyNumberPosteriorProbabilities: "has no VCFv4.2 declaration at all"). Used only by
+  // fromId(String, VcfVersion) below.
+  private static final Set<ReservedFormatProperty> ADDED_AT_V4_3 = Set.of(AlleleDepth, AlleleDepthForward,
+      AlleleDepthReverse, PhredScaledPosteriorProbabilities, CopyNumberPosteriorProbabilities);
+
+  /**
+   * @return {@code true} if {@code property} is one of the five reserved FORMAT keys VCFv4.3 added (see
+   * {@link #ADDED_AT_V4_3}'s own comment) -- used by {@link #fromId(String, VcfVersion)} for the
+   * string-keyed classification route, and directly by {@code InternalUtils.convertProperty}/
+   * {@code VcfSample.containsProperty(ReservedFormatProperty)} for the enum-keyed route, where a caller
+   * already holds the constant and {@code fromId} is never consulted -- the same reason those two call
+   * sites already special-case {@link #GenotypeLikelihoodsOfHeterogenousPloidy GLE} independently rather
+   * than relying on {@code fromId} alone.
+   */
+  static boolean isAddedAtV4_3(@Nullable ReservedFormatProperty property) {
+    return property != null && ADDED_AT_V4_3.contains(property);
+  }
 
   /**
    * The version-unaware form: classifies {@code id} as a reserved FORMAT key if it is reserved under
@@ -204,20 +228,28 @@ public enum ReservedFormatProperty implements ReservedProperty {
    * The version-aware form of {@link #fromId(String)}: {@code id} is classified as a reserved FORMAT key only if
    * it is reserved <em>under {@code version}</em>.
    * <p>
-   * Deliberately <b>not</b> a general version-aware reserved-key table -- it is a single hardcoded check for
-   * {@link #GenotypeLikelihoodsOfHeterogenousPloidy GLE}, the only reserved FORMAT key any version this library
-   * interprets removes (VCFv4.3.tex line 2168, "Removed unused and ill-defined GLE FORMAT tag"; see that
-   * constant's own comment). A real per-version table is a separate, deferred project -- see
-   * {@code InternalUtils.checkReservedInfoConstraints}'s TODO and {@code TODO.md}'s "Investigate bumping the
-   * target VCF spec to 4.4 or 4.5" entry -- so a second version-dependent key must not be bolted on here.
+   * Deliberately <b>not</b> a general version-aware reserved-key table -- it is a small number of hardcoded
+   * existence checks: {@link #GenotypeLikelihoodsOfHeterogenousPloidy GLE}, the only reserved FORMAT key any
+   * version this library interprets removes (VCFv4.3.tex line 2168, "Removed unused and ill-defined GLE FORMAT
+   * tag"; see that constant's own comment), and {@link #ADDED_AT_V4_3}, the mirror-image set of keys VCFv4.3
+   * added with no earlier declaration at all (see that field's own comment). A real per-version table covering
+   * <em>meaning</em> drift (a key reserved at every version but whose expected {@code Number}/{@code Type}
+   * changes, e.g. {@link #GenotypePosterior GP}/{@link #CopyNumberLikelihood CNL}) is a separate, deferred
+   * project -- see {@code InternalUtils.checkReservedInfoConstraints}'s TODO and {@code TODO.md}'s "Investigate
+   * bumping the target VCF spec to 4.4 or 4.5" entry -- this method only ever answers the narrower existence
+   * question ("is {@code id} reserved at all under {@code version}"), not that broader one.
    *
    * @return the reserved FORMAT property {@code id} names under {@code version}, or {@code null} if {@code id}
-   * names none (including a key reserved under an older version but not under {@code version})
+   * names none (including a key reserved under an older version but not under {@code version}, or a key not
+   * yet reserved under an older version but reserved under {@code version})
    */
   @Nullable
   static ReservedFormatProperty fromId(@Nullable String id, VcfVersion version) {
     ReservedFormatProperty property = fromId(id);
     if (property == GenotypeLikelihoodsOfHeterogenousPloidy && version.isAtLeast(VcfVersion.V4_3)) {
+      return null;
+    }
+    if (isAddedAtV4_3(property) && !version.isAtLeast(VcfVersion.V4_3)) {
       return null;
     }
     return property;
