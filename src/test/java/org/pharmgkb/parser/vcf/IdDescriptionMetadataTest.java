@@ -401,6 +401,12 @@ public class IdDescriptionMetadataTest {
     StringWriter altDotSink = new StringWriter();
     new IdDescriptionMetadata(lenientContext(new VcfWarnings(altDotSink)), "ALT", ".", "d");
     assertFalse(altDotSink.toString().contains("MISSING-value sentinel"));
+
+    // SAMPLE arm for the same "." rule -- found missing by the Phase 2 review's third re-verification round
+    // (production behavior was already correct; this closes the test-coverage gap)
+    StringWriter sampleDotSink = new StringWriter();
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(sampleDotSink)), "SAMPLE", ".", "d");
+    assertFalse(sampleDotSink.toString().contains("MISSING-value sentinel"));
   }
 
 }

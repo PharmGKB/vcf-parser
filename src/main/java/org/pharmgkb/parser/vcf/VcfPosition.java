@@ -593,7 +593,7 @@ public final class VcfPosition {
       // TWO FILTER codes, exit 0, no warning at all (see BcftoolsDependencyTest#testFilterSemicolonEntryBcftoolsAcceptsAsTwoCodes,
       // added in Task 2). This check can only ever fire on content reaching VcfPosition via public
       // construction (Builder.filters() or a direct VcfContext.newPosition call): VcfParser.toList
-      // (VcfParser.java:744-772) is a plain, no-escaping split, so no filter entry produced by parsing a real
+      // (VcfParser.java:794-822) is a plain, no-escaping split, so no filter entry produced by parsing a real
       // file's FILTER column can ever itself contain the ';' it would have been split on.
       if (f.contains(";")) {
         throw new VcfFormatException("FILTER column entry \"" + f + "\" contains a semicolon");
@@ -854,7 +854,7 @@ public final class VcfPosition {
       // worse than the tag-name-grammar case below, which never corrupts alignment this way. Unconditional
       // (not gated on warnings == null), unlike the tag-name-grammar check: this is a distinct question from
       // "is this a valid identifier" and gets its own floor. This check can only ever fire on content
-      // reaching VcfPosition via public construction: VcfParser.toList (VcfParser.java:744-772) is a plain,
+      // reaching VcfPosition via public construction: VcfParser.toList (VcfParser.java:794-822) is a plain,
       // no-escaping split, so no FORMAT key produced by parsing a real file's FORMAT column can ever itself
       // contain the ':' it would have been split on.
       if (f.contains(":")) {

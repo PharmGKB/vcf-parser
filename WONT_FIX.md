@@ -690,8 +690,8 @@ hts-specs' VCF 4.3 `failed/` conformance corpus has five fixtures (`failed_body_
 `_004.vcf`) whose only documented `##CauseOfFailure=` is the absence of a trailing newline at end of file.
 This library parses all five without any warning or error.
 
-`VcfParser` reads every record via its own `readPhysicalLine()` (`VcfParser.java:293`, called from `:126`,
-`:153`, `:343`) -- a hand-rolled line-boundary scan, not `BufferedReader.readLine()` any more (see the
+`VcfParser` reads every record via its own `readPhysicalLine()` (`VcfParser.java:317`, called from `:139`,
+`:177`, `:385`) -- a hand-rolled line-boundary scan, not `BufferedReader.readLine()` any more (see the
 "Revisit" paragraph below for why it changed) -- but its return contract deliberately still matches
 `readLine()`'s exactly: it returns the final line's content identically whether or not that line was
 actually terminated. By the time this library sees a line, "ended with `\n`" and "ended right at EOF with no

@@ -1031,6 +1031,16 @@ all, so its acceptance carries no evidentiary weight).
 previous narrowing attempt incorrectly broke the one form that *is* confirmed valid, this is not re-attempted
 without new evidence. Implemented in `InternalUtils.sf_simpleAltPattern`.
 
+**Related overpermissiveness, noted by the Phase 2 review's third re-verification round, same reasoning
+applies:** `sf_simpleAltPattern` includes `*` as one of its alternatives, so `*` combines with a `.` or with
+breakend notation in shapes `VCFv4.5.tex:416`'s own enumeration doesn't list (`*.`, `.*`, `*[1:100[`,
+`]1:100]*` are all accepted; `A*`/`*A`/`..`/`<>` are all correctly rejected). vcf_validator rejects `*.`/`.*`
+too, but with the same generic "not a single dot or a comma-separated list of bases" message it gives for
+this library's own already-documented, deliberate output (`T,.,C`) and for a confirmed-valid form
+(`C<ctg1>`) — it cannot discriminate here either, so carries no more weight than it does for the broader
+concatenation forms above. No code change: the same "a previous narrowing attempt broke a confirmed-valid
+form" caution applies equally here, and there is no new evidence to act on.
+
 ### Reserved structural variant code re-used as a subtype (e.g. `DUP:INV`)
 
 `AltStructuralVariant`'s level-mismatch check (`level != type.getLevelInSpecification()`) rejects a reserved

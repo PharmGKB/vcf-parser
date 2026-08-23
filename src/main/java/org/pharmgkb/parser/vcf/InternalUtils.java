@@ -971,9 +971,9 @@ public class InternalUtils {
   /**
    * Splits {@code value} on {@code ","} (allowing empty elements, matching every caller's own
    * {@code split(",", -1)}) and runs {@code check} against each element in order -- shared by
-   * {@link #checkReservedFormatConstraints}'s {@code GP} branch and {@link #checkReservedInfoConstraints}'s
-   * three branches, which otherwise each independently repeated this same split-and-check loop, differing
-   * only in which single-element validator they invoke.
+   * {@link #checkReservedFormatConstraints}'s {@code GP} and {@code CNP} branches and
+   * {@link #checkReservedInfoConstraints}'s three branches, which otherwise each independently repeated this
+   * same split-and-check loop, differing only in which single-element validator they invoke.
    */
   private static void checkEachCommaElement(String value, Consumer<String> check) {
     for (String element : value.split(",", -1)) {
@@ -1240,9 +1240,9 @@ public class InternalUtils {
   }
 
   // fieldType is the literal "INFO" or "FORMAT" prefix for the warning message -- not VCF content, just which
-  // of checkReservedInfoConstraints's (AF) or checkReservedFormatConstraints's (GP, under 4.3+) two callers
-  // this is, matching every other field-specific message in this class (e.g. checkNonNegativeInteger's own
-  // hardcoded "INFO", checkNonNegative32BitInteger's own hardcoded "FORMAT")
+  // of checkReservedInfoConstraints's (AF) or checkReservedFormatConstraints's (GP under 4.3+, or CNP
+  // unconditionally) three callers this is, matching every other field-specific message in this class (e.g.
+  // checkNonNegativeInteger's own hardcoded "INFO", checkNonNegative32BitInteger's own hardcoded "FORMAT")
   private static void checkUnitInterval(String fieldType, String key, String value,
       @Nullable VcfWarnings checkWarnings) {
     if (value.isEmpty() || value.equals(".")) {

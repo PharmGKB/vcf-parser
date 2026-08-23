@@ -41,7 +41,15 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   `##PEDIGREE`) whose value is not wrapped in angle brackets (`<...>`).
 - A `##` metadata line with no `=` at all (e.g. a bare `##sometext` or `##INFO` with no `=`) -- distinct from the
   missing-angle-brackets case above, which requires a well-formed `key=value` structured declaration whose value
-  isn't wrapped in `<...>`.
+  isn't wrapped in `<...>`. Deliberately still a whole-parse abort, unlike every sibling malformed-generic-line
+  shape this method's caller (`VcfMetadata.Builder.addRawProperty`) handles by warning and dropping just that
+  one line (an empty key, an empty value, an unclosed `<`): confirmed live that bcftools 1.23.1 drops the line
+  and continues (`[E::bcf_hdr_parse_line] Could not parse the header line: "##foo"`, exit 0, rest of header
+  intact), but vcf_validator 0.10.2 (4.3 grammar) declares the whole file invalid for this shape. Kept as a
+  throw to match vcf_validator's stricter reading -- changing an established whole-parse-abort to a
+  per-line warn-and-drop is a materially bigger behavior change than the other three shapes' own treatment,
+  and this decision was reached without a corresponding shift in evidence strong enough to justify it. Found
+  and left as-is by the Phase 2 review's third re-verification round.
 - A missing `#CHROM` header, wrong fixed column names, a missing `FORMAT` column when samples are present, a
   `FORMAT` column with no sample columns following it, an empty sample name, or a duplicate sample name.
 - A data line with the wrong number of tab-separated columns.
