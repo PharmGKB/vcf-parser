@@ -1408,7 +1408,11 @@ public final class VcfPosition {
     if (list.isEmpty()) {
       return null;
     }
-    ReservedInfoProperty reserved = ReservedInfoProperty.fromId(id);
+    // version-aware: AD/ADF/ADR have no VCFv4.2 declaration at all, so from there they take the non-reserved
+    // branch below (validated against their own ##INFO declaration, or the standard "no metadata declaration"
+    // warning when undeclared) instead of this library's reserved canonical Number/Type -- the INFO-side
+    // mirror of VcfSample.getProperty(VcfPosition, VcfMetadata, String)'s identical GLE/version-gated dispatch
+    ReservedInfoProperty reserved = ReservedInfoProperty.fromId(id, m_context.getVersion());
     InfoMetadata declared = null;
     String number;
     boolean isList;

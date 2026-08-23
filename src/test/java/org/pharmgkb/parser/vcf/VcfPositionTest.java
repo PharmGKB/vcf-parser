@@ -286,8 +286,11 @@ public class VcfPositionTest {
   public void testGetInfoAlleleDepthIsListValued() {
     // AD/ADF/ADR were previously missing from ReservedInfoProperty entirely, so getInfo(ReservedInfoProperty)
     // could not be called with them at all; Number=R means one value per allele, including REF, so a biallelic
-    // record's AD converts to a two-element List, not a scalar
-    VcfPosition p = newPosition().toBuilder().altBases(List.of("T")).rawInfo("AD=10,5").build();
+    // record's AD converts to a two-element List, not a scalar. AD is reserved only from VCFv4.3 on
+    // (ReservedInfoProperty.isAddedAtV4_3), so this needs a fresh 4.3 context rather than newPosition()'s
+    // shared VCFv4.2 STRICT_CONTEXT.
+    VcfPosition p = VcfContext.strict("VCFv4.3").newPosition("chr", 1, null, "C", null, null, null, null, null, -1)
+        .toBuilder().altBases(List.of("T")).rawInfo("AD=10,5").build();
     assertEquals(Arrays.asList(10L, 5L), p.getInfo(ReservedInfoProperty.AlleleDepth));
   }
 

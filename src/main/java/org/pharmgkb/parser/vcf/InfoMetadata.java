@@ -99,7 +99,10 @@ public final class InfoMetadata extends IdDescriptionMetadata {
       warnOrThrow("INFO {} has Number '0' but Type is '{}' (Number=0 is only valid for Type=Flag)", unquotedId,
           type);
     }
-    ReservedInfoProperty reserved = ReservedInfoProperty.fromId(unquotedId);
+    // version-aware: AD/ADF/ADR have no VCFv4.2 declaration at all (VCFv4.3 additions, the INFO-side mirror of
+    // FORMAT's own AD/ADF/ADR/PP/CNP gap -- see ReservedInfoProperty.ADDED_AT_V4_3's own comment), so a
+    // pre-4.3 ##INFO=<ID=AD,...> is validated only against its own declared Number/Type, like any custom key.
+    ReservedInfoProperty reserved = ReservedInfoProperty.fromId(unquotedId, getContext().getVersion());
     if (reserved != null) {
       if (!reserved.getExpectedNumber().equals(unquotedNumber)) {
         warnOrThrow("INFO {} has Number '{}' but the reserved definition expects '{}'", unquotedId, unquotedNumber,
@@ -168,7 +171,8 @@ public final class InfoMetadata extends IdDescriptionMetadata {
             "'1000G')", getLabel(), id);
       }
     }
-    ReservedInfoProperty reserved = ReservedInfoProperty.fromId(id);
+    // version-aware; see the attribute constructor's identical call above for the citation
+    ReservedInfoProperty reserved = ReservedInfoProperty.fromId(id, getContext().getVersion());
     if (reserved != null) {
       if (number != null && !reserved.getExpectedNumber().equals(number)) {
         warnOrThrow("{} {} has Number '{}' but the reserved definition expects '{}'", getLabel(), getId(),

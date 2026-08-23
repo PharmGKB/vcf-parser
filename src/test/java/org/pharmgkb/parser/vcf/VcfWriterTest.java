@@ -1218,7 +1218,48 @@ public class VcfWriterTest {
     // "potential copy number," not by the ploidy-derived genotype ordering this codebase's Number=G formula
     // computes -- 5 possible copy-number states is a legitimate CNP value shape for a diploid, biallelic
     // sample even though the genotype-ordering formula would expect 3 (see
-    // ReservedFormatProperty.CopyNumberPosteriorProbabilities' own comment)
+    // ReservedFormatProperty.CopyNumberPosteriorProbabilities' own comment). That exemption applies only from
+    // VCFv4.3 on, since CNP has no VCFv4.2 declaration at all (ReservedFormatProperty.isAddedAtV4_3) -- a
+    // pre-4.3 file's own custom key named CNP is an ordinary custom key and gets the ordinary check, so this
+    // needs a fresh 4.3 context, matching testValidateBeforeWriteDoesNotWarnAboutCnlCardinality below.
+    VcfContext context43 = VcfContext.strict("VCFv4.3");
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfMetadata metadata = new VcfMetadata.Builder(context43).setFileFormat("VCFv4.3")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .addFormat(new FormatMetadata(context43, "GT", "Genotype", "1", FormatType.String))
+        .addFormat(new FormatMetadata(context43, "CNP", "Copy number posterior probabilities", "G", FormatType.Float))
+        .build();
+    VcfPosition position = context43.newPosition("chr1", 1, null, "A", List.of("T"), VcfFloat.of(new BigDecimal("0")), null,
+        null, List.of("GT", "CNP"), -1);
+    LinkedHashMap<String, String> sampleProps = new LinkedHashMap<>();
+    sampleProps.put("GT", "0/1");
+    sampleProps.put("CNP", "0.1,0.2,0.3,0.2,0.2");
+    VcfSample sample = context43.newSample(sampleProps);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, Collections.singletonList(sample));
+      assertFalse(appender.anyMessageContains("Number=G requires"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testValidateBeforeWriteWarnsAboutCnpCardinalityUnderVcf42() throws Exception {
+    // The mirror image of testValidateBeforeWriteDoesNotWarnAboutCnpCardinality above: under VCFv4.2, CNP has
+    // no reserved definition at all, so a declared, custom Number=G key named CNP gets the ordinary
+    // ploidy-derived genotype-ordering cardinality check, not the "one value per potential copy number"
+    // exemption. Regression test for the fix that closed this gap (a pre-4.3 file's own custom CNP key
+    // previously still got the exemption unconditionally).
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
@@ -1242,7 +1283,7 @@ public class VcfWriterTest {
     try {
       writer.writeHeader(metadata);
       writer.writeLine(metadata, position, Collections.singletonList(sample));
-      assertFalse(appender.anyMessageContains("Number=G requires"));
+      assertTrue(appender.anyMessageContains("Number=G requires"));
     } finally {
       root.detachAppender(appender);
       appender.stop();

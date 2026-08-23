@@ -289,24 +289,29 @@ public class InfoMetadataTest {
   }
 
   @Test
-  public void testTypedConstructorRejectsAdDeclaredWithNumberDot() {
-    // AD is now reserved with expected Number "R" (VCFv4.3.tex's Reserved INFO Keys table); "Number=." is the
-    // form many real-world pipelines emit for AD, and previously constructed fine since AD wasn't reserved at all
-    VcfFormatException ex = assertThrows(VcfFormatException.class,
-        () -> new InfoMetadata(STRICT_CONTEXT, "AD", "desc", InfoType.Integer, ".", null, null));
-    assertTrue(ex.getMessage().contains("reserved definition expects"));
-  }
+  public void testAdReservedNumberCheckIsVersionGated() {
+    // AD is reserved with expected Number "R" only as of VCFv4.3.tex's Reserved INFO Keys table
+    // (table:reserved-info) -- VCFv4.2.tex does not table INFO AD at all (ReservedInfoProperty.isAddedAtV4_3,
+    // the INFO-side mirror of FORMAT's own AD/ADF/ADR/PP/CNP gap). "Number=." is the form many real-world 4.2
+    // pipelines emit for a custom AD-named key; regression test for the same fix as FormatMetadataTest's
+    // testAdReservedNumberCheckIsVersionGated -- this must not warn/throw under 4.2, but must under 4.3+.
+    StringWriter sink42 = new StringWriter();
+    InfoMetadata md42 = new InfoMetadata(lenientContext(new VcfWarnings(sink42)), InternalUtils.extractProperties(
+        new String[]{"ID=AD", "Number=.", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT));
+    assertEquals(".", md42.getNumber());
+    assertFalse(sink42.toString().contains("reserved definition expects"));
 
-  @Test
-  public void testAdDeclaredWithNumberDotWarnsAndPreservesValueViaLenientPath() {
-    // same mismatch as above, but via the lenient map constructor (the parser's own path): warn and preserve,
-    // not reject
-    StringWriter sink = new StringWriter();
-    VcfWarnings warnings = new VcfWarnings(sink);
-    InfoMetadata md = new InfoMetadata(lenientContext(warnings), InternalUtils.extractProperties(
-        new String[]{"ID=AD", "Number=.", "Type=Integer", "Description=\"d\""}, warnings));
-    assertEquals(".", md.getNumber());
-    assertTrue(sink.toString().contains("reserved definition expects"));
+    VcfContext strict43 = VcfContext.strict("VCFv4.3");
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> new InfoMetadata(strict43, "AD", "desc", InfoType.Integer, ".", null, null));
+    assertTrue(ex.getMessage().contains("reserved definition expects"));
+
+    StringWriter sink43 = new StringWriter();
+    VcfWarnings warnings43 = new VcfWarnings(sink43);
+    InfoMetadata md43 = new InfoMetadata(VcfContext.lenient("VCFv4.3", warnings43), InternalUtils.extractProperties(
+        new String[]{"ID=AD", "Number=.", "Type=Integer", "Description=\"d\""}, warnings43));
+    assertEquals(".", md43.getNumber());
+    assertTrue(sink43.toString().contains("reserved definition expects"));
   }
 
   @Test

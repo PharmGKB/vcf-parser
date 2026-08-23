@@ -114,11 +114,12 @@ public class ReservedFormatPropertyTest {
     // it's specifically the generic value-cardinality check that's skipped for CNP -- see
     // InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck.
     assertEquals("G", ReservedFormatProperty.CopyNumberPosteriorProbabilities.getExpectedNumber());
-    // and, unlike GLE's exemption, CNP's is not version-gated: CNP is reserved at every version this library
-    // interprets, so the exemption holds under 4.2 and 4.3 alike. It's also not gated on the resolved Number
-    // (unlike CNL's, since this fix) -- CNP's "per potential copy number" reasoning doesn't depend on a
-    // declaration actually stating "G".
-    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_2, "G"));
+    // CNP's exemption is gated to >=4.3, the same version it is reserved from at all (a pre-4.3 key literally
+    // named CNP is an ordinary custom key with no special meaning) -- but once it applies, it's not further
+    // gated on the resolved Number (unlike CNL's) -- CNP's "per potential copy number" reasoning doesn't depend
+    // on a declaration actually stating "G". See InternalUtilsTest's own
+    // testIsExemptFromGenotypeOrderingCardinalityCheckGatesGleAndCnpInOppositeDirections for the full matrix.
+    assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_2, "G"));
     assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_3, "G"));
     assertEquals(VcfFloat.class, ReservedFormatProperty.CopyNumberPosteriorProbabilities.getType());
     assertTrue(ReservedFormatProperty.CopyNumberPosteriorProbabilities.isList());

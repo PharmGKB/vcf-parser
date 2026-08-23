@@ -115,13 +115,15 @@ public enum ReservedFormatProperty implements ReservedProperty {
   // check a sample's CNL/CNP value against. Both keys are therefore added to InternalUtils's generic
   // Number=G-cardinality-check exemption set alongside GLE, in both VcfSample.getProperty(VcfPosition,
   // VcfMetadata, String) and VcfWriter.validateFormatValue -- see
-  // InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck. CNP's exemption is unconditional (reserved with
-  // Number=G at every version this library interprets, regardless of what a declaration states); CNL's is
-  // gated both to >=4.3, the same version its canonical Number becomes "G" (below that its Number is "." and
-  // the generic cardinality check already skips it for that reason alone, without needing this exemption at
-  // all), AND to the Number actually in force genuinely being "G" -- a ##FORMAT declaration overriding CNL to
-  // a concrete count (e.g. Number=4) states a real, checkable cardinality, so the exemption does not apply to
-  // that case even at >=4.3.
+  // InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck. CNP's exemption is gated to >=4.3 -- the same
+  // version CNP is reserved from at all, since it has no VCFv4.2 declaration (see ADDED_AT_V4_3's own comment
+  // below) -- but not further number-gated within that: once CNP genuinely is the reserved key, a declaration
+  // overriding its Number doesn't change what a CNP value structurally means, so the exemption applies to the
+  // key outright regardless of what a declaration states. CNL's is gated both to >=4.3, the same version its
+  // canonical Number becomes "G" (below that its Number is "." and the generic cardinality check already
+  // skips it for that reason alone, without needing this exemption at all), AND to the Number actually in
+  // force genuinely being "G" -- a ##FORMAT declaration overriding CNL to a concrete count (e.g. Number=4)
+  // states a real, checkable cardinality, so the exemption does not apply to that case even at >=4.3.
   CopyNumberPosteriorProbabilities("CNP", "Copy number posterior probabilities", VcfFloat.class, true, "G"),
   PhredScoreForNovelty("NQ", "Phred style probability score that the variant is novel", Long.class, false, "1"),
   HaplotypeId("HAP", "Unique haplotype identifier", Long.class, false, "1"),
@@ -193,8 +195,9 @@ public enum ReservedFormatProperty implements ReservedProperty {
   // under a version that postdates its removal. See each constant's own comment for its own citation
   // (AlleleDepth/AlleleDepthForward/AlleleDepthReverse: "VCFv4.2 does not table FORMAT AD/ADF/ADR at all";
   // PhredScaledPosteriorProbabilities: "not in VCFv4.2, which does not table PP at all";
-  // CopyNumberPosteriorProbabilities: "has no VCFv4.2 declaration at all"). Used only by
-  // fromId(String, VcfVersion) below.
+  // CopyNumberPosteriorProbabilities: "has no VCFv4.2 declaration at all"). Used only by isAddedAtV4_3 below,
+  // which fromId(String, VcfVersion) consults; see isAddedAtV4_3's own Javadoc for the other two call sites
+  // that consult it directly instead.
   private static final Set<ReservedFormatProperty> ADDED_AT_V4_3 = Set.of(AlleleDepth, AlleleDepthForward,
       AlleleDepthReverse, PhredScaledPosteriorProbabilities, CopyNumberPosteriorProbabilities);
 

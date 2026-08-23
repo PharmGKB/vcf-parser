@@ -833,12 +833,14 @@ public class InternalUtils {
    * {@link ReservedFormatProperty#GenotypeLikelihoodsOfHeterogenousPloidy GLE} and {@code version} is VCFv4.3 or
    * later: VCFv4.3 removed that key (VCFv4.3.tex line 2168, "Removed unused and ill-defined GLE FORMAT tag"), so
    * there is no reserved property to convert against. Also {@code null}, after an analogous warning, when
-   * {@code key} is one of the five FORMAT keys VCFv4.3 added ({@link ReservedFormatProperty#isAddedAtV4_3}) and
-   * {@code version} predates VCFv4.3 -- the mirror-image case, where the reserved property does not exist
-   * <em>yet</em> rather than no longer existing. Warn-and-{@code null} rather than throwing in both cases,
-   * because the only public route in is {@link VcfSample#getProperty(ReservedFormatProperty)}, a lookup-style
-   * accessor whose {@code String}-keyed sibling is null-tolerant "not present" (AGENTS.md's Public API
-   * Null-Safety Policy); silence would be indistinguishable from an absent value.
+   * {@code key} is one of the five FORMAT keys VCFv4.3 added ({@link ReservedFormatProperty#isAddedAtV4_3}), or
+   * one of the three INFO keys VCFv4.3 added ({@link ReservedInfoProperty#isAddedAtV4_3}), and {@code version}
+   * predates VCFv4.3 -- the mirror-image case, where the reserved property does not exist <em>yet</em> rather
+   * than no longer existing. Warn-and-{@code null} rather than throwing in all three cases, because the only
+   * public routes in are {@link VcfSample#getProperty(ReservedFormatProperty)} and
+   * {@link VcfPosition#getInfo(ReservedInfoProperty)}, lookup-style accessors whose {@code String}-keyed
+   * siblings are null-tolerant "not present" (AGENTS.md's Public API Null-Safety Policy); silence would be
+   * indistinguishable from an absent value.
    */
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static @Nullable <T> T convertProperty(ReservedProperty key, @Nullable String value, VcfContext context) {
@@ -886,6 +888,17 @@ public class InternalUtils {
       normalized = checkReservedFormatConstraints(key.getId(), value, version, checkWarnings);
     } else if (key instanceof ReservedInfoProperty) {
       rangeCheckLabelPrefix = "INFO ";
+      // The INFO-side mirror of the FORMAT isAddedAtV4_3 check above: a caller already holds one of the three
+      // reserved INFO constants VCFv4.3 added (see ReservedInfoProperty.ADDED_AT_V4_3's own comment), so
+      // ReservedInfoProperty.fromId(String, VcfVersion) is never consulted here -- this needs its own check,
+      // the same reason the FORMAT branch's own check above can't rely on fromId alone either.
+      if (ReservedInfoProperty.isAddedAtV4_3((ReservedInfoProperty) key) && !version.isAtLeast(VcfVersion.V4_3)) {
+        warnings.warn("INFO {} is not a reserved key under VCF {} (VCFv4.3 introduced it); ignoring this " +
+            "reserved-property read -- use VcfPosition.getInfo(String) for the raw value, or " +
+            "getInfo(VcfMetadata, String) to interpret it against its own ##INFO declaration",
+            key.getId(), version.getId());
+        return null;
+      }
       checkReservedInfoConstraints(key.getId(), value, version, checkWarnings);
     }
     // The general 32-bit range check, gated on the key's own declared Type -- see checkInteger32BitRange's
@@ -960,9 +973,16 @@ public class InternalUtils {
       // convertProperty(Class<?>, ...) it calls next. A scalar BigDecimal parse of e.g. "0.2,5.0,0.8" would throw
       // and be treated as "not a number at all" (see checkUnitInterval), silently skipping the whole check.
       checkEachCommaElement(value, element -> checkUnitInterval("FORMAT", key, element, checkWarnings));
-    } else if (key.equals(ReservedFormatProperty.CopyNumberPosteriorProbabilities.getId())) {
-      // unconditional, unlike the GP branch above -- see this method's own Javadoc for why CNP needs no
-      // version gate (it doesn't exist before VCFv4.3 at all, unlike GP's pre-4.3 phred-scaled meaning)
+    } else if (key.equals(ReservedFormatProperty.CopyNumberPosteriorProbabilities.getId()) &&
+        version.isAtLeast(VcfVersion.V4_3)) {
+      // version-gated, unlike this branch's own comment previously claimed: CNP has no VCFv4.2 declaration at
+      // all (see ReservedFormatProperty.ADDED_AT_V4_3's own comment), so a pre-4.3 file's own custom key named
+      // CNP carries its own declared meaning, not this reserved [0, 1] range -- the write-path mirror of
+      // convertProperty(ReservedProperty, ...)'s own isAddedAtV4_3 guard, which already skips this same check
+      // on the read side for exactly this reason. Reachable here even for a DECLARED CNP (unlike the
+      // undeclared-key fallback in VcfWriter.validateSamples, which is already version-gated one level up via
+      // ReservedFormatProperty.fromId(key, recordVersion)): this method is also called for a key with its own
+      // ##FORMAT=<ID=CNP,...> declaration, which carries no version information of its own to consult.
       checkEachCommaElement(value, element -> checkUnitInterval("FORMAT", key, element, checkWarnings));
     }
     return value;
@@ -1326,13 +1346,15 @@ public class InternalUtils {
    *   prose ({@link ReservedFormatProperty#CopyNumberPosteriorProbabilities}/
    *   {@link ReservedFormatProperty#CopyNumberLikelihood}'s own comments) mean "one value per potential copy
    *   number" -- a dimension nothing in a VCF record states, unlike ploidy + ALT allele count, which
-   *   genotype-ordering {@code "G"} is defined from. {@code CNP}'s exemption is <b>not version-gated and not
-   *   {@code number}-gated</b>: it is reserved with {@code Number=G} at every version this library interprets,
-   *   and (unlike {@code CNL}) a caller-declared override of that {@code Number} doesn't change what a CNP
-   *   value structurally means, so the exemption applies to the key outright. {@code CNL}'s exemption
-   *   <b>is</b> gated on {@code number} actually being {@code "G"}, in addition to the {@code >=4.3} version
-   *   gate: {@code CNL} is only reserved with {@code Number=G} from VCFv4.3 on (VCFv4.2.tex:308 declares it
-   *   {@code Number=.}; VCFv4.3.tex:678, the target, redeclares it {@code Number=G} -- see
+   *   genotype-ordering {@code "G"} is defined from. {@code CNP}'s exemption is gated on {@code >=4.3}
+   *   (the same version CNP is reserved from at all -- {@link ReservedFormatProperty} has no VCFv4.2
+   *   declaration for it), but not {@code number}-gated within that: from 4.3 on, a caller-declared override
+   *   of that {@code Number} doesn't change what a CNP value structurally means, so the exemption applies to
+   *   the key outright once it is actually the reserved key. Below 4.3, a custom key named CNP is an ordinary
+   *   custom key with no special meaning and gets the ordinary check instead. {@code CNL}'s exemption is
+   *   <b>also</b> gated on {@code number} actually being {@code "G"}, in addition to its own {@code >=4.3}
+   *   version gate: {@code CNL} is only reserved with {@code Number=G} from VCFv4.3 on (VCFv4.2.tex:308
+   *   declares it {@code Number=.}; VCFv4.3.tex:678, the target, redeclares it {@code Number=G} -- see
    *   {@link ReservedFormatProperty#CopyNumberLikelihood}'s own comment), but a {@code ##FORMAT} declaration is
    *   free to override that with a different, concrete {@code Number} (e.g. {@code Number=4}) -- in which case
    *   the value has a real, checkable expected cardinality again and the ordinary check must run against it.
@@ -1350,7 +1372,12 @@ public class InternalUtils {
     if (key.equals(ReservedFormatProperty.CopyNumberLikelihood.getId())) {
       return version.isAtLeast(VcfVersion.V4_3) && "G".equals(number);
     }
-    return key.equals(ReservedFormatProperty.CopyNumberPosteriorProbabilities.getId());
+    // version-gated, unlike this method's own Javadoc previously claimed: CNP has no VCFv4.2 declaration at
+    // all (ReservedFormatProperty.ADDED_AT_V4_3), so a pre-4.3 file's own custom key named CNP is an ordinary
+    // custom key with no special structural meaning -- its cardinality (if it declares Number=G at all) must
+    // get the same ordinary genotype-ordering check any other custom key would, not this exemption.
+    return version.isAtLeast(VcfVersion.V4_3) &&
+        key.equals(ReservedFormatProperty.CopyNumberPosteriorProbabilities.getId());
   }
 
   // GL's own spec definition (VCFv4.3.tex line 505 -- the target -- "In presence of the GT field the same ploidy
@@ -1364,26 +1391,30 @@ public class InternalUtils {
   // still enough to carry GL's ploidy-dependent ordering, which is exactly what the diploidy default governs) --
   // the target spec itself states the inheritance directly for both, no clarification from a later version
   // needed. PP is likewise declared directly in the VCFv4.3.tex target (line 563: "and otherwise defined in the
-  // same way as the GP field"); VCFv4.2.tex has no PP entry at all (PP was introduced by VCFv4.3), but that gap
-  // is in a version the target has already superseded, not a gap the target itself needs a later version's
-  // guidance to fill. All four inherit GL's own diploidy-assumed rule transitively, not just the one key the
-  // spec states it for directly. No other Number=G field, reserved or not, has any such spec-stated default, so
-  // this default is scoped to exactly these four keys rather than generalized to getExpectedCardinality's "G"
-  // branch itself.
-  private static final Set<String> KEYS_ASSUMING_DIPLOIDY_WITHOUT_GT = Set.of(
+  // same way as the GP field"); VCFv4.2.tex has no PP entry at all (PP was introduced by VCFv4.3, see
+  // ReservedFormatProperty.ADDED_AT_V4_3's own comment) -- unlike GL/PL/GP, which are reserved at every version
+  // this library targets, PP's default applies only from 4.3 on; a pre-4.3 custom key literally named PP is an
+  // ordinary custom key with no such spec-stated default and gets the ordinary (no-ploidy-assumed) treatment.
+  // All four inherit GL's own diploidy-assumed rule transitively, not just the one key the spec states it for
+  // directly. No other Number=G field, reserved or not, has any such spec-stated default, so this default is
+  // scoped to exactly these four keys rather than generalized to getExpectedCardinality's "G" branch itself.
+  private static final Set<String> KEYS_ASSUMING_DIPLOIDY_WITHOUT_GT_AT_EVERY_VERSION = Set.of(
       ReservedFormatProperty.GenotypeLikelihoods.getId(),
       ReservedFormatProperty.PhredScaledGenotypeLikelihoods.getId(),
-      ReservedFormatProperty.GenotypePosterior.getId(),
-      ReservedFormatProperty.PhredScaledPosteriorProbabilities.getId());
+      ReservedFormatProperty.GenotypePosterior.getId());
 
   /**
    * @return {@code ploidy} unchanged, unless it's {@code null} (GT absent, per {@link #getPloidy}) and
-   * {@code key} is one of GL/PL/GP/PP, in which case this returns {@code 2} (diploidy), per those keys' own
-   * spec-stated default.
+   * {@code key} is one of GL/PL/GP (at any version this library targets) or PP (at VCFv4.3 or later, since PP
+   * has no earlier declaration -- see {@link ReservedFormatProperty#ADDED_AT_V4_3}'s own comment), in which
+   * case this returns {@code 2} (diploidy), per those keys' own spec-stated default.
    */
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
-  public static @Nullable Integer resolvePloidyForCardinalityCheck(String key, @Nullable Integer ploidy) {
-    if (ploidy == null && KEYS_ASSUMING_DIPLOIDY_WITHOUT_GT.contains(key)) {
+  public static @Nullable Integer resolvePloidyForCardinalityCheck(String key, VcfVersion version,
+      @Nullable Integer ploidy) {
+    if (ploidy == null && (KEYS_ASSUMING_DIPLOIDY_WITHOUT_GT_AT_EVERY_VERSION.contains(key) ||
+        (key.equals(ReservedFormatProperty.PhredScaledPosteriorProbabilities.getId()) &&
+            version.isAtLeast(VcfVersion.V4_3)))) {
       return 2;
     }
     return ploidy;

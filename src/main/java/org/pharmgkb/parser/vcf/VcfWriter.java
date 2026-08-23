@@ -426,7 +426,7 @@ public class VcfWriter implements Closeable {
       addStringOrElse(position.getQuality(), ".", sb);
     }
     addListOrElse("FILTER", position.getFilters(), ";", ".", false, sb);
-    addInfoOrDot(metadata, position, sb);
+    addInfoOrDot(metadata, position, recordVersion, sb);
 
     // "PASS" is VCF's reserved "all filters passed" keyword (VCFv4.2.tex line 185: "PASS if this position has
     // passed all filters"), never expected to have its own ##FILTER=<ID=PASS,...> declaration. This filter must
@@ -797,7 +797,9 @@ public class VcfWriter implements Closeable {
         // getInfo(ReservedInfoProperty)'s identical read-path fallback for exactly this situation -- an
         // undeclared reserved key otherwise silently skipped every check below, even though its expected
         // shape is well known independent of any header declaration
-        ReservedInfoProperty reserved = ReservedInfoProperty.fromId(key);
+        // version-aware: AD/ADF/ADR have no VCFv4.2 declaration at all, so an undeclared pre-4.3 key named AD
+        // gets no reserved-canonical fallback at all, matching validateSamples' identical FORMAT-side fallback
+        ReservedInfoProperty reserved = ReservedInfoProperty.fromId(key, recordVersion);
         if (reserved != null) {
           validateInfoValue(reserved.getExpectedNumber(), reserved.getType(), values, key,
               position.getAltBases().size(), recordVersion);
@@ -962,7 +964,8 @@ public class VcfWriter implements Closeable {
       // validateSamples, shared across every FORMAT key) and this default applies only to these four keys.
       // same always-warn policy as the INFO call site above -- checkWarnings is m_warnings, never null
       InternalUtils.warnIfWrongCardinality("FORMAT " + key + " for sample #" + sampleIndex, number, values.length,
-          numAltAlleles, InternalUtils.resolvePloidyForCardinalityCheck(key, ploidy), m_warnings, m_warnings);
+          numAltAlleles, InternalUtils.resolvePloidyForCardinalityCheck(key, recordVersion, ploidy), m_warnings,
+          m_warnings);
     }
     if (type == null) {
       return;
@@ -1081,7 +1084,7 @@ public class VcfWriter implements Closeable {
     sb.append("\t");
   }
 
-  private void addInfoOrDot(VcfMetadata metadata, VcfPosition position, StringBuilder sb) {
+  private void addInfoOrDot(VcfMetadata metadata, VcfPosition position, VcfVersion recordVersion, StringBuilder sb) {
 
     Iterator<String> keys = position.getInfoKeys().iterator();
     if (!keys.hasNext()) {
@@ -1184,8 +1187,11 @@ public class VcfWriter implements Closeable {
         // UNDECLARED, non-reserved key, though, validateInfoValue() never runs at all, so nothing warns
         // generically; suppressing this method's own warning unconditionally on m_validateBeforeWrite alone
         // would silently canonicalize that case with zero warnings, worse than the default path.
+        // version-aware: AD/ADF/ADR have no VCFv4.2 declaration at all, so validateInfoValue() never runs its
+        // reserved-canonical fallback for an undeclared pre-4.3 key named AD -- see validateInfo()'s own
+        // identical version-aware fallback.
         boolean alreadyWarnedGenerically = m_validateBeforeWrite &&
-            (info != null || ReservedInfoProperty.fromId(key) != null);
+            (info != null || ReservedInfoProperty.fromId(key, recordVersion) != null);
         sb.append("=");
         for (int i = 0; i < values.size(); i++) {
           if (i > 0) {

@@ -1376,14 +1376,19 @@ public class InternalUtilsTest {
   }
 
   @Test
-  public void testIsExemptFromGenotypeOrderingCardinalityCheckGatesGleButNotCnp() {
+  public void testIsExemptFromGenotypeOrderingCardinalityCheckGatesGleAndCnpInOppositeDirections() {
     // GLE's exemption exists only because its value isn't comma-delimited at all, which is only true while GLE
-    // is the reserved 4.1/4.2 key; CNP's exemption has an unrelated rationale ("one value per potential copy
-    // number") and is reserved at every version -- and unconditionally, regardless of the declared Number --
-    // so neither moves with the version, and CNP's must not move with a declared-Number override either.
+    // is the reserved 4.1/4.2 key -- so it moves true->false as the version crosses 4.3. CNP's exemption has an
+    // unrelated rationale ("one value per potential copy number"), but CNP has no VCFv4.2 declaration at all
+    // (ReservedFormatProperty.isAddedAtV4_3), so a pre-4.3 key literally named CNP is an ordinary custom key and
+    // gets no exemption -- CNP's exemption moves false->true as the version crosses 4.3, the mirror image of
+    // GLE's. Once CNP genuinely is the reserved key (>=4.3), the exemption is unconditional regardless of the
+    // declared Number, unlike CNL below. Regression test for the fix that closed VcfWriter's write-path half of
+    // this gap (a pre-4.3 file's own custom CNP key previously still got the reserved [0, 1] range check and
+    // this cardinality exemption).
     assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("GLE", VcfVersion.V4_2, "G"));
     assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("GLE", VcfVersion.V4_3, "G"));
-    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_2, "G"));
+    assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_2, "G"));
     assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_3, "G"));
     assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_3, "4"));
     assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("PL", VcfVersion.V4_2, "G"));

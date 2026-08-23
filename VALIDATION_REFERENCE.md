@@ -656,12 +656,36 @@ is a structural failure and still throws -- see the strict section above):
   String, VcfVersion)` gives the same answer for the `String`-keyed classification route. Found and fixed as
   a real bug (not merely characterized): a VCFv4.2 file's own custom `##FORMAT=<ID=PP,...>` (or `AD`/`ADF`/
   `ADR`/`CNP`) previously got checked against, and could throw trying to convert to, the wrong (4.3-only)
-  reserved definition.
+  reserved definition. The original fix closed only the read-path enum-key/`fromId` classification; a later
+  re-verification round found the write path had two of the same gap left open, both now closed: (1)
+  `InternalUtils.checkReservedFormatConstraints`'s `CNP` branch (the `[0, 1]` range check) ran unconditionally
+  regardless of version, so `VcfWriter.validateBeforeWrite()` still warned about a pre-4.3 custom `CNP`
+  key's value even after the read path stopped doing so -- now gated to `>=4.3` alongside the `GP` branch's
+  own existing gate; (2) `InternalUtils.resolvePloidyForCardinalityCheck`'s "diploidy assumed without `GT`"
+  default for `PP` (see the `Number=G` cardinality bullet below) also applied unconditionally -- now gated to
+  `>=4.3`, since `PP` has no spec-stated default under a version where it isn't reserved at all.
+- The INFO-side mirror of the bullet above: a read of one of the three reserved `INFO` keys VCFv4.3 **added**
+  -- `AD`, `ADF`, `ADR` -- under a version that predates VCFv4.3 (VCFv4.3.tex's Reserved INFO Keys table,
+  table:reserved-info; VCFv4.2.tex's INFO prose never mentions `ADF`/`ADR` and mentions `AD` only once, in an
+  unrelated BCF-encoding worked example, not as a reserved key). Same treatment as the FORMAT-side bullet:
+  classified as an ordinary custom key under a version that predates VCFv4.3, via
+  `ReservedInfoProperty.fromId(String, VcfVersion)` for the `String`-keyed route (threaded into
+  `InfoMetadata`'s two constructors, `VcfPosition.getInfo(VcfMetadata, String)`, and
+  `VcfWriter.validateInfo`/`addInfoOrDot`'s undeclared-key fallbacks), and an `isAddedAtV4_3` guard inside
+  `InternalUtils.convertProperty(ReservedProperty, ...)`'s `ReservedInfoProperty` branch for the enum-keyed
+  route (`VcfPosition.getInfo(ReservedInfoProperty)`/`checkReservedInfoTypes`). Found during the same
+  re-verification round that found the FORMAT-side write-path gaps above: this INFO-side version gate had
+  never been added at all, so a VCFv4.2 file's own custom `##INFO=<ID=AD,...>` could throw trying to convert
+  to the wrong (4.3-only) reserved definition on both the read and write paths.
 - A reserved `FORMAT/PL`/`GL`/`GP`/`PP` value whose element count doesn't match the `Number=G` cardinality
   implied by the sample's ploidy and the record's ALT allele count. When `GT` is absent, ploidy can't
   otherwise be determined at all, but these four keys specifically default to assumed diploidy rather than
   skipping the check, since their own spec definition states that default explicitly -- no other `Number=G`
   field, reserved or not, has any such spec-stated default, so this is scoped to exactly these four keys.
+  `PP`'s default is further gated to VCFv4.3 and later, the same version it is reserved from at all -- a
+  pre-4.3 custom key literally named `PP` has no such spec-stated default and gets the ordinary (no-ploidy-
+  assumed) treatment; `GL`/`PL`/`GP` are reserved at every version this library targets, so their defaults are
+  unconditional.
   `GLE`/`CNP`/`CNL` are separately exempted from this check entirely despite each having `Number=G` under some
   version -- see `VCF_SPEC_AMBIGUITIES.md`'s "`CNP`'s `Number=G` vs. `GT`/`GL`/`PL`/`GP`/`PP`'s `Number=G`"
   entry. All three rationales are unrelated to each other, and two of the three exemptions are version-gated,
@@ -672,10 +696,11 @@ is a structural failure and still throws -- see the strict section above):
   force (a `##FORMAT` declaration's own stated `Number`, or the reserved canonical fallback) genuinely resolves
   to `G`**: a declaration that overrides `CNL` to a concrete count (e.g. `Number=4`) states a real, checkable
   cardinality, so `InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck` takes that resolved `Number` as
-  a parameter and stops exempting the key in that case; `CNP`, reserved with `Number=G` at every version this
-  library interprets, is exempted unconditionally -- not version-gated, and not gated on the resolved `Number`
-  either, since a caller-declared override doesn't change what a `CNP` value structurally means. Also, any
-  `FORMAT` key's value whose element
+  a parameter and stops exempting the key in that case; `CNP`'s exemption is gated to VCFv4.3 and later -- the
+  same version it is reserved from at all, since it has no VCFv4.2 declaration (see the "reserved keys VCFv4.3
+  added" bullet above) -- but not gated on the resolved `Number` within that range, since once `CNP` genuinely
+  is the reserved key, a caller-declared override doesn't change what a `CNP` value structurally means. Also,
+  any `FORMAT` key's value whose element
   count doesn't match its declared
   `Number`, or whose value doesn't match its declared `Type` (a non-reserved key needs an explicit `##FORMAT`
   declaration for either check to run; a reserved key's own canonical `Number`/`Type` apply even with no
