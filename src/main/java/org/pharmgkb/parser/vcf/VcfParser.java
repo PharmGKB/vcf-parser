@@ -79,6 +79,13 @@ public class VcfParser implements Closeable {
   // "previous record's POS was N" to the line it was actually on, rather than to m_lineNumber (the CURRENT,
   // out-of-order record's line)
   private int m_lastLineNumber;
+  // checkPositionOrdering()'s dedup for "a CHROM value reappears after the parser has moved on from it":
+  // grows by one entry per distinct CHROM the file has already moved past, not per record, so it's bounded
+  // by the file's distinct-CHROM count rather than its record count -- the same shape and tradeoff as
+  // VcfWriter's own m_warnedUndeclaredChromosomes (see that field's comment), just undocumented here until
+  // the fifth re-verification round's finding #4 pointed out the asymmetry. A file with one record per
+  // distinct, never-repeated CHROM (e.g. a scaffold-heavy draft-assembly VCF) still grows this to one entry
+  // per record, but that's the same accepted tradeoff the writer-side field already makes, not a new one.
   private final Set<String> m_closedChromosomes = new HashSet<>();
   // FORMAT-validation cache: real VCFs often repeat the same FORMAT column text across large blocks of
   // consecutive records. Holds only the single most
