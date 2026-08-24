@@ -3280,9 +3280,14 @@ public class VcfWriterTest {
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").addInfo(info).build();
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
-    assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
     // a line-terminator content rejection is not a write/IO failure -- it must not poison the writer
     assertTrue(writer.isValid());
+    // regression check found by the Phase 2 review's fourth re-verification round: this message previously
+    // embedded the header line verbatim, including the raw CR, which renders as if it overwrote preceding
+    // message text
+    assertTrue(ex.getMessage().contains("bad\\rvalue"), ex.getMessage());
+    assertFalse(ex.getMessage().contains("bad\rvalue"), ex.getMessage());
   }
 
   @Test
@@ -3322,6 +3327,31 @@ public class VcfWriterTest {
     assertEquals("", sw.toString());
     // a line-terminator content rejection is not a write/IO failure -- it must not poison the writer
     assertTrue(writer.isValid());
+  }
+
+  @Test
+  public void testPrintLineRejectsLoneCarriageReturnInjectedThroughTrustedFormatBypass() throws Exception {
+    // regression test found by the Phase 2 review's fourth re-verification round: printLine's own
+    // defense-in-depth line-terminator check previously embedded the whole assembled data line verbatim,
+    // including the raw CR -- the worst of the message sites that round found still missing the
+    // truncate-and-escape treatment this class's header-line check already had, since a data line can be
+    // arbitrarily large (every column of a full record, potentially many samples). VcfContext's own
+    // newPositionWithTrustedFormat (package-private, reachable here since this test is in the same package)
+    // skips checkFormat entirely, the one remaining route to get a raw CR into a FORMAT key past every other
+    // structural check.
+    VcfPosition position = LENIENT_CONTEXT.newPositionWithTrustedFormat("chr1", 1, null, "A", List.of("T"), null,
+        null, null, List.of("GT\rBAD"), -1);
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .build();
+    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>());
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    writer.writeHeader(metadata);
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
+    assertTrue(ex.getMessage().contains("GT\\rBAD"), ex.getMessage());
+    assertFalse(ex.getMessage().contains("GT\rBAD"), ex.getMessage());
   }
 
   @Test

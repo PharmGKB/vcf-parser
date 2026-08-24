@@ -394,6 +394,23 @@ public class InternalUtilsTest {
   }
 
   @Test
+  public void testTruncateAndEscapeForMessageNeverSplitsAnEscapeSequenceAtTheCutBoundary() {
+    // regression test found by the Phase 2 review's fourth re-verification round: the cut point is computed
+    // against the ALREADY-ESCAPED string, so a raw CR/LF/tab landing right at the MAX_MESSAGE_VALUE_LENGTH
+    // boundary previously got its two-character \r/\n/\t escape sequence torn in half, leaving a meaningless
+    // stray trailing backslash. 99 plain characters (indices 0-98) put the inserted "\\r" pair's backslash
+    // exactly at index 99 (one before the cut) and its 'r' at index 100 (exactly at the cut) -- the exact
+    // boundary condition that splits the pair without this fix.
+    String splitBoundary = "x".repeat(99) + "\r" + "y".repeat(50);
+    String result = InternalUtils.truncateAndEscapeForMessage(splitBoundary);
+    assertFalse(result.contains("x\\"), "must not cut between the backslash and its escape letter: " + result);
+    assertTrue(result.startsWith("x".repeat(99) + "... (truncated, "), result);
+    // total length reported is still the full escaped string's length (151: 99 x's + 2-char "\r" + 50 y's),
+    // unaffected by backing the cut off by one
+    assertTrue(result.contains("(truncated, 151 chars total)"), result);
+  }
+
+  @Test
   public void testConvertPropertyCharacterReturnsCharacterNotString() {
     // convertElement's Character.class branch previously returned the raw String; type erasure let that past
     // convertProperty() itself, but it then threw ClassCastException at the caller's assignment site below

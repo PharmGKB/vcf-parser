@@ -730,9 +730,23 @@ public class InternalUtils {
       return null;
     }
     String escaped = value.replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t");
-    return escaped.length() > MAX_MESSAGE_VALUE_LENGTH
-        ? escaped.substring(0, MAX_MESSAGE_VALUE_LENGTH) + "... (truncated, " + escaped.length() + " chars total)"
-        : escaped;
+    if (escaped.length() <= MAX_MESSAGE_VALUE_LENGTH) {
+      return escaped;
+    }
+    // Back off the cut by one character if it would otherwise land right after a backslash: every \r/\n/\t
+    // this method itself just inserted is exactly two characters, so cutting between the backslash and its
+    // following r/n/t leaves a stray, meaningless trailing backslash in the truncated message. A backslash
+    // already present in the original text (not one of the three this method inserts) is treated the same
+    // way out of caution, even though splitting it wouldn't actually mislead a reader -- it's already just a
+    // single literal character, not a two-character unit that could be torn in half. Found by the Phase 2
+    // review's fourth re-verification round: the original substring(0, MAX_MESSAGE_VALUE_LENGTH) cut on the
+    // already-escaped string, with no such adjustment, so a run of raw CRs crossing the length boundary at an
+    // odd offset produced a message ending in a lone "\" with its r/n/t cut off.
+    int cut = MAX_MESSAGE_VALUE_LENGTH;
+    if (escaped.charAt(cut - 1) == '\\') {
+      cut--;
+    }
+    return escaped.substring(0, cut) + "... (truncated, " + escaped.length() + " chars total)";
   }
 
   private static final Set<String> RESERVED_METADATA_KEYS =

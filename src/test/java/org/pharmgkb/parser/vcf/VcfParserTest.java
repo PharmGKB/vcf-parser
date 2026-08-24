@@ -656,6 +656,19 @@ public class VcfParserTest {
   }
 
   @Test
+  void testAngleBracketsNotPresentMessageEscapesEmbeddedCarriageReturn() throws IOException {
+    // regression test found by the Phase 2 review's fourth re-verification round: removeAngleBrackets's own
+    // exception previously embedded the metadata declaration's value verbatim and unbounded -- a required
+    // ##ALT declaration with no angle brackets at all (any version) and an embedded lone CR reaches this
+    // exact failure.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##ALT=bad\rvalue\n";
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> parseMetadataOf(vcf));
+    assertTrue(ex.getMessage().contains("bad\\rvalue"), "Message was: " + ex.getMessage());
+    assertFalse(ex.getMessage().contains("bad\rvalue"));
+  }
+
+  @Test
   void testEmbeddedCarriageReturnInSampleNameIsRejectedAtParseTime() throws IOException {
     // regression test found by the Phase 2 review's third re-verification round: since readPhysicalLine()
     // stopped treating a lone CR as a line separator, an embedded CR in a #CHROM header sample name used to
@@ -727,6 +740,27 @@ public class VcfParserTest {
     });
     assertTrue(ex.getMessage().contains("contains a line terminator"));
     assertTrue(positions.isEmpty(), "the malformed record must never reach the line parser callback");
+  }
+
+  @Test
+  void testPosParseFailureMessageEscapesAnEmbeddedCarriageReturn() throws IOException {
+    // regression test found by the Phase 2 review's fourth re-verification round: this message previously
+    // embedded the raw POS column text verbatim and unbounded -- an embedded lone CR (ordinary content since
+    // readPhysicalLine() stopped treating it as a line separator) reaches this parse failure before any
+    // earlier column check can reject it, since POS is the very next column parsed after CHROM.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\r0\t.\tA\tT\t.\t.\t.\n";
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> {
+      try (VcfParser parser = new VcfParser.Builder()
+          .fromReader(new BufferedReader(new StringReader(vcf)))
+          .parseWith((metadata, record) -> {})
+          .build()) {
+        parser.parse();
+      }
+    });
+    assertTrue(ex.getMessage().contains("POS '100\\r0' is not a number"), ex.getMessage());
+    assertFalse(ex.getMessage().contains("100\r0"), ex.getMessage());
   }
 
   @Test

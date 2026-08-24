@@ -61,6 +61,18 @@ public class VcfMetadataTest {
   }
 
   @Test
+  public void testBuilderSetFileFormatRejectionMessageEscapesEmbeddedCarriageReturn() {
+    // regression test found by the Phase 2 review's fourth re-verification round: this message previously
+    // embedded fileFormat verbatim and unbounded -- the identical message VcfParser.java's own fileformat
+    // check was fixed for (third re-verification round), but this public Builder setter takes arbitrary
+    // caller content directly, with no length bound this method can rely on either.
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2\rBAD"));
+    assertTrue(ex.getMessage().contains("VCFv4.2\\rBAD"), ex.getMessage());
+    assertFalse(ex.getMessage().contains("VCFv4.2\rBAD"));
+  }
+
+  @Test
   public void testBuilderSetColumnsRejectsNullEntryInsteadOfThrowingNpe() {
     // setColumns() does not validate its argument at set time (deferred to build(), where columns is actually
     // consumed via List.copyOf(columns)); a null entry must be rejected with VcfFormatException there, not a raw

@@ -730,7 +730,12 @@ public final class VcfMetadata {
         throw new VcfFormatException("VCF file format is null");
       }
       if (!InternalUtils.FILE_FORMAT_PATTERN.matcher(fileFormat).matches()) {
-        throw new VcfFormatException("Not a VCF file: fileformat is " + fileFormat);
+        // truncated and escaped, not embedded verbatim -- the identical message VcfParser.java's own
+        // fileformat check was fixed for (third re-verification round); this public setter takes arbitrary
+        // caller content directly, with no length bound this method can rely on either. Found still missing
+        // here by the Phase 2 review's fourth re-verification round.
+        throw new VcfFormatException("Not a VCF file: fileformat is " +
+            InternalUtils.truncateAndEscapeForMessage(fileFormat));
       }
       checkAgreesWithContext(fileFormat, m_context);
       m_fileFormat = fileFormat;

@@ -455,7 +455,13 @@ public class VcfParser implements Closeable {
       try {
         position = Long.parseLong(data.get(1));
       } catch (NumberFormatException e) {
-        throw new VcfFormatException("POS '" + data.get(1) + "' is not a number");
+        // truncated and escaped, not embedded verbatim, and with a line number like every other sibling
+        // exception in this method -- see InternalUtils.truncateAndEscapeForMessage's own comment: since
+        // readPhysicalLine() stopped treating a lone CR as a line separator, an embedded CR reaching this far
+        // (not yet rejected by any earlier column check) has no length bound this method can rely on. Found
+        // by the Phase 2 review's fourth re-verification round.
+        throw new VcfFormatException("POS '" + InternalUtils.truncateAndEscapeForMessage(data.get(1)) +
+            "' is not a number", m_lineNumber);
       }
 
       // REF
@@ -736,7 +742,12 @@ public class VcfParser implements Closeable {
     if (string.startsWith("<") && string.endsWith(">")) {
       return string.substring(1, string.length() - 1);
     }
-    throw new VcfFormatException("Angle brackets not present for: '" + string + "'");
+    // truncated and escaped, not embedded verbatim -- see InternalUtils.truncateAndEscapeForMessage's own
+    // comment: string is a metadata declaration's own value, with no length bound this method can rely on,
+    // and an embedded raw CR/LF would otherwise render as if it overwrote preceding message text. Found by
+    // the Phase 2 review's fourth re-verification round.
+    throw new VcfFormatException("Angle brackets not present for: '" +
+        InternalUtils.truncateAndEscapeForMessage(string) + "'");
   }
 
   /**

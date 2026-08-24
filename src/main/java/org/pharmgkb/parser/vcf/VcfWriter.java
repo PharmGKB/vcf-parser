@@ -179,7 +179,13 @@ public class VcfWriter implements Closeable {
     // then duplicate them.
     for (String line : lines) {
       if (line.contains("\n") || line.contains("\r")) {
-        throw new VcfFormatException("Header line contains a line terminator: [[[" + line + "]]]");
+        // truncated and escaped, not embedded verbatim -- see InternalUtils.truncateAndEscapeForMessage's own
+        // comment: a header line's own content is caller-supplied (a VcfMetadata declaration's raw text) and
+        // has no length bound this method can rely on, and an embedded raw CR/LF would otherwise render as if
+        // it overwrote preceding message text. Found by the Phase 2 review's fourth re-verification round,
+        // the same class of gap InternalUtils.checkNoLineTerminator's own message was fixed for.
+        throw new VcfFormatException("Header line contains a line terminator: [[[" +
+            InternalUtils.truncateAndEscapeForMessage(line) + "]]]");
       }
     }
     // Reported here, and only here: after every rejection above has been passed and immediately before the first
@@ -1580,8 +1586,13 @@ public class VcfWriter implements Closeable {
   private void printLine(Object line) {
     String string = line.toString();
     if (string.contains("\n") || string.contains("\r")) {
-      throw new VcfFormatException("Something went wrong writing line #" + lineBeingWritten() + ": [[[" + string +
-          "]]] contains a line terminator");
+      // truncated and escaped, not embedded verbatim -- see InternalUtils.truncateAndEscapeForMessage's own
+      // comment. This is the worst of the message sites the Phase 2 review's fourth re-verification round
+      // found still missing this treatment: string is a whole assembled data line (every column of a full
+      // record, potentially many samples), so it has no length bound at all, and the guard condition above
+      // guarantees a raw CR/LF is actually present, not merely possible.
+      throw new VcfFormatException("Something went wrong writing line #" + lineBeingWritten() + ": [[[" +
+          InternalUtils.truncateAndEscapeForMessage(string) + "]]] contains a line terminator");
     }
     // always terminate with LF (not the platform separator from println) so output is deterministic across platforms
     m_writer.print(string);
