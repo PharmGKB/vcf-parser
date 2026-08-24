@@ -1080,6 +1080,15 @@ spanning-deletion `*`, any angle-bracket-wrapped symbolic allele (including the 
 breakend replacement string (contains `[`/`]`) -- none of these can equal REF as plain text anyway, since
 REF must match `[AaCcGgTtNn]+`. Implemented in `VcfPosition.checkAltBases`.
 
+Found by the Phase 2 review's fourth re-verification round: `VcfPosition.Builder.ref(String)` set the
+builder's REF field but never marked ALT dirty, so `build()` left a stale, unchanged ALT list "already known
+valid" against the OLD REF -- changing only REF via the builder silently skipped this check entirely, even
+under a strict context, since `checkAltBases` is a cross-field check depending on REF, not just on ALT.
+Fixed by adding a dedicated `m_refDirty` flag, checked alongside `m_altBasesDirty` in `build()`'s
+`checkAltBases` re-run condition; `toBuilder()` seeds REF through a new private `seedRef` (mirroring
+`seedIds`/`seedAltBases`/etc.'s existing pattern), not the public `ref(String)` setter, so copying an
+already-valid position into a fresh builder does not itself spuriously mark ALT dirty.
+
 ### Undeclared symbolic ALT allele (no matching `##ALT`)
 
 A symbolic ALT allele (an angle-bracket-wrapped ID String, e.g. `<DEL>`) with no matching `##ALT` declaration
@@ -1095,6 +1104,17 @@ in a valid meta-data ALT entry"); bcftools 1.23.1 is silent.
 unspecified alleles and REF-only blocks" section, ~line 1428-1447) -- every worked example there uses `<*>`
 with no `##ALT=<ID=*,...>` declaration anywhere, the same reserved-sentinel shape `PASS`/`.` are excluded for
 in the FILTER check. Implemented in `VcfWriter.writeLine`.
+
+Found by the Phase 2 review's fourth re-verification round: the original predicate was a bare
+`base.startsWith("<")`, which is broader than vcf_validator's own `"<([^>]+)>"` full-match regex -- a legal
+breakend replacement string can itself start with `'<'` without being a symbolic-allele lookup key at all,
+e.g. `<ctg1>[13:123456[` (a breakend whose mate is named by a symbolic contig ID) or `<ctg1>ACGT` (VCFv4.2's
+Large Insertions shorthand, `InternalUtils.sf_breakendReplacement`) -- both legal ALT shapes this library
+deliberately accepts, neither a lookup key into `##ALT` at all. The old predicate warned about a missing
+`##ALT` declaration for values that were never asking for one, even when the referenced symbolic ID (e.g.
+`ctg1`) WAS declared. Fixed by requiring a full wrap (`VcfWriter.isFullyWrappedSymbolicAllele`: starts with
+`'<'`, ends with `'>'`, at least one character between them, and no interior `'>'`), matching vcf_validator's
+regex exactly.
 
 ### Undeclared CHROM (no matching `##contig`)
 
@@ -1116,6 +1136,17 @@ noise-risk counter-argument above directly rather than declining to implement th
 angle-bracket-wrapped symbolic CHROM reference (`<1>`, VCFv4.2.tex:179) is unwrapped before the lookup, the
 same unwrapping `VcfPosition.checkChromosome` already does for its own character-set checks. Implemented in
 `VcfWriter.writeLine`.
+
+Found by the Phase 2 review's fourth re-verification round: this check originally ran near the top of
+`writeLine`, before the line's own `StringBuilder` was even built -- but several later statements in that
+same method (`addInfoOrDot`/`addFormatConditionally`/`addSampleConditionally`) can still throw
+`VcfFormatException` and abort the record. Because the warn-and-`add()`-to-the-dedup-set happened in one
+expression, a record that was ultimately **rejected** still permanently consumed the one-shot warning slot
+for its undeclared contig -- so a later, successfully-written record sharing that same undeclared contig
+got no diagnostic at all, the exact "warning about output that doesn't exist" failure mode this same
+method's version-fallback-warning placement already guards against elsewhere. Fixed by moving the check to
+immediately before the final `printLine(line)` call, after every statement in the method that can still
+reject the record.
 
 ### CHROM containing a reserved symbolic allele name
 

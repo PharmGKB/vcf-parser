@@ -306,18 +306,21 @@ public final class VcfPosition {
    * {@link #getQuality()} call -- and preserves a malformed source's original text too, which {@link #m_quality}
    * alone (still {@code null} in that case) cannot.
    * <p>
-   * {@code ids}/{@code altBases}/{@code filter}/{@code format}/{@code info} are seeded through {@link Builder}'s
-   * private {@code seedXxx} methods, not its public setters -- this position already validated (or already
-   * warned about and recovered from) every one of them once, so seeding must not mark them dirty for
-   * {@link Builder#build()} to re-check. A caller who then calls the corresponding public setter on the
-   * returned builder marks that one field dirty, and only that field is re-validated on {@link Builder#build()}.
+   * {@code ref}/{@code ids}/{@code altBases}/{@code filter}/{@code format}/{@code info} are seeded through
+   * {@link Builder}'s private {@code seedXxx} methods, not its public setters -- this position already
+   * validated (or already warned about and recovered from) every one of them once, so seeding must not mark
+   * them dirty for {@link Builder#build()} to re-check. A caller who then calls the corresponding public
+   * setter on the returned builder marks that one field dirty, and only that field is re-validated on
+   * {@link Builder#build()} -- {@code ref} additionally marks {@code altBases} dirty too when set this way,
+   * since {@code checkAltBases}'s ALT-identical-to-REF check depends on both fields (see {@link
+   * Builder#ref(String)}'s own comment).
    */
   public Builder toBuilder() {
     Builder builder = new Builder(m_context)
         .chromosome(m_chromosome)
         .position(m_position)
-        .ref(m_refBases)
         .lineNumber(m_lineNumber);
+    builder.seedRef(m_refBases);
     builder.seedIds(m_ids);
     builder.seedAltBases(m_altBases);
     builder.seedFilters(m_filter);
@@ -1541,6 +1544,7 @@ public final class VcfPosition {
     private @Nullable List<String> m_ids;
     private boolean m_idsDirty;
     private @Nullable String m_ref;
+    private boolean m_refDirty;
     private @Nullable List<String> m_altBases;
     private boolean m_altBasesDirty;
     private @Nullable VcfFloat m_quality;
@@ -1589,14 +1593,29 @@ public final class VcfPosition {
       m_ids = ids == null ? null : new ArrayList<>(ids);
     }
 
+    /** Marks {@code ref} dirty for {@link #build()} to re-run {@code checkAltBases} against, not just
+     * {@code ref}'s own {@code checkRef} -- since {@code checkAltBases}'s ALT-identical-to-REF check
+     * (added after this class's dirty-tracking scheme was designed) is a cross-field check depending on REF,
+     * not just on ALT, changing REF alone must not leave a stale ALT considered "already known valid" against
+     * the new REF. */
     public Builder ref(String ref) {
       // ref is typed non-@Nullable, but nothing enforces that at runtime; see chromosome(String)'s identical
       // reasoning above
       if (ref == null) {
         throw new VcfFormatException("REF is null");
       }
-      m_ref = ref;
+      seedRef(ref);
+      m_refDirty = true;
       return this;
+    }
+
+    /** Seeds {@code ref} from an already-validated source without marking it dirty; see this class's own
+     * Javadoc (the {@code ids}/{@code altBases}/... seeding paragraph, which this follows identically). Called
+     * from {@link #toBuilder()} instead of the public {@link #ref(String)} setter, so copying a position's own
+     * already-valid REF into a fresh builder does not spuriously mark ALT dirty for {@link #build()} to
+     * re-check against it. */
+    private void seedRef(String ref) {
+      m_ref = ref;
     }
 
     /** Defensively copies {@code altBases}; see this class's own Javadoc for why. Marks {@code altBases} dirty
@@ -1712,7 +1731,11 @@ public final class VcfPosition {
       if (m_idsDirty && m_ids != null) {
         m_ids = checkIds(m_ids, checkWarnings);
       }
-      if (m_altBasesDirty && m_altBases != null) {
+      // m_refDirty as well as m_altBasesDirty: checkAltBases's ALT-identical-to-REF check is a cross-field
+      // check depending on REF too, so changing REF alone (via ref(String), which marks m_refDirty but not
+      // m_altBasesDirty) must still re-run it against the new REF, not leave a stale, unchanged ALT list
+      // treated as "already known valid" against a REF it was never actually checked against.
+      if ((m_altBasesDirty || m_refDirty) && m_altBases != null) {
         m_altBases = checkAltBases(m_altBases, m_ref, checkWarnings);
       }
       if (m_filterDirty && m_filter != null) {

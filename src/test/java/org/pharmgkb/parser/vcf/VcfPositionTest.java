@@ -1258,6 +1258,46 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testBuilderRefAloneRetriggersAltIdenticalToRefCheck() {
+    // regression test found by the Phase 2 review's fourth re-verification round: Builder.ref(String) set
+    // m_ref but never marked m_altBases dirty, so build() left a stale, unchanged ALT list "already known
+    // valid" against the OLD REF -- changing only REF via the builder silently skipped this check entirely,
+    // even under a strict context. REF="C"/ALT=["T"] is valid; changing REF to "T" via the builder alone must
+    // now warn (lenient) or throw (strict) the same as constructing REF="T"/ALT=["T"] directly would.
+    StringWriter sink = new StringWriter();
+    VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("1", 100, null, "C", List.of("T"),
+        null, null, null, null, -1);
+    VcfPosition rebuilt = position.toBuilder().ref("T").build();
+    assertEquals(List.of("T"), rebuilt.getAltBases());
+    assertTrue(sink.toString().contains("ALT allele \"T\" is identical to REF"));
+
+    VcfPosition strictPosition = STRICT_CONTEXT.newPosition("1", 100, null, "C", List.of("T"), null, null, null,
+        null, -1);
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> strictPosition.toBuilder().ref("T").build());
+    assertTrue(ex.getMessage().contains("ALT allele \"T\" is identical to REF"));
+  }
+
+  @Test
+  public void testToBuilderDoesNotSpuriouslyMarkAltDirtyViaRefSeeding() {
+    // the mirror of testBuilderRefAloneRetriggersAltIdenticalToRefCheck above: toBuilder() must seed REF
+    // without marking ALT dirty (via the private seedRef, not the public ref(String) setter), or every
+    // toBuilder().build() round trip -- even one that changes nothing at all -- would spuriously re-run
+    // checkAltBases and re-warn a SECOND time about an ALT==REF condition the source position already warned
+    // about once during construction. One shared sink throughout, since toBuilder()/build() reuse the source
+    // position's own VcfContext (and therefore its warnings destination).
+    StringWriter sink = new StringWriter();
+    VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("1", 100, null, "C",
+        List.of("C"), null, null, null, null, -1);
+    long warningsAfterConstruction = sink.toString().lines().filter(l -> l.contains("is identical to REF")).count();
+    assertEquals(1, warningsAfterConstruction);
+    VcfPosition rebuilt = position.toBuilder().build(); // no setter called; REF/ALT both merely re-seeded
+    assertEquals(List.of("C"), rebuilt.getAltBases());
+    long warningsAfterRebuild = sink.toString().lines().filter(l -> l.contains("is identical to REF")).count();
+    assertEquals(1, warningsAfterRebuild, "toBuilder().build() with no setter called must not re-warn");
+  }
+
+  @Test
   public void testConstructorAcceptsBreakendAltWithColonInMateChromosome() {
     // regression test: a breakend ALT whose mate chromosome contains a colon (e.g. an HLA allele name) used to
     // be rejected unconditionally -- InternalUtils.ALT_BASE_PATTERN's mate-location sub-pattern excluded ':'

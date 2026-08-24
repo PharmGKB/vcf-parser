@@ -1498,6 +1498,67 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testWritingABreakendAltWithSymbolicContigMateDoesNotWarnAboutMissingAltDeclaration() throws Exception {
+    // regression test found by the Phase 2 review's fourth re-verification round: a legal breakend ALT whose
+    // mate location names a symbolic contig ID (e.g. "<ctg1>[13:123456[") itself starts with '<', but is not
+    // a symbolic-allele lookup key into ##ALT at all -- the old bare startsWith("<") test wrongly warned
+    // "there is no ALT metadata with that name" for a value that was never asking for one. Confirmed live
+    // that vcf_validator 0.10.2's own ALT-meta regex ("<([^>]+)>") requires a FULL match, not a prefix, so it
+    // never flags this shape either.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
+        .build();
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "C",
+        List.of("<ctg1>[13:123456["), null, null, null, null, -1);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertFalse(appender.anyMessageContains("no ALT metadata with that name"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testWritingALargeInsertionShorthandAltDoesNotWarnAboutMissingAltDeclaration() throws Exception {
+    // same regression as testWritingABreakendAltWithSymbolicContigMateDoesNotWarnAboutMissingAltDeclaration
+    // above, for VCFv4.2's Large Insertions shorthand ALT form (InternalUtils.sf_breakendReplacement) --
+    // "<ctg1>ACGT" also starts with '<' without being a ##ALT lookup key
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
+        .build();
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "C",
+        List.of("<ctg1>ACGT"), null, null, null, null, -1);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position, Collections.emptyList());
+      assertFalse(appender.anyMessageContains("no ALT metadata with that name"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testWritingAnUndeclaredChromWarnsOncePerDistinctValueNotOncePerRecord() throws Exception {
     // judgment-call item from the Phase 2 review's third re-verification round (user pre-authorized
     // proceeding without a check-in): the one case in that whole round where BOTH bcftools 1.23.1 ("Contig

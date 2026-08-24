@@ -266,6 +266,22 @@ public class VcfWriter implements Closeable {
   }
 
   /**
+   * @return {@code true} if {@code base} is fully wrapped in angle brackets with at least one character
+   * between them and no interior {@code '>'} -- matching vcf_validator 0.10.2's own {@code "<([^>]+)>"} full-
+   * match regex for a symbolic ALT allele reference (see {@code validate_optional_policy.cpp}), not merely a
+   * leading {@code '<'}. A legal breakend replacement string can itself start with {@code '<'} without being
+   * a symbolic-allele lookup key at all -- e.g. {@code "<ctg1>[13:123456["} (a breakend whose mate is named by
+   * a symbolic contig ID) or {@code "<ctg1>ACGT"} (VCFv4.2's Large Insertions shorthand, see
+   * {@code InternalUtils.sf_breakendReplacement}) -- so a bare {@code startsWith("<")} test would wrongly
+   * treat those as referencing a {@code ##ALT} declaration that was never being asked for. Used only by the
+   * undeclared-symbolic-ALT check in {@link #writeLine} below.
+   */
+  private static boolean isFullyWrappedSymbolicAllele(String base) {
+    return base.length() > 2 && base.charAt(0) == '<' && base.charAt(base.length() - 1) == '>' &&
+        base.indexOf('>') == base.length() - 1;
+  }
+
+  /**
    * Writes a single data line.
    * <p>
    * By default, this does not fully revalidate metadata, the position, or samples, to keep the direct
@@ -370,28 +386,6 @@ public class VcfWriter implements Closeable {
     String chromosome = position.getChromosome();
     String ref = position.getRef();
 
-    // VCFv4.3.tex:238 only recommends ("It is recommended..."), not requires, a ##contig declaration -- the
-    // reason this warns rather than throws, and the reason it dedups per distinct value below rather than
-    // firing once per record: many real-world VCFs have zero ##contig lines at all. Confirmed live that BOTH
-    // bcftools 1.23.1 ("Contig '1' is not defined in the header") and vcf_validator 0.10.2 ("Chromosome/contig
-    // '1' is not described in a 'contig' meta description") warn for this -- the one case in this whole
-    // review round where both tools agree and this library was the outlier. bcftools' own warning already
-    // fires only once per distinct contig across a whole file (measured: two records sharing an undeclared
-    // "1" produce only one bcftools warning), which is what this dedup matches; vcf_validator warns once per
-    // record instead. Unwraps an angle-bracket-wrapped symbolic CHROM reference first (VCFv4.2.tex:179's
-    // "<ID>" form), the same unwrapping VcfPosition.checkChromosome does for its own character-set checks, so
-    // "<1>" is looked up as "1", matching how it was declared. Found by the Phase 2 review's third
-    // re-verification round.
-    String unwrappedChromosome = chromosome.length() > 1 && chromosome.charAt(0) == '<' &&
-        chromosome.charAt(chromosome.length() - 1) == '>'
-        ? chromosome.substring(1, chromosome.length() - 1)
-        : chromosome;
-    if (!metadata.getContigs().containsKey(unwrappedChromosome) &&
-        m_warnedUndeclaredChromosomes.add(unwrappedChromosome)) {
-      m_warnings.warn("CHROM {} has no ##contig metadata with that name (on line {})", chromosome,
-          lineBeingWritten());
-    }
-
     StringBuilder sb = new StringBuilder();
 
     sb.append(chromosome).append("\t");
@@ -450,18 +444,22 @@ public class VcfWriter implements Closeable {
             m_warnings.warn("Position {}:{} has FILTER {}, but there is no FILTER metadata with that name (on line {})",
                 position.getChromosome(), position.getPosition(), key, lineBeingWritten()));
 
-    // Mirrors the FILTER check just above, for a symbolic ALT allele (an angle-bracket-wrapped ID String)
-    // with no matching ##ALT declaration -- confirmed live that vcf_validator 0.10.2 warns for exactly this
-    // ("Alternate '<DEL>' is not listed in a valid meta-data ALT entry"); bcftools 1.23.1 is silent. "<*>",
-    // the gVCF "unspecified allele" (VCFv4.3.tex's "Representing unspecified alleles and REF-only blocks"
-    // section, ~line 1428-1447), is excluded: every worked example there uses "<*>" with no
-    // ##ALT=<ID=*,...> declaration anywhere, the same reserved-sentinel shape "PASS"/"." are excluded for
-    // above. getAlt(String) already unwraps the angle brackets itself. A non-symbolic ALT (a plain base
-    // sequence, "*", ".", or a breakend replacement string) never starts with '<' and is skipped entirely --
-    // none of those reference a ##ALT declaration at all. Found by the Phase 2 review's third
-    // re-verification round.
+    // Mirrors the FILTER check just above, for a symbolic ALT allele (a fully angle-bracket-wrapped ID
+    // String, e.g. "<DEL>") with no matching ##ALT declaration -- confirmed live that vcf_validator 0.10.2
+    // warns for exactly this ("Alternate '<DEL>' is not listed in a valid meta-data ALT entry"); bcftools
+    // 1.23.1 is silent. "<*>", the gVCF "unspecified allele" (VCFv4.3.tex's "Representing unspecified
+    // alleles and REF-only blocks" section, ~line 1428-1447), is excluded: every worked example there uses
+    // "<*>" with no ##ALT=<ID=*,...> declaration anywhere, the same reserved-sentinel shape "PASS"/"." are
+    // excluded for above. getAlt(String) already unwraps the angle brackets itself. isFullyWrappedSymbolicAllele
+    // requires a full wrap (matching vcf_validator's own "<([^>]+)>" full-match regex, not merely a leading
+    // '<') -- a legal breakend replacement string can itself start with '<' without being a symbolic allele at
+    // all, e.g. "<ctg1>[13:123456[" (a breakend whose mate is named by a symbolic contig ID) or "<ctg1>ACGT"
+    // (VCFv4.2's Large Insertions shorthand, InternalUtils.sf_breakendReplacement) -- both are legal ALT
+    // shapes this library deliberately accepts, and neither is a lookup key into ##ALT at all, so a bare
+    // startsWith("<") previously warned about a missing ##ALT declaration for a value that was never asking
+    // for one. Found by the Phase 2 review's fourth re-verification round.
     position.getAltBases().stream()
-        .filter(base -> base.startsWith("<") && !base.equals("<*>") && metadata.getAlt(base) == null)
+        .filter(base -> isFullyWrappedSymbolicAllele(base) && !base.equals("<*>") && metadata.getAlt(base) == null)
         .forEach(base ->
             m_warnings.warn("Position {}:{} has ALT {}, but there is no ALT metadata with that name (on line {})",
                 position.getChromosome(), position.getPosition(), base, lineBeingWritten()));
@@ -476,6 +474,35 @@ public class VcfWriter implements Closeable {
 
     String line = sb.toString();
     if (line.endsWith("\t")) line = line.substring(0, line.length() - 1);
+
+    // VCFv4.3.tex:238 only recommends ("It is recommended..."), not requires, a ##contig declaration -- the
+    // reason this warns rather than throws, and the reason it dedups per distinct value below rather than
+    // firing once per record: many real-world VCFs have zero ##contig lines at all. Confirmed live that BOTH
+    // bcftools 1.23.1 ("Contig '1' is not defined in the header") and vcf_validator 0.10.2 ("Chromosome/contig
+    // '1' is not described in a 'contig' meta description") warn for this -- the one case in this whole
+    // review round where both tools agree and this library was the outlier. bcftools' own warning already
+    // fires only once per distinct contig across a whole file (measured: two records sharing an undeclared
+    // "1" produce only one bcftools warning), which is what this dedup matches; vcf_validator warns once per
+    // record instead. Unwraps an angle-bracket-wrapped symbolic CHROM reference first (VCFv4.2.tex:179's
+    // "<ID>" form), the same unwrapping VcfPosition.checkChromosome does for its own character-set checks, so
+    // "<1>" is looked up as "1", matching how it was declared. Found by the Phase 2 review's third
+    // re-verification round. Deliberately placed here, after every earlier statement in this method that can
+    // still throw (addInfoOrDot/addFormatConditionally/addSampleConditionally), rather than up near
+    // chromosome/ref's own definition: a rejected record writes nothing (see the version-fallback warning's
+    // own identical placement principle, VcfWriter.java's "a rejected attempt writes nothing" comment), so
+    // warning here first and only THEN would be a statement about output that doesn't exist -- and, worse,
+    // permanently consume this dedup's one-shot warning for a contig that never actually appears in any
+    // written record. Found misplaced, one level up, by the Phase 2 review's fourth re-verification round.
+    String unwrappedChromosome = chromosome.length() > 1 && chromosome.charAt(0) == '<' &&
+        chromosome.charAt(chromosome.length() - 1) == '>'
+        ? chromosome.substring(1, chromosome.length() - 1)
+        : chromosome;
+    if (!metadata.getContigs().containsKey(unwrappedChromosome) &&
+        m_warnedUndeclaredChromosomes.add(unwrappedChromosome)) {
+      m_warnings.warn("CHROM {} has no ##contig metadata with that name (on line {})", chromosome,
+          lineBeingWritten());
+    }
+
     printLine(line);
   }
 
