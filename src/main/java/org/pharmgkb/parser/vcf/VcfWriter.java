@@ -369,8 +369,19 @@ public class VcfWriter implements Closeable {
       // record and compared it against a snapshot taken in writeHeader(). VcfMetadata is immutable now (no
       // instance mutators, every collection getter an unmodifiable view, every declaration's properties map
       // unmodifiable), so the same object always produces the same header text and identity is sufficient.
+      //
+      // validateMetadata(metadata) is NOT re-run here either, for the identical reason -- it was already run
+      // once, in writeHeader() (see that method's own validateBeforeWrite() branch), against this exact
+      // object (the identity check above guarantees writeLine() never receives a different one), and every
+      // one of its own checks (entry.validate()'s Number/Type/ID-grammar re-checks, the ALT-specific
+      // VcfMetadata.validateAlt call, the ID-drift check) depends only on metadata, never on this specific
+      // record -- so its result cannot differ between calls. Before this fix, validateMetadata() ran again
+      // here on every single record, multiplying (bad declarations) x (records) worth of identical warnings
+      // for one header defect, and re-parsing every declaration's Type/Number/ID grammar per record -- the
+      // same amplification validateMetadataPropertyEncodings() was hoisted out of this method to avoid (see
+      // that method's own Javadoc), just for a different check that had not yet gotten the same treatment.
+      // Found by the Phase 2 review's fourth re-verification round.
       position.validate();
-      validateMetadata(metadata);
       validateInfo(metadata, position, recordVersion);
       validateSamples(metadata, position, samples, recordVersion);
     }
@@ -628,10 +639,10 @@ public class VcfWriter implements Closeable {
         // unlike VcfMetadata.Builder.addPedigree() (which warns and drops a duplicate ID at construction time),
         // this check runs post-construction and must not silently remove content the caller already holds a
         // reference to (same "warn, don't drop" writer philosophy as the empty-metadata-value check elsewhere in
-        // this method) -- so this only warns; both entries are still written. validateMetadata() runs once per
-        // writeLine() call in validateBeforeWrite() mode, so this warning repeats for every data record written
-        // while the duplicate remains -- the same repeat-per-record behavior already accepted for the
-        // empty-metadata-value warning above, not a new tradeoff introduced here.
+        // this method) -- so this only warns; both entries are still written. validateMetadata() now runs
+        // exactly once per writeHeader() call in validateBeforeWrite() mode, not once per record (see that
+        // method's own call sites' comments for why the per-record call was removed), so this warning fires
+        // exactly once per write too, the same as the empty-metadata-value warning above.
         m_warnings.warn("Duplicate ID \"{}\" for PEDIGREE metadata", id);
       }
     }
@@ -789,8 +800,10 @@ public class VcfWriter implements Closeable {
    * reason: {@link VcfMetadata} is immutable, so this check's result cannot change between calls. This became
    * load-bearing, not just an optimization, once {@link InternalUtils#checkMetadataPropertyEncodingForWrite}
    * stopped throwing on the first problem it finds (an invalid property name now warns instead) -- left running
-   * from {@link #validateMetadata} (called from every {@link #writeLine} too), a bad name would now warn
-   * (bad properties) x (declarations) x (records) times on a large VCF instead of once. This remains the net
+   * once per record (as it originally was, alongside {@link #validateMetadata}, before that method's own
+   * per-record call was later removed for the identical reason -- see that method's own call sites), a bad
+   * name would now warn (bad properties) x (declarations) x (records) times on a large VCF instead of once.
+   * This remains the net
    * for the two routes that bypass the construction-time check: {@code BaseMetadata.trustedMutableProperties()}
    * (a test-only bypass), and {@code VcfParser}'s own {@code addXxxTrusted}/object-taking routes, which
    * deliberately store parser-recovered content (e.g. an unescaped quote) the construction-time check would

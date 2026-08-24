@@ -1721,6 +1721,45 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteMetadataDeclarationWarningFiresOncePerWriteNotOncePerRecord() throws Exception {
+    // regression test found by the Phase 2 review's fourth re-verification round: validateMetadata() (and its
+    // Number/Type-mismatch, ID-drift, and PEDIGREE-duplicate-ID checks) previously ran again on every single
+    // writeLine() call under validateBeforeWrite(), even though VcfMetadata is immutable and the same object
+    // is guaranteed across every call on one writer -- multiplying one header defect's warning by (records)
+    // instead of the once validateMetadataPropertyEncodings() already achieved for its own, sibling check.
+    // DP is reserved (VCFv4.3.tex's Reserved INFO Keys table expects Long/Integer), but declared here as
+    // Type=Float -- a Number/Type mismatch InfoMetadata.validate() re-detects on every validateMetadata() call.
+    InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "DP", "depth", InfoType.Float, "1", null, null);
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
+        .addInfo(info)
+        .build();
+    VcfPosition position1 = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null,
+        null, -1);
+    VcfPosition position2 = LENIENT_CONTEXT.newPosition("chr1", 2, null, "A", List.of("T"), null, null, null,
+        null, -1);
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      writer.writeLine(metadata, position1, Collections.emptyList());
+      writer.writeLine(metadata, position2, Collections.emptyList());
+      assertEquals(1, appender.countMessagesContaining("INFO DP has Type 'Float' but the reserved definition " +
+          "expects 'Long'"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testValidateBeforeWriteAssumesDiploidyForPlWhenGtAbsent() throws Exception {
     // PL's own spec definition states "without GT field, diploidy is assumed" (see
     // InternalUtils.resolvePloidyForCardinalityCheck's own comment for the full citation) -- regression test

@@ -644,46 +644,6 @@ for `GLE`/`CNP` (`InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck`, s
 Revisit if a real caller reports hitting this on an actual corrupted GLE value, or if a future VCF spec
 version ever re-adds and tightens GLE's grammar.
 
-## `VcfWriter.validateBeforeWrite()`'s metadata-property-encoding check is hoisted to run once per header; the ID-drift check is not
-
-`VcfWriter.writeHeader()`'s `validateBeforeWrite()` branch (`VcfWriter.java:162-166`) calls
-`validateMetadataPropertyEncodings(metadata)` exactly once, from `writeHeader()` only. Its own Javadoc
-(`VcfWriter.java:695-707`) states this is deliberate: `VcfMetadata` is immutable, so the check's result
-cannot change between calls, and re-running it from `validateMetadata()` (which `writeLine()` also calls,
-once per record) would multiply an invalid-property-name warning by (bad properties) x (declarations) x
-(records) on a large VCF.
-
-`validateMetadata()`'s own `validateKeyedMetadataEntries()` ID-drift check (`VcfWriter.java:670-691` --
-confirms each entry's own `ID` property still matches the map key it's stored under) is not given the same
-hoist -- it runs from both
-`writeHeader()` (`:163`) and every `writeLine()` call (`:343`), and a comment at the PEDIGREE
-duplicate-ID-warning site (`VcfWriter.java:536-544`) names that repetition as an accepted tradeoff for this
-check specifically. So the two checks inside the same `validateBeforeWrite()` diagnostics pass disagree
-about how often they re-run, and nothing states why one earned the hoist and the other didn't.
-
-This asymmetry is reachable only through the package-private, test-only `BaseMetadata.trustedMutableProperties()`
-bypass (`BaseMetadata.java:211-224`, "Not for production code: nothing in `src/main` calls it" -- confirmed
-by grep, zero `src/main` call sites, only Javadoc mentions of the name). Triggering it would require
-mutating an already-built `VcfMetadata`'s raw properties map between a `writeHeader()` call and a later
-`writeLine()` call on the same writer -- no public API can do this, since `VcfMetadata`/`BaseMetadata` are
-immutable post-construction (see this file's own "closing the live-ID/key gap" freeze referenced by the
-duplicate-ID-dedup entries above). `VcfWriterTest.testValidateBeforeWriteRejectsMetadataDelimiterInjectedThroughRawView`
-(`VcfWriterTest.java:1320-1329`) exercises the bypass, but only within a single `writeHeader()` call --
-there is no test for the header-already-written-then-mutated-then-`writeLine()` sequence, because there is
-no way to construct that sequence without using the bypass a second time.
-
-Even granting that access, re-checking on the later `writeLine()` call would buy nothing: the header's bytes
-are already on the `Writer` by the time that call runs, so catching the mutation there could only throw
-*after* the un-checked header content has already been emitted -- not meaningfully better than not catching
-it. The ID-drift check does not have this particular defense (it polices a record-independent invariant that
-doesn't depend on already-emitted bytes), but it is exposed to the identical unreachability in practice,
-since it too depends on the same bypass to trigger post-header-write.
-
-**Decision: won't fix.** Reachable only via a test-only bypass with no production caller, and even a
-caller using that bypass deliberately gains no real protection from a later re-check, since the header is
-already flushed by then. Revisit if `trustedMutableProperties()`'s package-private scope is ever widened,
-or if a real (non-test) route to mutate an already-constructed `VcfMetadata` is ever reintroduced.
-
 ## A missing trailing newline at end of file is not detected
 
 hts-specs' VCF 4.3 `failed/` conformance corpus has five fixtures (`failed_body_no_newline_000.vcf` through
