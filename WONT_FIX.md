@@ -682,3 +682,34 @@ move `VcfParser` off `readLine()` for an unrelated reason") already happened, fo
 CR being wrongly treated as a line separator, since `readLine()`'s own contract can't distinguish that from a
 real terminator -- VCFv4.3.tex line 82), and detecting a missing trailing newline is now close to free as a
 result; it just wasn't part of that fix's own scope.
+
+## `VcfFormatException(int, String, Throwable)`'s message derives verbatim from the wrapped exception
+
+`VcfParser.parseColumnInfo`/`parseDataLine`/`parseMetadata` are each called from a wrapper
+(`parseColumnInfo` at line ~190, `parseDataLine` at its own call site, `parseMetadataLine`) with the
+identical two-catch-block shape: a `catch (VcfFormatException ex)` branch that mutates line/section
+metadata onto the *same* exception object and rethrows it unchanged, and a `catch (RuntimeException e)`
+branch that builds a *new* `VcfFormatException(m_lineNumber, section, e)`. That constructor
+(`VcfFormatException.java`) derives its own message verbatim from `e.getMessage()` with no re-sanitization
+-- found while tracing the fifth re-verification round's finding #1b's full scope, since this is
+architecturally a re-exposure risk (a wrapped exception's message reappearing unsanitized) rather than the
+direct-string-concatenation shape every other site in that finding was.
+
+Traced every call graph beneath all three wrap sites and found no path where externally-controlled VCF
+content can escape as a raw, non-`VcfFormatException` `RuntimeException`: the only raw numeric parse
+anywhere in `VcfParser.java` (`Long.parseLong(data.get(1))` for `POS`) is caught locally and converted to an
+already-bounded, already-escaped `VcfFormatException` before it could ever reach one of these three
+`catch (RuntimeException e)` blocks, and everything else these three methods call throws
+`VcfFormatException` directly for a content problem, per the Parser Validation Policy -- which the first
+catch block special-cases specifically so its already-sanitized message survives unchanged. The
+`catch (RuntimeException e)` branch is therefore reachable only by a genuinely unanticipated bug elsewhere
+in this library (e.g. a stray `NullPointerException`), whose own `.getMessage()` is a Java-internal
+diagnostic, never attacker- or file-controlled content.
+
+**Decision: won't fix.** Sanitizing `e.getMessage()` here would be "error handling for an impossible
+scenario" (no current code path reaches it with untrusted content), contradicting this project's own
+"no error handling for impossible scenarios" convention. Revisit if a future change introduces a call path
+where a raw, non-`VcfFormatException` `RuntimeException` carrying untrusted content can reach one of these
+three `catch (RuntimeException e)` blocks -- at that point this stops being a hypothetical and the fix would
+be the same `InternalUtils.truncateAndEscapeForMessage` treatment as everywhere else, applied inside
+`VcfFormatException`'s own constructor rather than at each of the three call sites.
