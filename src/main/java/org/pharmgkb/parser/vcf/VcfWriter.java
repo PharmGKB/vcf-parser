@@ -389,12 +389,13 @@ public class VcfWriter implements Closeable {
     int numSamples = metadata.getNumSamples();
     if (numSamples == 0) {
       if (!samples.isEmpty() || !position.getFormat().isEmpty()) {
-        throw new VcfFormatException("Position " + position.getChromosome() + ":" + position.getPosition() +
-            " has FORMAT or sample data, but the header declares no samples");
+        throw new VcfFormatException("Position " + InternalUtils.truncateAndEscapeForMessage(position.getChromosome()) +
+            ":" + position.getPosition() + " has FORMAT or sample data, but the header declares no samples");
       }
     } else if (samples.size() != numSamples) {
-      throw new VcfFormatException("Position " + position.getChromosome() + ":" + position.getPosition() +
-          " has " + samples.size() + " sample(s), but the header declares " + numSamples);
+      throw new VcfFormatException("Position " + InternalUtils.truncateAndEscapeForMessage(position.getChromosome()) +
+          ":" + position.getPosition() + " has " + samples.size() + " sample(s), but the header declares " +
+          numSamples);
     }
     // No null/empty-CHROM or null/empty-REF guard here: VcfPosition.checkChromosome()/checkRef() run
     // unconditionally in every constructor and are never skipped by any VcfContext trust flag (see
@@ -657,7 +658,8 @@ public class VcfWriter implements Closeable {
       String sampleName = metadata.getSampleName(i);
       InternalUtils.checkNoLineTerminator("sample name", sampleName);
       if (sampleName.isEmpty() || sampleName.contains("\t") || !sampleNames.add(sampleName)) {
-        throw new VcfFormatException("Invalid or duplicate sample name in header: " + sampleName);
+        throw new VcfFormatException("Invalid or duplicate sample name in header: " +
+            InternalUtils.truncateAndEscapeForMessage(sampleName));
       }
     }
     for (String key : metadata.getRawPropertyKeys()) {
@@ -673,8 +675,8 @@ public class VcfWriter implements Closeable {
       // reparse would not match what was written. Verified live: writing key "foo=bar" reparses as key "foo",
       // value "bar=value" instead of key "foo=bar", value "value".
       if (key.contains("=")) {
-        throw new VcfFormatException("Metadata property name \"" + key + "\" contains '=', which would shift " +
-            "where the key/value split falls when re-read");
+        throw new VcfFormatException("Metadata property name \"" + InternalUtils.truncateAndEscapeForMessage(key) +
+            "\" contains '=', which would shift where the key/value split falls when re-read");
       }
       if (InternalUtils.isReservedMetadataKey(key, metadata.getContext().getVersion())) {
         // Only VcfMetadata's package-private trusted constructor can reach this now (getRawProperties() is an
@@ -683,12 +685,13 @@ public class VcfWriter implements Closeable {
         // same reason. Kept, and unlike addRawProperty()'s warn-and-drop this rejects outright, since a raw
         // "INFO"/"FORMAT"/etc. property would produce output VcfParser cannot read back as what was written
         // (see VcfParser.parseMetadata's switch)
-        throw new VcfFormatException("Metadata property name \"" + key + "\" collides with a structured " +
-            "declaration keyword");
+        throw new VcfFormatException("Metadata property name \"" + InternalUtils.truncateAndEscapeForMessage(key) +
+            "\" collides with a structured declaration keyword");
       }
       for (String value : metadata.getRawValuesOfProperty(key)) {
         if (value == null) {
-          throw new VcfFormatException("Metadata property \"" + key + "\" has a null value");
+          throw new VcfFormatException("Metadata property \"" + InternalUtils.truncateAndEscapeForMessage(key) +
+              "\" has a null value");
         }
         InternalUtils.checkNoLineTerminator(key, value);
         if (VcfMetadata.isEmptyMetadataValue(value)) {
@@ -709,8 +712,9 @@ public class VcfWriter implements Closeable {
           // semantically non-compliant content this policy would otherwise preserve. This is the
           // structurally-unparseable-output case AGENTS.md's Writer Validation and Round-Trip Policy calls out
           // as the one thing validateBeforeWrite() must reject rather than warn about.
-          throw new VcfFormatException("Metadata property \"" + key + "\" (" + value + ") is wrapped in angle " +
-              "brackets with no key=value content, which bcftools cannot parse as a generic property value");
+          throw new VcfFormatException("Metadata property \"" + InternalUtils.truncateAndEscapeForMessage(key) +
+              "\" (" + InternalUtils.truncateAndEscapeForMessage(value) + ") is wrapped in angle brackets with " +
+              "no key=value content, which bcftools cannot parse as a generic property value");
         }
       }
     }
@@ -792,10 +796,11 @@ public class VcfWriter implements Closeable {
       // see DUPLICATE_METADATA_ID_HANDLING.md) -- so an entirely-missing ID (id == null) is just as much a drift
       // from the map key as a changed one, and is also caught by !mapKey.equals(id) below.
       if (!mapKey.equals(id)) {
-        String actual = id == null ? "no ID property at all" : "an ID property of \"" + id + "\"";
-        throw new VcfFormatException(kind + " metadata is stored under key \"" + mapKey + "\" but has " + actual +
-            "; the header would declare a different (or missing) ID than records referencing this entry by its " +
-            "map key");
+        String actual = id == null ? "no ID property at all" : "an ID property of \"" +
+            InternalUtils.truncateAndEscapeForMessage(id) + "\"";
+        throw new VcfFormatException(kind + " metadata is stored under key \"" +
+            InternalUtils.truncateAndEscapeForMessage(mapKey) + "\" but has " + actual + "; the header would " +
+            "declare a different (or missing) ID than records referencing this entry by its map key");
       }
     }
   }
@@ -871,8 +876,8 @@ public class VcfWriter implements Closeable {
       sample.validate();
       for (String key : sample.getPropertyKeys()) {
         if (!formatKeys.contains(key)) {
-          throw new VcfFormatException("Sample #" + sampleIndex + " contains property " + key +
-              ", but it is not declared in FORMAT");
+          throw new VcfFormatException("Sample #" + sampleIndex + " contains property " +
+              InternalUtils.truncateAndEscapeForMessage(key) + ", but it is not declared in FORMAT");
         }
       }
       Integer ploidy = getPloidy(position, sample, sampleIndex);
@@ -1160,7 +1165,8 @@ public class VcfWriter implements Closeable {
       assert values != null;
       for (String value : values) {
         if (value == null) {
-          throw new VcfFormatException("INFO value for key \"" + key + "\" is null");
+          throw new VcfFormatException("INFO value for key \"" + InternalUtils.truncateAndEscapeForMessage(key) +
+              "\" is null");
         }
       }
 

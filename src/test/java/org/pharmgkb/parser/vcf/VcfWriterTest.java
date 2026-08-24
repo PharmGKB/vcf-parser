@@ -1894,6 +1894,19 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteEqualsSignInRawPropertyKeyMessageIsTruncated() throws Exception {
+    // regression test for the fifth re-verification round's finding #1b: this rejection embedded the raw
+    // property key verbatim and unbounded
+    String hugeKey = "x".repeat(200) + "=y";
+    VcfMetadata metadata = trustedMetadataWithRawProperty(hugeKey, "value");
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfFormatException e = assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+    assertTrue(e.getMessage().contains("truncated"), e.getMessage());
+    assertTrue(e.getMessage().length() < 250, "message was not bounded: " + e.getMessage().length() + " chars");
+  }
+
+  @Test
   public void testValidateBeforeWriteRejectsNullRawPropertyKey() throws Exception {
     // the backing LinkedListMultimap permits null keys/values, so a null key must get VcfFormatException from
     // validateMetadata(), not a raw NullPointerException from key.contains("="). getRawProperties() is an
@@ -2201,6 +2214,19 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteBracketShapedRawPropertyValueMessageIsTruncated() throws Exception {
+    // regression test for the fifth re-verification round's finding #1b: this rejection embedded the raw
+    // property value verbatim and unbounded
+    String hugeValue = "<" + "x".repeat(200) + ">";
+    VcfMetadata metadata = trustedMetadataWithRawProperty("reference", hugeValue);
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfFormatException e = assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+    assertTrue(e.getMessage().contains("truncated"), e.getMessage());
+    assertTrue(e.getMessage().length() < 350, "message was not bounded: " + e.getMessage().length() + " chars");
+  }
+
+  @Test
   public void testValidateBeforeWriteRejectsReservedRawPropertyKey() throws Exception {
     // getRawProperties() returns the backing multimap directly; a caller can insert a raw property whose key
     // collides with a structured declaration keyword (here "INFO") after the builder-side check in
@@ -2210,6 +2236,65 @@ public class VcfWriterTest {
     StringWriter sw = new StringWriter();
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+  }
+
+  @Test
+  public void testValidateBeforeWriteKeyedMetadataIdDriftMessageIsTruncated() throws Exception {
+    // regression test for the fifth re-verification round's finding #1b: validateKeyedMetadataEntries' own
+    // "is stored under key ... but has an ID property of ..." throw embedded both the raw map key and the
+    // raw ID verbatim and unbounded. Reached via trustedMetadata() (getInfo() is an unmodifiable view, so no
+    // public API route can put an INFO declaration under a map key different from its own ID).
+    InfoMetadata info = new InfoMetadata(LENIENT_CONTEXT, "realId", "d", InfoType.String, "1", null, null);
+    Map<String, InfoMetadata> infoMap = new LinkedHashMap<>();
+    String hugeMapKey = "x".repeat(200);
+    infoMap.put(hugeMapKey, info);
+    VcfMetadata metadata = trustedMetadata("VCFv4.2", infoMap, null, null);
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfFormatException e = assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+    assertTrue(e.getMessage().contains("truncated"), e.getMessage());
+    assertTrue(e.getMessage().length() < 400, "message was not bounded: " + e.getMessage().length() + " chars");
+  }
+
+  @Test
+  public void testValidateBeforeWriteSamplePropertyNotDeclaredInFormatMessageIsTruncated() throws Exception {
+    // regression test for the fifth re-verification round's finding #1b: validateSamples' own "contains
+    // property ..., but it is not declared in FORMAT" throw embedded the raw property key verbatim and
+    // unbounded
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .build();
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"),
+        VcfFloat.of(new BigDecimal("0")), null, null, List.of("GT"), -1);
+    String hugeKey = "x".repeat(200);
+    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(Map.of(hugeKey, "1")));
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    writer.writeHeader(metadata);
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
+    assertTrue(e.getMessage().contains("truncated"), e.getMessage());
+    assertTrue(e.getMessage().length() < 300, "message was not bounded: " + e.getMessage().length() + " chars");
+  }
+
+  @Test
+  public void testValidateBeforeWriteTabContainingSampleNameMessageIsTruncated() throws Exception {
+    // regression test for the fifth re-verification round's finding #1b: validateMetadata's own "Invalid or
+    // duplicate sample name in header" throw embedded the raw sample name verbatim and unbounded. A tab-
+    // containing sample name is the one shape VcfMetadata's own construction-time check (added by this
+    // round's finding #5) does not cover (that check only rejects empty/duplicate names), so this writer-side
+    // check remains the only thing catching it.
+    String hugeSampleName = "x".repeat(200) + "\tY";
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
+            hugeSampleName))
+        .build();
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    VcfFormatException e = assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+    assertTrue(e.getMessage().contains("truncated"), e.getMessage());
+    assertFalse(e.getMessage().contains("\t"), "message must not contain a raw tab: " + e.getMessage());
+    assertTrue(e.getMessage().length() < 300, "message was not bounded: " + e.getMessage().length() + " chars");
   }
 
   @Test
@@ -3315,6 +3400,26 @@ public class VcfWriterTest {
     VcfFormatException e = assertThrows(VcfFormatException.class,
         () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
     assertTrue(e.getMessage().contains("has FORMAT or sample data, but the header declares no samples"));
+  }
+
+  @Test
+  public void testWriteLineRejectsSampleDataWhenHeaderHasNoSamplesMessageIsTruncated() throws Exception {
+    // regression test for the fifth re-verification round's finding #1b: this exact rejection embedded
+    // position.getChromosome() verbatim and unbounded -- CHROM's own non-printable-ASCII check only warns,
+    // never rejects (see VcfPosition.checkChromosome's own comment), so an arbitrarily long or control-
+    // character-laden CHROM value can genuinely reach this message.
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
+    String hugeChrom = "A".repeat(200);
+    VcfPosition position = LENIENT_CONTEXT.newPosition(hugeChrom, 1, null, "A", List.of("T"),
+        VcfFloat.of(new BigDecimal("0")), null, null, List.of("GT"), -1);
+    VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    writer.writeHeader(metadata);
+    VcfFormatException e = assertThrows(VcfFormatException.class,
+        () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
+    assertTrue(e.getMessage().contains("truncated"), e.getMessage());
+    assertTrue(e.getMessage().length() < 300, "message was not bounded: " + e.getMessage().length() + " chars");
   }
 
   @Test
