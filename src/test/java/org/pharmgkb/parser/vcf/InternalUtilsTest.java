@@ -615,11 +615,12 @@ public class InternalUtilsTest {
   public void testCheckReservedInfoConstraintsNonNegativeKeysWarnButDoNotThrow() {
     // AC/AN/DP/END/MQ0/NS's declared Long Type accepts a negative value, but each is semantically a count/depth/
     // position that can't be negative -- checked separately, warning rather than throwing (non-structural INFO
-    // content). AD/ADF/ADR/CN/CNADJ/HOMLEN/DPADJ added by the Phase 2 review's third re-verification round --
+    // content). CN/CNADJ/HOMLEN/DPADJ added by the Phase 2 review's third re-verification round --
     // same reasoning, same vcf_validator 0.10.2-sourced authority (confirmed live, since no hts-specs fixture
-    // covers these seven); CICN deliberately excluded, see NON_NEGATIVE_INTEGER_INFO_KEYS's own comment.
-    for (String key : new String[] { "AC", "AN", "DP", "END", "MQ0", "NS", "AD", "ADF", "ADR", "CN", "CNADJ",
-        "HOMLEN", "DPADJ" }) {
+    // covers these four); CICN deliberately excluded, see NON_NEGATIVE_INTEGER_INFO_KEYS's own comment.
+    // AD/ADF/ADR are tested separately below (testCheckReservedInfoConstraintsAdKeysAreVersionGated): they have
+    // no VCFv4.2 declaration at all, so this loop's fixed V4_2 version would incorrectly find them exempt.
+    for (String key : new String[] { "AC", "AN", "DP", "END", "MQ0", "NS", "CN", "CNADJ", "HOMLEN", "DPADJ" }) {
       InternalUtils.checkReservedInfoConstraints(key, "0", VcfVersion.V4_2, VcfWarnings.DEFAULT); // valid: does not throw
       InternalUtils.checkReservedInfoConstraints(key, "5", VcfVersion.V4_2, VcfWarnings.DEFAULT); // valid: does not throw
       InternalUtils.checkReservedInfoConstraints(key, "-1", VcfVersion.V4_2, VcfWarnings.DEFAULT); // negative: warns, does not throw
@@ -630,15 +631,32 @@ public class InternalUtilsTest {
 
   @Test
   public void testCheckReservedInfoConstraintsNonNegativeKeysThrowUnderStrict() {
-    // regression test found by the Phase 2 review's third re-verification round: the seven newly-added keys
+    // regression test found by the Phase 2 review's third re-verification round: the four newly-added keys
     // must also throw (not just warn) under a strict (null) checkWarnings, matching AC/AN/DP/END/MQ0/NS's
     // existing treatment (see testCheckReservedInfoConstraintsNonNegativeKeyThrowsUnderStrictContext below for
     // the original six's own dedicated test)
-    for (String key : new String[] { "AD", "ADF", "ADR", "CN", "CNADJ", "HOMLEN", "DPADJ" }) {
+    for (String key : new String[] { "CN", "CNADJ", "HOMLEN", "DPADJ" }) {
       VcfFormatException ex = assertThrows(VcfFormatException.class,
           () -> InternalUtils.checkReservedInfoConstraints(key, "-5", VcfVersion.V4_2, null));
       assertTrue(ex.getMessage().contains("is a negative number"), "key " + key + ": " + ex.getMessage());
       InternalUtils.checkReservedInfoConstraints(key, "5", VcfVersion.V4_2, null); // valid: does not throw
+    }
+  }
+
+  @Test
+  public void testCheckReservedInfoConstraintsAdKeysAreVersionGated() {
+    // regression test found by the Phase 2 review's fourth re-verification round: AD/ADF/ADR have no VCFv4.2
+    // declaration at all (ReservedInfoProperty.isAddedAtV4_3), so checkReservedInfoConstraints -- reached even
+    // for a DECLARED key via VcfWriter.validateInfoValue's "declared" branch, which carries no version-gated
+    // fallback of its own -- must not apply the non-negative-integer rule to a pre-4.3 file's own custom key
+    // literally named AD/ADF/ADR, the same shape as the FORMAT-side CNP write-path gap this round also fixed.
+    for (String key : new String[] { "AD", "ADF", "ADR" }) {
+      InternalUtils.checkReservedInfoConstraints(key, "-5", VcfVersion.V4_2, VcfWarnings.DEFAULT); // not yet reserved: no warning
+      InternalUtils.checkReservedInfoConstraints(key, "-5", VcfVersion.V4_2, null); // not yet reserved: does not throw either
+      VcfFormatException ex = assertThrows(VcfFormatException.class,
+          () -> InternalUtils.checkReservedInfoConstraints(key, "-5", VcfVersion.V4_3, null));
+      assertTrue(ex.getMessage().contains("is a negative number"), "key " + key + ": " + ex.getMessage());
+      InternalUtils.checkReservedInfoConstraints(key, "5", VcfVersion.V4_3, null); // valid: does not throw
     }
   }
 
@@ -908,6 +926,91 @@ public class InternalUtilsTest {
     VcfFormatException e = assertThrows(VcfFormatException.class,
         () -> InternalUtils.checkReservedFormatConstraints("CNP", "5.0", VcfVersion.V4_3, null));
     assertTrue(e.getMessage().contains("does not lie in the interval [0, 1]"));
+  }
+
+  @Test
+  public void testCheckReservedFormatConstraintsNonNegativeKeysWarnButDoNotThrow() {
+    // the FORMAT-side mirror of checkReservedInfoConstraints's own identical set (see that method's test of
+    // the same name) -- CN/DP/EC/GQ/HAP/HQ/MQ/NQ/PL/PQ/AHAP are reserved at every version this library
+    // targets, so a fixed VCFv4.2 version is a valid probe for all eleven. AD/ADF/ADR are tested separately
+    // below (testCheckReservedFormatConstraintsAdKeysAreVersionGated): they have no VCFv4.2 declaration at
+    // all, so this loop's fixed V4_2 version would incorrectly find them exempt. PS is deliberately excluded
+    // -- it already has its own, stricter checkNonNegative32BitInteger call (see
+    // NON_NEGATIVE_INTEGER_FORMAT_KEYS's own comment).
+    for (String key : new String[] { "CN", "DP", "EC", "GQ", "HAP", "HQ", "MQ", "NQ", "PL", "PQ", "AHAP" }) {
+      InternalUtils.checkReservedFormatConstraints(key, "0", VcfVersion.V4_2, VcfWarnings.DEFAULT); // valid: does not throw
+      InternalUtils.checkReservedFormatConstraints(key, "5", VcfVersion.V4_2, VcfWarnings.DEFAULT); // valid: does not throw
+      InternalUtils.checkReservedFormatConstraints(key, "-1", VcfVersion.V4_2, VcfWarnings.DEFAULT); // negative: warns, does not throw
+    }
+    InternalUtils.checkReservedFormatConstraints("DP", null, VcfVersion.V4_2, VcfWarnings.DEFAULT); // no value set: nothing to check
+    InternalUtils.checkReservedFormatConstraints("DP", ".", VcfVersion.V4_2, VcfWarnings.DEFAULT); // missing value: nothing to check
+  }
+
+  @Test
+  public void testCheckReservedFormatConstraintsNonNegativeKeysThrowUnderStrict() {
+    for (String key : new String[] { "CN", "DP", "EC", "GQ", "HAP", "HQ", "MQ", "NQ", "PL", "PQ", "AHAP" }) {
+      VcfFormatException ex = assertThrows(VcfFormatException.class,
+          () -> InternalUtils.checkReservedFormatConstraints(key, "-5", VcfVersion.V4_2, null));
+      assertTrue(ex.getMessage().contains("is a negative number"), "key " + key + ": " + ex.getMessage());
+      InternalUtils.checkReservedFormatConstraints(key, "5", VcfVersion.V4_2, null); // valid: does not throw
+    }
+  }
+
+  @Test
+  public void testCheckReservedFormatConstraintsAdKeysAreVersionGated() {
+    // regression test found by the Phase 2 review's fourth re-verification round: AD/ADF/ADR have no VCFv4.2
+    // declaration at all (ReservedFormatProperty.isAddedAtV4_3), so checkReservedFormatConstraints -- reached
+    // even for a DECLARED key via VcfWriter.validateFormatValue's "declared" branch, which carries no
+    // version-gated fallback of its own -- must not apply the non-negative-integer rule to a pre-4.3 file's
+    // own custom key literally named AD/ADF/ADR, the same shape as this same method's own CNP branch.
+    for (String key : new String[] { "AD", "ADF", "ADR" }) {
+      InternalUtils.checkReservedFormatConstraints(key, "-5", VcfVersion.V4_2, VcfWarnings.DEFAULT); // not yet reserved: no warning
+      InternalUtils.checkReservedFormatConstraints(key, "-5", VcfVersion.V4_2, null); // not yet reserved: does not throw either
+      VcfFormatException ex = assertThrows(VcfFormatException.class,
+          () -> InternalUtils.checkReservedFormatConstraints(key, "-5", VcfVersion.V4_3, null));
+      assertTrue(ex.getMessage().contains("is a negative number"), "key " + key + ": " + ex.getMessage());
+      InternalUtils.checkReservedFormatConstraints(key, "5", VcfVersion.V4_3, null); // valid: does not throw
+    }
+  }
+
+  @Test
+  public void testCheckReservedFormatConstraintsNonNegativeKeyChecksEachListElement() {
+    // AD (Number=R) may carry a comma-joined list; a negative value anywhere in the list must be caught, not
+    // just the first element -- mirrors checkReservedInfoConstraints's identical per-element test
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      InternalUtils.checkReservedFormatConstraints("AD", "10,-5", VcfVersion.V4_3, VcfWarnings.DEFAULT);
+      assertTrue(appender.anyMessageContains("FORMAT AD value \"-5\" is a negative number"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testCheckReservedFormatConstraintsPhaseSetIsNotDoubleCoveredByNonNegativeIntegerFormatKeys() {
+    // PS is deliberately excluded from NON_NEGATIVE_INTEGER_FORMAT_KEYS -- its own dedicated
+    // checkNonNegative32BitInteger branch already covers every value this generic check would too. Regression
+    // guard: PS must not additionally match the generic "is a negative number" message.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      InternalUtils.checkReservedFormatConstraints("PS", "-5", VcfVersion.V4_3, VcfWarnings.DEFAULT);
+      assertEquals(0, appender.countMessagesContaining("is a negative number"));
+      assertTrue(appender.anyMessageContains("is not a non-negative 32-bit integer"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
   }
 
   @Test

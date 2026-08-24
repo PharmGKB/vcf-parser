@@ -75,7 +75,7 @@ before assuming it generalizes to a similar-looking case.
 | INFO value containing a bare `=` | Warn, don't throw (matches bcftools) | ✅ |
 | Duplicate INFO key within one record | Warn, keep first occurrence (matches bcftools) | ✅ |
 | A `Type=Flag` INFO value carrying an explicit value | Warn, always resolve to `true` (presence, not value content -- matches bcftools/htslib) | ✅ |
-| Negative/out-of-range values for reserved INFO keys `AC`/`AN`/`DP`/`END`/`MQ0`/`NS`/`AF`/`AD`/`ADF`/`ADR`/`CN`/`CNADJ`/`HOMLEN`/`DPADJ` | Warn in lenient mode, throw in strict mode (vcf_validator-sourced; bcftools silent) | ✅ |
+| Negative/out-of-range values for reserved INFO/FORMAT keys (see below) | Warn in lenient mode, throw in strict mode (vcf_validator-sourced; bcftools silent) | ✅ |
 | CIGAR grammar (SAM compliance) | Warn in lenient mode, throw in strict mode (vcf_validator-sourced; bcftools silent) | ✅ |
 | `FORMAT="."` meaning no per-sample fields | Accept (matches bcftools) | ✅ |
 | Data-line FORMAT key fails tag-name grammar | Warn (lenient), throw (strict/direct construction) -- matches bcftools | ✅ |
@@ -1325,7 +1325,7 @@ Implemented in `InternalUtils.convertElement`, which checks the `Boolean` branch
 null/`"."`-means-absent early return, unlike every other type -- found missing (`DB=.` incorrectly read back
 indistinguishable from `DB` being absent) by the Phase 2 review's fourth re-verification round.
 
-### Negative/out-of-range values for reserved INFO keys `AC`/`AN`/`DP`/`END`/`MQ0`/`NS`/`AF`/`AD`/`ADF`/`ADR`/`CN`/`CNADJ`/`HOMLEN`/`DPADJ`
+### Negative/out-of-range values for reserved INFO/FORMAT keys `AC`/`AN`/`DP`/`END`/`MQ0`/`NS`/`AF`/`AD`/`ADF`/`ADR`/`CN`/`CNADJ`/`HOMLEN`/`DPADJ` (INFO) and `AD`/`ADF`/`ADR`/`AHAP`/`CN`/`DP`/`EC`/`GQ`/`HAP`/`HQ`/`MQ`/`NQ`/`PL`/`PQ` (FORMAT)
 
 These keys' declared `Long`/`Float` `Type` accepts a negative value with no exception; no separate range
 check existed anywhere. Confirmed via vcf_validator against the relevant hts-specs fixtures:
@@ -1348,12 +1348,36 @@ non-negative-integer rule, and a separate confidence-interval-shape rule ("first
 >= 0") that only a first value of exactly `0` satisfies -- which looks like a vcf_validator defect rather
 than a clean signal. Left for a separate, more careful decision if picked up later.
 
+Found by the Phase 2 review's fourth re-verification round: the identical rule applies to FORMAT, from the
+same vcf_validator source -- `check_field_integer_range` (`record.cpp`) is a single shared function called
+identically from `check_predefined_tag_info` and `check_predefined_tag_format`, applied to every
+`Integer`-typed key in vcf_validator's `format_v43` table (`file_structure.hpp`) with no per-key exemption
+(the INFO-side `CICN` exemption above names no FORMAT key). Confirmed live, same undeclared-key probe shape:
+an undeclared FORMAT key named `AD`/`DP`/`GQ`/`CN` with a negative sample value is flagged "value must be a
+non-negative integer number" for each; bcftools 1.23.1 is silent, same as the INFO side. `PS` is Integer-typed
+in that same table but deliberately excluded: it already has its own, stricter, pre-existing
+`InternalUtils.checkNonNegative32BitInteger` call (also bounds-checks against `Integer.MAX_VALUE`) --
+`AD`/`ADF`/`ADR` are further gated to VCFv4.3+ on the FORMAT side too, the same version they are reserved
+from at all (see `AGENTS.md`'s declared-version-dispatch list, which already names `FORMAT/AD`/`ADF`/`ADR`'s
+existence as reserved keys at all); the other eleven are reserved at every version this library targets.
+
+Also found by the same round: `AD`/`ADF`/`ADR`'s existing INFO-side membership in this rule had never been
+version-gated at all, even though they have no VCFv4.2 declaration either (see `AGENTS.md`'s version-dispatch
+list) -- `VcfWriter.validateInfoValue`'s "declared" branch (unlike its undeclared-key fallback, which is
+already gated one level up) calls `InternalUtils.checkReservedInfoConstraints` unconditionally for any
+declared key, so a pre-4.3 file's own custom `##INFO=<ID=AD,...>` with a negative value was spuriously
+flagged even though `AD` isn't reserved at all under that version -- the identical shape to the FORMAT `CNP`
+write-path gap this round's other fix closed. Fixed alongside the FORMAT extension above, since it is the
+same root cause and the same fix shape (`ReservedInfoProperty.fromId(key, version) != null`/
+`ReservedFormatProperty.fromId(key, version) != null` now gates both non-negative-integer key sets).
+
 **Decision:** warn on violation (vcf_validator-sourced, since bcftools offers no signal either way).
-Implemented in `InternalUtils.checkReservedInfoConstraints`, reachable from both the read path
-(`VcfPosition.getInfo(ReservedInfoProperty)`) and `VcfWriter.validateInfoValue`. The read path is
-`isLenient()`-aware: warns under a lenient `VcfContext`, throws `VcfFormatException` under a strict one,
-matching `VALIDATION_PHILOSOPHY.md`'s universal `isLenient()` dispatch; the write path always warns,
-regardless of the written object's own strict/lenient origin, per `AGENTS.md`'s Writer Validation Policy.
+Implemented in `InternalUtils.checkReservedInfoConstraints`/`checkReservedFormatConstraints`, reachable from
+both the read path (`VcfPosition.getInfo(ReservedInfoProperty)`/`VcfSample.getProperty(ReservedFormatProperty)`)
+and `VcfWriter.validateInfoValue`/`validateFormatValue`. The read path is `isLenient()`-aware: warns under a
+lenient `VcfContext`, throws `VcfFormatException` under a strict one, matching `VALIDATION_PHILOSOPHY.md`'s
+universal `isLenient()` dispatch; the write path always warns, regardless of the written object's own
+strict/lenient origin, per `AGENTS.md`'s Writer Validation Policy.
 
 ### CIGAR grammar (SAM compliance)
 

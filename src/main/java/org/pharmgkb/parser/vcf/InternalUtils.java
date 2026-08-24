@@ -928,12 +928,29 @@ public class InternalUtils {
    *   AF}; see that method's own Javadoc.</li>
    *   <li>{@link ReservedFormatProperty#CopyNumberPosteriorProbabilities CNP} must also lie in [0, 1] --
    *   VCFv4.3.tex line 689 ("CNP is 0 to 1-scaled copy number posterior probabilities") and the 4.3 changelog
-   *   at line 2156 ("Both CNP and GP use 0 to 1 encoding") pair it with GP explicitly. Unconditional, unlike
-   *   GP: CNP has no VCFv4.2 declaration at all (see {@link ReservedFormatProperty#CopyNumberPosteriorProbabilities
-   *   CNP}'s own comment), so there is no pre-4.3 meaning to preserve. Deliberately NOT extended to
-   *   {@link ReservedFormatProperty#CopyNumberLikelihood CNL}: that key is a list of log10 likelihoods, not a
-   *   0-1 probability, per its own body-text sentence two lines above CNP's in the same table
+   *   at line 2156 ("Both CNP and GP use 0 to 1 encoding") pair it with GP explicitly. Gated to {@code >=4.3},
+   *   the same version CNP is reserved from at all (see
+   *   {@link ReservedFormatProperty#CopyNumberPosteriorProbabilities CNP}'s own comment) -- a pre-4.3 custom
+   *   key literally named CNP has no such reserved meaning and is not checked here. Deliberately NOT extended
+   *   to {@link ReservedFormatProperty#CopyNumberLikelihood CNL}: that key is a list of log10 likelihoods, not
+   *   a 0-1 probability, per its own body-text sentence two lines above CNP's in the same table
    *   ("CNL specifies a list of log10 likelihoods... starting from zero").</li>
+   *   <li>{@link ReservedFormatProperty#AlleleDepth AD}/{@link ReservedFormatProperty#AlleleDepthForward ADF}/
+   *   {@link ReservedFormatProperty#AlleleDepthReverse ADR}/{@link ReservedFormatProperty#AncestralHaplotypeId
+   *   AHAP}/{@link ReservedFormatProperty#CopyNumber CN}/{@link ReservedFormatProperty#Depth DP}/
+   *   {@link ReservedFormatProperty#ExpectedAlleleCounts EC}/
+   *   {@link ReservedFormatProperty#GenotypeQualityConditional GQ}/{@link ReservedFormatProperty#HaplotypeId
+   *   HAP}/{@link ReservedFormatProperty#HaplotypeQualities HQ}/{@link ReservedFormatProperty#MappingQuality
+   *   MQ}/{@link ReservedFormatProperty#PhredScoreForNovelty NQ}/
+   *   {@link ReservedFormatProperty#PhredScaledGenotypeLikelihoods PL}/{@link ReservedFormatProperty#PhasingQuality
+   *   PQ} must each be a non-negative integer -- the FORMAT-side mirror of
+   *   {@link ReservedInfoProperty}'s own identical set (see {@link #checkReservedInfoConstraints}'s Javadoc),
+   *   sourced from the same authority (vcf_validator 0.10.2's shared {@code check_field_integer_range}, applied
+   *   identically to its {@code format_v43} table). {@link ReservedFormatProperty#PhaseSet PS} is deliberately
+   *   excluded despite being Integer-typed in that same table: it already has its own, stricter
+   *   {@link #checkNonNegative32BitInteger} call. {@code AD}/{@code ADF}/{@code ADR} are further gated to
+   *   {@code >=4.3}, the same version they are reserved from at all -- the other eleven are reserved at every
+   *   version this library targets.</li>
    * </ul>
    *
    * @return the value to use for subsequent type conversion: unchanged, except for FT under a lenient
@@ -984,6 +1001,14 @@ public class InternalUtils {
       // ReservedFormatProperty.fromId(key, recordVersion)): this method is also called for a key with its own
       // ##FORMAT=<ID=CNP,...> declaration, which carries no version information of its own to consult.
       checkEachCommaElement(value, element -> checkUnitInterval("FORMAT", key, element, checkWarnings));
+    } else if (NON_NEGATIVE_INTEGER_FORMAT_KEYS.contains(key) && ReservedFormatProperty.fromId(key, version) != null) {
+      // ReservedFormatProperty.fromId(key, version) != null: the FORMAT-side mirror of
+      // checkReservedInfoConstraints's identical AD/ADF/ADR gate just above -- three of these fourteen keys
+      // (AD/ADF/ADR) have no VCFv4.2 declaration at all, so without this gate a pre-4.3 file's own custom
+      // ##FORMAT=<ID=AD,...> with a negative value would be spuriously flagged the same way CNP's [0, 1]
+      // range check was before this round's fix. For the other eleven keys (reserved at every version this
+      // library targets), fromId is unaffected by version and this check is unconditionally true.
+      checkEachCommaElement(value, element -> checkNonNegativeInteger("FORMAT", key, element, checkWarnings));
     }
     return value;
   }
@@ -1226,8 +1251,17 @@ public class InternalUtils {
     if (value == null || value.equals(".")) {
       return;
     }
-    if (NON_NEGATIVE_INTEGER_INFO_KEYS.contains(key)) {
-      checkEachCommaElement(value, element -> checkNonNegativeInteger(key, element, checkWarnings));
+    // ReservedInfoProperty.fromId(key, version) != null: AD/ADF/ADR are among NON_NEGATIVE_INTEGER_INFO_KEYS
+    // but have no VCFv4.2 declaration at all (ReservedInfoProperty.isAddedAtV4_3) -- this method is also
+    // reached for a DECLARED key (VcfWriter.validateInfoValue's "declared" branch carries no version-gated
+    // fallback of its own the way the undeclared-key branch does), so without this gate a pre-4.3 file's own
+    // custom ##INFO=<ID=AD,...> with a negative value would be spuriously flagged even though AD isn't
+    // reserved at all under that version. For the other ten keys here (reserved at every version this library
+    // targets), fromId(key, version) is unaffected by version and this check is unconditionally true, so this
+    // adds no gate for them. Found by the Phase 2 review's fourth re-verification round, the same shape as
+    // checkReservedFormatConstraints's own CNP write-path gap this round also fixed.
+    if (NON_NEGATIVE_INTEGER_INFO_KEYS.contains(key) && ReservedInfoProperty.fromId(key, version) != null) {
+      checkEachCommaElement(value, element -> checkNonNegativeInteger("INFO", key, element, checkWarnings));
     } else if (key.equals(ReservedInfoProperty.AlleleFrequency.getId())) {
       checkEachCommaElement(value, element -> checkUnitInterval("INFO", key, element, checkWarnings));
     } else if (key.equals(ReservedInfoProperty.Cigar.getId())) {
@@ -1242,7 +1276,10 @@ public class InternalUtils {
     // change for this method.
   }
 
-  private static void checkNonNegativeInteger(String key, String value, @Nullable VcfWarnings checkWarnings) {
+  // fieldType is the literal "INFO" or "FORMAT" prefix for the warning message -- see checkUnitInterval's
+  // identical parameter for why (shared by both INFO's and FORMAT's own non-negative-integer key sets below).
+  private static void checkNonNegativeInteger(String fieldType, String key, String value,
+      @Nullable VcfWarnings checkWarnings) {
     if (value.isEmpty() || value.equals(".")) {
       // an empty entry or the missing-value sentinel is reported elsewhere; not this check's concern
       return;
@@ -1255,9 +1292,29 @@ public class InternalUtils {
       return;
     }
     if (parsed < 0) {
-      warnOrThrow(checkWarnings, "INFO {} value \"{}\" is a negative number", key, value);
+      warnOrThrow(checkWarnings, "{} {} value \"{}\" is a negative number", fieldType, key, value);
     }
   }
+
+  // AD/ADF/ADR/AHAP/CN/DP/EC/GQ/HAP/HQ/MQ/NQ/PL/PQ: the FORMAT-side mirror of NON_NEGATIVE_INTEGER_INFO_KEYS
+  // below -- vcf_validator 0.10.2's check_field_integer_range (record.cpp) is the same shared function called
+  // from both check_predefined_tag_info and check_predefined_tag_format, applied to every Integer-typed key in
+  // its format_v43 table (file_structure.hpp) with no per-key exemption (the INFO-side exemption list --
+  // SVLEN/CIPOS/CIEND/CILEN/CIRB/CICNADJ<4.4 -- names no FORMAT key). Confirmed live: an undeclared FORMAT key
+  // named AD/DP/GQ/CN with a negative sample value is flagged "value must be a non-negative integer number"
+  // for each; bcftools 1.23.1 is silent, same as the INFO-side seven. PS is deliberately excluded from this
+  // set despite being Integer-typed in the same table: it already has its own, stricter
+  // checkNonNegative32BitInteger call (also bounds-checks against Integer.MAX_VALUE, a historical special case
+  // that predates this generic mechanism) -- adding it here too would double-warn under a lenient context for
+  // the identical negative-value case. Found by the Phase 2 review's fourth re-verification round.
+  private static final Set<String> NON_NEGATIVE_INTEGER_FORMAT_KEYS = Set.of(
+      ReservedFormatProperty.AlleleDepth.getId(), ReservedFormatProperty.AlleleDepthForward.getId(),
+      ReservedFormatProperty.AlleleDepthReverse.getId(), ReservedFormatProperty.AncestralHaplotypeId.getId(),
+      ReservedFormatProperty.CopyNumber.getId(), ReservedFormatProperty.Depth.getId(),
+      ReservedFormatProperty.ExpectedAlleleCounts.getId(), ReservedFormatProperty.GenotypeQualityConditional.getId(),
+      ReservedFormatProperty.HaplotypeId.getId(), ReservedFormatProperty.HaplotypeQualities.getId(),
+      ReservedFormatProperty.MappingQuality.getId(), ReservedFormatProperty.PhredScoreForNovelty.getId(),
+      ReservedFormatProperty.PhredScaledGenotypeLikelihoods.getId(), ReservedFormatProperty.PhasingQuality.getId());
 
   // fieldType is the literal "INFO" or "FORMAT" prefix for the warning message -- not VCF content, just which
   // of checkReservedInfoConstraints's (AF) or checkReservedFormatConstraints's (GP under 4.3+, or CNP
