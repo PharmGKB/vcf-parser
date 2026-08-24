@@ -1,7 +1,9 @@
 package org.pharmgkb.parser.vcf;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -89,6 +91,25 @@ public class BaseMetadataTest {
     assertEquals(2, unquoted.size());
     assertEquals("quoted", unquoted.get("a"));
     assertEquals("unquoted", unquoted.get("b"));
+  }
+
+  @Test
+  public void testGetPropertiesUnquotedPreservesDeclarationOrder() {
+    // regression test found by the Phase 2 review's fourth re-verification round: getPropertiesUnquoted()
+    // previously returned a plain HashMap, unlike every sibling accessor on this class (getPropertyKeys(),
+    // getPropertiesRaw()), which are explicitly order-preserving. A caller reading this map's properties back
+    // out via replaceInfo(...)/addInfo(...) (the obvious read-modify-rebuild idiom this accessor exists for)
+    // would silently reorder the rebuilt declaration's attributes to HashMap hash order instead of the
+    // original declaration order. ID/Number/Type/Description is canonical order, deliberately not
+    // alphabetical, so hash order would very likely scramble it.
+    Map<String, String> map = new LinkedHashMap<>();
+    map.put("ID", "AF");
+    map.put("Number", "A");
+    map.put("Type", "Float");
+    map.put("Description", "d");
+    BaseMetadata metadata = new BaseMetadata(LENIENT_CONTEXT, "TEST", map);
+    Map<String, String> unquoted = metadata.getPropertiesUnquoted();
+    assertEquals(List.of("ID", "Number", "Type", "Description"), new ArrayList<>(unquoted.keySet()));
   }
 
   @Test

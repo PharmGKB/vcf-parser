@@ -1,7 +1,6 @@
 package org.pharmgkb.parser.vcf;
 
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -174,10 +173,17 @@ public sealed class BaseMetadata permits IdMetadata, PedigreeMetadata {
    * {@link #getPropertyUnquoted(String)}. Unlike {@link #getPropertiesRaw()}/{@link #getPropertyKeys()}, this
    * is a freshly-allocated snapshot copy rather than an unmodifiable view, so it is safe for a caller to mutate
    * and it is deliberately <em>not</em> memoized: mutating it affects only the returned copy, never this
-   * declaration.
+   * declaration. Preserves {@code m_properties}' own declaration order (a {@link LinkedHashMap}, not a plain
+   * {@link HashMap}) -- {@link #getPropertyKeys()} and {@link VcfWriter}'s default write path both rely on
+   * that order matching declaration order for a parse-then-write round trip to reproduce the input's attribute
+   * order (see this class's own constructor Javadoc), and this is the accessor a caller reaches for to
+   * transform a declaration's properties before rebuilding it (e.g. {@code props.put("Source", "x");
+   * builder.replaceInfo(props)}) -- a plain {@code HashMap} here would silently reorder the attributes in the
+   * rebuilt declaration's output to hash order instead. Found by the Phase 2 review's fourth re-verification
+   * round.
    */
   public final Map<String, String> getPropertiesUnquoted() {
-    Map<String, String> map = new HashMap<>();
+    Map<String, String> map = new LinkedHashMap<>();
     for (Map.Entry<String, String>  entry : m_properties.entrySet()) {
       map.put(entry.getKey(), InternalUtils.unquote(entry.getValue()));
     }
