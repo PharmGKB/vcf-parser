@@ -126,6 +126,24 @@ public final class VcfMetadata {
         throw new VcfFormatException("Column list contains a null entry");
       }
     }
+    // A duplicate or empty sample name is a structural violation, not recoverable content -- AGENTS.md's
+    // Parser Validation Policy lists "duplicate sample IDs" explicitly among the always-error cases, and
+    // VcfParser.parseColumnInfo already enforces this identically (unconditionally, never warnOrThrow) at
+    // header-parse time. This closes the same gap for direct construction (VcfMetadata.Builder.setColumns()
+    // itself does not validate, matching this constructor's other checkXxx-at-construction-time pattern
+    // noted above for the null check) -- found by the fifth re-verification round's finding #5. Samples
+    // start at index 9, matching getNumSamples()/getSampleName()'s own indexing.
+    Set<String> sampleNames = new HashSet<>();
+    for (int i = 9; i < columns.size(); i++) {
+      String sampleName = columns.get(i);
+      if (sampleName.isEmpty()) {
+        throw new VcfFormatException("Empty sample name in header (check for a trailing or duplicated tab)");
+      }
+      if (!sampleNames.add(sampleName)) {
+        throw new VcfFormatException("Duplicate sample name '" +
+            InternalUtils.truncateAndEscapeForMessage(sampleName) + "' in header");
+      }
+    }
     m_columns    = List.copyOf(columns);
   }
 

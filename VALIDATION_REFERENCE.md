@@ -51,7 +51,18 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   and this decision was reached without a corresponding shift in evidence strong enough to justify it. Found
   and left as-is by the Phase 2 review's third re-verification round.
 - A missing `#CHROM` header, wrong fixed column names, a missing `FORMAT` column when samples are present, a
-  `FORMAT` column with no sample columns following it, an empty sample name, or a duplicate sample name.
+  `FORMAT` column with no sample columns following it, an empty sample name, or a duplicate sample name. The
+  empty/duplicate sample name half of this is enforced twice, unconditionally both times (never
+  `warnOrThrow`, matching AGENTS.md's Parser Validation Policy listing "duplicate sample IDs" among the
+  always-error cases): once by `VcfParser.parseColumnInfo` at header-parse time, and again by
+  `VcfMetadata`'s own constructor -- the single point `Builder.setColumns()` itself defers to, matching this
+  constructor's other checkXxx-at-construction-time checks (the null-column-entry check just above it) --
+  for direct construction via `VcfMetadata.Builder`. Found missing at the construction-time layer by the
+  fifth re-verification round's finding #5: a caller building a `VcfMetadata` directly (not through
+  `VcfParser`) with a duplicate or empty sample name got no error at all, and the default (non-
+  `validateBeforeWrite()`) write path would then emit that invalid VCF with zero warning -- a construction-
+  time floor gap under AGENTS.md's bcftools-asymmetric-evidence rule, since this is originated content, not
+  content faithfully carried forward from a file.
 - A data line with the wrong number of tab-separated columns.
 - An empty mandatory fixed field (the missing value must be `.`), an empty `CHROM`, or a negative `POS`.
 - Invalid `REF`/`ALT` bases; whitespace where the spec forbids it (`CHROM`, `ID`, `FILTER`, and an `INFO` key --

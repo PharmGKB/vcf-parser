@@ -83,6 +83,44 @@ public class VcfMetadataTest {
   }
 
   @Test
+  public void testBuilderSetColumnsRejectsDuplicateSampleNameUnconditionally() {
+    // regression test for the fifth re-verification round's finding #5: build() never checked sample columns
+    // for a duplicate, unlike VcfParser.parseColumnInfo's identical, always-unconditional check (AGENTS.md's
+    // Parser Validation Policy lists "duplicate sample IDs" explicitly among the always-error, never
+    // warn-or-throw cases) -- so the default write path could emit invalid VCF with zero warning. Unconditional
+    // regardless of context: a LENIENT_CONTEXT builder must still throw, not warn.
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
+            "S1", "S1"));
+    VcfFormatException ex = assertThrows(VcfFormatException.class, builder::build);
+    assertTrue(ex.getMessage().contains("Duplicate sample name"), ex.getMessage());
+  }
+
+  @Test
+  public void testBuilderSetColumnsRejectsEmptySampleNameUnconditionally() {
+    // same finding as above, the empty-sample-name half; matches VcfParser.parseColumnInfo's identical message
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
+            "S1", ""));
+    VcfFormatException ex = assertThrows(VcfFormatException.class, builder::build);
+    assertTrue(ex.getMessage().contains("Empty sample name"), ex.getMessage());
+  }
+
+  @Test
+  public void testBuilderSetColumnsRejectsDuplicateSampleNameMessageIsTruncatedAndEscaped() {
+    // the duplicate-sample-name message embeds the raw sample name -- must go through
+    // InternalUtils.truncateAndEscapeForMessage like VcfParser's own identical check, not embed it verbatim
+    // and unbounded
+    String hugeName = "S" + "9".repeat(200);
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
+            hugeName, hugeName));
+    VcfFormatException ex = assertThrows(VcfFormatException.class, builder::build);
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
   public void testBuilderSetColumnsRejectsNullListInsteadOfThrowingNpe() {
     // cols is typed non-@Nullable, but nothing enforces that at compile time; a null list itself (as opposed to
     // a null entry, covered above) must be rejected with VcfFormatException at setColumns() itself, not deferred
