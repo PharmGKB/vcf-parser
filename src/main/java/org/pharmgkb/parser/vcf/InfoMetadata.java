@@ -88,7 +88,12 @@ public final class InfoMetadata extends IdDescriptionMetadata {
     // no init() call: the Source/Version-quoting and Type-parse-failure checks init() also performs are
     // structurally unreachable here (putAndQuoteProperty always quotes; type is already a real InfoType enum,
     // not a raw string), per this project's "no error handling for impossible scenarios" convention.
-    if (type == InfoType.Flag && !"0".equals(unquotedNumber)) {
+    // unquotedNumber != null: without this guard, a missing Number (already warned about above, at the
+    // "INFO Number is not a valid VCF number" check) also spuriously failed this one -- !"0".equals(null) is
+    // true -- stacking a second, redundant warning on top of the first. init()'s own identical Flag check
+    // (a few lines below, in the Map-based constructor) already has this guard; this typed constructor's copy
+    // didn't. Found by the fifth re-verification round's finding #7.
+    if (type == InfoType.Flag && unquotedNumber != null && !"0".equals(unquotedNumber)) {
       warnOrThrow("INFO {} has Type=Flag but Number is '{}' (should be 0)", unquotedId, unquotedNumber);
     }
     // the converse of the check just above (VCFv4.3.tex line 171, "the Number must be 0 in this case" --
@@ -104,7 +109,12 @@ public final class InfoMetadata extends IdDescriptionMetadata {
     // pre-4.3 ##INFO=<ID=AD,...> is validated only against its own declared Number/Type, like any custom key.
     ReservedInfoProperty reserved = ReservedInfoProperty.fromId(unquotedId, getContext().getVersion());
     if (reserved != null) {
-      if (!reserved.getExpectedNumber().equals(unquotedNumber)) {
+      // unquotedNumber != null: without this guard, a missing Number (already warned about above) also
+      // spuriously failed this check -- X.equals(null) is always false, so !X.equals(null) is always true --
+      // stacking a second, redundant warning on top of the first. init()'s own identical check (the Map-based
+      // constructor below) already has this guard; this typed constructor's copy didn't. Found by the fifth
+      // re-verification round's finding #7.
+      if (unquotedNumber != null && !reserved.getExpectedNumber().equals(unquotedNumber)) {
         warnOrThrow("INFO {} has Number '{}' but the reserved definition expects '{}'", unquotedId, unquotedNumber,
             reserved.getExpectedNumber());
       }

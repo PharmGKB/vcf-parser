@@ -262,6 +262,32 @@ public class InfoMetadataTest {
   }
 
   @Test
+  public void testFlagWithMissingNumberViaTypedConstructorWarnsOnceNotTwice() {
+    // regression test for the fifth re-verification round's finding #7: the typed constructor's own
+    // Type=Flag-implies-Number=0 check had no unquotedNumber != null guard, unlike init()'s own identical
+    // check (the Map-based constructor, already covered by testFlagWithMissingNumberWarnsOnceNotTwice), so
+    // a Flag with Number simply absent fired both the legitimate "Number is not a valid VCF number: 'null'"
+    // warning AND a second, redundant "has Type=Flag but Number is 'null' (should be 0)" one.
+    StringWriter sink = new StringWriter();
+    new InfoMetadata(lenientContext(new VcfWarnings(sink)), "XX", "desc", InfoType.Flag, null, null, null);
+    assertTrue(sink.toString().contains("Number is not a valid VCF number: 'null'"), sink.toString());
+    assertFalse(sink.toString().contains("has Type=Flag but Number is"), sink.toString());
+  }
+
+  @Test
+  public void testReservedKeyWithMissingNumberViaTypedConstructorWarnsOnceNotTwice() {
+    // regression test for the fifth re-verification round's finding #7: the typed constructor's
+    // reserved-Number-mismatch check had no unquotedNumber != null guard, unlike init()'s own identical
+    // check (the Map-based constructor), so a reserved key (here AC, expected Number "A") with Number
+    // simply absent fired both the legitimate "Number is not a valid VCF number: 'null'" warning AND a
+    // second, redundant "has Number 'null' but the reserved definition expects 'A'" one.
+    StringWriter sink = new StringWriter();
+    new InfoMetadata(lenientContext(new VcfWarnings(sink)), "AC", "desc", InfoType.Integer, null, null, null);
+    assertTrue(sink.toString().contains("Number is not a valid VCF number: 'null'"), sink.toString());
+    assertFalse(sink.toString().contains("but the reserved definition expects"), sink.toString());
+  }
+
+  @Test
   public void testTypedConstructorPrioritizesInvalidNumberOverNullType() {
     // documents a real, narrow behavior change from moving the Number-format check ahead of putPropertyRaw:
     // when Number is malformed (non-null) AND Type is null simultaneously, the Number-format error now wins.

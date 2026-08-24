@@ -734,4 +734,17 @@ public class FormatMetadataTest {
     assertThrows(VcfFormatException.class,
         () -> new FormatMetadata(STRICT_CONTEXT, "1000G", "d", "1", FormatType.String));
   }
+
+  @Test
+  public void testReservedKeyWithMissingNumberViaTypedConstructorWarnsOnceNotTwice() {
+    // regression test for the fifth re-verification round's finding #7: the typed constructor's
+    // reserved-Number-mismatch check had no unquotedNumber != null guard, unlike init()'s own identical
+    // check (the Map-based constructor), so a reserved key (here DP, expected Number "1") with Number
+    // simply absent fired both the legitimate "Number is not a valid VCF number: 'null'" warning AND a
+    // second, redundant "has Number 'null' but the reserved definition expects '1'" one.
+    StringWriter sink = new StringWriter();
+    new FormatMetadata(lenientContext(new VcfWarnings(sink)), "DP", "d", null, FormatType.Integer);
+    assertTrue(sink.toString().contains("Number is not a valid VCF number: 'null'"), sink.toString());
+    assertFalse(sink.toString().contains("but the reserved definition expects"), sink.toString());
+  }
 }

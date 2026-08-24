@@ -43,6 +43,16 @@ quoting check that only apply to one side — real complexity for marginal DRY b
 fixed number of call sites. Revisit if a third sibling with the same Number/Type/reserved-property shape is
 ever added, at which point the shared-abstraction case gets stronger.
 
+The second duplication axis (typed constructor vs. `init()`, within each class) already produced a real,
+findable divergence, not just a theoretical maintenance risk: the fifth re-verification round's finding #7
+found that both typed constructors' `Number`-comparison checks (the `Type=Flag`-implies-`Number=0` check in
+`InfoMetadata`, and both classes' reserved-property `Number` cross-check) were missing the
+`unquotedNumber != null` guard their `init()` twin already had, so a missing `Number` double-warned through
+the typed constructor specifically. Fixed per-site (each guard is a one-line addition, not worth the
+shared-abstraction cost this entry already declined), but it's the concrete instance this entry's own
+"real complexity for marginal DRY benefit" trade-off should be weighed against if a third sibling ever
+does make the shared-abstraction case stronger.
+
 ## Caller-configuration parameters use a raw `NullPointerException`, not `VcfFormatException`
 
 Two unrelated call sites both reject a `null` caller-configuration argument via `Preconditions.checkNotNull`

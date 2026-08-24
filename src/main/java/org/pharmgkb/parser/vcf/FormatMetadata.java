@@ -90,7 +90,13 @@ public final class FormatMetadata extends IdDescriptionMetadata {
     if (reserved != null) {
       // version-aware: CNL is the one reserved key whose expected Number differs by version (VCFv4.2.tex:308
       // "Number=.", VCFv4.3.tex:678 "Number=G") -- see that constant's own comment for the citations
-      if (!reserved.getExpectedNumber(version).equals(unquotedNumber)) {
+      //
+      // unquotedNumber != null: without this guard, a missing Number (already warned about above) also
+      // spuriously failed this check -- X.equals(null) is always false, so !X.equals(null) is always true --
+      // stacking a second, redundant warning on top of the first. init()'s own identical check (the Map-based
+      // constructor below) already has this guard; this typed constructor's copy didn't. Found by the fifth
+      // re-verification round's finding #7.
+      if (unquotedNumber != null && !reserved.getExpectedNumber(version).equals(unquotedNumber)) {
         warnOrThrow("FORMAT {} has Number '{}' but the reserved definition expects '{}'", unquotedId, unquotedNumber,
             reserved.getExpectedNumber(version));
       }
