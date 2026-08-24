@@ -753,6 +753,30 @@ class MetadataPropertyEncodingTest {
   }
 
   @Test
+  void diagnosticsModeInvalidPropertyNameWarningMessageIsTruncated() throws Exception {
+    // regression test for the fifth re-verification round's finding #1b: findEncodingProblems' own "invalid
+    // property name" message embedded the raw property name verbatim and unbounded. Unlike this project's
+    // usual scope for truncateAndEscapeForMessage (thrown messages only), this one site's fix also reaches
+    // the logged-warning path -- see EncodingProblem's own Javadoc for why. A property name is not
+    // attacker-length-controlled in ordinary use, but this is carried-forward (parsed-from-a-file) content,
+    // where it can be.
+    String hugeInvalidName = "1" + "x".repeat(200); // leading digit: invalid per METADATA_ATTRIBUTE_NAME_PATTERN
+    VcfMetadata md = parseHeader("##contig=<ID=c1," + hugeInvalidName + "=v,length=999>").metadata();
+    Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      StringWriter out = new StringWriter();
+      new VcfWriter.Builder().validateBeforeWrite().toWriter(new PrintWriter(out)).build().writeHeader(md);
+      assertEquals(1, appender.countMessagesContaining("truncated"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   void diagnosticsModeWarnsRatherThanThrowingOnCarriedForwardContent() throws Exception {
     // ##contig=<ID=1,a-b=v> is AGENTS.md's worked example of content we preserve and re-emit.
     // parseHeader (this file's own helper, above) returns a ParsedHeader record (metadata(), warnings()) and

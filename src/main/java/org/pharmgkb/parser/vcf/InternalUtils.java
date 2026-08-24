@@ -1076,7 +1076,9 @@ public class InternalUtils {
         if (checkWarnings != null) {
           checkWarnings.warn(message + "; dropping it");
         } else {
-          throw new VcfFormatException(message);
+          // see VcfPosition.checkChromosome's identical non-printable-ASCII check for why this wraps the
+          // whole built message (bounding/escaping the thrown form only, not the warn above)
+          throw new VcfFormatException(truncateAndEscapeForMessage(message));
         }
         continue;
       }
@@ -1872,7 +1874,7 @@ public class InternalUtils {
       if (value.length() == 1) {
         return value.charAt(0);
       } else {
-        throw new VcfFormatException("Invalid character value '" + value + "'");
+        throw new VcfFormatException("Invalid character value '" + truncateAndEscapeForMessage(value) + "'");
       }
     } else if (clas == VcfFloat.class) {
       // unlike plain BigDecimal, this also accepts NAN/INF/INFINITY (case-insensitive, optionally signed), which
@@ -1883,7 +1885,7 @@ public class InternalUtils {
       try {
         return Long.parseLong(value);
       } catch (NumberFormatException e) {
-        throw new VcfFormatException("Expected integer; got " + value);
+        throw new VcfFormatException("Expected integer; got " + truncateAndEscapeForMessage(value));
       }
     }
     throw new VcfFormatException("Type " + clas + " unrecognized");
@@ -1955,6 +1957,15 @@ public class InternalUtils {
    *   previous bullet, the parse path itself can never produce this exact shape as a stored value (its own
    *   recovery already truncates at the first comma), so throwing here costs nothing either.</li>
    * </ul>
+   * {@code message} embeds the offending property name through {@link #truncateAndEscapeForMessage}, unlike
+   * this project's usual scope for that helper (thrown messages only, not logged warnings): {@code message}
+   * is a single string shared by both {@link #checkMetadataPropertyEncoding}'s unconditional throw and
+   * {@link #checkMetadataPropertyEncodingForWrite}'s warn-or-throw dispatch on the identical value, with no
+   * point after construction where the two paths could sanitize independently -- so sanitizing here is the
+   * only way to close the throw-path gap without either duplicating this classifier's construction logic or
+   * leaving the shared string unsanitized for both. A property name is not attacker-length-controlled in
+   * ordinary use, but this method also runs on carried-forward (parsed-from-a-file) content, where it can be
+   * -- found by the fifth re-verification round's finding #1b.
    */
   private record EncodingProblem(String message, boolean unreadableOutput) {}
 
@@ -1983,7 +1994,7 @@ public class InternalUtils {
         // bcftools discards the declaration but still reads the file, so this is warn-at-write:
         // ##contig=<ID=1,a-b=v> is AGENTS.md's own worked example of carried-forward content.
         problems.add(new EncodingProblem(
-            kind + " metadata has an invalid property name: " + name, false));
+            kind + " metadata has an invalid property name: " + truncateAndEscapeForMessage(name), false));
         continue;
       }
       String value = property.getValue();
@@ -2003,7 +2014,8 @@ public class InternalUtils {
             // of what bcftools does with it, so this must throw rather than warn, the same as the plain
             // unquoted-comma case below.
             problems.add(new EncodingProblem(
-                kind + " metadata property " + name + " has a malformed quoted value containing a comma", true));
+                kind + " metadata property " + truncateAndEscapeForMessage(name) +
+                    " has a malformed quoted value containing a comma", true));
           } else {
             // Non-fatal, same as the unescaped '<'/'>' cases below: measured, bcftools does not hard-fail on
             // an unterminated leading quote ("ab, no closing quote) -- it warns ("Incomplete header line")
@@ -2013,7 +2025,8 @@ public class InternalUtils {
             // byte) selected the branch -- one check covering another's gap, the exact pattern §5 was written
             // to prevent.
             problems.add(new EncodingProblem(
-                kind + " metadata property " + name + " has a malformed quoted value", false));
+                kind + " metadata property " + truncateAndEscapeForMessage(name) + " has a malformed quoted value",
+                false));
           }
         }
         continue;
@@ -2028,8 +2041,8 @@ public class InternalUtils {
       // Values-only gate below.
       if (value.startsWith("[") && value.indexOf(']', 1) < 0) {
         problems.add(new EncodingProblem(
-            kind + " metadata property " + name + " has an unterminated bracket value bcftools cannot read",
-            true));
+            kind + " metadata property " + truncateAndEscapeForMessage(name) +
+                " has an unterminated bracket value bcftools cannot read", true));
         continue;
       }
       if (value.startsWith("[") && isMetaValues(kind, name)) {
@@ -2041,7 +2054,8 @@ public class InternalUtils {
           // bracket's close is always split off and warned about separately, never merged into the stored
           // value), so throwing costs nothing here too.
           problems.add(new EncodingProblem(
-              kind + " metadata property " + name + " has a malformed bracket value", true));
+              kind + " metadata property " + truncateAndEscapeForMessage(name) + " has a malformed bracket value",
+              true));
         }
         continue;
       }
@@ -2053,12 +2067,13 @@ public class InternalUtils {
         // catches a leading '[' outside Values that contains a comma (e.g. "[a,b]" on some other attribute):
         // it is exactly as unreadable-on-reparse as any other unquoted comma, so it gets the same throw.
         problems.add(new EncodingProblem(
-            kind + " metadata property " + name + " contains an unquoted comma", true));
+            kind + " metadata property " + truncateAndEscapeForMessage(name) + " contains an unquoted comma",
+            true));
         continue;
       }
       if (value.startsWith("[") || value.indexOf('<') >= 0 || value.indexOf('>') >= 0
           || containsUnescapedQuote(value) || value.startsWith(" ") || value.endsWith(" ")) {
-        problems.add(new EncodingProblem(kind + " metadata property " + name
+        problems.add(new EncodingProblem(kind + " metadata property " + truncateAndEscapeForMessage(name)
             + " contains an unquoted structural delimiter or layout whitespace", false));
       }
     }

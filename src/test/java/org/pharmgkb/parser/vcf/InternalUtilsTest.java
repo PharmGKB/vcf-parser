@@ -534,6 +534,42 @@ public class InternalUtilsTest {
   }
 
   @Test
+  public void testCheckReservedFormatConstraintsFtEmptyCodeMessageIsTruncated() {
+    // regression test for the fifth re-verification round's finding #1b: checkFilterLikeValue's empty-code
+    // branch is deliberately NOT routed through warnOrThrow (its own comment explains why: the lenient and
+    // strict messages genuinely differ), so it was missed by finding #1's shared-helper fix -- an ad-hoc
+    // warn-or-throw site sharing one pre-built message string, fixed the same way as VcfPosition's own three
+    // ad-hoc sites (wrapping only the string passed to the throw, not the one passed to warn).
+    String hugeValue = ";" + "9".repeat(200);
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> InternalUtils.checkReservedFormatConstraints("FT", hugeValue, VcfVersion.V4_2, null));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 350, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
+  public void testConvertElementCharacterRejectionMessageIsTruncated() {
+    // regression test for the fifth re-verification round's finding #1b: convertElement's Character branch
+    // throws unconditionally, regardless of context (see VALIDATION_REFERENCE.md's own note on this), so this
+    // is reachable via ordinary lenient parsing plus a typed getter call, not just direct strict construction
+    String hugeValue = "x".repeat(200);
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> InternalUtils.convertProperty(Character.class, hugeValue, false, VcfWarnings.DEFAULT, null));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 200, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
+  public void testConvertElementLongRejectionMessageIsTruncated() {
+    // same finding, convertElement's Long branch
+    String hugeValue = "x".repeat(200);
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> InternalUtils.convertProperty(Long.class, hugeValue, false, VcfWarnings.DEFAULT, null));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 200, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
   public void testSanitizeArgsForExceptionOnlyTransformsStringArgs() {
     // Unit test of the shared sanitizer itself: a String arg is truncated/escaped exactly as
     // truncateAndEscapeForMessage would, while a non-String arg (an Integer, an enum) passes through
