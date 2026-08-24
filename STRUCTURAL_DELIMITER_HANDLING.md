@@ -1053,7 +1053,7 @@ re-derive it. No `bcftoolsDependencyTest` case is required for any of the four: 
   `##FILTER=<ID=q10,Description=ab">`.
 - **Outcome (Parse):** parses; warns **both** "has an unquoted value \"ab\"\" containing a character bcftools
   treats as structural; preserving it" (`InternalUtils.java:525-528`) and "... should be quoted but was: ab\""
-  (`IdDescriptionMetadata.java:96`, the reserved-property quoting check that fires independently for
+  (`IdDescriptionMetadata.java:101`, the reserved-property quoting check that fires independently for
   `Description` specifically); recovers `Description` as `ab"` in full.
 - **Test evidence:** `MetadataPropertyEncodingTest#testParsingStillRecoversAnUnescapedQuoteWithAWarning`.
 

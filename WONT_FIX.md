@@ -685,11 +685,15 @@ result; it just wasn't part of that fix's own scope.
 
 ## `VcfFormatException(int, String, Throwable)`'s message derives verbatim from the wrapped exception
 
-`VcfParser.parseColumnInfo`/`parseDataLine`/`parseMetadata` are each called from a wrapper
-(`parseColumnInfo` at line ~190, `parseDataLine` at its own call site, `parseMetadataLine`) with the
-identical two-catch-block shape: a `catch (VcfFormatException ex)` branch that mutates line/section
-metadata onto the *same* exception object and rethrows it unchanged, and a `catch (RuntimeException e)`
-branch that builds a *new* `VcfFormatException(m_lineNumber, section, e)`. That constructor
+`VcfParser` has exactly three sites with the identical two-catch-block shape: a `catch (VcfFormatException
+ex)` branch that mutates line/section metadata onto the *same* exception object and rethrows it unchanged,
+and a `catch (RuntimeException e)` branch that builds a *new* `VcfFormatException(m_lineNumber, section,
+e)`. The three sites are `parseMetadata()`'s inline call to `parseColumnInfo` (`VcfParser.java:194`,
+section `"column (# header)"`), `parseNextLine()`'s inline data-line-parsing block (`VcfParser.java:587`,
+section `"data"`), and `parseMetadataLine`'s call to the private `parseMetadata(VcfMetadata.Builder,
+String)` overload (`VcfParser.java:677`, section `"metadata"`) -- not a call to any method named
+`parseDataLine`, which does not exist; the data-line-parsing site is inline in `parseNextLine()` itself,
+unlike the other two, which do call out to a separate method. That constructor
 (`VcfFormatException.java`) derives its own message verbatim from `e.getMessage()` with no re-sanitization
 -- found while tracing the fifth re-verification round's finding #1b's full scope, since this is
 architecturally a re-exposure risk (a wrapped exception's message reappearing unsanitized) rather than the
