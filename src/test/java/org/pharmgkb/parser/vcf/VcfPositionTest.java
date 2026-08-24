@@ -2052,6 +2052,28 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testValidateDoesNotForceTheLazyQualParseUnlikeInfo() {
+    // regression test found by the Phase 2 review's fourth re-verification round: validate()'s own Javadoc
+    // previously claimed QUAL was one of the two exceptions this method eagerly re-checks, alongside INFO --
+    // but the method body never actually called getQuality(). Investigated as a candidate fix (adding that
+    // call), but rejected: unlike getInfo()'s checks (which warn under a lenient context, matching this
+    // method's own always-warn convention), getQuality() throws VcfFormatException UNCONDITIONALLY for a
+    // genuinely unparseable value, regardless of context -- adding it here would make validate() reject
+    // content VcfWriter's own writeLine() deliberately catches and downgrades to a warning instead (so a
+    // record with unparseable-but-still-representable raw QUAL text can still be written). Confirmed this by
+    // reproducing exactly that regression against
+    // VcfWriterTest#testValidateBeforeWriteWarnsForUnparseableQualButStillWritesRawText before reverting. Fixed
+    // by correcting the Javadoc instead: QUAL is intentionally excluded, INFO alone remains the exception.
+    VcfPosition position = STRICT_CONTEXT.newPosition("1", 100, null, "A", null, null, null, null, null, -1)
+        .toBuilder().rawQuality("not-a-number").build();
+    assertDoesNotThrow(position::validate);
+    // the raw text is still there, completely unvalidated by validate() -- only an explicit getQuality() call
+    // (or VcfWriter's own downgraded warning) ever surfaces this
+    assertEquals("not-a-number", position.getRawQuality());
+    assertThrows(VcfFormatException.class, position::getQuality);
+  }
+
+  @Test
   public void testToBuilderCopiesEveryFieldAndPreservesContext() {
     VcfPosition original = STRICT_CONTEXT.newPosition("chr1", 100, List.of("rs1"), "A", List.of("T"),
         VcfFloat.of(new BigDecimal("50")), List.of("PASS"), null, List.of("GT"), 7);

@@ -935,17 +935,29 @@ public final class VcfPosition {
    * {@link VcfPosition} has no public mutation route for its ID/ALT/FILTER/FORMAT/INFO-multimap fields -- every
    * value reaching those fields via {@link VcfContext#newPosition} or {@link Builder#build()} (which re-runs
    * exactly the checks below for any field a setter marked dirty since the builder was seeded; see its own
-   * Javadoc) is already validated by the time either returns. <b>QUAL and INFO are the one exception, and this
-   * method remains genuinely load-bearing because of it</b>: {@link Builder#rawQuality}/{@link Builder#rawInfo}
-   * (and the matching {@code rawQual}/{@code rawInfo} parameters {@code VcfContext.newPositionTakingOwnership}/
-   * {@code newPositionWithTrustedFormat} accept) attach raw, not-yet-parsed text without validating it at
-   * construction or build time at all -- that is deferred to first access ({@link #getQuality()}/
-   * {@link #getInfo()}) or to an explicit call to this method. A position built this way can therefore still
-   * hold invalid raw QUAL/INFO text after {@link Builder#build()} returns, and this method is the only way to
-   * surface that without also triggering the ordinary lazy-access warning path. {@code VcfWriter}'s
-   * {@code validateBeforeWrite()} relies on exactly this, calling it on every position before writing -- do not
-   * remove or bypass this method, and do not assume every field it checks is already guaranteed valid the way
-   * ID/ALT/FILTER/FORMAT/INFO-multimap are.
+   * Javadoc) is already validated by the time either returns. <b>INFO is the one exception, and this
+   * method remains genuinely load-bearing because of it</b>: {@link Builder#rawInfo}
+   * (and the matching {@code rawInfo} parameter {@code VcfContext.newPositionTakingOwnership}/
+   * {@code newPositionWithTrustedFormat} accept) attaches raw, not-yet-parsed text without validating it at
+   * construction or build time at all -- that is deferred to first access ({@link #getInfo()}) or to an
+   * explicit call to this method. A position built this way can therefore still hold invalid raw INFO text
+   * after {@link Builder#build()} returns, and this method is the only way to surface that without also
+   * triggering the ordinary lazy-access warning path. {@code VcfWriter}'s {@code validateBeforeWrite()} relies
+   * on exactly this, calling it on every position before writing -- do not remove or bypass this method, and
+   * do not assume every field it checks is already guaranteed valid the way ID/ALT/FILTER/FORMAT/INFO-multimap
+   * are.
+   * <p>
+   * QUAL is deliberately NOT included here, even though {@link Builder#rawQuality} has the identical
+   * raw-text-not-yet-validated shape INFO does: unlike {@link #getInfo()}'s checks (which warn under a
+   * lenient context), {@link #getQuality()} throws {@link VcfFormatException} <b>unconditionally</b> for a
+   * genuinely unparseable value, regardless of context -- see that method's own {@code @throws} Javadoc.
+   * Calling it from here would make this method throw where {@code VcfWriter}'s own {@code writeLine()}
+   * deliberately catches that exact throw and downgrades it to a warning instead (so a record with
+   * unparseable-but-still-representable raw QUAL text can still be written, per {@code AGENTS.md}'s Writer
+   * Validation Policy) -- {@code validateBeforeWrite()} would otherwise reject content the writer is
+   * specifically designed to preserve. A position built with invalid raw QUAL text therefore still passes
+   * this method cleanly; the same content is only ever surfaced by an explicit {@link #getQuality()} call
+   * (or a caller-supplied catch of {@code VcfWriter}'s own downgraded warning).
    * <p>
    * {@link #getFilterStatus()} is always derived directly from {@link #getFilters()}'s current contents (see its
    * Javadoc); {@link FilterStatus#PASSED} is always an explicit opt-in -- construct or rebuild (via
