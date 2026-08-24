@@ -23,7 +23,7 @@ are allowed to differ at all.
 
 ## The defect
 
-`VcfWriter` has no encoding step. `getAllProperties` (`VcfWriter.java:1201-1215`) emits each `##KEY=<...>` line
+`VcfWriter` has no encoding step. `getAllProperties` (`VcfWriter.java:1352-1366`) emits each `##KEY=<...>` line
 by walking `BaseMetadata.getPropertiesRaw()` and appending every key and value **verbatim**, separated by `,`
 and `=` with no quoting and no escaping. Output is therefore well-formed only if the encoding was already
 valid when the declaration was **constructed** -- construction is what guarantees that (see "Severity:
@@ -170,10 +170,10 @@ which throw at construction only.
 ## Where the check runs
 
 `InternalUtils.findEncodingProblems(String kind, Map<String, String> properties)`
-(`InternalUtils.java:1679-1767`) is the shared classifier, called by both `InternalUtils.
-checkMetadataPropertyEncoding` (`InternalUtils.java:1611-1615`, the construction-time entry point -- every
+(`InternalUtils.java:1942-2030`) is the shared classifier, called by both `InternalUtils.
+checkMetadataPropertyEncoding` (`InternalUtils.java:1874-1878`, the construction-time entry point -- every
 problem it finds throws) and `InternalUtils.checkMetadataPropertyEncodingForWrite`
-(`InternalUtils.java:1627-1635`, the `validateBeforeWrite()` entry point -- throws only for a problem marked
+(`InternalUtils.java:1890-1898`, the `validateBeforeWrite()` entry point -- throws only for a problem marked
 `unreadableOutput`, warns otherwise). It selects a branch on the property value's first byte -- exactly as the tokenizer itself does (see "Brackets: a second
 value-quoting form" above) -- then checks within it. It rejects:
 
@@ -182,25 +182,25 @@ value-quoting form" above) -- then checks within it. It rejects:
   empty name, and a name containing `,`, `=`, or `"`, since none of those is in the allowlist's character set
   either);
 - a value starting with `"` (the **quoted** branch) that is not validly quoted (`InternalUtils.isQuoted`,
-  `InternalUtils.java:1783-1800`) -- and within that, one further split: a malformed value that also contains
+  `InternalUtils.java:2046-2063`) -- and within that, one further split: a malformed value that also contains
   a comma is `unreadableOutput=true` (this library's own tokenizer recovers a value with no valid closing `"`
   by scanning for the next comma rather than the value's own end, so an embedded comma silently drops
   everything after it on re-parse -- see `EncodingProblem`'s own Javadoc); a malformed value with no comma is
   `unreadableOutput=false` (bcftools itself does not hard-fail on an unterminated leading quote, only warns
   and mangles the declaration);
-- a value starting with `[` and containing no `]` anywhere (`InternalUtils.java:1730`,
+- a value starting with `[` and containing no `]` anywhere (`InternalUtils.java:1993`,
   `if (value.startsWith("[") && value.indexOf(']', 1) < 0) {`) -- checked
   UNCONDITIONALLY, before the `##META`'s-`Values`-only gate below, since bcftools' own generic bracket
   handling still treats any leading `[` as opening a quoted span regardless of attribute/declaration type,
   and hard-fails (exit 255) if it never finds a closing `]`;
 - beyond that universal floor, a value starting with `[` on `##META`'s `Values` specifically
-  (`InternalUtils.java:1736`, `if (value.startsWith("[") && isMetaValues(kind, name)) {`) that is not a
+  (`InternalUtils.java:1999`, `if (value.startsWith("[") && isMetaValues(kind, name)) {`) that is not a
   well-formed bracket value (`InternalUtils.
-  isWellFormedMetaValuesBracket`, `InternalUtils.java:1779` -- its first LITERAL `]`, no escape awareness,
+  isWellFormedMetaValuesBracket`, `InternalUtils.java:2042-2044` -- its first LITERAL `]`, no escape awareness,
   must be its last character); a leading `[` on any other attribute is not bracket-checked at all past the
   universal floor -- see "Brackets: a second value-quoting form, scoped to `##META`'s `Values`" above;
 - otherwise (the **literal** branch, for a value starting with neither `"` nor `[`): an unescaped `,`, `<`,
-  `>`, or `"` -- `InternalUtils.containsUnescapedQuote` (`InternalUtils.java:1817-1827`) is the helper behind
+  `>`, or `"` -- `InternalUtils.containsUnescapedQuote` (`InternalUtils.java:2080-2090`) is the helper behind
   the last of those -- or leading/trailing space.
 
 `=` is deliberately NOT one of these (see "Severity: unconditional throw" above), and a value inside a well-formed bracket pair is not checked for any of the above at all, including
@@ -209,7 +209,7 @@ an interior comma (matching VCFv4.3.tex's own `##META` example).
 **The `null`-key shape is not new here, and is not reachable through this check at all.** A `null` key is
 already rejected during construction, for every construction route, by `BaseMetadata.validateProperties()`
 (`BaseMetadata.java:139-143`, "Metadata contains a null property name") -- this fires from `BaseMetadata`'s
-`Map`-based constructor (`BaseMetadata.java:76-89`, called at line 88) before a declaration is ever handed back
+`Map`-based constructor (`BaseMetadata.java:75-88`, called at line 87) before a declaration is ever handed back
 to the `Builder`, so the `Builder`'s own check never sees a `null` key. `findEncodingProblems` keeps its own
 `name == null` guard anyway (it costs nothing, and matches this method's defensive style), but a test asserting
 on a `null` key is pinning `validateProperties`'s message, not this check's (see
@@ -220,12 +220,12 @@ method's own arguments.** Every one of the six `id`/`description`-shaped keyed t
 ...)` typed overloads builds the declaration object first (e.g. `addAlt(String, String)` constructs an
 `IdDescriptionMetadata` from its two arguments), and only then calls
 `InternalUtils.checkMetadataPropertyEncoding` against that object's own `getPropertiesRaw()` -- not against
-`id`/`description` directly (`VcfMetadata.java:721-726`, `public Builder addAlt(@Nullable String id, @Nullable
+`id`/`description` directly (`VcfMetadata.java:754-759`, `public Builder addAlt(@Nullable String id, @Nullable
 String description) { ... InternalUtils.checkMetadataPropertyEncoding("ALT", md.getPropertiesRaw()); ... }`,
 and the same shape repeated for the other five kinds).
 `##META` has no typed overload of this shape at all (see below), so this specific pattern doesn't extend to it.
 
-This is deliberate, not incidental: `BaseMetadata.putAndQuoteProperty` (`BaseMetadata.java:238`) quotes
+This is deliberate, not incidental: `BaseMetadata.putAndQuoteProperty` (`BaseMetadata.java:244`) quotes
 `Description`/`Source`/`Version`/`species` on the way into several of the typed constructors, so checking the
 *arguments* would reject a value the constructor was about to make safe by quoting it. Checking the
 *stored result* sees exactly what the writer will actually emit. `MetadataPropertyEncodingTest`
@@ -287,15 +287,15 @@ map -- see `AttributeListTokenizerTest#degenerateAttributesAreDroppedIndividuall
    sibling per kind (`addAltTrusted`, `addFilterTrusted`, `addInfoTrusted`, `addFormatTrusted`,
    `addContigTrusted`, `addSampleTrusted`, `addMetaTrusted`, `addPedigreeTrusted`), each a thin wrapper that
    calls the same private `addXxx(properties, validateContent)` helper with `validateContent = false`.
-   `VcfParser.parseMetadataProperty` (`VcfParser.java:695-732`) calls these trusted variants exclusively -- see
-   the `switch` at lines 706-728 -- never the public, checked `addXxx(Map)` overloads. `VcfParser.parseMetadata`
-   (`VcfParser.java:626-679`) is the caller one level up: for a generic property it splits the whole `##`
-   line on the first `=` (`VcfParser.java:551`, `int idx = line.indexOf("=");`) and hands the two halves to
+   `VcfParser.parseMetadataProperty` (`VcfParser.java:756-793`) calls these trusted variants exclusively -- see
+   the `switch` at lines 767-792 -- never the public, checked `addXxx(Map)` overloads. `VcfParser.parseMetadata`
+   (`VcfParser.java:678-735`) is the caller one level up: for a generic property it splits the whole `##`
+   line on the first `=` (`VcfParser.java:680`, `int idx = line.indexOf("=");`) and hands the two halves to
    `addRawProperty`, which
    has its own, separately-checked rule (below); for one of the eight reserved keywords it strips the
    surrounding angle brackets and delegates to `parseMetadataProperty`.
 2. **`toBuilder()`'s package-private object-taking overloads.** `VcfMetadata.toBuilder()`
-   (`VcfMetadata.java:149-181`, `public Builder toBuilder() {` ... `return builder;`) rebuilds a fresh `Builder`
+   (`VcfMetadata.java:150-182`, `public Builder toBuilder() {` ... `return builder;`) rebuilds a fresh `Builder`
    by re-adding every already-built declaration through
    a package-private `addXxx(md)` overload that takes the declaration object itself, not raw content -- none
    of these eight overloads calls `checkMetadataPropertyEncoding` at all. This is the load-bearing half of the
@@ -310,18 +310,18 @@ map -- see `AttributeListTokenizerTest#degenerateAttributesAreDroppedIndividuall
    Neither half of this test pair substitutes for the other.
 
 `Builder.addAlt(IdDescriptionMetadata, boolean)`'s existing `validateContent` boolean parameter
-(`VcfMetadata.java:1059`, `private Builder addAlt(IdDescriptionMetadata md, boolean validateContent) {`) is the
+(`VcfMetadata.java:1092`, `private Builder addAlt(IdDescriptionMetadata md, boolean validateContent) {`) is the
 shape this design followed for the trusted/untrusted split, rather than introducing a second convention -- it
 already existed to let `toBuilder()`'s ALT re-add skip re-running `validateAlt` a second time on unchanged
-content (`VcfMetadata.java:153`, `builder.addAlt(md, false);`).
+content (`VcfMetadata.java:154`, `builder.addAlt(md, false);`).
 
 ## The generic `##key=value` grammar is deliberately different
 
-`Builder.addRawProperty(String name, String value)` (`VcfMetadata.java:1411-1464`,
+`Builder.addRawProperty(String name, String value)` (`VcfMetadata.java:1392-1475`,
 `public Builder addRawProperty(String name, String value) {` ... closing brace) is a fourth public content
 route, and it is **not** an attribute list -- there is no `<...>` and no comma-separated structure at all. A
 generic property emits `##name=value` directly, and `VcfParser.parseMetadata` re-reads it by splitting the
-whole line on the **first** `=` only (`VcfParser.java:551`, `int idx = line.indexOf("=");`). Applying the
+whole line on the **first** `=` only (`VcfParser.java:680`, `int idx = line.indexOf("=");`). Applying the
 structured rule above here would be wrong in both directions:
 
 | Shape | Re-parse | Rule |
@@ -333,14 +333,14 @@ structured rule above here would be wrong in both directions:
 
 This table is not exhaustive: a fifth shape, leading/trailing whitespace, silently corrupts too and is
 deliberately left alone. `VcfParser.parseMetadata` trims both the name and the value it derives
-(`VcfParser.java:555-556`, `line.substring(2, idx).trim()` and `line.substring(idx + 1).trim()`), so
+(`VcfParser.java:688-689`, `line.substring(2, idx).trim()` and `line.substring(idx + 1).trim()`), so
 `addRawProperty(" spaced", "v")` emits `## spaced=v` but re-parses with name `spaced`, not `" spaced"`. This is
 a known gap, deliberately left unaddressed: the trim happens in `VcfParser.parseMetadata`, not in
 `addRawProperty`'s own rule, and closing it would mean deciding whether the parser should stop trimming --
 a separate question this document does not settle. Noted only so a future reader knows it was considered,
 not missed.
 
-So `addRawProperty` rejects `=` in the *name* only (`VcfMetadata.java:1428-1431`, `if (name.contains("=")) {
+So `addRawProperty` rejects `=` in the *name* only (`VcfMetadata.java:1409-1412`, `if (name.contains("=")) {
 throw new VcfFormatException("Raw metadata property name contains '=', ...`), with the message "Raw
 metadata property name contains '=', which would shift the re-parse split point."
 
@@ -351,7 +351,7 @@ construction declined to enforce would let `addRawProperty` originate a name `va
 rejects, leaving the default write path and `validateBeforeWrite()` disagreeing about content this library
 itself created.
 
-**No trusted variant is needed for `addRawProperty`.** `VcfParser` (`VcfParser.java:588` and `:594`, both
+**No trusted variant is needed for `addRawProperty`.** `VcfParser` (`VcfParser.java:727` and `:733`, both
 `mdBuilder.addRawProperty(propName, propValue)` -- the pre-4.3 `##META` fallthrough and the generic `default`
 case respectively) derives `propName` by splitting the line on the first `=`
 (the same mechanism the table above describes), so a parser-produced name can never itself contain a second
@@ -411,7 +411,7 @@ Three routes skip this check, each for a distinct, worth-stating reason:
   declaration whose content already exists, including parser-recovered content; checking here would
   reintroduce the parse-path regression this design exists to avoid.
 
-  `toBuilder()` also re-adds generic properties via `addRawProperty` (`VcfMetadata.java:178`,
+  `toBuilder()` also re-adds generic properties via `addRawProperty` (`VcfMetadata.java:179`,
   `builder.addRawProperty(entry.getKey(), entry.getValue());`), which **is**
   checked unconditionally there, and that is safe: `m_properties` can only ever have been populated through
   `addRawProperty` itself (there is no other route to it), so every name already in it has either already
@@ -616,7 +616,7 @@ evidence. `Payload` is a paraphrase, not the literal probe text. (Row 15 does no
   still reads at exit 0.
 - **Parse:** parses; warns "has an unquoted value \"a<b\" containing a character bcftools treats as
   structural; preserving it" (`InternalUtils.parseOneAttribute`'s own unconditional check,
-  `InternalUtils.java:504-505` -- the same check Row 31 below documents for an unquoted trailing quote); this
+  `InternalUtils.java:525-528` -- the same check Row 31 below documents for an unquoted trailing quote); this
   is a SEPARATE, unconditional check from the `EncodingProblem`/construction/`validateBeforeWrite()`
   machinery the rest of this row describes, and it runs on every parse regardless of `isLenient()`. Filed
   originally as a gap in `VCF_SPEC_AMBIGUITIES.md`'s own "Unquoted metadata attribute value..." entry (see
@@ -898,16 +898,16 @@ shapes. Row 33 covers `toBuilder()`.
 ### Row 23 -- Parse `##contig=<ID=1,a"b=v,length=100>` (unescaped, non-leading quote in a property NAME)
 
 - **Classification:** Descriptive-only -- a pure code-reading fact about `InternalUtils.parseOneAttribute`'s own
-  definition, no tool measurement needed: the NAME-scanning loop (`InternalUtils.java:404-406`, `while (nameEnd
+  definition, no tool measurement needed: the NAME-scanning loop (`InternalUtils.java:428-430`, `while (nameEnd
   < limit && s.charAt(nameEnd) != '=') { nameEnd++; }`) has no quote-mode branch of any kind, unlike value
-  parsing 20 lines later (`InternalUtils.java:426`, `if (first == '"' || ...)`). A quote character anywhere
+  parsing 21 lines later (`InternalUtils.java:449`, `if (first == '"' || ...)`). A quote character anywhere
   in a NAME -- leading or not -- is always ordinary content; there is no "leading quote absorbs the remainder"
   nuance for names the way there is for values (see "Severity ranking" above).
 - **Probe shape:** `##contig`, property NAME `a"b`, not last in the declaration (`length=100` follows):
   `##contig=<ID=1,a"b=v,length=100>`.
 - **Outcome (Parse):** parses; the re-parsed contig's properties are `{ID=1, a"b=v, length=100}`, all three
   attributes intact. It also warns "Metadata attribute name \"a\"b\" is not valid" --
-  `InternalUtils.java:577-580`'s post-fold `METADATA_ATTRIBUTE_NAME_PATTERN` check runs against every surviving
+  `InternalUtils.java:600-603`'s post-fold `METADATA_ATTRIBUTE_NAME_PATTERN` check runs against every surviving
   key unconditionally, regardless of which character made it fail, so this shape trips the identical parse-time
   name warning Row 24 documents (confirmed by tracing `foldAttributes`: the loop has no branch on which
   character caused the mismatch). Parsing accepting this shape does not soften Row 22's construction-time
@@ -926,7 +926,7 @@ shapes. Row 33 covers `toBuilder()`.
 
 - **Classification:** Descriptive-only -- restates Row 17's already-established, bcftools-derived allowlist
   decision from the parse side: the identical `METADATA_ATTRIBUTE_NAME_PATTERN` check also runs at parse
-  time (`InternalUtils.java:577-580`, in `foldAttributes`, post-fold, once
+  time (`InternalUtils.java:600-603`, in `foldAttributes`, post-fold, once
   per surviving key), warning rather than dropping the attribute -- matching `AGENTS.md`'s carried-forward-content
   policy for content a prior parse already accepted. No new `bcftoolsDependencyTest` case is added for this row:
   it reuses Row 17's classification rather than re-deriving it for the parse path specifically, the same pattern
@@ -951,7 +951,7 @@ shapes. Row 33 covers `toBuilder()`.
 - **Outcome:** throws, but from `BaseMetadata.validateProperties()` (`BaseMetadata.java:139-143`) *before*
   `findEncodingProblems` ever runs -- a distinct message, "Metadata contains a null property name". A test
   asserting on a `null` key pins `validateProperties`'s message, not this check's; the `null`-name branch inside
-  `findEncodingProblems` (`name == null` at `InternalUtils.java:1683`) is genuinely unreachable through any
+  `findEncodingProblems` (`name == null` at `InternalUtils.java:1946`) is genuinely unreachable through any
   public construction route.
 - **Test evidence:** `MetadataPropertyEncodingTest#testANullKeyIsRejectedByConstructionNotByThisCheck`.
 
@@ -964,7 +964,7 @@ of a key ... and a value ..., separated by an `=` character" -- identically `VCF
 meta-information is included after the \#\# string and must be key=value pairs" -- no split mechanism or
 character-set rule stated in any version), but no version of any of them says what happens if the KEY portion
 itself contains a second `=` or a `,` -- that is purely a fact about `VcfParser.parseMetadata`'s own re-parse
-mechanism (`VcfParser.java:551`, `int idx = line.indexOf("=");`, splitting on the FIRST occurrence only), fully
+mechanism (`VcfParser.java:680`, `int idx = line.indexOf("=");`, splitting on the FIRST occurrence only), fully
 derivable by reading the code, not by measuring a tool. The "## The generic `##key=value` grammar is
 deliberately different" section above already derives this exact rule in full (its own Shape/Re-parse/Rule
 table); these four rows exist to pin the four concrete probe shapes against that already-derived rule, not to
@@ -974,7 +974,7 @@ re-derive it. No `bcftoolsDependencyTest` case is required for any of the four: 
 ### Row 26 -- `addRawProperty(name, value)` -- `=` in `name` (e.g. `"bad=name"`)
 
 - **Classification:** Descriptive-only -- see the shared reasoning above.
-- **Outcome:** throws at Public construction (`VcfMetadata.java:1428-1429`, `if (name.contains("=")) { throw new
+- **Outcome:** throws at Public construction (`VcfMetadata.java:1409-1410`, `if (name.contains("=")) { throw new
   VcfFormatException("Raw metadata property name contains '=', ...`) -- an `=` in the name would shift
   `VcfParser.parseMetadata`'s first-`=` split point on re-parse (`##foo=bar=value` would come back as name
   `foo`, value `bar=value`). Also throws at Validated write (`VcfWriter.Builder.validateBeforeWrite()` already
@@ -1048,12 +1048,12 @@ re-derive it. No `bcftoolsDependencyTest` case is required for any of the four: 
   about what bcftools does with this exact input: the value's first byte is neither `"` nor `[`, so it is
   literal from the start and nothing truncates it, regardless of what its last byte is. No
   `bcftoolsDependencyTest` case exists for this exact shape, and none is required: this row does not depend on
-  bcftools behavior, only on `InternalUtils.parseOneAttribute`'s literal-value branch (`InternalUtils.java:500-507`).
+  bcftools behavior, only on `InternalUtils.parseOneAttribute`'s literal-value branch (`InternalUtils.java:505-532`).
 - **Probe shape:** `##FILTER`, attribute name `Description`, LAST attribute in the declaration:
   `##FILTER=<ID=q10,Description=ab">`.
 - **Outcome (Parse):** parses; warns **both** "has an unquoted value \"ab\"\" containing a character bcftools
-  treats as structural; preserving it" (`InternalUtils.java:504-505`) and "... should be quoted but was: ab\""
-  (`IdDescriptionMetadata.java:72`, the reserved-property quoting check that fires independently for
+  treats as structural; preserving it" (`InternalUtils.java:525-528`) and "... should be quoted but was: ab\""
+  (`IdDescriptionMetadata.java:96`, the reserved-property quoting check that fires independently for
   `Description` specifically); recovers `Description` as `ab"` in full.
 - **Test evidence:** `MetadataPropertyEncodingTest#testParsingStillRecoversAnUnescapedQuoteWithAWarning`.
 
