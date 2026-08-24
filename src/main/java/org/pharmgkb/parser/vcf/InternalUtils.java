@@ -1738,14 +1738,26 @@ public class InternalUtils {
    * documented: a future accidental removal of one of those four guards fails loudly here instead of silently
    * reintroducing the isLenient()-dispatch question this method's split from the read-path overload exists to
    * keep separate.
+   * <p>
+   * The one exception to "an empty value never reaches this class from the writer" is a Flag's own missing-
+   * value sentinel, {@code "."}: it is deliberately NOT treated as absent here, for the same reason as
+   * {@link #convertElement}'s own Boolean branch and this method's read-path sibling's identical exclusion
+   * (both {@code clas != Boolean.class} guards) -- reaching this method at all already proves the key is
+   * present, so a Flag's {@code "."} is just another attached-value string. Missed here by the fourth
+   * re-verification round's Flag fix (which corrected {@link #convertElement} and the read-path sibling but
+   * not this write-path one), until the fifth re-verification round's finding #2.
    */
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   @SuppressWarnings("unchecked")
   public static @Nullable <T> T convertNonEmptyProperty(Class<?> clas, @Nullable String value, VcfWarnings warnings) {
-    if (value == null || ".".equals(value)) {
+    if (clas != Boolean.class && (value == null || ".".equals(value))) {
       return null;
     }
-    if (value.isEmpty() && clas != Boolean.class) {
+    // clas != Boolean.class checked first (short-circuiting before value.isEmpty()): by this point, a null
+    // value only survives when clas == Boolean.class (every other class already returned above), so
+    // evaluating value.isEmpty() first here would raw-crash with NullPointerException instead of falling
+    // through to convertElement (which handles a null value for Boolean safely).
+    if (clas != Boolean.class && value.isEmpty()) {
       throw new IllegalArgumentException("convertNonEmptyProperty called with an empty value for " + clas +
           " -- every caller must substitute or skip an empty value before reaching this method");
     }

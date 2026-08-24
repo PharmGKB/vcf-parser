@@ -1367,7 +1367,12 @@ since reaching this code at all already proves the key is present in INFO). Remo
 entirely, since per this decision there is no such thing as an invalid Flag value, only a non-compliant one.
 Implemented in `InternalUtils.convertElement`, which checks the `Boolean` branch before its generic
 null/`"."`-means-absent early return, unlike every other type -- found missing (`DB=.` incorrectly read back
-indistinguishable from `DB` being absent) by the Phase 2 review's fourth re-verification round.
+indistinguishable from `DB` being absent) by the Phase 2 review's fourth re-verification round. That round's
+fix (`bfb8ef7`) also corrected `convertElement`'s read-path caller `convertProperty(Class, String, boolean,
+VcfWarnings, VcfWarnings)`, but missed that write-path sibling's own twin, `convertNonEmptyProperty` --
+identical `clas != Boolean.class`-guarded null/`"."` early return, same gap, reachable via `VcfWriter`'s
+default (non-`validateBeforeWrite()`) write path for a spec-nonconforming `##INFO=<ID=XX,Number=1,...>`
+declaration. Fixed by the fifth re-verification round's finding #2.
 
 ### Negative/out-of-range values for reserved INFO/FORMAT keys `AC`/`AN`/`DP`/`END`/`MQ0`/`NS`/`AF`/`AD`/`ADF`/`ADR`/`CN`/`CNADJ`/`HOMLEN`/`DPADJ` (INFO) and `AD`/`ADF`/`ADR`/`AHAP`/`CN`/`DP`/`EC`/`GQ`/`HAP`/`HQ`/`MQ`/`NQ`/`PL`/`PQ` (FORMAT)
 

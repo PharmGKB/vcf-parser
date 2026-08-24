@@ -4890,4 +4890,49 @@ public class VcfWriterTest {
     }
   }
 
+  @Test
+  public void testInfoFlagWithNonconformingNumberOneWarnsForDotValueOnDefaultPath() throws Exception {
+    // regression test for the fifth re-verification round's finding #2: addInfoOrDot's default-path (non-
+    // validateBeforeWrite()) "just test" type-conversion probe (VcfWriter.java:1191,
+    // InternalUtils.convertProperty(info.getType(), value, m_warnings)) delegates to
+    // InternalUtils.convertNonEmptyProperty, which -- unlike its two siblings convertElement and
+    // convertProperty(Class, String, boolean, VcfWarnings, VcfWarnings) -- was missed by bfb8ef7's Flag fix,
+    // so a "."-valued Flag silently skipped the "Flag value ... is not empty" warning convertElement's own
+    // Boolean branch emits for any other non-empty value. Only reachable through a spec-nonconforming
+    // ##INFO=<ID=XX,Number=1,...> declaration -- an ordinary Number=0 Flag never reaches this probe at all,
+    // since addInfoOrDot only runs it when Integer.parseInt(info.getNumber()) == 1.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##INFO=<ID=XX,Number=1,Type=Flag,Description=\"d\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t1\t.\tA\tT\t.\t.\tXX=.\n";
+    List<VcfRecord> records = new ArrayList<>();
+    VcfMetadata metadata;
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder().fromReader(reader)
+             .parseWith((md, record) -> records.add(record)).build()) {
+      parser.parse();
+      metadata = parser.getMetadata();
+    }
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);   // after parsing
+    try {
+      StringWriter sw = new StringWriter();
+      try (VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build()) {
+        writer.writeHeader(metadata);
+        writer.writeLine(metadata, records.get(0).getPosition(), records.get(0).getSamples());
+      }
+      assertTrue(appender.anyMessageContains("Flag value \".\" is not empty"),
+          "expected the default-path Flag-value-is-not-empty warning; got "
+              + appender.getRelevantWarnOrHigherMessages(Set.of()));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
 }
