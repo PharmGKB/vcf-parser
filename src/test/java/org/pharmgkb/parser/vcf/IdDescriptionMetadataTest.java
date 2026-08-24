@@ -323,6 +323,22 @@ public class IdDescriptionMetadataTest {
   }
 
   @Test
+  public void testSingleUnterminatedQuoteCharacterStillWarnsAsUnquoted() {
+    // regression test for the fifth re-verification round's finding #3: a raw Description value of exactly
+    // "\"" (one, unterminated double-quote character) satisfies both startsWith("\"") and endsWith("\"") on
+    // that same one character, so without a length guard this silently passed as "properly quoted" -- the
+    // exact shape InternalUtils.unquote() already guards against. Built directly via the Map-based
+    // constructor with a literal Map (not InternalUtils.extractProperties) so the raw stored value is exactly
+    // one '"' character, bypassing the attribute-list tokenizer's own unrelated quote-parsing entirely.
+    Map<String, String> props = new HashMap<>();
+    props.put("ID", "X");
+    props.put("Description", "\"");
+    StringWriter sink = new StringWriter();
+    new IdDescriptionMetadata(lenientContext(new VcfWarnings(sink)), "ALT", props);
+    assertTrue(sink.toString().contains("should be quoted"), sink.toString());
+  }
+
+  @Test
   public void testFilterIdZeroWarnsAsReserved() {
     // regression test: VCFv4.3.tex:360, "'0' is reserved and must not be used as a filter String" -- already
     // enforced for the FILTER data-line column (VcfPosition), but never for a ##FILTER declaration's own ID,

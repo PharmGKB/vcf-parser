@@ -92,7 +92,12 @@ public sealed class IdDescriptionMetadata extends IdMetadata permits InfoMetadat
     if (!getLabel().equals("SAMPLE")) {
       warnIfMissing(DESCRIPTION, description);
     }
-    if (description != null && (!description.startsWith("\"") || !description.endsWith("\""))) {
+    // length() < 2 checked first: a single '"' character satisfies both startsWith("\"") and endsWith("\"")
+    // on that same character, so without this guard an unterminated single quote silently passed as
+    // "properly quoted" -- InternalUtils.unquote() already guards this identical shape the same way.
+    // Found by the fifth re-verification round's finding #3.
+    if (description != null &&
+        (description.length() < 2 || !description.startsWith("\"") || !description.endsWith("\""))) {
       warnOrThrow("{} metadata property \"{}\" should be quoted but was: {}", getLabel(),
           DESCRIPTION, description);
     }

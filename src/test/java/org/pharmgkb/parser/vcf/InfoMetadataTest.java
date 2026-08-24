@@ -2,7 +2,9 @@ package org.pharmgkb.parser.vcf;
 
 import java.io.StringWriter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
@@ -432,6 +434,25 @@ public class InfoMetadataTest {
         new String[]{"ID=X", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
     assertNull(md.getSource());
     assertNull(md.getVersion());
+  }
+
+  @Test
+  public void testSourceAsSingleUnterminatedQuoteCharacterStillWarnsAsUnquoted() {
+    // regression test for the fifth re-verification round's finding #3: a raw Source value of exactly "\""
+    // (one, unterminated double-quote character) satisfies both startsWith("\"") and endsWith("\"") on that
+    // same one character, so without a length guard this silently passed as "properly quoted" -- the exact
+    // shape InternalUtils.unquote() already guards against. Built directly via the Map-based constructor
+    // with a literal Map (not InternalUtils.extractProperties) so the raw stored value is exactly one '"'
+    // character, bypassing the attribute-list tokenizer's own unrelated quote-parsing entirely.
+    Map<String, String> props = new HashMap<>();
+    props.put("ID", "X");
+    props.put("Number", "1");
+    props.put("Type", "String");
+    props.put("Description", "\"d\"");
+    props.put("Source", "\"");
+    StringWriter sink = new StringWriter();
+    new InfoMetadata(lenientContext(new VcfWarnings(sink)), props);
+    assertTrue(sink.toString().contains("should be quoted"), sink.toString());
   }
 
   @Test

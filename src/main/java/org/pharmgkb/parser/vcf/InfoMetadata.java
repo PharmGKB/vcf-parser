@@ -153,7 +153,11 @@ public final class InfoMetadata extends IdDescriptionMetadata {
     // Description check for why: this inspects the raw quoting itself, not content that must be unquoted first.
     for (String optional : new String[] { SOURCE, VERSION }) {
       String value = getPropertyRaw(optional);
-      if (value != null && (!value.startsWith("\"") || !value.endsWith("\""))) {
+      // length() < 2 checked first: a single '"' character satisfies both startsWith("\"") and endsWith("\"")
+      // on that same character, so without this guard an unterminated single quote silently passed as
+      // "properly quoted" -- InternalUtils.unquote() already guards this identical shape the same way.
+      // Found by the fifth re-verification round's finding #3.
+      if (value != null && (value.length() < 2 || !value.startsWith("\"") || !value.endsWith("\""))) {
         warnOrThrow("{} metadata property \"{}\" should be quoted but was: {}", getLabel(), optional, value);
       }
     }
