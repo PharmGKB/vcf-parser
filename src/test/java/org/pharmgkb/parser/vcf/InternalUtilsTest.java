@@ -548,6 +548,18 @@ public class InternalUtilsTest {
   }
 
   @Test
+  public void testCheckReservedFormatConstraintsFtEmptyCodeWarnMessageStaysUnsanitized() {
+    // regression test found by the sixth re-verification round: no existing test proved the warn branch of
+    // the empty-code site above is deliberately left unsanitized (per its own comment) -- only that the throw
+    // branch is truncated/escaped. A huge, raw FT value must appear unescaped and untruncated in the warning.
+    String hugeValue = ";" + "9".repeat(200);
+    StringWriter sink = new StringWriter();
+    assertEquals("9".repeat(200),
+        InternalUtils.checkReservedFormatConstraints("FT", hugeValue, VcfVersion.V4_2, new VcfWarnings(sink)));
+    assertTrue(sink.toString().contains(hugeValue), "warn path must stay unsanitized per documented scope");
+  }
+
+  @Test
   public void testConvertElementCharacterRejectionMessageIsTruncated() {
     // regression test for the fifth re-verification round's finding #1b: convertElement's Character branch
     // throws unconditionally, regardless of context (see VALIDATION_REFERENCE.md's own note on this), so this

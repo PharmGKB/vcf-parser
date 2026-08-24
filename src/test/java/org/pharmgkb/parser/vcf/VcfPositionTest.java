@@ -107,6 +107,22 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testCheckAltBasesInvalidBaseMessageIsTruncated() {
+    // regression test found by the sixth re-verification round: checkAltBases()'s own invalid-ALT-base throw
+    // was the one site the fifth re-verification round's finding #1b fix missed in this class -- every sibling
+    // checkXxx throw here was already wrapped, but this one still embedded the raw ALT value verbatim and
+    // unbounded.
+    String hugeAlt = "Q" + "A".repeat(150);
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newPosition("chr", 1, null, "C", List.of(hugeAlt), null, null, null, null, -1));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    // bound is looser than the sibling checkRef/checkChromosome tests above: ALT_BASE_PATTERN's own toString
+    // (fixed, not attacker-controlled -- it includes the breakpoint sub-patterns) is embedded alongside the
+    // truncated value and is itself several hundred characters long
+    assertTrue(ex.getMessage().length() < 900, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
   public void testCheckIdsDuplicateMessageIsTruncated() {
     // same finding, checkIds' own duplicate-ID throw site
     String hugeId = "X" + "9".repeat(150);
@@ -932,6 +948,22 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testLenientConstructorNonPrintableAsciiInChromosomeWarnMessageStaysUnsanitized() {
+    // regression test found by the sixth re-verification round: no existing test proved the warn branch of
+    // this check (see its own comment, just above the throw in checkChromosome) is deliberately left
+    // unsanitized -- only that the throw branch is truncated/escaped. A huge, raw CHROM value must appear
+    // unescaped and untruncated in the warning. None of the huge value's characters trip any of the
+    // unconditional checks above this one in checkChromosome (whitespace, leading '*'/'=',
+    // INVALID_CONTIG_NAME_CHAR_PATTERN's punctuation set).
+    String hugeChrom = "chr" + "A".repeat(200) + (char) 0x7F + "1";
+    StringWriter sink = new StringWriter();
+    VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition(hugeChrom, 100, null, "A", null,
+        null, null, null, null, -1);
+    assertEquals(hugeChrom, position.getChromosome());
+    assertTrue(sink.toString().contains(hugeChrom), "warn path must stay unsanitized per documented scope");
+  }
+
+  @Test
   public void testValidateWarnsInsteadOfThrowingForNonPrintableAsciiInChromosomeEvenUnderStrictContext() {
     // validate() always warns for a recoverable condition rather than throwing, even under a strict context
     // -- matching checkIds/checkAltBases/checkFilters/checkFormat's identical existing treatment
@@ -1291,6 +1323,21 @@ public class VcfPositionTest {
     VcfFormatException ex = assertThrows(VcfFormatException.class,
         () -> STRICT_CONTEXT.newPosition("1", 100, null, "C", List.of("C"), null, null, null, null, -1));
     assertTrue(ex.getMessage().contains("ALT allele \"C\" is identical to REF"));
+  }
+
+  @Test
+  public void testLenientConstructorAltEqualsRefWarnMessageStaysUnsanitized() {
+    // regression test found by the sixth re-verification round: no existing test proved the warn branch of
+    // this ad-hoc warn-or-throw site (see its own comment, just above the throw below it in checkAltBases) is
+    // deliberately left unsanitized -- only that the throw branch is truncated. A huge REF/ALT pair (both must
+    // be valid, equal base sequences to reach this check at all) must appear unescaped and untruncated in the
+    // warning.
+    String hugeBase = "A".repeat(200);
+    StringWriter sink = new StringWriter();
+    VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("1", 100, null, hugeBase,
+        List.of(hugeBase), null, null, null, null, -1);
+    assertEquals(List.of(hugeBase), position.getAltBases()); // warn-and-keep, not dropped
+    assertTrue(sink.toString().contains(hugeBase), "warn path must stay unsanitized per documented scope");
   }
 
   @Test

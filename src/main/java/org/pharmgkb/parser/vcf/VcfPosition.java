@@ -558,7 +558,8 @@ public final class VcfPosition {
         throw new VcfFormatException("ALT contains a null entry");
       }
       if (!InternalUtils.ALT_BASE_PATTERN.matcher(base).matches()) {
-        throw new VcfFormatException("Invalid alternate base '" + base + "' (must match " + InternalUtils.ALT_BASE_PATTERN + ")");
+        throw new VcfFormatException("Invalid alternate base '" + InternalUtils.truncateAndEscapeForMessage(base) +
+            "' (must match " + InternalUtils.ALT_BASE_PATTERN + ")");
       }
       // VCFv4.3.tex line 348: "ALT --- alternate base(s): Comma-separated list of alternate non-reference
       // alleles" -- identical wording at VCFv4.1.tex:166/VCFv4.2.tex:183/VCFv4.4.tex:364/VCFv4.5.tex:413, so
