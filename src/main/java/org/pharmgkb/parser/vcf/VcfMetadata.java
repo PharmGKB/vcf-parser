@@ -1400,7 +1400,7 @@ public final class VcfMetadata {
         throw new VcfFormatException("Metadata property \"" + name + "\" has a null value");
       }
       // Deliberately narrower than the structured rule, and deliberately unconditional. A generic ##name=value
-      // line is re-read by splitting on the FIRST '=' (VcfParser.java:674-682), so an '=' in the name shifts
+      // line is re-read by splitting on the FIRST '=' (VcfParser.java:680-689), so an '=' in the name shifts
       // that split point and corrupts, while an '=' or ',' in the value is returned intact. No trusted variant
       // is needed: the parser derives the name from that same first-'=' split, so it cannot produce one
       // containing '='. Placed below the null guards above, not at the top of the method: this check itself

@@ -1105,6 +1105,19 @@ unspecified alleles and REF-only blocks" section, ~line 1428-1447) -- every work
 with no `##ALT=<ID=*,...>` declaration anywhere, the same reserved-sentinel shape `PASS`/`.` are excluded for
 in the FILTER check. Implemented in `VcfWriter.writeLine`.
 
+Not (yet) extended to `<NON_REF>`, GATK's own older name for the same gVCF concept: `VCFv4.3.tex:1433`/
+`VCFv4.4.tex:1692` both merely state a preference ("The `<*>` representation is preferred over the symbolic
+allele `<NON_REF>`"), which the target VCFv4.3 spec does not read as an exemption from declaration -- but
+`VCFv4.5.tex:1859` goes further and says `<NON_REF>` "should be treated as an alias of `<*>`", a later-version
+clarification of an ambiguity the target leaves open (per `AGENTS.md`'s guidance on using a newer version this
+way). Real-world impact is low (GATK always emits its own `##ALT=<ID=NON_REF,...>` declaration alongside it,
+so the undeclared case is rare in practice), and vcf_validator's own ALT-meta regex (`<([a-zA-Z0-9:_]+)>`)
+would match `<NON_REF>` as an ordinary symbolic allele needing a declaration, not exempt it -- so warning for
+an undeclared `<NON_REF>` today is defensible and matches that measured tool behavior. Recorded here as a
+known gap rather than implemented, since VCFv4.5.tex:1859's clarification was found only during a
+documentation-accuracy pass, not verified against a live tool measurement of its own; revisit alongside
+`TODO.md`'s "Investigate bumping the target VCF spec to 4.4 or 4.5" entry.
+
 Found by the Phase 2 review's fourth re-verification round: the original predicate was a bare
 `base.startsWith("<")`, which is broader than vcf_validator's own `"<([^>]+)>"` full-match regex -- a legal
 breakend replacement string can itself start with `'<'` without being a symbolic-allele lookup key at all,

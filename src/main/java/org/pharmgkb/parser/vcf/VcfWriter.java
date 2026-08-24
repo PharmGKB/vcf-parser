@@ -514,7 +514,13 @@ public class VcfWriter implements Closeable {
         chromosome.charAt(chromosome.length() - 1) == '>'
         ? chromosome.substring(1, chromosome.length() - 1)
         : chromosome;
-    if (!metadata.getContigs().containsKey(unwrappedChromosome) &&
+    // Tries the raw chromosome text first, then the unwrapped form -- the same two-step lookup order
+    // VcfMetadata.getAlt(String) already uses for the sibling symbolic-ALT case, so a contig declared under a
+    // literal, already-malformed ID containing '<'/'>' (carried forward from a lenient parse; no legal
+    // ##contig ID can contain either character -- VCFv4.3.tex:265) is still found under its own stored key,
+    // not just under the unwrapped one. Found by the Phase 2 review's fourth re-verification round.
+    if (!metadata.getContigs().containsKey(chromosome) &&
+        !metadata.getContigs().containsKey(unwrappedChromosome) &&
         m_warnedUndeclaredChromosomes.add(unwrappedChromosome)) {
       m_warnings.warn("CHROM {} has no ##contig metadata with that name (on line {})", chromosome,
           lineBeingWritten());

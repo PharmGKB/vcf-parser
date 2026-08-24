@@ -556,8 +556,12 @@ public final class VcfPosition {
       // collide with REF this way -- skip the missing-value sentinel, the spanning-deletion "*", any
       // angle-bracket-wrapped symbolic allele (including the unspecified "<*>"), and any breakend
       // replacement string (always contains "[" or "]"), none of which can equal REF as plain text anyway.
-      // Case-sensitive: VCFv4.3.tex:344/:353 ("Tools processing VCF files are not required to preserve case
-      // in the allele Strings") means case is not spec-guaranteed significant, but confirmed live that
+      // Case-sensitive: VCFv4.3.tex:344 ("Tools processing VCF files are not required to preserve case in
+      // the allele Strings", REF's own statement) and :353 ("Tools processing VCF files are not required to
+      // preserve case in the allele String, except for IDs, which are case sensitive", ALT's own, slightly
+      // narrower statement -- found by the Phase 2 review's fourth re-verification round to be a distinct
+      // sentence, not identical wording as an earlier draft of this comment claimed) together mean case is
+      // not spec-guaranteed significant for an ordinary base-sequence allele, but confirmed live that
       // vcf_validator 0.10.2 -- whose own dedicated check for exactly this shape ("Reference and alternate
       // alleles must not be the same") is the sole evidence for this rule at all, since no hts-specs fixture
       // covers it and bcftools 1.23.1 is silent -- itself treats REF=C/ALT=c as valid, so this matches that

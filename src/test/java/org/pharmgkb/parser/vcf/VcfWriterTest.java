@@ -1652,6 +1652,49 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testWritingAnUndeclaredChromLooksUpTheRawKeyBeforeUnwrapping() throws Exception {
+    // regression test found by the Phase 2 review's fourth re-verification round: the undeclared-CHROM check
+    // only tried the unwrapped lookup key, unlike its sibling undeclared-ALT check (VcfMetadata.getAlt), which
+    // tries the raw key FIRST and only falls back to unwrapped. No legal ##contig ID can contain '<'/'>'
+    // (VCFv4.3.tex:265), but this library preserves an already-malformed one carried forward from a lenient
+    // parse rather than rejecting it -- so a ##contig declaration literally keyed "<1>" (not "1") is still
+    // findable under its own stored key.
+    String vcf = "##fileformat=VCFv4.2\n##contig=<ID=<1>,length=1000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "<1>\t100\t.\tA\tT\t.\t.\t.\n";
+    VcfMetadata parsedMetadata;
+    VcfPosition parsedPosition;
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder().fromReader(reader)
+             .parseWith((md, record) -> { })
+             .build()) {
+      parser.parse();
+      parsedMetadata = parser.getMetadata();
+      parsedPosition = parsedMetadata.getContext().newPosition("<1>", 100, null, "A", List.of("T"), null, null,
+          null, null, -1);
+    }
+    assertEquals(Set.of("<1>"), parsedMetadata.getContigs().keySet(), "the malformed ID must be preserved, " +
+        "not silently unwrapped, at parse time");
+
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(parsedMetadata);
+      writer.writeLine(parsedMetadata, parsedPosition, Collections.emptyList());
+      assertFalse(appender.anyMessageContains("no ##contig metadata with that name"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testValidateBeforeWriteChecksUndeclaredReservedInfoKeyCardinality() throws Exception {
     // AC is reserved (Number=A) but has no ##INFO=<ID=AC,...> declaration at all here -- validateInfo must still
     // fall back to AC's own canonical Number/Type, matching getInfo(ReservedInfoProperty)'s identical read-path

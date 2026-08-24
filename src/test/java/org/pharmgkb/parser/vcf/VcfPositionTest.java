@@ -1561,11 +1561,17 @@ public class VcfPositionTest {
     // never special; "0" is exactly as wrong). VcfWriter.validateInfoValue already warns "has Type=Flag but
     // has a value" for this same shape on the write side without inspecting the value's content either; this
     // brings the read side into agreement instead of silently inverting.
+    // Each sink is cleared after construction, before the explicit getInfo() call below: construction itself
+    // (the non-trusted newPosition(..., ListMultimap, ...) path) already eagerly runs this identical
+    // conversion once, via checkReservedInfoTypes, so without clearing first, an assertion on the sink's
+    // content after getInfo() wouldn't actually prove getInfo() itself warns -- it could be satisfied by
+    // construction's own eager warning alone. Found by the Phase 2 review's fourth re-verification round.
     StringWriter sink0 = new StringWriter();
     ListMultimap<String, String> info0 = ArrayListMultimap.create();
     info0.put("DB", "0");
     VcfPosition position0 = lenientContext(new VcfWarnings(sink0)).newPosition("chr", 1, null, "C", null, null,
         null, info0, null, -1);
+    sink0.getBuffer().setLength(0);
     assertEquals(Boolean.TRUE, position0.getInfo(ReservedInfoProperty.Dbsnp));
     assertTrue(sink0.toString().contains("Flag value \"0\" is not empty"));
 
@@ -1574,6 +1580,7 @@ public class VcfPositionTest {
     info1.put("DB", "1");
     VcfPosition position1 = lenientContext(new VcfWarnings(sink1)).newPosition("chr", 1, null, "C", null, null,
         null, info1, null, -1);
+    sink1.getBuffer().setLength(0);
     // "1" is just as much an explicit value as "0" is -- it must warn too, not be treated as the "correct" case
     assertEquals(Boolean.TRUE, position1.getInfo(ReservedInfoProperty.Dbsnp));
     assertTrue(sink1.toString().contains("Flag value \"1\" is not empty"));
@@ -1583,6 +1590,7 @@ public class VcfPositionTest {
     infoGarbage.put("DB", "garbage");
     VcfPosition positionGarbage = lenientContext(new VcfWarnings(sinkGarbage)).newPosition("chr", 1, null, "C",
         null, null, null, infoGarbage, null, -1);
+    sinkGarbage.getBuffer().setLength(0);
     // any non-empty content warns and is still treated as present -- not a parse failure, matching htslib's
     // "treat it as a string" behavior rather than throwing "Invalid boolean value"
     assertEquals(Boolean.TRUE, positionGarbage.getInfo(ReservedInfoProperty.Dbsnp));
@@ -1594,6 +1602,7 @@ public class VcfPositionTest {
     infoBare.put("DB", "");
     VcfPosition positionBare = lenientContext(new VcfWarnings(sinkBare)).newPosition("chr", 1, null, "C", null,
         null, null, infoBare, null, -1);
+    sinkBare.getBuffer().setLength(0);
     assertEquals(Boolean.TRUE, positionBare.getInfo(ReservedInfoProperty.Dbsnp));
     assertFalse(sinkBare.toString().contains("is not empty"));
   }
@@ -1612,6 +1621,10 @@ public class VcfPositionTest {
     info.put("DB", ".");
     VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("chr", 1, null, "C", null, null,
         null, info, null, -1);
+    // cleared after construction, before getInfo(): construction's own eager checkReservedInfoTypes call
+    // already runs this identical conversion once, so without clearing first this assertion could be
+    // satisfied by that alone -- see the sibling Flag test above for the full reasoning.
+    sink.getBuffer().setLength(0);
     assertEquals(Boolean.TRUE, position.getInfo(ReservedInfoProperty.Dbsnp));
     assertTrue(sink.toString().contains("Flag value \".\" is not empty"));
   }
