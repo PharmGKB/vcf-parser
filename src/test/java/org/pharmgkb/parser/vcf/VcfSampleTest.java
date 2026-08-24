@@ -671,6 +671,27 @@ class VcfSampleTest {
   }
 
   @Test
+  void testCheckNoStructuralDelimiterKeyMessageIsTruncated() {
+    // regression test for the fifth re-verification round's finding #1b: checkNoStructuralDelimiter's own
+    // "Sample property key ... contains ':' or a tab" throw embedded the raw key verbatim and unbounded
+    String hugeKey = "X".repeat(200) + ":";
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newSample(List.of(hugeKey), List.of("1")));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 200, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
+  void testCheckNoStructuralDelimiterValueMessageIsTruncated() {
+    // same finding, the value half of the identical check
+    String hugeValue = "X".repeat(200) + ":";
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newSample(List.of("XX"), List.of(hugeValue)));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
   void testDuplicateFormatKeyWarnsToConfiguredSinkOnLazyMaterialization() {
     // Task 7: setWarningsSink was removed -- the sink is now fixed at construction via the sample's own context.
     java.io.StringWriter sink = new java.io.StringWriter();
@@ -1563,6 +1584,18 @@ class VcfSampleTest {
     VcfSample sample = STRICT_CONTEXT.newSample(List.of("GT"), List.of("X/0"));
     VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
     assertThrows(VcfFormatException.class, () -> sample.getGenotype(position));
+  }
+
+  @Test
+  void testGetGenotypeNonNumericAlleleIndexMessageIsTruncated() {
+    // regression test for the fifth re-verification round's finding #1b: parseAlleleIndex's own
+    // "Allele index ... is not a number" throw embedded the raw, unbounded GT token verbatim
+    String hugeAllele = "X".repeat(200) + "/0";
+    VcfSample sample = STRICT_CONTEXT.newSample(List.of("GT"), List.of(hugeAllele));
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null, null, -1);
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> sample.getGenotype(position));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 200, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 
   @Test

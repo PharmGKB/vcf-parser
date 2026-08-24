@@ -83,6 +83,90 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testCheckChromosomeInvalidCharacterMessageIsTruncated() {
+    // regression test for the fifth re-verification round's finding #1b: this method's own unconditional
+    // throw sites embedded the raw CHROM value verbatim and unbounded -- the same defect class the shared
+    // warnOrThrow fix closed at its own three central helpers, but never reached VcfPosition's direct,
+    // non-warnOrThrow throw sites at all. Representative of every other checkXxx method's identical fix in
+    // this same round; not every one of the ~25 sites has its own test.
+    String hugeChrom = "," + "A".repeat(150);
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newPosition(hugeChrom, 1, null, "C", null, null, null, null, null, -1));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
+  public void testCheckRefInvalidBaseMessageIsTruncated() {
+    // same finding, checkRef's own site
+    String hugeRef = "Q" + "A".repeat(150);
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newPosition("chr", 1, null, hugeRef, null, null, null, null, null, -1));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 350, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
+  public void testCheckIdsDuplicateMessageIsTruncated() {
+    // same finding, checkIds' own duplicate-ID throw site
+    String hugeId = "X" + "9".repeat(150);
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newPosition("chr", 1, Arrays.asList(hugeId, hugeId), "C", null, null, null, null,
+            null, -1));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
+  public void testCheckFiltersDuplicateCodeMessageIsTruncated() {
+    // same finding, checkFilters' own duplicate-code throw site
+    String hugeFilter = "X" + "9".repeat(150);
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, Arrays.asList(hugeFilter, hugeFilter),
+            null, null, -1));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
+  public void testCheckInfoEntriesKeyMessageIsTruncated() {
+    // same finding, checkInfoEntries' own "key contains ';' or '='" throw site
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    String hugeKey = ("X" + "9".repeat(150)) + ";";
+    info.put(hugeKey, "1");
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, info, null, -1));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
+  public void testCheckFormatTabMessageIsTruncatedAndEscapesTheEmbeddedTab() {
+    // same finding, checkFormat's own "contains a tab or line terminator" throw site -- the raw FORMAT key
+    // itself is the message's own subject here (a key with an embedded tab), so an unescaped embedding would
+    // put the very control character the message is warning about directly into the message text
+    String hugeKey = "X" + "9".repeat(150) + "\tY";
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, null,
+            Collections.singletonList(hugeKey), -1));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertFalse(ex.getMessage().contains("\t"), "message must not contain a raw tab: " + ex.getMessage());
+    assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
+  public void testGetQualityUnparseableMessageIsTruncated() {
+    // same finding, getQuality()'s own unconditional-throw site -- explicitly named by the review as the
+    // clearest real-world-risk example, since m_rawQuality has no length bound of its own
+    String hugeQual = "x".repeat(200);
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, null, null, -1)
+        .toBuilder().rawQuality(hugeQual).build();
+    VcfFormatException ex = assertThrows(VcfFormatException.class, position::getQuality);
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 300, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
   public void testGetRawQualityIsPreservedAfterSuccessfulParseAndUnderLenientContextToo() {
     // full symmetry with INFO's own permanently-available raw per-key values: getRawQuality() keeps returning
     // the original wire text even after getQuality() has already parsed it successfully -- not just for the

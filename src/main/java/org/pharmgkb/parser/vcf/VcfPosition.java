@@ -362,7 +362,8 @@ public final class VcfPosition {
     // hts-specs test/vcf/4.2/failed/failed_body_chrom_002.vcf, ##CauseOfFailure=contig ID contains a
     // whitespace (literal CHROM="chr 1").
     if (chr.isEmpty() || InternalUtils.containsWhitespace(chr)) {
-      throw new VcfFormatException("CHROM column \"" + chr + "\" is empty or contains whitespace");
+      throw new VcfFormatException("CHROM column \"" + InternalUtils.truncateAndEscapeForMessage(chr) +
+          "\" is empty or contains whitespace");
     }
     // VCFv4.2.tex line 179 also documents CHROM's other valid form, a fully angle-bracket-wrapped symbolic
     // reference ("<ID>") pointing to a contig in the assembly file -- unwrap it before applying the character
@@ -373,7 +374,8 @@ public final class VcfPosition {
       content = chr.substring(1, chr.length() - 1);
     }
     if (content.isEmpty()) {
-      throw new VcfFormatException("CHROM column \"" + chr + "\" is empty or contains whitespace");
+      throw new VcfFormatException("CHROM column \"" + InternalUtils.truncateAndEscapeForMessage(chr) +
+          "\" is empty or contains whitespace");
     }
     // VCFv4.3.tex's appendix: "* is now valid when not the first character"; "*"/"=" as the first character
     // "were already invalid and remain so" -- see also this class's own INVALID_CONTIG_NAME_CHAR_PATTERN,
@@ -381,12 +383,13 @@ public final class VcfPosition {
     // first-character position, not everywhere in CHROM.
     char first = content.charAt(0);
     if (first == '*' || first == '=') {
-      throw new VcfFormatException("CHROM column \"" + chr + "\" must not start with '" + first + "'");
+      throw new VcfFormatException("CHROM column \"" + InternalUtils.truncateAndEscapeForMessage(chr) +
+          "\" must not start with '" + first + "'");
     }
     Matcher matcher = InternalUtils.INVALID_CONTIG_NAME_CHAR_PATTERN.matcher(content);
     if (matcher.find()) {
-      throw new VcfFormatException("CHROM column \"" + chr + "\" contains the invalid character '" +
-          matcher.group() + "'");
+      throw new VcfFormatException("CHROM column \"" + InternalUtils.truncateAndEscapeForMessage(chr) +
+          "\" contains the invalid character '" + matcher.group() + "'");
     }
     // see NON_PRINTABLE_ASCII_CONTIG_NAME_CHAR_PATTERN's own comment -- same errata's outer bound
     // ([!-~], VCFv4.3.tex:258-259). Unlike every check above, bcftools 1.23.1 only warns on this one (never
@@ -396,7 +399,11 @@ public final class VcfPosition {
       String message = "CHROM column \"" + chr + "\" contains a non-printable-ASCII character (code point " +
           (int) nonPrintableMatcher.group().charAt(0) + ")";
       if (checkWarnings == null) {
-        throw new VcfFormatException(message);
+        // truncateAndEscapeForMessage applied to the whole already-built message, not just chr: this is the
+        // thrown-message-only half of the same bound/escape treatment every other unconditional-throw site in
+        // this method got; the warn path below stays unsanitized, matching the scope this project's exception-
+        // message hardening has always used (thrown messages only, not logged warnings).
+        throw new VcfFormatException(InternalUtils.truncateAndEscapeForMessage(message));
       }
       checkWarnings.warn(message);
     }
@@ -416,7 +423,9 @@ public final class VcfPosition {
     if (ReservedStructuralVariantCode.isReservedSymbolicAlleleName(content)) {
       String message = "CHROM column \"" + chr + "\" must not use a reserved symbolic allele name";
       if (checkWarnings == null) {
-        throw new VcfFormatException(message);
+        // see the non-printable-ASCII check just above for why this wraps the whole built message, and why
+        // only the throw path (not the warn below) is sanitized
+        throw new VcfFormatException(InternalUtils.truncateAndEscapeForMessage(message));
       }
       checkWarnings.warn(message);
     }
@@ -441,7 +450,7 @@ public final class VcfPosition {
     // hts-specs test/vcf/4.2/failed/failed_body_ref_001.vcf (##CauseOfFailure=REF has a non-valid base,
     // REF="B") confirms an out-of-alphabet base is a structural rejection, not a warn-and-recover case.
     if (!InternalUtils.isValidRefBases(ref)) {
-      throw new VcfFormatException("Invalid reference base '" + ref +
+      throw new VcfFormatException("Invalid reference base '" + InternalUtils.truncateAndEscapeForMessage(ref) +
           "' (must match " + InternalUtils.REF_BASE_PATTERN + ")");
     }
   }
@@ -461,7 +470,8 @@ public final class VcfPosition {
       // failed_body_id_000.vcf ("ID has a whitespace"), failed_body_id_001.vcf ("ID begins with a semi-colon"),
       // and failed_body_id_002.vcf ("ID ends with a semi-colon").
       if (InternalUtils.containsWhitespace(id) || id.contains(";")) {
-        throw new VcfFormatException("ID \"" + id + "\" contains whitespace or semicolons");
+        throw new VcfFormatException("ID \"" + InternalUtils.truncateAndEscapeForMessage(id) +
+            "\" contains whitespace or semicolons");
       }
       // VCFv4.3.tex line 338 (the target) states directly "String, no whitespace or semicolons permitted,
       // duplicate values not allowed."; VCFv4.2.tex line 181 has no duplicate-value clause for ID, predating
@@ -477,7 +487,7 @@ public final class VcfPosition {
       // isDuplicateAt (see its own Javadoc for the DUPLICATE_SCAN_THRESHOLD hybrid this dispatches through).
       if (isDuplicateAt(ids, i, seen)) {
         if (warnings == null) {
-          throw new VcfFormatException("Duplicate ID \"" + id + "\"");
+          throw new VcfFormatException("Duplicate ID \"" + InternalUtils.truncateAndEscapeForMessage(id) + "\"");
         }
         warnings.warn("Duplicate ID \"{}\"", id);
       }
@@ -571,7 +581,9 @@ public final class VcfPosition {
           base.indexOf('<') != 0 && base.indexOf('[') < 0 && base.indexOf(']') < 0) {
         String message = "ALT allele \"" + base + "\" is identical to REF; alleles must be non-reference";
         if (warnings == null) {
-          throw new VcfFormatException(message);
+          // see checkChromosome's identical non-printable-ASCII check for why this wraps the whole built
+          // message (bounding/escaping the thrown form only, not the warn below)
+          throw new VcfFormatException(InternalUtils.truncateAndEscapeForMessage(message));
         }
         warnings.warn(message);
       }
@@ -597,7 +609,8 @@ public final class VcfPosition {
       // hts-specs test/vcf/4.2/failed/failed_body_filter_003.vcf, ##CauseOfFailure=FILTER contains whitespaces
       // (literal FILTER="my filter").
       if (InternalUtils.containsWhitespace(f)) {
-        throw new VcfFormatException("FILTER column entry \"" + f + "\" contains whitespace");
+        throw new VcfFormatException("FILTER column entry \"" + InternalUtils.truncateAndEscapeForMessage(f) +
+            "\" contains whitespace");
       }
       // VCFv4.3.tex:362 (the target, already cited a few lines below for this method's duplicate-value
       // check) states directly, for both ID and FILTER, "String, no whitespace or semicolons permitted,
@@ -613,7 +626,8 @@ public final class VcfPosition {
       // (VcfParser.java:794-822) is a plain, no-escaping split, so no filter entry produced by parsing a real
       // file's FILTER column can ever itself contain the ';' it would have been split on.
       if (f.contains(";")) {
-        throw new VcfFormatException("FILTER column entry \"" + f + "\" contains a semicolon");
+        throw new VcfFormatException("FILTER column entry \"" + InternalUtils.truncateAndEscapeForMessage(f) +
+            "\" contains a semicolon");
       }
       if (f.equals("0")) {
         // hts-specs test/vcf/4.2/failed/failed_body_filter_004.vcf, ##CauseOfFailure=FILTER contains reserved
@@ -628,7 +642,11 @@ public final class VcfPosition {
         // with another code (line 61: "STD_FILTER;PASS") and is expected to parse. Confirmed valid by
         // vcf_validator 0.10.2 and accepted silently by bcftools 1.23.1 (htslib 1.23.1).
         if (warnings == null) {
-          throw new VcfFormatException("FILTER contains PASS along with other filters: " + filters);
+          // filters is a List<String>, not a String -- truncateAndEscapeForMessage applied to its toString()
+          // rather than to filters itself, since an arbitrarily long or numerous FILTER list is the same
+          // unbounded-content risk as any single embedded value
+          throw new VcfFormatException("FILTER contains PASS along with other filters: " +
+              InternalUtils.truncateAndEscapeForMessage(filters.toString()));
         }
         warnings.warn("FILTER contains PASS along with other filters: {}", filters);
       }
@@ -653,7 +671,8 @@ public final class VcfPosition {
       // allocation-free scan and a HashSet<String> depending on list size.
       if (isDuplicateAt(filters, i, seen)) {
         if (warnings == null) {
-          throw new VcfFormatException("Duplicate FILTER code \"" + f + "\"");
+          throw new VcfFormatException("Duplicate FILTER code \"" + InternalUtils.truncateAndEscapeForMessage(f) +
+              "\"");
         }
         warnings.warn("Duplicate FILTER code \"{}\"", f);
       }
@@ -685,11 +704,13 @@ public final class VcfPosition {
         throw new VcfFormatException("INFO column contains a null key");
       }
       if (value == null) {
-        throw new VcfFormatException("INFO value for key \"" + key + "\" is null");
+        throw new VcfFormatException("INFO value for key \"" + InternalUtils.truncateAndEscapeForMessage(key) +
+            "\" is null");
       }
       if (key.isEmpty()) {
         if (warnings == null) {
-          throw new VcfFormatException("INFO entry \"=" + value + "\" has an empty key");
+          throw new VcfFormatException("INFO entry \"=" + InternalUtils.truncateAndEscapeForMessage(value) +
+              "\" has an empty key");
         }
         warnings.warn("INFO entry \"{}\" has an empty key (VCF does not allow zero-length fields); dropping it",
             "=" + value);
@@ -704,7 +725,8 @@ public final class VcfPosition {
       // INFO="RS Q=123") -- note that fixture's whitespace is in the KEY, which is why the value-side relaxation
       // below does not affect it.
       if (InternalUtils.containsWhitespace(key)) {
-        throw new VcfFormatException("INFO column entry \"" + key + "=" + value + "\" contains whitespace");
+        throw new VcfFormatException("INFO column entry \"" + InternalUtils.truncateAndEscapeForMessage(key) +
+            "=" + InternalUtils.truncateAndEscapeForMessage(value) + "\" contains whitespace");
       }
       // Value: U+0020 SPACE only is permitted, at every version. VCFv4.2.tex line 186 (above) forbids all
       // whitespace in an INFO value, but VCFv4.3.tex line 366 states "Space characters are allowed in values"
@@ -721,16 +743,19 @@ public final class VcfPosition {
       // stays an unconditional throw for the same reason -- AGENTS.md's Parser Validation Policy keeps a
       // structural violation an error rather than warn-and-recover.
       if (InternalUtils.containsWhitespaceOtherThanSpace(value)) {
-        throw new VcfFormatException("INFO value \"" + value + "\" for key \"" + key + "\" contains whitespace " +
+        throw new VcfFormatException("INFO value \"" + InternalUtils.truncateAndEscapeForMessage(value) +
+            "\" for key \"" + InternalUtils.truncateAndEscapeForMessage(key) + "\" contains whitespace " +
             "other than a space (only U+0020 is permitted in an INFO value)");
       }
       // a parsed value can never contain these (they were already split on to arrive at this value), but a value set
       // directly via getInfo().put(...) could; reject them so the writer's output remains re-parseable
       if (key.contains(";") || key.contains("=")) {
-        throw new VcfFormatException("INFO key \"" + key + "\" contains ';' or '='");
+        throw new VcfFormatException("INFO key \"" + InternalUtils.truncateAndEscapeForMessage(key) +
+            "\" contains ';' or '='");
       }
       if (value.contains(";") || value.contains(",")) {
-        throw new VcfFormatException("INFO value \"" + value + "\" for key \"" + key + "\" contains ';' or ','");
+        throw new VcfFormatException("INFO value \"" + InternalUtils.truncateAndEscapeForMessage(value) +
+            "\" for key \"" + InternalUtils.truncateAndEscapeForMessage(key) + "\" contains ';' or ','");
       }
       // VCFv4.2's INFO grammar note ("String, no whitespace, semicolons, or equals-signs permitted") applies this
       // constraint to the individual key and value making up each entry, the same convention already used above
@@ -741,7 +766,8 @@ public final class VcfPosition {
       // EMPTY_FIELD_HANDLING.md).
       if (value.contains("=")) {
         if (warnings == null) {
-          throw new VcfFormatException("INFO value \"" + value + "\" for key \"" + key + "\" contains '='");
+          throw new VcfFormatException("INFO value \"" + InternalUtils.truncateAndEscapeForMessage(value) +
+              "\" for key \"" + InternalUtils.truncateAndEscapeForMessage(key) + "\" contains '='");
         }
         warnings.warn("INFO value \"{}\" for key \"{}\" contains '='; VCFv4.2's grammar doesn't permit this, but " +
             "bcftools 1.23.1 accepts it silently, so it is preserved as-is", value, key);
@@ -855,7 +881,8 @@ public final class VcfPosition {
       // checkFilters()'s treatment of their own delimiters: this check can only ever fire on content reaching
       // VcfPosition via public construction, for the same reason as the colon check immediately below.
       if (f.indexOf('\t') >= 0 || f.indexOf('\n') >= 0 || f.indexOf('\r') >= 0) {
-        throw new VcfFormatException("FORMAT key \"" + f + "\" contains a tab or line terminator");
+        throw new VcfFormatException("FORMAT key \"" + InternalUtils.truncateAndEscapeForMessage(f) +
+            "\" contains a tab or line terminator");
       }
       // VCFv4.3.tex:429 -- "First a FORMAT field is given specifying the data types and order
       // (colon-separated FORMAT keys matching the regular expression ^[A-Za-z_][0-9A-Za-z_.]*$, duplicate
@@ -875,7 +902,8 @@ public final class VcfPosition {
       // no-escaping split, so no FORMAT key produced by parsing a real file's FORMAT column can ever itself
       // contain the ':' it would have been split on.
       if (f.contains(":")) {
-        throw new VcfFormatException("FORMAT key \"" + f + "\" contains a colon");
+        throw new VcfFormatException("FORMAT key \"" + InternalUtils.truncateAndEscapeForMessage(f) +
+            "\" contains a colon");
       }
       // tab/LF/CR and ':' are already handled above as their own unconditional structural floors -- this
       // check's remaining job is every OTHER tag-name-grammar violation, including a plain space, vertical
@@ -886,8 +914,9 @@ public final class VcfPosition {
       // bcftools 1.23.1, which only warns on this input).
       if (!InternalUtils.FORMAT_PATTERN.matcher(f).matches()) {
         if (warnings == null) {
-          throw new VcfFormatException("FORMAT ID \"" + f + "\" does not match the required tag-name grammar " +
-              "(must start with a letter or underscore, followed only by letters, digits, underscores, or periods)");
+          throw new VcfFormatException("FORMAT ID \"" + InternalUtils.truncateAndEscapeForMessage(f) +
+              "\" does not match the required tag-name grammar (must start with a letter or underscore, " +
+              "followed only by letters, digits, underscores, or periods)");
         }
         warnings.warn("FORMAT ID \"{}\" does not match the required tag-name grammar (must start with a letter " +
             "or underscore, followed only by letters, digits, underscores, or periods); keeping it as-is", f);
@@ -905,7 +934,8 @@ public final class VcfPosition {
         continue;
       }
       if (isDuplicateAt(format, i, seen)) {
-        throw new VcfFormatException("Duplicate FORMAT key \"" + f + "\"");
+        throw new VcfFormatException("Duplicate FORMAT key \"" + InternalUtils.truncateAndEscapeForMessage(f) +
+            "\"");
       }
     }
     // VCFv4.2.tex line 211: "The first sub-field must always be the genotype (GT) if it is present." Restated
@@ -1094,8 +1124,8 @@ public final class VcfPosition {
           // getter that threw without either, unlike its sibling info()/getInfo() overloads -- losing both the
           // line number and, e.g., VcfFloat's own more specific "too long to be a valid VCF Float" diagnosis,
           // flattened here to a generic "is not a number".
-          throw withLineNumber(new VcfFormatException("QUAL '" + raw + "' is not a number -- see getRawQuality() " +
-              "for the original text", e));
+          throw withLineNumber(new VcfFormatException("QUAL '" + InternalUtils.truncateAndEscapeForMessage(raw) +
+              "' is not a number -- see getRawQuality() for the original text", e));
         }
       } else {
         m_qualityResolved = true;

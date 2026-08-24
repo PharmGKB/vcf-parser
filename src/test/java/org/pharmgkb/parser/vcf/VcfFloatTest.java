@@ -102,6 +102,17 @@ public class VcfFloatTest {
   }
 
   @Test
+  public void testParseRejectionMessageIsTruncated() {
+    // regression test for the fifth re-verification round's finding #1b: parse()'s "Expected float; got..."
+    // throw embedded value verbatim and unbounded -- reachable on an entirely ordinary lenient parse plus a
+    // typed getter call, per this method's own unconditional (not isLenient()-gated) throw.
+    String hugeValue = "x".repeat(200);
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> VcfFloat.parse(hugeValue));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 200, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
   public void testParseAcceptsValueAtMaxDecimalLengthBoundary() {
     // pins the boundary itself: exactly 128 characters must still parse normally, not be swept up by an
     // off-by-one in the new length guard

@@ -134,7 +134,7 @@ public final class VcfFloat {
     try {
       return of(parseDecimal("Float", value, warnings));
     } catch (NumberFormatException e) {
-      throw new VcfFormatException("Expected float; got " + value);
+      throw new VcfFormatException("Expected float; got " + InternalUtils.truncateAndEscapeForMessage(value));
     }
   }
 

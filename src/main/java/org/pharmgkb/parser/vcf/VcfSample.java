@@ -253,13 +253,14 @@ public final class VcfSample {
     }
     InternalUtils.checkNoLineTerminator(key, value);
     if (key.contains(":") || key.contains("\t")) {
-      throw new VcfFormatException("Sample property key \"" + key + "\" contains ':' or a tab");
+      throw new VcfFormatException("Sample property key \"" + InternalUtils.truncateAndEscapeForMessage(key) +
+          "\" contains ':' or a tab");
     }
     boolean isGle = !version.isAtLeast(VcfVersion.V4_3) &&
         key.equals(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy.getId());
     if (value != null && (value.contains("\t") || (!isGle && value.contains(":")))) {
-      throw new VcfFormatException("Sample property value \"" + value + "\" for key \"" + key +
-          "\" contains ':' or a tab");
+      throw new VcfFormatException("Sample property value \"" + InternalUtils.truncateAndEscapeForMessage(value) +
+          "\" for key \"" + InternalUtils.truncateAndEscapeForMessage(key) + "\" contains ':' or a tab");
     }
   }
 
@@ -670,7 +671,8 @@ public final class VcfSample {
     try {
       index = Integer.parseInt(base);
     } catch (NumberFormatException e) {
-      throw new VcfFormatException("Allele index \"" + base + "\" is not a number");
+      throw new VcfFormatException("Allele index \"" + InternalUtils.truncateAndEscapeForMessage(base) +
+          "\" is not a number");
     }
     if (index < 0 || index > position.getAltBases().size()) {
       throw new VcfFormatException("Allele index " + index + " is out of range: should be between 0 and " +

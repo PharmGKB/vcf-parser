@@ -156,6 +156,19 @@ class VcfVersionTest {
   }
 
   @Test
+  void testResolveWithoutWarningRejectionMessageIsTruncated() {
+    // regression test for the fifth re-verification round's finding #1b: resolveWithoutWarning (and
+    // therefore resolve, which delegates to it) embedded a malformed declaredFileFormat verbatim and
+    // unbounded -- reachable through the ordinary public VcfContext.lenient/VcfContext.strict entry points
+    // with no length pre-check of their own.
+    String hugeDeclared = "x".repeat(200);
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> VcfVersion.resolveWithoutWarning(hugeDeclared));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 200, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
   void testResolveStillWarnsForEveryFallbackRoute() {
     // the parser/direct-VcfContext contract is explicitly unchanged by the writer's new path above: resolve()
     // still emits, unconditionally, on all three routes and stays silent on none of them
@@ -186,6 +199,18 @@ class VcfVersionTest {
     assertThrows(VcfFormatException.class, () -> VcfVersion.canonicalize(null));
     assertThrows(VcfFormatException.class, () -> VcfVersion.canonicalize("banana"));
     assertThrows(VcfFormatException.class, () -> VcfVersion.canonicalize("VCFv5.1"));
+  }
+
+  @Test
+  void testCanonicalizeRejectionMessageIsTruncated() {
+    // regression test for the fifth re-verification round's finding #1b: canonicalize's own separate
+    // malformed-value throw had the identical unbounded-embedding defect as resolveWithoutWarning's, and is
+    // itself reachable through the ordinary public VcfWriter.Builder.targetFileFormat()/writeHeader() path
+    // with no length pre-check of its own.
+    String hugeDeclared = "x".repeat(200);
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> VcfVersion.canonicalize(hugeDeclared));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 200, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 
 }

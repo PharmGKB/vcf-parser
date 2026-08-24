@@ -127,7 +127,8 @@ public enum VcfVersion {
       throw new VcfFormatException("##fileformat is null");
     }
     if (!InternalUtils.FILE_FORMAT_PATTERN.matcher(declaredFileFormat).matches()) {
-      throw new VcfFormatException("##fileformat \"" + declaredFileFormat + "\" is not a valid VCF 4.x version");
+      throw new VcfFormatException("##fileformat \"" +
+          InternalUtils.truncateAndEscapeForMessage(declaredFileFormat) + "\" is not a valid VCF 4.x version");
     }
     // The digits after "4." are an integer minor version, not a decimal fraction: FILE_FORMAT_PATTERN hardcodes
     // the major as 4, and hts-specs treats these as discrete tokens throughout (test/vcf/4.1, 4.2, 4.3, and the
@@ -167,7 +168,8 @@ public enum VcfVersion {
       throw new VcfFormatException("##fileformat is null");
     }
     if (!InternalUtils.FILE_FORMAT_PATTERN.matcher(declaredFileFormat).matches()) {
-      throw new VcfFormatException("##fileformat \"" + declaredFileFormat + "\" is not a valid VCF 4.x version");
+      throw new VcfFormatException("##fileformat \"" +
+          InternalUtils.truncateAndEscapeForMessage(declaredFileFormat) + "\" is not a valid VCF 4.x version");
     }
     return "VCFv4." + minorOf(declaredFileFormat.substring("VCFv".length()));
   }
