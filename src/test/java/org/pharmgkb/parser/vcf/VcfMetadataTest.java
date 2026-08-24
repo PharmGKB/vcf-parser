@@ -1826,6 +1826,24 @@ public class VcfMetadataTest {
     IdDescriptionMetadata badAlt = new IdDescriptionMetadata(STRICT_CONTEXT, "ALT", "THIS:IS-NOT-VALID", "d");
     assertThrows(VcfFormatException.class, () -> builder.addAlt(badAlt));
   }
+
+  @Test
+  public void testAddAltAngleBracketRejectionMessageIsTruncated() {
+    // regression test for the fifth re-verification round's finding #1: validateAlt()'s "must not contain
+    // angle brackets" throw goes through VcfMetadata's own private static warnOrThrow, one of the three
+    // shared warn-or-throw implementations that previously embedded a String arg verbatim and unbounded. A
+    // huge angle-bracketed ID reaches this message directly from the caller's own input (no CR/LF here --
+    // that would be caught earlier, by BaseMetadata.putPropertyRaw's own checkNoLineTerminator call, and is
+    // already covered by testCheckNoLineTerminatorMessageIsTruncatedAndEscaped in InternalUtilsTest).
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2");
+    String hugeId = "<" + "A".repeat(200) + ">";
+    IdDescriptionMetadata badAlt = new IdDescriptionMetadata(STRICT_CONTEXT, "ALT", hugeId, "d");
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> builder.addAlt(badAlt));
+    assertTrue(ex.getMessage().contains("must not contain angle brackets"), ex.getMessage());
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
   @Test
   public void testDeclarationCannotBeTransferredBetweenDifferentlyConfiguredBuilders() {
     // The two contexts are equal in value -- same declared version, same leniency -- and differ only by

@@ -105,10 +105,16 @@ public sealed class BaseMetadata permits IdMetadata, PedigreeMetadata {
    * reached. Before this existed, a declaration's typed {@code (id, ...)} constructor threw unconditionally
    * while its {@code Map}-based sibling warned unconditionally, so the same invalid content behaved differently
    * purely by input format. Both now route here.
+   * <p>
+   * The throw branch runs {@code args} through {@link InternalUtils#sanitizeArgsForException} first, so a
+   * {@code String}-typed arg (a raw property value, a raw ID) can't blow up the thrown message's length or
+   * embed a raw control character -- see that method's own doc for why this is shared with {@code
+   * VcfMetadata}'s and {@code InternalUtils}'s own private {@code warnOrThrow} implementations.
    */
   protected final void warnOrThrow(String message, Object... args) {
     if (!m_context.isLenient()) {
-      throw new VcfFormatException(MessageFormatter.arrayFormat(message, args).getMessage());
+      throw new VcfFormatException(
+          MessageFormatter.arrayFormat(message, InternalUtils.sanitizeArgsForException(args)).getMessage());
     }
     m_warnings.warn(message, args);
   }

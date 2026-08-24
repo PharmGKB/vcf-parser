@@ -495,10 +495,16 @@ public final class VcfMetadata {
    * Throws {@link VcfFormatException} with the formatted message if {@code warnings} is {@code null} (strict
    * mode); otherwise warns to it. Shared by {@code VcfMetadata}'s own instance methods and {@code Builder}'s
    * mirrors, each passing their own {@code m_context} field.
+   * <p>
+   * The throw branch runs {@code args} through {@link InternalUtils#sanitizeArgsForException} first, so a
+   * {@code String}-typed arg (a raw property value, a raw ID) can't blow up the thrown message's length or
+   * embed a raw control character -- see that method's own doc for why this is shared with {@link
+   * BaseMetadata#warnOrThrow} and {@code InternalUtils}'s own private {@code warnOrThrow} implementations.
    */
   private static void warnOrThrow(VcfContext context, String message, Object... args) {
     if (!context.isLenient()) {
-      throw new VcfFormatException(org.slf4j.helpers.MessageFormatter.arrayFormat(message, args).getMessage());
+      throw new VcfFormatException(org.slf4j.helpers.MessageFormatter.arrayFormat(
+          message, InternalUtils.sanitizeArgsForException(args)).getMessage());
     }
     context.getWarnings().warn(message, args);
   }

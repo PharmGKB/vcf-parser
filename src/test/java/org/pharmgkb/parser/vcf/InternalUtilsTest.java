@@ -519,6 +519,39 @@ public class InternalUtilsTest {
   }
 
   @Test
+  public void testCheckReservedFormatConstraintsFtWhitespaceMessageIsTruncatedAndEscaped() {
+    // regression test for the fifth re-verification round's finding #1: checkFilterLikeValue's whitespace-in-
+    // filter-code throw goes through InternalUtils's own private warnOrThrow, the third of the three shared
+    // warn-or-throw implementations that previously embedded a String arg verbatim and unbounded. A huge,
+    // control-character-laden FT value reaches this message directly from the sample's own raw content.
+    String hugeCode = "q10 \r" + "9".repeat(200);
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> InternalUtils.checkReservedFormatConstraints("FT", hugeCode, VcfVersion.V4_2, null));
+    assertTrue(ex.getMessage().contains("\\r"), "raw CR must be escaped, not embedded verbatim: " + ex.getMessage());
+    assertFalse(ex.getMessage().contains("\r"), "message must not contain a raw CR: " + ex.getMessage());
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 350, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
+  public void testSanitizeArgsForExceptionOnlyTransformsStringArgs() {
+    // Unit test of the shared sanitizer itself: a String arg is truncated/escaped exactly as
+    // truncateAndEscapeForMessage would, while a non-String arg (an Integer, an enum) passes through
+    // unchanged -- e.g. a line number or a VcfVersion value is already bounded and never contains a raw
+    // control character, so wrapping it would be pointless (and toString()-ing an enum/Integer here would
+    // be wrong: MessageFormatter.arrayFormat already knows how to render the original object).
+    String withCr = "a\rb";
+    Object[] sanitized = InternalUtils.sanitizeArgsForException("label", 42, VcfVersion.V4_3, withCr);
+    assertEquals("label", sanitized[0]);
+    assertEquals(42, sanitized[1]);
+    assertEquals(VcfVersion.V4_3, sanitized[2]);
+    assertEquals(InternalUtils.truncateAndEscapeForMessage(withCr), sanitized[3]);
+    assertEquals("a\\rb", sanitized[3]);
+    // empty varargs: no exception, empty result
+    assertEquals(0, InternalUtils.sanitizeArgsForException().length);
+  }
+
+  @Test
   public void testCheckReservedFormatConstraintsPsWarnsButDoesNotThrow() {
     // PS must be a non-negative 32-bit integer, but that constraint isn't expressible through its declared
     // Type=Integer (which maps to a 64-bit Long), so it's checked separately; this is non-structural sample

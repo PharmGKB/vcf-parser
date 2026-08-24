@@ -234,6 +234,21 @@ public class InfoMetadataTest {
   }
 
   @Test
+  public void testTypedConstructorRejectsInvalidNumberMessageIsTruncatedAndEscaped() {
+    // regression test for the fifth re-verification round's finding #1: BaseMetadata.checkNumberProperty's
+    // "Number is not a valid VCF number" throw goes through BaseMetadata.warnOrThrow, one of the three shared
+    // warn-or-throw implementations that previously embedded a String arg verbatim and unbounded. A huge,
+    // control-character-laden Number value reaches this message directly from the caller's own input.
+    String hugeNumber = "\r" + "9".repeat(200);
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> new InfoMetadata(STRICT_CONTEXT, "AN", "desc", InfoType.Integer, hugeNumber, null, null));
+    assertTrue(ex.getMessage().contains("\\r"), "raw CR must be escaped, not embedded verbatim: " + ex.getMessage());
+    assertFalse(ex.getMessage().contains("\r"), "message must not contain a raw CR: " + ex.getMessage());
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
   public void testTypedConstructorRejectsNullNumberWithSpecificMessage() {
     // regression test: putPropertyRaw(NUMBER, number) used to run before this class's own Number-format
     // check below it, so a null Number threw BaseMetadata's generic "Metadata property \"Number\" has a

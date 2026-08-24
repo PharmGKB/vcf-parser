@@ -749,6 +749,28 @@ public class InternalUtils {
     return escaped.substring(0, cut) + "... (truncated, " + escaped.length() + " chars total)";
   }
 
+  /**
+   * Sanitizes the {@code String}-typed elements of {@code args} for embedding in a thrown {@link
+   * VcfFormatException}'s message, by running each through {@link #truncateAndEscapeForMessage}; every
+   * other element (a line number, an already-bounded enum/version value, etc.) passes through unchanged.
+   * Shared by all three warn-or-throw implementations' throw branch -- {@link BaseMetadata#warnOrThrow},
+   * {@code VcfMetadata}'s own private static {@code warnOrThrow(VcfContext, ...)}, and this class's own
+   * {@link #warnOrThrow} below -- so this one fix reaches every one of their many callers at once, instead
+   * of requiring each call site to sanitize its own args before formatting.
+   * <p>
+   * Deliberately does not touch the warn (lenient) branch of any of the three: the exception-message
+   * hardening this method supports (unbounded length, raw control characters that could corrupt a
+   * caller's rendered output) was scoped to thrown messages specifically; the logged-warning path is a
+   * separate concern this method isn't trying to address.
+   */
+  static Object[] sanitizeArgsForException(Object... args) {
+    Object[] sanitized = new Object[args.length];
+    for (int i = 0; i < args.length; i++) {
+      sanitized[i] = args[i] instanceof String ? truncateAndEscapeForMessage((String) args[i]) : args[i];
+    }
+    return sanitized;
+  }
+
   private static final Set<String> RESERVED_METADATA_KEYS =
       Set.of("fileformat", "ALT", "FILTER", "INFO", "FORMAT", "contig", "SAMPLE", "PEDIGREE", "META");
 
@@ -1177,11 +1199,13 @@ public class InternalUtils {
   /**
    * Warns to {@code checkWarnings}, using SLF4J placeholder-style {@code pattern}/{@code args}, if it is
    * non-null (lenient); throws {@link VcfFormatException} with the same formatted message if it is {@code null}
-   * (strict). A third implementation of the same shape, alongside {@link BaseMetadata#warnOrThrow} and
-   * {@code VcfMetadata}'s own private static {@code warnOrThrow(VcfContext, ...)} -- all three use the
-   * identical warn-or-throw-with-{@code MessageFormatter.arrayFormat} pattern, but this one takes an
-   * already-resolved {@code checkWarnings} value directly rather than a {@code VcfContext}, because every
-   * caller here already made that strict-vs-lenient decision before reaching this method (see
+   * (strict), after running {@code args} through {@link #sanitizeArgsForException} so a {@code String}-typed
+   * arg can't blow up the thrown message's length or embed a raw control character. A third implementation
+   * of the same shape, alongside {@link BaseMetadata#warnOrThrow} and {@code VcfMetadata}'s own private
+   * static {@code warnOrThrow(VcfContext, ...)} -- all three use the identical warn-or-throw-with-{@code
+   * MessageFormatter.arrayFormat} pattern (and now the identical sanitize-before-throw step), but this one
+   * takes an already-resolved {@code checkWarnings} value directly rather than a {@code VcfContext}, because
+   * every caller here already made that strict-vs-lenient decision before reaching this method (see
    * {@link #convertProperty(ReservedProperty, String, VcfContext)}'s own {@code checkWarnings} derivation) --
    * unlike the other two, which each hold their own {@code VcfContext}/{@code m_context} field to derive
    * strictness from directly. That difference is what lets {@link VcfWriter} force always-warn independently
@@ -1191,7 +1215,7 @@ public class InternalUtils {
     if (checkWarnings != null) {
       checkWarnings.warn(pattern, args);
     } else {
-      throw new VcfFormatException(MessageFormatter.arrayFormat(pattern, args).getMessage());
+      throw new VcfFormatException(MessageFormatter.arrayFormat(pattern, sanitizeArgsForException(args)).getMessage());
     }
   }
 
