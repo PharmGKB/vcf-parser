@@ -4526,6 +4526,22 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testCrossVersionMismatchMessageIsTruncated() throws Exception {
+    // regression test found by the seventh re-verification round's security-focused pass: this message
+    // embedded both targetFileFormat and metadata.getFileFormat() raw and unbounded -- FILE_FORMAT_PATTERN's
+    // "VCFv4\.\d+" shape check (which both values must already pass to reach this throw) has no length bound.
+    // A prior round wrongly concluded this site was already safe on that basis alone.
+    String hugeFileFormat = "VCFv4." + "9".repeat(200);
+    try (VcfWriter writer = new VcfWriter.Builder().targetFileFormat("VCFv4.2")
+        .toWriter(new PrintWriter(new StringWriter())).build()) {
+      VcfFormatException ex = assertThrows(VcfFormatException.class,
+          () -> writer.writeHeader(metadataDeclaring(hugeFileFormat)));
+      assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+      assertTrue(ex.getMessage().length() < 700, "message was not bounded: " + ex.getMessage().length() + " chars");
+    }
+  }
+
+  @Test
   public void testRetryAfterRejectedHeaderEmitsTheRetriedMetadatasFileFormat() throws Exception {
     // regression test: writeHeader() used to build its VcfContext once and cache it across attempts. A
     // validateBeforeWrite() content rejection does not invalidate the writer (only an IO failure does), so a

@@ -135,8 +135,14 @@ public class VcfWriter implements Closeable {
     String targetFileFormat = m_targetFileFormat;
     if (targetFileFormat != null
         && !VcfVersion.canonicalize(targetFileFormat).equals(VcfVersion.canonicalize(metadata.getFileFormat()))) {
-      throw new VcfFormatException("Writer target " + targetFileFormat + " does not match the metadata's "
-          + metadata.getFileFormat() + "; cross-version conversion is not supported");
+      // truncated and escaped, not embedded verbatim: FILE_FORMAT_PATTERN's "VCFv4\.\d+" shape check (which
+      // both values already passed, at Builder.targetFileFormat/setFileFormat respectively) has no length
+      // bound, so a caller-declared "##fileformat=VCFv4." followed by tens of thousands of digits still
+      // matches and would otherwise reach this message raw and unbounded -- found by the seventh
+      // re-verification round's security-focused pass.
+      throw new VcfFormatException("Writer target " + InternalUtils.truncateAndEscapeForMessage(targetFileFormat) +
+          " does not match the metadata's " + InternalUtils.truncateAndEscapeForMessage(metadata.getFileFormat()) +
+          "; cross-version conversion is not supported");
     }
     // Rebuilt on every writeHeader() attempt, deliberately NOT cached across attempts. A content rejection
     // below (validateMetadata, a line-terminator check) does not invalidate this writer -- only an IO failure

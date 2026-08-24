@@ -214,8 +214,13 @@ public final class VcfMetadata {
    */
   private static void checkAgreesWithContext(String fileFormat, VcfContext context) {
     if (!VcfVersion.canonicalize(fileFormat).equals(VcfVersion.canonicalize(context.getDeclaredFileFormat()))) {
-      throw new VcfFormatException("##fileformat " + fileFormat + " disagrees with this metadata's VcfContext, " +
-          "which declares " + context.getDeclaredFileFormat());
+      // truncated and escaped, not embedded verbatim: both values already passed FILE_FORMAT_PATTERN's shape
+      // check (setFileFormat above, VcfContext.lenient/strict for the other), which has no length bound --
+      // found by the seventh re-verification round's fresh bug hunt, sibling gap to setFileFormat's own
+      // already-fixed malformed-fileformat check a few lines above.
+      throw new VcfFormatException("##fileformat " + InternalUtils.truncateAndEscapeForMessage(fileFormat) +
+          " disagrees with this metadata's VcfContext, which declares " +
+          InternalUtils.truncateAndEscapeForMessage(context.getDeclaredFileFormat()));
     }
   }
 
@@ -541,7 +546,11 @@ public final class VcfMetadata {
       // getPropertyRaw, deliberately: this message's job is to point the reader at a declaration as they wrote
       // it, so it shows the source spelling (quotes included) -- raw-use item 3, "source-form diagnostics", in
       // VALIDATION_PHILOSOPHY.md's value/encoding rule. Every other ID read in this class is unquoted.
-      throw new VcfFormatException("Declaration " + kind + " " + md.getPropertyRaw("ID") + " was built under a " +
+      // truncateAndEscapeForMessage still applies on top of that raw read: the ID's own length is never
+      // bounded by public construction, reachable via addXxx/addPedigree/replaceXxx -- found by the seventh
+      // re-verification round's fresh bug hunt.
+      throw new VcfFormatException("Declaration " + kind + " " +
+          InternalUtils.truncateAndEscapeForMessage(md.getPropertyRaw("ID")) + " was built under a " +
           "different VcfContext; warnings and version semantics would route to the wrong context");
     }
   }
@@ -1313,8 +1322,12 @@ public final class VcfMetadata {
         throw new VcfFormatException(typeName + " metadata declaration has no ID to replace by");
       }
       if (!map.containsKey(id)) {
-        throw new VcfFormatException("No existing " + typeName + " metadata declaration with ID \"" + id +
-            "\" to replace; use addXxx to add a new declaration instead");
+        // truncated and escaped, not embedded verbatim: id comes from the caller-constructed md's own ID
+        // property, unbounded by public construction -- found by the seventh re-verification round's fresh
+        // bug hunt.
+        throw new VcfFormatException("No existing " + typeName + " metadata declaration with ID \"" +
+            InternalUtils.truncateAndEscapeForMessage(id) + "\" to replace; use addXxx to add a new declaration " +
+            "instead");
       }
     }
 
@@ -1421,7 +1434,10 @@ public final class VcfMetadata {
         throw new VcfFormatException("Metadata property name is null");
       }
       if (value == null) {
-        throw new VcfFormatException("Metadata property \"" + name + "\" has a null value");
+        // truncated and escaped, not embedded verbatim: name is a directly public-caller-supplied argument
+        // with no length bound -- found by the seventh re-verification round's fresh bug hunt.
+        throw new VcfFormatException("Metadata property \"" + InternalUtils.truncateAndEscapeForMessage(name) +
+            "\" has a null value");
       }
       // Deliberately narrower than the structured rule, and deliberately unconditional. A generic ##name=value
       // line is re-read by splitting on the FIRST '=' (VcfParser.java:680-689), so an '=' in the name shifts
@@ -1431,8 +1447,10 @@ public final class VcfMetadata {
       // calls name.contains(...), which is what those guards exist to protect. See
       // STRUCTURAL_DELIMITER_HANDLING.md.
       if (name.contains("=")) {
+        // truncated and escaped, not embedded verbatim: name is a directly public-caller-supplied argument
+        // with no length bound -- found by the seventh re-verification round's fresh bug hunt.
         throw new VcfFormatException("Raw metadata property name contains '=', which would shift the "
-            + "re-parse split point: " + name);
+            + "re-parse split point: " + InternalUtils.truncateAndEscapeForMessage(name));
       }
       InternalUtils.checkNoLineTerminator(name, value);
       if (name.isEmpty()) {

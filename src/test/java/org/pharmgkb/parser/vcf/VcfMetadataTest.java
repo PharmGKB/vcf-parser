@@ -143,6 +143,67 @@ public class VcfMetadataTest {
     assertThrows(VcfFormatException.class, () -> builder.addRawProperty("name", null));
   }
 
+  @Test
+  public void testBuilderAddRawPropertyNullValueMessageIsTruncated() {
+    // regression test found by the seventh re-verification round's fresh bug hunt: name is a directly
+    // public-caller-supplied argument with no length bound, but was embedded raw and unbounded
+    String hugeName = "x".repeat(200);
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2");
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> builder.addRawProperty(hugeName, null));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 350, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
+  public void testBuilderAddRawPropertyEqualsInNameMessageIsTruncated() {
+    // same finding, the '=' -in-name branch
+    String hugeName = "x".repeat(200) + "=y";
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2");
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> builder.addRawProperty(hugeName, "value"));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 350, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
+  public void testSetFileFormatMismatchWithContextMessageIsTruncated() {
+    // regression test found by the seventh re-verification round's fresh bug hunt: checkAgreesWithContext
+    // embedded both the caller-supplied fileFormat and the context's own declared fileFormat raw and
+    // unbounded -- FILE_FORMAT_PATTERN's "VCFv4\.\d+" shape check (which both values must already pass to
+    // reach this throw) has no length bound
+    String hugeFileFormat = "VCFv4." + "9".repeat(200);
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(LENIENT_CONTEXT);
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> builder.setFileFormat(hugeFileFormat));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 400, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
+  public void testAddInfoRejectsDeclarationFromDifferentContextMessageIsTruncated() {
+    // regression test found by the seventh re-verification round's fresh bug hunt: checkSameContext embedded
+    // the declaration's raw ID verbatim and unbounded -- reachable via addXxx/addPedigree/replaceXxx with a
+    // caller-constructed declaration whose ID has no length bound
+    VcfContext otherContext = VcfContext.lenient("VCFv4.2", new VcfWarnings(new StringWriter()));
+    String hugeId = "X" + "9".repeat(200);
+    InfoMetadata md = new InfoMetadata(otherContext, hugeId, "d", InfoType.String, "1", null, null);
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2");
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> builder.addInfo(md));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 400, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
+  public void testReplaceInfoNotFoundMessageIsTruncated() {
+    // regression test found by the seventh re-verification round's fresh bug hunt: requirePresentForReplace
+    // embedded the caller-supplied id verbatim and unbounded
+    String hugeId = "X" + "9".repeat(200);
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2");
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> builder.replaceInfo(hugeId, "d", InfoType.String, "1", null, null));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 400, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
   // Every Builder.addXxx method below is typed to take a non-@Nullable metadata object, but nothing enforces
   // that at compile time; each must reject a null with VcfFormatException via the shared requireNonNull() guard,
   // not let it reach a raw NullPointerException at value.getId()/value.getPropertiesRaw().
