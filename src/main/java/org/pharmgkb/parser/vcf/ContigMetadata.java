@@ -160,7 +160,8 @@ public final class ContigMetadata extends IdMetadata {
     try {
       parsedLength = Long.parseLong(length);
     } catch (NumberFormatException e) {
-      throw new VcfFormatException("Contig " + getId() + " length '" + length + "' is not a number", e);
+      throw new VcfFormatException("Contig " + InternalUtils.truncateAndEscapeForMessage(getId()) + " length '" +
+          InternalUtils.truncateAndEscapeForMessage(length) + "' is not a number", e);
     }
     // matches init()'s own negative-length check (see its comment): a negative sequence length is just as
     // unusable to a caller asking for a real long value as a non-numeric one is, so this typed getter throws
@@ -168,7 +169,8 @@ public final class ContigMetadata extends IdMetadata {
     // new leniency policy choice. init() itself only warns under a lenient context and still stores the
     // value, so a caller reading it back here still needs its own floor.
     if (parsedLength < 0) {
-      throw new VcfFormatException("Contig " + getId() + " length '" + length + "' is negative");
+      throw new VcfFormatException("Contig " + InternalUtils.truncateAndEscapeForMessage(getId()) + " length '" +
+          InternalUtils.truncateAndEscapeForMessage(length) + "' is negative");
     }
     return parsedLength;
   }

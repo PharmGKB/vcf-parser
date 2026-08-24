@@ -53,8 +53,8 @@ public class AltStructuralVariant {
       // own test/vcf/4.2/failed/failed_meta_alt_007.vcf (and an identical test/vcf/4.3 counterpart) declares
       // ID=DEL:A,B with ##CauseOfFailure=The ALT ID contains a comma, confirming this is rejected under the
       // VCFv4.2 spec too, not just a 4.3+-only rule.
-      throw new VcfFormatException("Structural variant code \"" + string + "\" must not contain whitespace, " +
-          "commas, or angle brackets");
+      throw new VcfFormatException("Structural variant code \"" + InternalUtils.truncateAndEscapeForMessage(string) +
+          "\" must not contain whitespace, commas, or angle brackets");
     }
 
     // limit -1 preserves trailing empty components (e.g. a trailing colon), which are rejected below rather than
@@ -68,8 +68,8 @@ public class AltStructuralVariant {
         // must be used instead" -- the general rule this component-level check applies. VCFv4.2.tex does not
         // table this rule at all, predating it rather than conflicting with it -- consistent with
         // EMPTY_FIELD_HANDLING.md's citation of the identical rule for generic metadata properties.
-        throw new VcfFormatException("Structural variant code \"" + string + "\" has an empty component at level " +
-            level);
+        throw new VcfFormatException("Structural variant code \"" + InternalUtils.truncateAndEscapeForMessage(string) +
+            "\" has an empty component at level " + level);
       }
       ReservedStructuralVariantCode type = ReservedStructuralVariantCode.fromId(components[level]);
 
@@ -79,7 +79,8 @@ public class AltStructuralVariant {
           // itemized list at lines 107-111 (DEL/INS/DUP/INV/CNV); ReservedStructuralVariantCode's own comment
           // adds BND (VCFv4.3.tex:208) as a sixth accepted level-0 code -- an unrecognized level-0 code matches
           // none of these six and has no reserved meaning to fall back on.
-          throw new VcfFormatException("Top-level structural variant code was " + components[level] +
+          throw new VcfFormatException("Top-level structural variant code was " +
+              InternalUtils.truncateAndEscapeForMessage(components[level]) +
               " but must be a top-level reserved code (e.g. DEL or CNV)");
       }
 
@@ -95,8 +96,9 @@ public class AltStructuralVariant {
         // reserve the space of valid subtypes at all. Rejecting that direction is this library's own stricter
         // reading, not a spec rule -- see VCF_SPEC_AMBIGUITIES.md's "Reserved structural variant code re-used
         // as a subtype" entry if this needs revisiting against bcftools.
-        throw new VcfFormatException("Structural variant code " + components[level] +
-            " is a reserved code of level " + type.getLevelInSpecification() + ", not " + level);
+        throw new VcfFormatException("Structural variant code " +
+            InternalUtils.truncateAndEscapeForMessage(components[level]) + " is a reserved code of level " +
+            type.getLevelInSpecification() + ", not " + level);
       }
 
       // If this is a reserved code, make sure its parent is correct
@@ -114,8 +116,9 @@ public class AltStructuralVariant {
             // VCFv4.2.tex lines 114-118's three worked examples (DUP:TANDEM, DEL:ME, INS:ME) each pair a
             // level-1 reserved subtype with exactly one level-0 parent -- e.g. TANDEM is a reserved subtype
             // only under DUP, never under DEL or INS.
-            throw new VcfFormatException("Structural variant code " + components[level] +
-                " was not a child of reserved code " + realParent.getId());
+            throw new VcfFormatException("Structural variant code " +
+                InternalUtils.truncateAndEscapeForMessage(components[level]) + " was not a child of reserved code " +
+                realParent.getId());
           }
         }
       }

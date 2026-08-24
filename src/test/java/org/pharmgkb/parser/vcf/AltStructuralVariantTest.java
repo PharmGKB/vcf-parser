@@ -63,6 +63,37 @@ public class AltStructuralVariantTest {
   }
 
   @Test
+  public void testWhitespaceOrCommaRejectionMessageIsTruncated() {
+    // regression test found by a full-tree sweep beyond the fifth re-verification round's own named scope:
+    // this unconditional throw embedded the raw code string verbatim and unbounded. The other two
+    // reserved-code-mismatch throws in this class (testReservedCodeAtWrongLevelRejected's shape and the
+    // parent-mismatch shape) were fixed the same way but aren't independently testable with a huge value:
+    // both only fire once a component has already resolved to a real (always short) reserved code.
+    String hugeCode = "x".repeat(150) + ",y";
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new AltStructuralVariant(hugeCode));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
+  public void testEmptyComponentRejectionMessageIsTruncated() {
+    // same finding, the empty-component-at-level throw
+    String hugeCode = "x".repeat(150) + "::";
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new AltStructuralVariant(hugeCode));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
+  public void testInvalidTopLevelCodeRejectionMessageIsTruncated() {
+    // same finding, the unrecognized-top-level-code throw
+    String hugeCode = "x".repeat(150);
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new AltStructuralVariant(hugeCode));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
   public void testTrailingEmptyComponentRejected() {
     // a trailing colon must not be silently dropped (Pattern.split's default limit drops trailing empty strings)
     assertThrows(VcfFormatException.class, () -> new AltStructuralVariant("INS:ME:"));

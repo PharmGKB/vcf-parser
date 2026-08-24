@@ -448,6 +448,24 @@ public class ContigMetadataTest {
   }
 
   @Test
+  public void testGetLengthNonNumericMessageIsTruncated() {
+    // regression test found by a full-tree sweep beyond the fifth re-verification round's own named scope:
+    // getLength()'s own unconditional "is not a number" throw embedded both the raw contig ID and the raw
+    // length value verbatim and unbounded -- init() (this constructor) only warns for a non-numeric length
+    // under a lenient context and still stores it, so this typed getter's own throw is a separate, later
+    // floor a caller can still reach with arbitrarily long content.
+    Map<String, String> map = new HashMap<>();
+    String hugeId = "x".repeat(150);
+    String hugeLength = "y".repeat(150);
+    map.put(ContigMetadata.ID, hugeId);
+    map.put(ContigMetadata.LENGTH, hugeLength);
+    ContigMetadata contig = new ContigMetadata(LENIENT_CONTEXT, map);
+    VcfFormatException ex = assertThrows(VcfFormatException.class, contig::getLength);
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 350, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
   public void testGetLength() {
     Map<String, String> map = new HashMap<>();
     map.put(ContigMetadata.ID, "id");

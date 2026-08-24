@@ -588,6 +588,22 @@ public class MemoryMappedVcfDataStoreParserTest {
   }
 
   @Test
+  public void testDuplicateIdRejectionMessageIsTruncated() {
+    // regression test found by a full-tree sweep beyond the fifth re-verification round's own named scope:
+    // this rejection embedded the raw, duplicated ID verbatim and unbounded
+    MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build(); // FAIL is the default
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2").build();
+    lineParser.parseMetadata(metadata);
+    String hugeId = "x".repeat(200);
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, List.of(hugeId, hugeId), "A", null,
+        VcfFloat.of(new BigDecimal("0")), null, null, null, -1);
+    VcfRecord record = LENIENT_CONTEXT.newRecord(position, Collections.emptyList());
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> lineParser.parseLine(metadata, record));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 200, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
   public void testAtLocusAndIndexOverloadsReturnNullForOutOfRangeIndicesInsteadOfThrowing() throws IOException {
     // the String-id overloads already return null for an unresolved sample name; the int overloads previously let
     // List.get throw IndexOutOfBoundsException for an out-of-range index instead -- this brings them in line

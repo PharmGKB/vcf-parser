@@ -83,7 +83,7 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
       Set<String> idsSeenInThisRecord = new HashSet<>();
       for (String id : position.getIds()) {
         if (m_dataStore.getIdToPosition().containsKey(id) || !idsSeenInThisRecord.add(id)) {
-          throw new VcfFormatException("Duplicate VCF record for ID " + id);
+          throw new VcfFormatException("Duplicate VCF record for ID " + InternalUtils.truncateAndEscapeForMessage(id));
         }
       }
     }
