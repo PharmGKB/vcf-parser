@@ -593,21 +593,35 @@ class VcfSampleTest {
   }
 
   @Test
-  void testPropertiesMaterializationKeepsFirstOccurrenceOnDuplicateKey() {
+  void testNewSampleThrowsForDuplicateKeyInsteadOfSilentlyDroppingAValue() {
+    // regression test, updated by the Phase 3 writer-compliance review's Task 5 first re-verification round
+    // (finding A, user-approved 2026-08-25): the list-based constructor used to not check for duplicate keys
+    // at all, so VcfContext.newSample(List, List)/Builder.build() could construct a VcfSample with a
+    // duplicate key that silently lost its second value on read (properties()'s lazy materialization) and on
+    // write, with no diagnostic naming the loss beyond a lazily-triggered warning. VcfPosition.checkFormat
+    // already rejects a duplicate FORMAT key at the position level (any duplicate, since Task 4/Task 5's own
+    // fixes), so a real parsed file can never produce this shape -- this closes the identical gap for a
+    // VcfSample built directly, independent of any VcfPosition/FORMAT list at all, which checkFormat's own
+    // protection never covered. Unconditional, matching checkFormat's own duplicate-key floor: fires under a
+    // STRICT context too, not just lenient.
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newSample(Arrays.asList("GT", "GT"), Arrays.asList("0/1", "1/1")));
+    assertTrue(ex.getMessage().contains("Duplicate FORMAT key \"GT\""), ex.getMessage());
+  }
+
+  @Test
+  void testPropertiesMaterializationKeepsFirstOccurrenceOnDuplicateKeyViaTrustedBypass() {
     // properties() (the materialization path triggered by getPropertyKeys()/propertyEntrySet()/validate())
     // previously let the LAST occurrence of a duplicate key silently overwrite the first, while getProperty()
     // (the un-materialized linear-scan path) already returned the FIRST occurrence -- the same VcfSample answered
-    // a lookup differently depending purely on which path ran first. This constructs a VcfSample directly (the
-    // list-based constructor never checks for duplicate keys itself). For a normal, non-empty duplicate FORMAT key
-    // (e.g. GT:DP:DP), VcfPosition.checkFormat does reject it during parsing, before a VcfSample would ever be
-    // built from that data line -- but a duplicate of the EMPTY key specifically is excluded from that check (see
-    // EMPTY_FIELD_HANDLING.md's "duplicate FORMAT keys" section: the exclusion is there because two empty keys
-    // aren't "duplicates" in the spec's malformed-declaration sense, not because empty-key collisions in
-    // VcfSample's own property map are safe), so FORMAT=GT:: with two "" keys IS parser-reachable -- see
-    // WriterRoundTripTest.testDuplicateEmptyFormatKeyRoundTripsWithoutColumnCorruption for that end-to-end case.
+    // a lookup differently depending purely on which path ran first. Since finding A above, a duplicate key
+    // is no longer reachable through the public API (VcfContext.newSample now rejects it outright) --
+    // newDoublyUncheckedForTest is the one remaining way to synthesize this state, to keep properties()'s own
+    // defense-in-depth handling under test (see that method's own comment for why the check stays even
+    // though it's provably unreachable via the public API now).
     List<String> keys = Arrays.asList("GT", "GT");
     List<String> values = Arrays.asList("0/1", "1/1");
-    VcfSample sample = STRICT_CONTEXT.newSample(keys, values);
+    VcfSample sample = VcfSample.newDoublyUncheckedForTest(STRICT_CONTEXT, keys, values);
 
     Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
@@ -627,12 +641,13 @@ class VcfSampleTest {
   }
 
   @Test
-  void testGetPropertyReturnsFirstOccurrenceBeforeMaterialization() {
+  void testGetPropertyReturnsFirstOccurrenceBeforeMaterializationViaTrustedBypass() {
     // regression guard: getProperty() called BEFORE any materialization-triggering call must already return the
-    // first occurrence -- this existing correct behavior must not change
+    // first occurrence -- this existing correct behavior must not change. Uses newDoublyUncheckedForTest for
+    // the same reason as testPropertiesMaterializationKeepsFirstOccurrenceOnDuplicateKeyViaTrustedBypass above.
     List<String> keys = Arrays.asList("GT", "GT");
     List<String> values = Arrays.asList("0/1", "1/1");
-    VcfSample sample = STRICT_CONTEXT.newSample(keys, values);
+    VcfSample sample = VcfSample.newDoublyUncheckedForTest(STRICT_CONTEXT, keys, values);
     assertEquals("0/1", sample.getProperty("GT"));
   }
 
@@ -692,11 +707,15 @@ class VcfSampleTest {
   }
 
   @Test
-  void testDuplicateFormatKeyWarnsToConfiguredSinkOnLazyMaterialization() {
+  void testDuplicateFormatKeyWarnsToConfiguredSinkOnLazyMaterializationViaTrustedBypass() {
     // Task 7: setWarningsSink was removed -- the sink is now fixed at construction via the sample's own context.
+    // Uses newDoublyUncheckedForTest, not the public VcfContext.newSample: since finding A (Task 5's first
+    // re-verification round), a duplicate key is rejected outright at construction, so this warning path is
+    // defense-in-depth only now -- see testNewSampleThrowsForDuplicateKeyInsteadOfSilentlyDroppingAValue for
+    // the public-API-reachable throw this test used to (incorrectly) exercise instead.
     java.io.StringWriter sink = new java.io.StringWriter();
-    VcfSample sample = lenientContext(new org.pharmgkb.parser.vcf.VcfWarnings(sink))
-        .newSample(List.of("DP", "DP"), List.of("1", "2"));
+    VcfContext context = lenientContext(new org.pharmgkb.parser.vcf.VcfWarnings(sink));
+    VcfSample sample = VcfSample.newDoublyUncheckedForTest(context, List.of("DP", "DP"), List.of("1", "2"));
     assertEquals("1", sample.getPropertyKeys().contains("DP") ? sample.getProperty("DP") : null);
     assertTrue(sink.toString().contains("duplicate FORMAT key"));
   }
@@ -1694,13 +1713,20 @@ class VcfSampleTest {
   @Test
   void testToBuilderDoesNotMaterializeOrWarnOnDuplicateKeyUntilRead() {
     // materializing the parallel-list representation via properties() warns about a duplicate FORMAT key --
-    // toBuilder() must not force that; see VcfSample.toBuilder()'s own Javadoc
+    // toBuilder() must not force that; see VcfSample.toBuilder()'s own Javadoc. Since finding A (Task 5's
+    // first re-verification round), a duplicate key can no longer round-trip through toBuilder().build():
+    // build() re-validates via VcfContext.newSample, which now rejects the duplicate outright, so this uses
+    // newDoublyUncheckedForTest to construct the ORIGINAL sample and stops at toBuilder() itself (never
+    // calling build() on the result) -- toBuilder() reads m_keys/m_values directly, never through
+    // properties(), so it must still not materialize or warn even though the sample it copies from can no
+    // longer be reconstructed through the public Builder afterward.
     java.io.StringWriter sink = new java.io.StringWriter();
-    VcfSample sample = lenientContext(new VcfWarnings(sink)).newSample(new ArrayList<>(List.of("DP", "DP")),
+    VcfContext context = lenientContext(new VcfWarnings(sink));
+    VcfSample sample = VcfSample.newDoublyUncheckedForTest(context, new ArrayList<>(List.of("DP", "DP")),
         new ArrayList<>(List.of("1", "2")));
-    VcfSample copy = sample.toBuilder().build();
+    sample.toBuilder();
     assertEquals("", sink.toString(), "copying alone must not materialize or warn");
-    assertEquals("1", copy.getProperty("DP"));
+    assertEquals("1", sample.getProperty("DP"));
   }
 
   @Test

@@ -2,6 +2,7 @@ package org.pharmgkb.parser.vcf;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -114,8 +115,26 @@ public final class VcfSample {
     }
     if (!trusted) {
       VcfVersion version = context.getVersion();
+      // Unconditional, matching VcfPosition.checkFormat's identical floor for a duplicate FORMAT key
+      // (VCFv4.3.tex:429, "duplicate keys are not allowed") -- getProperty(key) is structurally
+      // first-occurrence-only in every internal representation (see this class's own Javadoc), so a
+      // duplicated key here would resolve to the same first value on every read and on write, silently
+      // dropping the rest with no diagnostic ever naming the loss. checkFormat already closes this for
+      // every FORMAT key list VcfParser itself ever produces (any duplicate, including a grammar-invalid or
+      // empty one, is now rejected at construction there too), so a real parsed file can never reach this
+      // constructor with a duplicate key -- this closes the identical gap for a VcfSample built directly,
+      // independent of any VcfPosition/FORMAT list at all (VcfContext.newSample(List, List),
+      // Builder.keys(...).values(...).build()), which checkFormat's own protection never covered. Found by
+      // the Phase 3 writer-compliance review's Path A kickoff (finding A of Task 5's first re-verification
+      // round), user-approved fix (2026-08-25).
+      Set<String> seenKeys = new HashSet<>();
       for (int x = 0; x < keys.size(); x++) {
-        checkNoStructuralDelimiter(keys.get(x), values.get(x), version);
+        String key = keys.get(x);
+        checkNoStructuralDelimiter(key, values.get(x), version);
+        if (!seenKeys.add(key)) {
+          throw new VcfFormatException("Duplicate FORMAT key \"" + InternalUtils.truncateAndEscapeForMessage(key) +
+              "\"");
+        }
       }
       checkReservedFormatTypes(keys, values, context);
     } else {
@@ -163,6 +182,15 @@ public final class VcfSample {
    * line-terminator one, and there is no reason for this bypass to be any more permissive than the
    * production trusted path it stands in for. Not for production code -- nothing in {@code src/main} calls
    * this; {@code VcfContext.newTrustedSample} (which DOES self-verify) is the real production fast path.
+   * <p>
+   * Since the Phase 3 writer-compliance review's Task 5 first re-verification round (finding A), this is
+   * ALSO the only way this package's tests can construct a {@code VcfSample} carrying a duplicate key: the
+   * {@code !trusted} branch this bypass skips is where that check now lives too (added alongside
+   * {@code checkNoStructuralDelimiter} in the same loop, for the identical reason -- see that check's own
+   * comment), so a duplicate key is now exactly as unreachable through the public API as a tab/colon
+   * violation is. {@code properties()}'s own duplicate-key handling (still present, as defense-in-depth --
+   * see its own comment) can therefore only be exercised through this bypass now, not through
+   * {@code VcfContext.newSample}/{@code Builder.build()} directly.
    * <p>
    * Exists because {@code VcfSample} has no other post-construction mutation route (Task 9 froze it -- no
    * setters, no live-mutable views), so once the {@code trusted} constructor started self-verifying its own
@@ -347,7 +375,13 @@ public final class VcfSample {
         if (map.containsKey(key)) {
           // matches getProperty()'s already-correct first-wins behavior, and this project's established
           // "warn and keep first" convention for every other recoverable duplicate-key case (see
-          // DUPLICATE_METADATA_ID_HANDLING.md and VcfPosition's duplicate top-level INFO key)
+          // DUPLICATE_METADATA_ID_HANDLING.md and VcfPosition's duplicate top-level INFO key). Since the
+          // Phase 3 writer-compliance review's Task 5 first re-verification round (finding A), the
+          // constructor's own !trusted branch now rejects a duplicate key outright, so this branch is no
+          // longer reachable through the public API at all -- kept as defense-in-depth (matching this
+          // project's established preference for keeping a check even once a caller-side guarantee makes it
+          // provably unreachable, e.g. VcfWriter.printLine's own tab/CR/LF checks) rather than removed.
+          // newDoublyUncheckedForTest is now the only way this package's own tests can still reach it.
           m_warnings.warn("Sample contains duplicate FORMAT key \"{}\"; keeping only the first occurrence", key);
           continue;
         }

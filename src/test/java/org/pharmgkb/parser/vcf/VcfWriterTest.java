@@ -4309,13 +4309,17 @@ public class VcfWriterTest {
       @org.junit.jupiter.api.io.TempDir Path tempDir) throws IOException {
     // Task 7: same attribution rule as the QUAL case above, for a sample's own lazy duplicate-FORMAT-key
     // warning. `sample` is built under LENIENT_CONTEXT (VcfWarnings.DEFAULT), so this warning also goes to the
-    // shared SLF4J logger, not this writer's own warningsToFile() destination.
+    // shared SLF4J logger, not this writer's own warningsToFile() destination. Uses
+    // VcfSample.newDoublyUncheckedForTest, not the public VcfContext.newSample: since the Phase 3
+    // writer-compliance review's Task 5 first re-verification round (finding A), a duplicate key is rejected
+    // outright at construction, so this lazy-warning path is defense-in-depth only now, reachable only
+    // through this package-private test bypass.
     VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
         .addFormat(new FormatMetadata(LENIENT_CONTEXT, "DP", "depth", "1", FormatType.Integer))
         .setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
         .build();
     VcfPosition position = LENIENT_CONTEXT.newPosition("1", 100, null, "A", null, null, null, null, List.of("DP"), -1);
-    VcfSample sample = LENIENT_CONTEXT.newSample(List.of("DP", "DP"),
+    VcfSample sample = VcfSample.newDoublyUncheckedForTest(LENIENT_CONTEXT, List.of("DP", "DP"),
         List.of("1", "2")); // duplicate key, never accessed yet
     Path outFile = tempDir.resolve("out.vcf");
     Path warningsFile = tempDir.resolve("warnings.log");
