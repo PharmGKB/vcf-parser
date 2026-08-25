@@ -125,8 +125,8 @@ public final class VcfSample {
       // constructor with a duplicate key -- this closes the identical gap for a VcfSample built directly,
       // independent of any VcfPosition/FORMAT list at all (VcfContext.newSample(List, List),
       // Builder.keys(...).values(...).build()), which checkFormat's own protection never covered. Found by
-      // the Phase 3 writer-compliance review's Path A kickoff (finding A of Task 5's first re-verification
-      // round), user-approved fix (2026-08-25).
+      // the Phase 3 writer-compliance review's Task 5 first re-verification round (finding A), user-approved
+      // fix (2026-08-25).
       Set<String> seenKeys = new HashSet<>();
       for (int x = 0; x < keys.size(); x++) {
         String key = keys.get(x);
