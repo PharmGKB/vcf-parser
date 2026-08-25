@@ -988,6 +988,18 @@ public final class VcfSample {
         List<String> keys = m_keys;
         List<String> values = m_values;
         if (keys != null && values != null) {
+          // Matches the constructor's own identical check (see its "Number of FORMAT entries..." throw) --
+          // this materialization loop indexes values.get(i) up to keys.size(), so a caller who set keys()
+          // and values() to different lengths (a mistake build() would otherwise catch cleanly) instead hit
+          // this method first: keys.size() > values.size() leaked a raw IndexOutOfBoundsException (a public
+          // constructing method must fail with VcfFormatException, never an unrelated runtime exception --
+          // AGENTS.md's Public API Null-Safety Policy), and keys.size() < values.size() silently dropped
+          // every trailing value past keys.size() with no exception and no warning at all -- worse than the
+          // duplicate-key bug fixed just below, since that one at least threw once discovered. Found by the
+          // Phase 3 writer-compliance review's Task 5 third re-verification round.
+          if (keys.size() != values.size()) {
+            throw new VcfFormatException("Number of FORMAT entries does not match number of sample entries");
+          }
           for (int i = 0; i < keys.size(); i++) {
             String k = keys.get(i);
             // Unconditional, matching the constructor's own duplicate-key floor (see its own comment) --
@@ -998,7 +1010,7 @@ public final class VcfSample {
             // constructor's new unconditional throw -- worse than before the throw existed, since it now
             // silently succeeds even under a strict context where the constructor guarantees a hard failure.
             // Found by the Phase 3 writer-compliance review's Task 5 second re-verification round
-            // (corroborated by two independent agents), user-approved fix (2026-08-25): throw here too,
+            // (corroborated by four independent agents), user-approved fix (2026-08-25): throw here too,
             // rather than materializing past it.
             if (materialized.containsKey(k)) {
               throw new VcfFormatException("Duplicate FORMAT key \"" + InternalUtils.truncateAndEscapeForMessage(k) +

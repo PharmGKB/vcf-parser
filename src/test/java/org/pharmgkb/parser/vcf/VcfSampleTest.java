@@ -612,7 +612,7 @@ class VcfSampleTest {
   @Test
   void testBuilderPropertyMaterializationThrowsForDuplicateKeyInsteadOfSilentlyDroppingAValue() {
     // regression test for the Phase 3 writer-compliance review's Task 5 second re-verification round
-    // (corroborated by two independent agents), user-approved fix (2026-08-25): Builder.property()'s
+    // (corroborated by four independent agents), user-approved fix (2026-08-25): Builder.property()'s
     // first-call materialization of a pending keys()/values() list used to keep the first value for a
     // duplicate key via putIfAbsent, with NO warning at all (this builder has no warnings sink to emit one
     // through) and no way for build()'s later validation to ever notice, since a Map cannot itself hold a
@@ -625,6 +625,35 @@ class VcfSampleTest {
         .values(Arrays.asList("0/1", "1/1"));
     VcfFormatException ex = assertThrows(VcfFormatException.class, () -> builder.property("XX", "yy"));
     assertTrue(ex.getMessage().contains("Duplicate FORMAT key \"GT\""), ex.getMessage());
+  }
+
+  @Test
+  void testBuilderPropertyMaterializationThrowsCleanlyForKeysLongerThanValues() {
+    // regression test for the Phase 3 writer-compliance review's Task 5 third re-verification round
+    // (corroborated by four independent agents): the materialization loop above indexes values.get(i) up
+    // to keys.size(), so a caller who set keys()/values() to different lengths (a mistake build() would
+    // otherwise catch cleanly via the constructor's own "Number of FORMAT entries..." check) instead hit
+    // this method first when keys.size() > values.size() -- java.lang.IndexOutOfBoundsException leaked
+    // straight out, not the clean VcfFormatException a public constructing method must produce.
+    VcfSample.Builder builder = new VcfSample.Builder(STRICT_CONTEXT)
+        .keys(Arrays.asList("GT", "DP"))
+        .values(List.of("0/1"));
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> builder.property("XX", "yy"));
+    assertTrue(ex.getMessage().contains("Number of FORMAT entries does not match number of sample entries"),
+        ex.getMessage());
+  }
+
+  @Test
+  void testBuilderPropertyMaterializationThrowsInsteadOfSilentlyDroppingExtraValues() {
+    // sibling of the above for the other length-mismatch direction: keys.size() < values.size() used to
+    // silently drop every trailing value past keys.size(), with no exception and no warning at all --
+    // worse than the duplicate-key bug fixed above, since that one at least threw once discovered.
+    VcfSample.Builder builder = new VcfSample.Builder(STRICT_CONTEXT)
+        .keys(List.of("GT"))
+        .values(Arrays.asList("0/1", "1/1"));
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> builder.property("XX", "yy"));
+    assertTrue(ex.getMessage().contains("Number of FORMAT entries does not match number of sample entries"),
+        ex.getMessage());
   }
 
   @Test
