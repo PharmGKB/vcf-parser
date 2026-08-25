@@ -137,12 +137,16 @@ public class VcfWriter implements Closeable {
         && !VcfVersion.canonicalize(targetFileFormat).equals(VcfVersion.canonicalize(metadata.getFileFormat()))) {
       // truncated and escaped, not embedded verbatim: FILE_FORMAT_PATTERN's "VCFv4\.\d+" shape check (which
       // both values already passed -- targetFileFormat via VcfVersion.canonicalize's own call in the
-      // condition above, metadata.getFileFormat() via Builder.setFileFormat -- has no length bound, so a
-      // caller-declared "##fileformat=VCFv4." followed by tens of thousands of digits still matches and would
-      // otherwise reach this message raw and unbounded -- found by the seventh re-verification round's
-      // security-focused pass. Corrected by the eighth round: an earlier version of this comment wrongly
-      // attributed targetFileFormat's own check to Builder.targetFileFormat(), which does not validate it --
-      // that method's own comment says so explicitly.
+      // condition above, metadata.getFileFormat() via VcfContext.lenient/strict -> VcfVersion.resolve for the
+      // common context-derived path, or via Builder.setFileFormat if a caller explicitly overrode it
+      // afterward -- has no length bound, so a caller-declared "##fileformat=VCFv4." followed by tens of
+      // thousands of digits still matches and would otherwise reach this message raw and unbounded -- found
+      // by the seventh re-verification round's security-focused pass. Corrected by the eighth round (which
+      // fixed a different misattribution, for targetFileFormat) and again by the ninth round, which found the
+      // eighth round's own fix had, in turn, misattributed metadata.getFileFormat()'s check to
+      // Builder.setFileFormat alone, omitting the primary route every metadata built without an explicit
+      // setFileFormat call actually takes -- see checkAgreesWithContext's sibling comment in VcfMetadata.java,
+      // which has always named both routes correctly.
       throw new VcfFormatException("Writer target " + InternalUtils.truncateAndEscapeForMessage(targetFileFormat) +
           " does not match the metadata's " + InternalUtils.truncateAndEscapeForMessage(metadata.getFileFormat()) +
           "; cross-version conversion is not supported");
