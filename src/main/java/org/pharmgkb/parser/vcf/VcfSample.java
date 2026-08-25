@@ -919,6 +919,13 @@ public final class VcfSample {
     private @Nullable List<String> m_keys;
     private @Nullable List<String> m_values;
     private @Nullable LinkedHashMap<String, String> m_properties;
+    // True once property() has added an entry incrementally, whether to a freshly-materialized map or one
+    // already seeded via properties(). Distinguishes "m_properties holds data property() added, which keys()/
+    // values() would silently discard" from "m_properties was set wholesale via properties()/toBuilder(), which
+    // keys()/values() are documented to freely replace" -- see keys()'s own comment for why the distinction
+    // matters. Reset by properties() itself: an explicit full-map replace is always an intentional operation,
+    // never a silent one, regardless of what property() had already added.
+    private boolean m_propertySet;
     private final VcfContext m_context;
 
     Builder(VcfContext context) {
@@ -929,8 +936,23 @@ public final class VcfSample {
      * Defensively copies {@code keys}; see this class's own Javadoc for why. Clears any property map set via
      * {@link #properties}: the parallel-list and property-map representations are mutually exclusive, matching
      * {@link VcfSample}'s own internal invariant.
+     *
+     * @throws VcfFormatException if {@link #property} added one or more entries incrementally since the last
+     * {@link #properties} call -- switching to the parallel-list representation now would silently discard them.
+     * A property map set wholesale via {@link #properties} (including via {@link #toBuilder()}), with no
+     * {@link #property} call since, remains freely switchable -- that replacement is already an explicit,
+     * intentional operation, unlike an untracked incremental loss would be.
      */
     public Builder keys(@Nullable List<String> keys) {
+      // Matches values()'s identical check -- without this, calling keys() after property() had incrementally
+      // added an entry would silently discard it via the unconditional "m_properties = null" below, with no
+      // exception or warning at all. Found by the Phase 3 writer-compliance review's Task 5 fourth
+      // re-verification round.
+      if (m_propertySet) {
+        throw new VcfFormatException("Builder.keys() would silently discard one or more properties added via " +
+            "Builder.property() -- use a separate Builder instance instead of switching representations away " +
+            "from incrementally-added data on this one");
+      }
       m_keys = keys == null ? null : new ArrayList<>(keys);
       m_properties = null;
       return this;
@@ -939,8 +961,18 @@ public final class VcfSample {
     /**
      * Defensively copies {@code values}; see this class's own Javadoc for why. Clears any property map set via
      * {@link #properties}, for the same reason as {@link #keys}.
+     *
+     * @throws VcfFormatException if {@link #property} added one or more entries incrementally since the last
+     * {@link #properties} call -- switching to the parallel-list representation now would silently discard them.
+     * See {@link #keys}'s own Javadoc for the full reasoning.
      */
     public Builder values(@Nullable List<String> values) {
+      // Matches keys()'s identical check -- see its own comment for why.
+      if (m_propertySet) {
+        throw new VcfFormatException("Builder.values() would silently discard one or more properties added via " +
+            "Builder.property() -- use a separate Builder instance instead of switching representations away " +
+            "from incrementally-added data on this one");
+      }
       m_values = values == null ? null : new ArrayList<>(values);
       m_properties = null;
       return this;
@@ -948,7 +980,10 @@ public final class VcfSample {
 
     /**
      * Defensively copies {@code properties}; see this class's own Javadoc for why. Clears any keys/values set
-     * via {@link #keys}/{@link #values}, for the same reason as {@link #keys}.
+     * via {@link #keys}/{@link #values}, for the same reason as {@link #keys}. Always an explicit, intentional
+     * full replace -- unlike {@link #keys}/{@link #values}, this never rejects discarding data {@link #property}
+     * added incrementally, and resets that tracking, since replacing the whole map wholesale is exactly what this
+     * method is for.
      *
      * @throws VcfFormatException if {@code properties} is null
      */
@@ -961,6 +996,7 @@ public final class VcfSample {
       m_properties = new LinkedHashMap<>(properties);
       m_keys = null;
       m_values = null;
+      m_propertySet = false;
       return this;
     }
 
@@ -974,8 +1010,9 @@ public final class VcfSample {
      * {@link #build()} always re-validates the whole property map anyway (see its own Javadoc), so validating here
      * too would be redundant.
      *
-     * @throws VcfFormatException if {@code key} is null, or if the {@link #keys}/{@link #values} lists being
-     * materialized contain a duplicate key
+     * @throws VcfFormatException if {@code key} is null; if exactly one of {@link #keys}/{@link #values} was set
+     * with no matching call to the other; or if the {@link #keys}/{@link #values} lists being materialized
+     * differ in length or contain a duplicate key
      */
     public Builder property(String key, @Nullable String value) {
       // key is typed non-@Nullable, but nothing enforces that at runtime; reject immediately per AGENTS.md's
@@ -987,6 +1024,21 @@ public final class VcfSample {
         LinkedHashMap<String, String> materialized = new LinkedHashMap<>();
         List<String> keys = m_keys;
         List<String> values = m_values;
+        // Matches build()'s own identical checks -- without these, a keys()-alone or values()-alone setup (the
+        // other of the pair never called) silently fell through this method's "keys != null && values != null"
+        // materialization gate below, then had m_keys/m_values unconditionally nulled out a few lines down,
+        // erasing the very state build()'s own checks exist to catch. That made this the one remaining public-API
+        // route around build()'s "must be set together" floor -- a caller who set keys() alone, then called
+        // property() before build(), lost the entire pending keys list with no exception and no warning at all.
+        // Found by the Phase 3 writer-compliance review's Task 5 fourth re-verification round.
+        if (keys != null && values == null) {
+          throw new VcfFormatException("Builder.keys() was called without a matching Builder.values() call (and " +
+              "no Builder.properties() to switch representation back) -- both must be set together");
+        }
+        if (values != null && keys == null) {
+          throw new VcfFormatException("Builder.values() was called without a matching Builder.keys() call (and " +
+              "no Builder.properties() to switch representation back) -- both must be set together");
+        }
         if (keys != null && values != null) {
           // Matches the constructor's own identical check (see its "Number of FORMAT entries..." throw) --
           // this materialization loop indexes values.get(i) up to keys.size(), so a caller who set keys()
@@ -1024,6 +1076,11 @@ public final class VcfSample {
         m_values = null;
       }
       m_properties.put(key, value);
+      // Marks this map as holding property()-added data, so keys()/values() know discarding it now would be
+      // silent -- see keys()'s own comment for why. Set regardless of whether this call materialized a pending
+      // parallel-list setup or added to an already-populated map: either way, m_properties now holds data this
+      // call is responsible for, that a subsequent keys()/values() call would otherwise lose without a trace.
+      m_propertySet = true;
       return this;
     }
 

@@ -657,6 +657,64 @@ class VcfSampleTest {
   }
 
   @Test
+  void testBuilderPropertyMaterializationThrowsForKeysAloneInsteadOfSilentlyDroppingThem() {
+    // regression test for the Phase 3 writer-compliance review's Task 5 fourth re-verification round: keys()
+    // set alone (no matching values() call) used to silently fall through property()'s "keys != null &&
+    // values != null" materialization gate, then have m_keys nulled out a few lines later -- erasing the very
+    // state build()'s own "keys() was called without a matching values() call" check exists to catch, so that
+    // check never fired. The entire pending keys list vanished with no exception and no warning at all.
+    VcfSample.Builder builder = new VcfSample.Builder(STRICT_CONTEXT).keys(List.of("GT", "DP"));
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> builder.property("XX", "yy"));
+    assertTrue(ex.getMessage().contains("values()"), ex.getMessage());
+  }
+
+  @Test
+  void testBuilderPropertyMaterializationThrowsForValuesAloneInsteadOfSilentlyDroppingThem() {
+    // mirror of the above for values() set alone with no matching keys() call.
+    VcfSample.Builder builder = new VcfSample.Builder(STRICT_CONTEXT).values(List.of("0/1", "20"));
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> builder.property("XX", "yy"));
+    assertTrue(ex.getMessage().contains("keys()"), ex.getMessage());
+  }
+
+  @Test
+  void testBuilderKeysThrowsInsteadOfSilentlyDroppingIncrementallyAddedProperties() {
+    // regression test for the Phase 3 writer-compliance review's Task 5 fourth re-verification round: keys()/
+    // values() unconditionally null out m_properties to switch representation, which used to silently discard
+    // any entry property() had added incrementally, with no exception or warning at all -- no length mismatch
+    // involved at all, unlike the sibling findings above. A caller who called property() then keys()/values()
+    // lost the property()-added entry with zero diagnostic.
+    VcfSample.Builder builder = new VcfSample.Builder(STRICT_CONTEXT).property("GT", "0/1");
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> builder.keys(List.of("DP")));
+    assertTrue(ex.getMessage().contains("Builder.property()"), ex.getMessage());
+  }
+
+  @Test
+  void testBuilderValuesThrowsInsteadOfSilentlyDroppingIncrementallyAddedProperties() {
+    // mirror of the above for values() called directly (without a prior keys() call) after property().
+    VcfSample.Builder builder = new VcfSample.Builder(STRICT_CONTEXT).property("GT", "0/1");
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> builder.values(List.of("20")));
+    assertTrue(ex.getMessage().contains("Builder.property()"), ex.getMessage());
+  }
+
+  @Test
+  void testBuilderPropertiesExplicitlyResetsIncrementalPropertyTrackingAllowingASubsequentSwitch() {
+    // properties() is an explicit, self-evidently intentional full-map replace -- unlike keys()/values(), it
+    // must NOT reject discarding property()-added data, and must reset the tracking that would otherwise make a
+    // later keys()/values() call reject too. Also confirms this doesn't regress
+    // testBuilderKeysWithoutValuesOnAPropertyMapBackedSampleNamesTheActualMistake's own scenario, just via an
+    // explicit properties() call instead of toBuilder()'s implicit one.
+    VcfSample.Builder builder = new VcfSample.Builder(STRICT_CONTEXT)
+        .property("GT", "0/1")
+        .properties(new LinkedHashMap<>(Map.of("DP", "20")))
+        .keys(List.of("AD"))
+        .values(List.of("15,5"));
+    VcfSample sample = builder.build();
+    assertEquals("15,5", sample.getProperty("AD"));
+    assertNull(sample.getProperty("GT"));
+    assertNull(sample.getProperty("DP"));
+  }
+
+  @Test
   void testPropertiesMaterializationKeepsFirstOccurrenceOnDuplicateKeyViaTrustedBypass() {
     // properties() (the materialization path triggered by getPropertyKeys()/propertyEntrySet()/validate())
     // previously let the LAST occurrence of a duplicate key silently overwrite the first, while getProperty()
