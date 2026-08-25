@@ -72,24 +72,35 @@ public class AltStructuralVariantTest {
     String hugeCode = "x".repeat(150) + ",y";
     VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new AltStructuralVariant(hugeCode));
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
-    // the length bound alone is not discriminative (a leaky "truncated" notice appended without actually
-    // cutting the string would still pass it, with only ~6 chars of margin) -- found by the ninth
-    // re-verification round's test-coverage pass; asserting the raw untruncated value is absent proves
-    // truncation actually happened
+    // the pre-existing length bound below is already discriminative on its own here (a leaky "truncated"
+    // notice appended without actually cutting the string measures 265 chars, over the 250-char bound) --
+    // measured by the tenth re-verification round's test-coverage pass, correcting the ninth round's own
+    // wrong claim that this had only ~6 chars of margin (it actually already failed by 15). The assertFalse
+    // below is still worth keeping as defense-in-depth against a future bound change, even though it isn't
+    // load-bearing for this specific input today.
     assertFalse(ex.getMessage().contains(hugeCode), "raw untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 
   @Test
   public void testEmptyComponentRejectionMessageIsTruncated() {
-    // same finding, the empty-component-at-level throw
-    String hugeCode = "x".repeat(150) + "::";
+    // same finding, the empty-component-at-level throw -- corrected by the tenth re-verification round's
+    // test-coverage pass: the previous hugeCode ("x".repeat(150) + "::") never actually reached this throw at
+    // all. Its level-0 component ("x"*150) is non-empty, so the empty-component check at level 0 doesn't fire;
+    // "x"*150 also isn't a reserved top-level code, so the constructor throws the UNRECOGNIZED-top-level-code
+    // message first (AltStructuralVariant.java's "Top-level structural variant code was ..." throw) and never
+    // reaches level 1's empty check. The assertFalse this project added for that shape was consequently dead
+    // code: the throw's actual embedded value (components[0], 150 chars, no "::") could never equal the
+    // 152-char hugeCode being checked for. Fixed by using a genuinely valid level-0 code (DEL) followed by a
+    // non-reserved custom subtype (allowed; see testNonReservedSubtype) and then an empty level-2 component --
+    // this reaches the empty-component throw, which embeds the WHOLE original string, so a huge total string
+    // now correctly exercises truncation of that embedded value.
+    String hugeCode = "DEL:" + "A".repeat(200) + "::";
     VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new AltStructuralVariant(hugeCode));
+    assertTrue(ex.getMessage().contains("has an empty component at level 2"), ex.getMessage());
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
-    // see testWhitespaceOrCommaRejectionMessageIsTruncated's identical comment on why this is needed alongside
-    // the length bound
     assertFalse(ex.getMessage().contains(hugeCode), "raw untruncated value must not appear: " + ex.getMessage());
-    assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
+    assertTrue(ex.getMessage().length() < 350, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 
   @Test

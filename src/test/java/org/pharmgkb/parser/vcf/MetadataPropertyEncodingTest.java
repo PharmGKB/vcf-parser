@@ -20,6 +20,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -770,6 +771,11 @@ class MetadataPropertyEncodingTest {
       StringWriter out = new StringWriter();
       new VcfWriter.Builder().validateBeforeWrite().toWriter(new PrintWriter(out)).build().writeHeader(md);
       assertEquals(1, appender.countMessagesContaining("truncated"));
+      // the count check above alone is not discriminative (a leaky "truncated" notice appended without
+      // actually cutting the string would still contain the literal word "truncated" exactly once) -- found
+      // by the tenth re-verification round's test-coverage/policy passes; asserting the raw untruncated value
+      // is absent proves truncation actually happened
+      assertFalse(appender.anyMessageContains(hugeInvalidName), "raw untruncated value must not appear");
     } finally {
       root.detachAppender(appender);
       appender.stop();
