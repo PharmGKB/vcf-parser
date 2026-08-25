@@ -245,6 +245,21 @@ public final class VcfPosition {
       // shape as VcfSample's own newTrustedSample-skips-the-line-terminator-check gap (see that class's
       // trusted-constructor Javadoc).
       InternalUtils.checkNoLineTerminator("QUAL", rawQual);
+      // checkNoLineTerminator above only catches \n/\r -- a tab is not a line terminator, but is exactly as
+      // structural here: VcfWriter's default write path writes m_rawQuality verbatim into the QUAL column, so
+      // an embedded tab would add a spurious extra column, shifting every field after QUAL out of alignment on
+      // write, completely unvalidated (the same class of gap the \n/\r check above closes, and the same
+      // rationale InternalUtils.containsWhitespaceOtherThanSpace's own Javadoc gives for rejecting a tab in an
+      // INFO value). Only reachable through direct construction (Builder.rawQuality) -- a real parsed file's
+      // QUAL column can never itself contain a tab, since VcfParser's own column split already excludes it.
+      // Found by the Phase 3 writer-compliance review's Path A kickoff (confirmed live against installed
+      // bcftools 1.23.1: given "1\t100\t.\tA\tT\t10\t20\tPASS\t.", a raw tab-corrupted QUAL="10\t20" is
+      // written straight through, and bcftools reads FILTER="20"/INFO="PASS" -- exit 0, only warnings about
+      // the resulting undefined FILTER/INFO values, no diagnostic naming the actual column shift at all).
+      if (rawQual.contains("\t")) {
+        throw new VcfFormatException("QUAL text \"" + InternalUtils.truncateAndEscapeForMessage(rawQual) +
+            "\" contains a tab");
+      }
       m_rawQuality = rawQual;
     }
     if (info == null && rawInfo != null) {
@@ -258,6 +273,15 @@ public final class VcfPosition {
       // re-verification round: the QUAL fix above (third round) closed this identical gap for QUAL but missed
       // its own INFO sibling.
       InternalUtils.checkNoLineTerminator("INFO", rawInfo);
+      // Same reasoning as the rawQual tab check above: a tab embedded anywhere in this not-yet-parsed INFO
+      // text would add a spurious column when VcfWriter's default write path writes rawInfo's split pieces
+      // verbatim, before checkInfoEntries's own per-value tab check (containsWhitespaceOtherThanSpace) ever
+      // gets a chance to run via a later getInfo()/info() call. Found by the Phase 3 writer-compliance review's
+      // Path A kickoff, the same shape as the rawQual gap just above.
+      if (rawInfo.contains("\t")) {
+        throw new VcfFormatException("INFO text \"" + InternalUtils.truncateAndEscapeForMessage(rawInfo) +
+            "\" contains a tab");
+      }
       m_rawInfo = rawInfo;
     }
   }

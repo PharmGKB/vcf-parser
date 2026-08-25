@@ -161,7 +161,14 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   value), and `VcfPosition.checkInfoEntries`'s value-side check (tab, LF, CR, vertical tab, or form feed in an
   INFO value, but only on first `getInfo()`/`info()` access, not at construction -- the eager
   `checkNoLineTerminator` call just mentioned is what closes that gap for a raw CR/LF specifically, ahead of
-  that deferred check ever running). Unlike the tab/colon half of `checkNoStructuralDelimiter`,
+  that deferred check ever running). A raw tab in `VcfPosition`'s own QUAL/INFO raw text gets the identical
+  construction-time treatment as the CR/LF check just described, but via a separate, dedicated check rather
+  than `checkNoLineTerminator` itself (which only ever tests `\n`/`\r`, deliberately -- widening it would also
+  reject a tab in an ordinary metadata property value, where a tab is not structurally dangerous the way it is
+  in a tab-delimited data line): found by the Phase 3 writer-compliance review's Path A kickoff, since a tab
+  in `rawQuality`/`rawInfo` shifts every column after it on write exactly like an unchecked CR/LF does, and
+  nothing else catches it before `VcfWriter`'s default write path writes the raw text verbatim. Unlike the
+  tab/colon half of `checkNoStructuralDelimiter`,
   `VcfContext.newTrustedSample` (`VcfParser`'s own per-record fast path) does NOT skip this line-terminator
   half: a lone CR is ordinary content once `readPhysicalLine()` stopped treating it as a line separator, so
   it is not excluded by the parser's own tab/colon splitting the way a colon or tab structurally is, and would
@@ -216,14 +223,19 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   helpers unconditionally rather than deriving strictness from the context the way the constructor path does.
   **The same is true of the lazy first-access getters, which is the route a caller reaches this by in
   practice**, not just of an explicit `validate()` call: raw QUAL/INFO text supplied via
-  `VcfPosition.Builder`'s `rawQuality`/`rawInfo` is not checked at `build()` time at all, so it is first
-  parsed (and checked) by `getQuality()`/`getInfo()`, which pass the position's warnings sink unconditionally
-  the same way `validate()` does. Identical content therefore behaves differently under a strict context
-  depending on which setter supplied it -- `info(ListMultimap)` with an empty INFO key throws from `build()`,
-  while `rawInfo("=orphan")` warns on first access and drops the entry. That is deliberate: `rawInfo`/
-  `rawQuality` are the explicit named wire-text escape hatch (the one route by which un-decoded, file-shaped
-  text legitimately enters the model), and leaving them unvalidated at build time is what preserves lazy
-  parsing across a `toBuilder()` copy. See `VcfPositionTest`'s
+  `VcfPosition.Builder`'s `rawQuality`/`rawInfo` is not checked for its own QUAL/INFO-specific grammar at
+  `build()` time at all -- QUAL's own numeric parse and INFO's key/value grammar (empty-key handling, the
+  value-side whitespace rule, etc.) are deferred to first `getQuality()`/`getInfo()` access, which pass the
+  position's warnings sink unconditionally the same way `validate()` does. The one exception is the
+  structural line-terminator/tab check described above: that runs unconditionally at construction for both
+  `rawQuality` and `rawInfo`, in every context, because deferring it would let a caller-constructed value
+  that only corrupts column alignment on write reach `VcfWriter`'s default write path unvalidated. Identical
+  content therefore behaves differently under a strict context depending on which setter supplied it --
+  `info(ListMultimap)` with an empty INFO key throws from `build()`, while `rawInfo("=orphan")` warns on
+  first access and drops the entry. That is deliberate: `rawInfo`/`rawQuality` are the explicit named
+  wire-text escape hatch (the one route by which un-decoded, file-shaped text legitimately enters the
+  model), and leaving their own grammar unvalidated at build time (beyond the structural floor above) is
+  what preserves lazy parsing across a `toBuilder()` copy. See `VcfPositionTest`'s
   `testValidateAlwaysWarnsRegardlessOfOriginalConstructor`, which pins it.
   Each also has structural checks that are a separate case and still throw unconditionally in both contexts:
   `VcfSample.validate()` throws via `checkNoStructuralDelimiter` (`VcfSample.java`) for a null property

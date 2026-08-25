@@ -83,6 +83,38 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testRawQualityContainingTabThrowsAtConstructionNotAtWriteTime() {
+    // regression test found by the Phase 3 writer-compliance review's Path A kickoff: the line-terminator
+    // check above only ever covered \n/\r -- a tab is not a line terminator, but is exactly as structural,
+    // since VcfWriter's default write path writes m_rawQuality verbatim into the QUAL column and an embedded
+    // tab would add a spurious extra column, shifting every field after QUAL out of alignment on write.
+    // Confirmed live against installed bcftools 1.23.1: a raw tab in QUAL is written straight through and
+    // silently misparses the record, shifting FILTER/INFO one column each (exit 0, no diagnostic naming the
+    // actual column shift). Unconditional, matching the line-terminator check.
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> newPosition().toBuilder().rawQuality("10\t20").build());
+    assertTrue(ex.getMessage().contains("contains a tab"));
+    VcfFormatException ex2 = assertThrows(VcfFormatException.class,
+        () -> lenientPosition().toBuilder().rawQuality("10\t20").build());
+    assertTrue(ex2.getMessage().contains("contains a tab"));
+  }
+
+  @Test
+  public void testRawInfoContainingTabThrowsAtConstructionNotAtWriteTime() {
+    // rawInfo's own sibling of testRawQualityContainingTabThrowsAtConstructionNotAtWriteTime above: the same
+    // gap, found by the same review pass. checkInfoEntries's own tab check
+    // (InternalUtils.containsWhitespaceOtherThanSpace) is deferred to first getInfo()/info() call, but a raw
+    // tab surviving unchecked into m_rawInfo reaches VcfWriter's default write path completely unvalidated,
+    // which writes each key/value pair from rawInfo's own split pieces verbatim.
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> newPosition().toBuilder().rawInfo("DP=1\t0").build());
+    assertTrue(ex.getMessage().contains("contains a tab"));
+    VcfFormatException ex2 = assertThrows(VcfFormatException.class,
+        () -> lenientPosition().toBuilder().rawInfo("DP=1\t0").build());
+    assertTrue(ex2.getMessage().contains("contains a tab"));
+  }
+
+  @Test
   public void testCheckChromosomeInvalidCharacterMessageIsTruncated() {
     // regression test for the fifth re-verification round's finding #1b: this method's own unconditional
     // throw sites embedded the raw CHROM value verbatim and unbounded -- the same defect class the shared
