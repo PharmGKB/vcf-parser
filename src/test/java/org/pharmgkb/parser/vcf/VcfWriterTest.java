@@ -2292,19 +2292,20 @@ public class VcfWriterTest {
 
   @Test
   public void testValidateBeforeWriteTabContainingSampleNameMessageIsTruncated() throws Exception {
-    // regression test for the fifth re-verification round's finding #1b: validateMetadata's own "Invalid or
-    // duplicate sample name in header" throw embedded the raw sample name verbatim and unbounded. A tab-
-    // containing sample name is the one shape VcfMetadata's own construction-time check (added by this
-    // round's finding #5) does not cover (that check only rejects empty/duplicate names), so this writer-side
-    // check remains the only thing catching it.
+    // regression test, updated by the Phase 3 writer-compliance review's Path A kickoff (finding #2): a
+    // tab-containing sample name used to be the one shape VcfMetadata's own construction-time check (added
+    // by the fifth re-verification round's finding #5) did NOT cover (that check only rejected
+    // empty/duplicate names), so validateMetadata's writer-side check -- exercised here under
+    // validateBeforeWrite() -- was the only thing catching it, and the default write path emitted it
+    // unvalidated. VcfMetadata's own constructor now rejects a tab in a sample name too (the same
+    // truncate-and-escape message discipline this test already pinned), so the exception now fires at
+    // build() itself, before a VcfWriter is ever involved.
     String hugeSampleName = "x".repeat(200) + "\tY";
-    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+    VcfFormatException e = assertThrows(VcfFormatException.class, () -> new VcfMetadata.Builder(LENIENT_CONTEXT)
+        .setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
             hugeSampleName))
-        .build();
-    StringWriter sw = new StringWriter();
-    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
-    VcfFormatException e = assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
+        .build());
     assertTrue(e.getMessage().contains("truncated"), e.getMessage());
     assertFalse(e.getMessage().contains("\t"), "message must not contain a raw tab: " + e.getMessage());
     // the assertFalse above only proves escaping happened, not truncation -- see

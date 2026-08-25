@@ -51,18 +51,27 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   and this decision was reached without a corresponding shift in evidence strong enough to justify it. Found
   and left as-is by the Phase 2 review's third re-verification round.
 - A missing `#CHROM` header, wrong fixed column names, a missing `FORMAT` column when samples are present, a
-  `FORMAT` column with no sample columns following it, an empty sample name, or a duplicate sample name. The
-  empty/duplicate sample name half of this is enforced twice, unconditionally both times (never
-  `warnOrThrow`, matching AGENTS.md's Parser Validation Policy listing "duplicate sample IDs" among the
-  always-error cases): once by `VcfParser.parseColumnInfo` at header-parse time, and again by
-  `VcfMetadata`'s own constructor -- the single point `Builder.setColumns()` itself defers to, matching this
-  constructor's other checkXxx-at-construction-time checks (the null-column-entry check just above it) --
-  for direct construction via `VcfMetadata.Builder`. Found missing at the construction-time layer by the
-  fifth re-verification round's finding #5: a caller building a `VcfMetadata` directly (not through
-  `VcfParser`) with a duplicate or empty sample name got no error at all, and the default (non-
-  `validateBeforeWrite()`) write path would then emit that invalid VCF with zero warning -- a construction-
-  time floor gap under AGENTS.md's bcftools-asymmetric-evidence rule, since this is originated content, not
-  content faithfully carried forward from a file.
+  `FORMAT` column with no sample columns following it, an empty sample name, a duplicate sample name, or a
+  sample name containing a tab or line terminator. The empty/duplicate sample name half of this is enforced
+  twice, unconditionally both times (never `warnOrThrow`, matching AGENTS.md's Parser Validation Policy
+  listing "duplicate sample IDs" among the always-error cases): once by `VcfParser.parseColumnInfo` at
+  header-parse time, and again by `VcfMetadata`'s own constructor -- the single point `Builder.setColumns()`
+  itself defers to, matching this constructor's other checkXxx-at-construction-time checks (the
+  null-column-entry check just above it) -- for direct construction via `VcfMetadata.Builder`. Found missing
+  at the construction-time layer by the fifth re-verification round's finding #5: a caller building a
+  `VcfMetadata` directly (not through `VcfParser`) with a duplicate or empty sample name got no error at
+  all, and the default (non-`validateBeforeWrite()`) write path would then emit that invalid VCF with zero
+  warning -- a construction-time floor gap under AGENTS.md's bcftools-asymmetric-evidence rule, since this
+  is originated content, not content faithfully carried forward from a file. The tab/line-terminator half is
+  the identical gap, found later by the Phase 3 writer-compliance review's Path A kickoff (finding #2): a
+  parsed sample name can never contain either (`VcfParser.parseColumnInfo` splits the header line on tab; a
+  physical line can never itself contain a line terminator), so this is reachable only through direct
+  construction, and only the default write path (`VcfWriter.buildHeaderLines`, which appends every sample
+  name verbatim) was affected -- `VcfWriter.validateMetadata()` already rejected both under
+  `validateBeforeWrite()` mode. Confirmed live (bcftools 1.23.1): a metadata with one sample named
+  `"S1\tS2"` writes a `#CHROM` line bcftools silently reads as two samples, then fails outright
+  (`[E::vcf_parse_format_check7] Number of columns ... does not match the number of samples`, exit code 8)
+  once that metadata's own single-sample data lines are written against it.
 - A data line with the wrong number of tab-separated columns.
 - An empty mandatory fixed field (the missing value must be `.`), an empty `CHROM`, or a negative `POS`.
 - Invalid `REF`/`ALT` bases; whitespace where the spec forbids it (`CHROM`, `ID`, `FILTER`, and an `INFO` key --

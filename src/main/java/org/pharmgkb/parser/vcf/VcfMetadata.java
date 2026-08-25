@@ -139,6 +139,30 @@ public final class VcfMetadata {
       if (sampleName.isEmpty()) {
         throw new VcfFormatException("Empty sample name in header (check for a trailing or duplicated tab)");
       }
+      // A tab or line terminator in a sample name is structural, the same class of gap as the empty/duplicate
+      // checks above and below: VcfWriter.buildHeaderLines (the default write path) appends
+      // metadata.getSampleName(i) verbatim into the #CHROM header line with no check of its own -- a tab adds
+      // a spurious column (silently inflating the header's own declared sample count beyond
+      // getNumSamples()), and an LF/CR would end the header line early, corrupting or truncating every record
+      // that follows. Confirmed live against installed bcftools 1.23.1: a metadata with one sample named
+      // "S1\tS2" writes a #CHROM line bcftools reads as two samples ("S1", "S2"), silently, while
+      // getNumSamples() still reports 1 -- writing that metadata's own data lines (with exactly 1 sample's
+      // FORMAT data, matching what this library actually knows about) then makes bcftools fail outright to
+      // parse them: "[E::vcf_parse_format_check7] Number of columns ... does not match the number of samples
+      // (1 vs 2)", exit code 8. VcfWriter.validateMetadata() (validateBeforeWrite() mode only) already
+      // rejects both the tab and the line terminator, but the default path has nothing else guarding against
+      // either, and this constructor -- the single point where columns is actually consumed, per this
+      // method's own null-check comment above -- had neither check either, so a caller-constructed sample
+      // name reached the default write path completely unvalidated. Only reachable through direct
+      // construction: VcfParser.parseColumnInfo splits the header line on tab, so a sample name produced by
+      // parsing a real file can never itself contain a tab, and a physical line can never itself contain a
+      // line terminator either (VcfParser.readPhysicalLine already splits on one). Found by the Phase 3
+      // writer-compliance review's Path A kickoff (finding #2).
+      InternalUtils.checkNoLineTerminator("sample name", sampleName);
+      if (sampleName.contains("\t")) {
+        throw new VcfFormatException("Sample name \"" + InternalUtils.truncateAndEscapeForMessage(sampleName) +
+            "\" contains a tab");
+      }
       if (!sampleNames.add(sampleName)) {
         throw new VcfFormatException("Duplicate sample name '" +
             InternalUtils.truncateAndEscapeForMessage(sampleName) + "' in header");

@@ -125,6 +125,32 @@ public class VcfMetadataTest {
   }
 
   @Test
+  public void testBuilderSetColumnsRejectsTabInSampleNameUnconditionally() {
+    // regression test for the Phase 3 writer-compliance review's Path A kickoff (finding #2): build() never
+    // checked a sample name for an embedded tab, unlike VcfWriter.validateMetadata() (validateBeforeWrite()
+    // mode only) -- so the default write path (VcfWriter.buildHeaderLines, which appends every sample name
+    // verbatim into the #CHROM header line) could emit an invalid, column-shifted header with zero warning.
+    // Unconditional regardless of context: a LENIENT_CONTEXT builder must still throw, not warn -- matching
+    // the empty/duplicate sample-name checks immediately above.
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
+            "S1\tS2"));
+    VcfFormatException ex = assertThrows(VcfFormatException.class, builder::build);
+    assertTrue(ex.getMessage().contains("contains a tab"), ex.getMessage());
+  }
+
+  @Test
+  public void testBuilderSetColumnsRejectsLineTerminatorInSampleNameUnconditionally() {
+    // same finding as above, the line-terminator half: an embedded LF/CR would end the #CHROM header line
+    // early on the default write path, truncating every record that follows.
+    VcfMetadata.Builder builder = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
+            "S1\nS2"));
+    VcfFormatException ex = assertThrows(VcfFormatException.class, builder::build);
+    assertTrue(ex.getMessage().contains("contains a line terminator"), ex.getMessage());
+  }
+
+  @Test
   public void testBuilderSetColumnsRejectsNullListInsteadOfThrowingNpe() {
     // cols is typed non-@Nullable, but nothing enforces that at compile time; a null list itself (as opposed to
     // a null entry, covered above) must be rejected with VcfFormatException at setColumns() itself, not deferred
