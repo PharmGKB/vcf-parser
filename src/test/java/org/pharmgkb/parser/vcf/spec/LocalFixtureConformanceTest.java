@@ -236,11 +236,48 @@ class LocalFixtureConformanceTest {
     }
   }
 
-  private static void checkRoundTripSemantic(Path file) throws IOException {
+  // Package-private, not private: LocalFixtureConformanceGuardTest calls this directly to test the
+  // exception-to-clean-failure guards below without needing a permanently-failing committed fixture (a
+  // fixture that actually triggers one of these guards would leave localFailedFixturesRoundTripSemantically
+  // permanently red, since the underlying non-numeric-QUAL-style condition is itself unfixable/accepted, not
+  // a bug the guard could "pass" around).
+  static void checkRoundTripSemantic(Path file) throws IOException {
+    // Phase 3 writer-compliance review's Path B kickoff (finding #8): each phase below can throw for a
+    // legitimately-preserved-but-unparseable value (e.g. a non-numeric QUAL, still recoverable via
+    // getRawQuality() but unconditionally fatal on typed access -- see HTS_SPECS_BASELINE_STATUS.md's
+    // "Non-numeric QUAL" row) -- write()/semanticDiff() both call typed getters (getQuality(), etc.) to
+    // compare "before"/"after". HtsSpecsConformanceTest's own analogous method already guards each phase
+    // with a clear, phase-specific failure message instead of letting the exception propagate raw; this
+    // method had none of the three guards, so any such fixture failed with a confusing stack trace naming an
+    // internal WriterRoundTrip line rather than a clear assertion identifying which fixture and phase failed.
+    // Latent at the time this was found (no current fixture triggers it), but real. parseFile(file) itself is
+    // NOT guarded: every caller of this method already filters to a fixture expected to parse successfully
+    // (a passed/ fixture, or a failed/ fixture with ##ExpectParser=warn/silent), so a parse failure here would
+    // itself be a genuine bug, not a legitimate divergence to report gracefully.
     WriterRoundTrip.ParsedFile before = WriterRoundTrip.parseFile(file);
-    String written = WriterRoundTrip.write(before);
-    WriterRoundTrip.ParsedFile after = WriterRoundTrip.parseText(written);
-    Optional<String> diff = WriterRoundTrip.semanticDiff(before, after);
+    String written;
+    try {
+      written = WriterRoundTrip.write(before);
+    } catch (RuntimeException e) {
+      fail(relativeName(file) + " (semantic round trip): unexpectedly threw while writing: " + e.getMessage());
+      return;
+    }
+    WriterRoundTrip.ParsedFile after;
+    try {
+      after = WriterRoundTrip.parseText(written);
+    } catch (RuntimeException e) {
+      fail(relativeName(file) + " (semantic round trip): unexpectedly threw while re-parsing written output: " +
+          e.getMessage());
+      return;
+    }
+    Optional<String> diff;
+    try {
+      diff = WriterRoundTrip.semanticDiff(before, after);
+    } catch (RuntimeException e) {
+      fail(relativeName(file) + " (semantic round trip): unexpectedly threw while comparing before/after: " +
+          e.getMessage());
+      return;
+    }
     assertTrue(diff.isEmpty(), relativeName(file) + " (semantic round trip): " + diff.orElse(""));
   }
 
