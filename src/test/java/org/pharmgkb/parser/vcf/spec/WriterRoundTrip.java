@@ -8,8 +8,11 @@ import java.io.StringWriter;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.pharmgkb.parser.vcf.BaseMetadata;
+import org.pharmgkb.parser.vcf.PedigreeMetadata;
 import org.pharmgkb.parser.vcf.VcfLineParser;
 import org.pharmgkb.parser.vcf.VcfMetadata;
 import org.pharmgkb.parser.vcf.VcfParser;
@@ -84,6 +87,10 @@ final class WriterRoundTrip {
    * of the first mismatch found otherwise.
    */
   static Optional<String> semanticDiff(ParsedFile before, ParsedFile after) {
+    Optional<String> metadataDiff = compareMetadata(before.metadata(), after.metadata());
+    if (metadataDiff.isPresent()) {
+      return metadataDiff;
+    }
     if (before.positions().size() != after.positions().size()) {
       return Optional.of("record count differs: " + before.positions().size() + " before, " +
           after.positions().size() + " after");
@@ -144,6 +151,105 @@ final class WriterRoundTrip {
     }
     if (!b.getFormat().equals(a.getFormat())) {
       return Optional.of("record " + index + ": FORMAT " + b.getFormat() + " before, " + a.getFormat() + " after");
+    }
+    return Optional.empty();
+  }
+
+  /**
+   * Compares every field {@link VcfMetadata} exposes -- fileformat, sample columns, all eight declaration
+   * kinds, and raw generic properties. Found missing entirely by the Phase 3 writer-compliance review's
+   * Path B kickoff (finding #7): {@link #semanticDiff} previously never referenced {@code before.metadata()}/
+   * {@code after.metadata()} at all, so a metadata-level round-trip regression (e.g. a dropped declaration, a
+   * corrupted sample name -- see finding #2) was invisible to every check built on this method.
+   */
+  private static Optional<String> compareMetadata(VcfMetadata b, VcfMetadata a) {
+    if (!b.getFileFormat().equals(a.getFileFormat())) {
+      return Optional.of("fileformat \"" + b.getFileFormat() + "\" before, \"" + a.getFileFormat() + "\" after");
+    }
+    if (b.getNumSamples() != a.getNumSamples()) {
+      return Optional.of("sample column count " + b.getNumSamples() + " before, " + a.getNumSamples() + " after");
+    }
+    for (int i = 0; i < b.getNumSamples(); i++) {
+      if (!b.getSampleName(i).equals(a.getSampleName(i))) {
+        return Optional.of("sample column " + i + ": \"" + b.getSampleName(i) + "\" before, \"" +
+            a.getSampleName(i) + "\" after");
+      }
+    }
+    Optional<String> diff = compareDeclarations("ALT", b.getAlts(), a.getAlts());
+    if (diff.isPresent()) {
+      return diff;
+    }
+    diff = compareDeclarations("INFO metadata", b.getInfo(), a.getInfo());
+    if (diff.isPresent()) {
+      return diff;
+    }
+    diff = compareDeclarations("FILTER", b.getFilters(), a.getFilters());
+    if (diff.isPresent()) {
+      return diff;
+    }
+    diff = compareDeclarations("FORMAT metadata", b.getFormats(), a.getFormats());
+    if (diff.isPresent()) {
+      return diff;
+    }
+    diff = compareDeclarations("contig", b.getContigs(), a.getContigs());
+    if (diff.isPresent()) {
+      return diff;
+    }
+    diff = compareDeclarations("SAMPLE metadata", b.getSamples(), a.getSamples());
+    if (diff.isPresent()) {
+      return diff;
+    }
+    diff = compareDeclarations("META", b.getMetas(), a.getMetas());
+    if (diff.isPresent()) {
+      return diff;
+    }
+    diff = comparePedigrees(b.getPedigrees(), a.getPedigrees());
+    if (diff.isPresent()) {
+      return diff;
+    }
+    if (!b.getRawProperties().equals(a.getRawProperties())) {
+      return Optional.of("raw generic properties " + b.getRawProperties() + " before, " + a.getRawProperties() +
+          " after");
+    }
+    return Optional.empty();
+  }
+
+  /**
+   * Compares one of {@link VcfMetadata}'s seven keyed declaration maps (ALT/INFO/FILTER/FORMAT/contig/
+   * SAMPLE/META) by VALUE, not by {@link Map#equals}: none of {@link BaseMetadata}'s subclasses overrides
+   * {@code equals}/{@code hashCode}, so {@code Map.equals} on the declaration objects themselves would compare
+   * by reference identity and could never match two independently-parsed {@code VcfMetadata} instances, even
+   * for byte-identical content -- comparing each declaration's own {@link BaseMetadata#getPropertiesRaw()}
+   * instead compares the actual property content.
+   */
+  private static Optional<String> compareDeclarations(String label, Map<String, ? extends BaseMetadata> before,
+      Map<String, ? extends BaseMetadata> after) {
+    if (!before.keySet().equals(after.keySet())) {
+      return Optional.of(label + " keys " + before.keySet() + " before, " + after.keySet() + " after");
+    }
+    for (String key : before.keySet()) {
+      Map<String, String> bProps = before.get(key).getPropertiesRaw();
+      Map<String, String> aProps = after.get(key).getPropertiesRaw();
+      if (!bProps.equals(aProps)) {
+        return Optional.of(label + " \"" + key + "\" " + bProps + " before, " + aProps + " after");
+      }
+    }
+    return Optional.empty();
+  }
+
+  /** {@link #compareDeclarations}'s counterpart for {@code ##PEDIGREE}, which is stored as a {@link List}
+   * (order-preserving, no unique key) rather than a {@link Map} -- compared by index instead of by key, for
+   * the identical by-value reason {@code compareDeclarations} does. */
+  private static Optional<String> comparePedigrees(List<PedigreeMetadata> before, List<PedigreeMetadata> after) {
+    if (before.size() != after.size()) {
+      return Optional.of("PEDIGREE count " + before.size() + " before, " + after.size() + " after");
+    }
+    for (int i = 0; i < before.size(); i++) {
+      Map<String, String> bProps = before.get(i).getPropertiesRaw();
+      Map<String, String> aProps = after.get(i).getPropertiesRaw();
+      if (!bProps.equals(aProps)) {
+        return Optional.of("PEDIGREE " + i + " " + bProps + " before, " + aProps + " after");
+      }
     }
     return Optional.empty();
   }

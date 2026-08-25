@@ -56,6 +56,33 @@ class WriterRoundTripTest {
   }
 
   @Test
+  void testSemanticDiffDetectsInfoMetadataDescriptionMismatch() throws IOException {
+    // regression test for the Phase 3 writer-compliance review's Path B kickoff (finding #7): semanticDiff
+    // never referenced before.metadata()/after.metadata() at all, so a metadata-level round-trip regression
+    // was invisible to every check built on this method. Changing only the ##INFO Description (not any
+    // position/sample field) between "before" and "after" must still be caught.
+    WriterRoundTrip.ParsedFile before = WriterRoundTrip.parseText(SAMPLE_VCF);
+    WriterRoundTrip.ParsedFile after =
+        WriterRoundTrip.parseText(SAMPLE_VCF.replace("Description=\"Depth\"", "Description=\"Different\""));
+    Optional<String> diff = WriterRoundTrip.semanticDiff(before, after);
+    assertTrue(diff.isPresent());
+    assertTrue(diff.get().contains("INFO metadata"), diff.get());
+    assertTrue(diff.get().contains("Depth") && diff.get().contains("Different"), diff.get());
+  }
+
+  @Test
+  void testSemanticDiffDetectsSampleColumnNameMismatch() throws IOException {
+    // same finding as above: a corrupted/mismatched #CHROM sample column name (exactly finding #2's own
+    // failure mode -- a sample name silently gaining or losing a column on write) must be caught too, not
+    // just the seven keyed declaration types.
+    WriterRoundTrip.ParsedFile before = WriterRoundTrip.parseText(SAMPLE_VCF);
+    WriterRoundTrip.ParsedFile after = WriterRoundTrip.parseText(SAMPLE_VCF.replace("\tS1\n", "\tS2\n"));
+    Optional<String> diff = WriterRoundTrip.semanticDiff(before, after);
+    assertTrue(diff.isPresent());
+    assertTrue(diff.get().contains("sample column"), diff.get());
+  }
+
+  @Test
   void testSampleDeclarationAttributeOrderRoundTripsByteIdentical() throws IOException {
     String vcf =
         "##fileformat=VCFv4.2\n" +
