@@ -53,6 +53,28 @@ shared-abstraction cost this entry already declined), but it's the concrete inst
 "real complexity for marginal DRY benefit" trade-off should be weighed against if a third sibling ever
 does make the shared-abstraction case stronger.
 
+## `VcfWriter.addInfoOrDot`/`addSampleConditionally` duplicate an identical `Number==1` type-probe block
+
+Found by the Phase 3 writer-compliance review's Path A kickoff (finding #3). `addInfoOrDot`'s per-INFO-value
+loop and `addSampleConditionally`'s per-FORMAT-key loop each contain a structurally identical block: parse
+the declaration's `Number` as an `Integer` (swallowing a `NumberFormatException`), and only when it parses
+to exactly `1` and the declaration has a non-`null` `Type`, call `InternalUtils.convertProperty(type, value,
+m_warnings)` purely to test whether `value` actually matches that `Type` -- catching and re-warning on
+`VcfFormatException` with a slightly different message (`addSampleConditionally`'s also names the sample
+index). Both blocks exist under the identical `!m_validateBeforeWrite` guard, for the identical reason: this
+is a default-write-path-only sanity check, since `validateBeforeWrite()`'s own diagnostics pass already
+covers this ground more thoroughly elsewhere.
+
+**Decision: won't fix.** The same trade-off this file's first entry (`InfoMetadata`/`FormatMetadata`'s
+Number/Type validation duplication) already made applies here: a shared helper would need to be
+parameterized over `InfoMetadata`/`InfoType` vs. `FormatMetadata`/`FormatType` (two unrelated type
+hierarchies) for exactly 2 call sites, plus the differing warning message shape (one needs `sampleIndex`,
+the other doesn't) -- real complexity for a handful of duplicated lines. Not a live bug: both blocks agree
+on behavior (parse `Number`, probe `Type` only when it's exactly `1`, warn on mismatch), so there's no
+divergence risk actually manifesting today, unlike the `InfoMetadata`/`FormatMetadata` entry's second axis,
+which did find one. Revisit if a third sibling with the same "per-value type-probe gated on `Number==1`"
+shape is ever added, or if this specific pair is later found to have silently diverged.
+
 ## Caller-configuration parameters use a raw `NullPointerException`, not `VcfFormatException`
 
 Two unrelated call sites both reject a `null` caller-configuration argument via `Preconditions.checkNotNull`
