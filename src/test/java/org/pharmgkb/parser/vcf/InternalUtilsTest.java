@@ -11,8 +11,9 @@ import org.junit.jupiter.api.Test;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
-import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
+
 
 /**
  * Tests {@link InternalUtils}.
@@ -560,7 +561,7 @@ public class InternalUtilsTest {
 
   @Test
   public void testCheckReservedFormatConstraintsFtEmptyCodeWarnMessageStaysUnsanitized() {
-    // regression test found by the sixth re-verification round: no existing test proved the warn branch of
+    // regression test: no existing test proved the warn branch of
     // the empty-code site above is deliberately left unsanitized (per its own comment) -- only that the throw
     // branch is truncated/escaped. A huge, raw FT value must appear unescaped and untruncated in the warning.
     String hugeValue = ";" + "9".repeat(200);

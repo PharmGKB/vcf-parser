@@ -402,7 +402,8 @@ declared version" for that list, and its lenient section for the five gated rule
   already invalid before this library touched it; re-emitting it faithfully is this library doing its job, not
   a construction defect, so only the subset that would make the *file* (not just the one declaration)
   unreadable by bcftools (`EncodingProblem.unreadableOutput`) still throws -- everything else warns and
-  preserves the value unchanged. `##contig=<ID=1,a-b=v>`, `AGENTS.md`'s own worked example, is exactly this:
+preserves the value unchanged. `##contig=<ID=1,a-b=v>` is the carried-forward example documented in
+`VCF_SPEC_AMBIGUITIES.md` and `STRUCTURAL_DELIMITER_HANDLING.md`:
   bcftools discards the declaration but reads the rest of the file fine, so construction refuses to originate
   it, while `validateBeforeWrite()` warns and re-emits it unchanged when it arrived via parsing.
 - A class or method's `@RestrictedApi`/`@hidden` disclaimer (e.g. `InternalUtils`, `VcfMetadata.validateAlt`,

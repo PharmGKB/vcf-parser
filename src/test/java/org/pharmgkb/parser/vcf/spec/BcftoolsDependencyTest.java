@@ -11,10 +11,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.*;
 
 
 /**
@@ -1342,7 +1339,8 @@ class BcftoolsDependencyTest {
 
   @Test
   void testMetadataAttributeNameOutsideAllowlistBcftoolsDropsDeclarationSilently() throws IOException, InterruptedException {
-    // AGENTS.md's own worked example for InternalUtils.METADATA_ATTRIBUTE_NAME_PATTERN: bcftools discards the
+    // The documented carried-forward-content example for InternalUtils.METADATA_ATTRIBUTE_NAME_PATTERN:
+    // bcftools discards the
     // WHOLE declaration for an attribute name outside ^[A-Za-z_][0-9A-Za-z_.]*$, but the file itself stays
     // readable (exit 0, every other declaration and every data line still emitted) -- why
     // checkMetadataPropertyEncodingForWrite warns rather than throws for this case

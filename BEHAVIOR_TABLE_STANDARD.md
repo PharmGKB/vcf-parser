@@ -50,11 +50,16 @@ can quote outright. Do not use one to restate a rule the spec states plainly —
     verdict. The four *spec* columns still run 4.2-4.5, because the spec does.
 
 - **A verdict produced by a known tool defect is not evidence.** Mark the cell as a defect, cite the
-  write-up, and do not let it influence the decision — including as "corroboration". Two confirmed
-  defects in vcf_validator 0.10.2 currently matter here: a token-parity bug that flips a line's validity
-  on the *count* of `\"` it contains, and silent truncation of leading punctuation from captured
-  identifiers. Both are token-capture faults, so they can make a well-formed line invalid and a
-  malformed one valid. See `AGENTS.md`'s Spec Ambiguity Decision Hierarchy.
+  write-up, and do not let it influence the decision — including as "corroboration". The known
+  `vcf_validator` 0.10.2 limitations currently relevant here are:
+  - token parity: a `\"` inside a quoted attribute value emits a spurious token, so validity flips with
+    the count of escaped quotes;
+  - leading-punctuation truncation: punctuation consumed before an identifier is not retained, so
+    distinct identifiers can be validated as the same tag; and
+  - an unguarded `<*>` record path can segfault when there are no FORMAT/sample columns.
+  The first two are token-capture faults and can make valid input invalid or malformed input valid. The
+  third produces no verdict. Exclude all three from decisions and document the grammar version exercised.
+  The installed binary and source must be checked before treating a newer validator version the same way.
 
 **Decisions (ours to change):**
 

@@ -447,8 +447,8 @@ its own — silent, identically in 4.2/4.4/4.5. Per `AGENTS.md`'s Decision Hiera
 `isalpha_c(*q) || *q=='_'` for the first character and `isalnum_c(*q) || *q=='_' || *q=='.'` for the rest
 (`vcf.c:696-699`). Confirmed live: `##contig=<ID=1,a-b=v,length=100>` makes bcftools discard the WHOLE
 declaration (`[E::bcf_hdr_parse_line] Could not parse the header line`) while the file itself stays readable
-(exit 0, every other declaration and every data line still emitted) — the exact `AGENTS.md` worked example for
-carried-forward content.
+(exit 0, every other declaration and every data line still emitted) — the carried-forward-content example
+also documented in `STRUCTURAL_DELIMITER_HANDLING.md`.
 
 **Decision:** `InternalUtils.METADATA_ATTRIBUTE_NAME_PATTERN` enforces this same regex at all three stages. The
 parse path (`InternalUtils.foldAttributes`'s post-fold loop, once per surviving key rather than once per parsed

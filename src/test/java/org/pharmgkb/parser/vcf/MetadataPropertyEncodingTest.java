@@ -15,14 +15,10 @@ import org.junit.jupiter.api.Test;
 import org.pharmgkb.parser.vcf.spec.WarnCapturingAppender;
 import org.slf4j.LoggerFactory;
 
-import static org.pharmgkb.parser.vcf.TestUtils.LENIENT_CONTEXT;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.pharmgkb.parser.vcf.TestUtils.LENIENT_CONTEXT;
 
 
 /**
@@ -784,7 +780,7 @@ class MetadataPropertyEncodingTest {
 
   @Test
   void diagnosticsModeWarnsRatherThanThrowingOnCarriedForwardContent() throws Exception {
-    // ##contig=<ID=1,a-b=v> is AGENTS.md's worked example of content we preserve and re-emit.
+    // ##contig=<ID=1,a-b=v> is the documented carried-forward-content example.
     // parseHeader (this file's own helper, above) returns a ParsedHeader record (metadata(), warnings()) and
     // declares `throws Exception`. Do not treat it as returning VcfMetadata directly.
     VcfMetadata md = parseHeader("##contig=<ID=c1,a-b=v,length=999>").metadata();

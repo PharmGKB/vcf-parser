@@ -1921,7 +1921,7 @@ public class InternalUtils {
    * routes cannot drift about what counts as a problem. Throws only for a problem
    * {@link EncodingProblem#unreadableOutput()} marks -- for one of two distinct reasons, not one: see that
    * flag's own Javadoc. Every other problem is warned to {@code warnings} and the value is preserved
-   * unchanged: this is the carried-forward case AGENTS.md's own worked example describes
+   * unchanged: this is the carried-forward case documented in VCF_SPEC_AMBIGUITIES.md
    * (##contig=<ID=1,a-b=v> read from a file, warned about, and re-emitted, rather than something this write
    * call originated).
    */
@@ -1992,7 +1992,7 @@ public class InternalUtils {
       String name = property.getKey();
       if (name == null || !METADATA_ATTRIBUTE_NAME_PATTERN.matcher(name).matches()) {
         // bcftools discards the declaration but still reads the file, so this is warn-at-write:
-        // ##contig=<ID=1,a-b=v> is AGENTS.md's own worked example of carried-forward content.
+        // ##contig=<ID=1,a-b=v> is the documented carried-forward-content example.
         problems.add(new EncodingProblem(
             kind + " metadata has an invalid property name: " + truncateAndEscapeForMessage(name), false));
         continue;

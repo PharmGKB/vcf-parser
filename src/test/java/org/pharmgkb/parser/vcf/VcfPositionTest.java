@@ -10,10 +10,9 @@ import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
 import org.junit.jupiter.api.Test;
 
-import static org.pharmgkb.parser.vcf.TestUtils.STRICT_CONTEXT;
-import static org.pharmgkb.parser.vcf.TestUtils.LENIENT_CONTEXT;
-import static org.pharmgkb.parser.vcf.TestUtils.lenientContext;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.pharmgkb.parser.vcf.TestUtils.*;
+
 
 /**
  * Tests {@link VcfPosition}.
@@ -147,7 +146,7 @@ public class VcfPositionTest {
 
   @Test
   public void testCheckAltBasesInvalidBaseMessageIsTruncated() {
-    // regression test found by the sixth re-verification round: checkAltBases()'s own invalid-ALT-base throw
+    // regression test: checkAltBases()'s own invalid-ALT-base throw
     // was the one site the fifth re-verification round's finding #1b fix missed in this class -- every sibling
     // checkXxx throw here was already wrapped, but this one still embedded the raw ALT value verbatim and
     // unbounded.
@@ -1023,7 +1022,7 @@ public class VcfPositionTest {
 
   @Test
   public void testLenientConstructorNonPrintableAsciiInChromosomeWarnMessageStaysUnsanitized() {
-    // regression test found by the sixth re-verification round: no existing test proved the warn branch of
+    // regression test: no existing test proved the warn branch of
     // this check (see its own comment, just above the throw in checkChromosome) is deliberately left
     // unsanitized -- only that the throw branch is truncated/escaped. A huge, raw CHROM value must appear
     // unescaped and untruncated in the warning. None of the huge value's characters trip any of the
@@ -1401,7 +1400,7 @@ public class VcfPositionTest {
 
   @Test
   public void testLenientConstructorAltEqualsRefWarnMessageStaysUnsanitized() {
-    // regression test found by the sixth re-verification round: no existing test proved the warn branch of
+    // regression test: no existing test proved the warn branch of
     // this ad-hoc warn-or-throw site (see its own comment, just above the throw below it in checkAltBases) is
     // deliberately left unsanitized -- only that the throw branch is truncated. A huge REF/ALT pair (both must
     // be valid, equal base sequences to reach this check at all) must appear unescaped and untruncated in the

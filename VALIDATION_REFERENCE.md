@@ -256,7 +256,7 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   all and always throw; `checkChromosome` is the one exception -- it takes a warnings sink for its single
   printable-ASCII-range check (see "Other lenient behavior" below), which `validate()` always warns through
   rather than throwing, matching this same paragraph's own "always warns for a recoverable condition" rule.
-  Neither class can be mutated after construction any more: Task 8 froze `VcfPosition`
+  Neither class can be mutated after construction
   (no setters, every getter an unmodifiable view) and Task 9 did the identical freeze for `VcfSample` (no
   mutators; `getPropertyKeys()`/`propertyEntrySet()` are unmodifiable views whose entries also reject
   `setValue`). A sample or position obtained through the public API -- whether via a constructor or
