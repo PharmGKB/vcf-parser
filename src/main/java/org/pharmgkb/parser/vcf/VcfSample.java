@@ -1008,7 +1008,9 @@ public final class VcfSample {
      * subsequent {@code property}/{@link #properties} call. Unlike {@link #keys}/{@link #values}/{@link #properties},
      * this does not itself run {@link VcfSample#checkNoStructuralDelimiter} on {@code key}/{@code value} --
      * {@link #build()} always re-validates the whole property map anyway (see its own Javadoc), so validating here
-     * too would be redundant.
+     * too would be redundant. A forward consequence of calling this: it marks whatever it added as
+     * incrementally-added, so a subsequent {@link #keys}/{@link #values} call will reject switching representation
+     * away from it, until a {@link #properties} call explicitly replaces the map (which resets that marking).
      *
      * @throws VcfFormatException if {@code key} is null; if exactly one of {@link #keys}/{@link #values} was set
      * with no matching call to the other; or if the {@link #keys}/{@link #values} lists being materialized
