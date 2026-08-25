@@ -1004,16 +1004,24 @@ every occurrence after the first when that sample is read or written, with a war
 `VcfSample.properties()`). Two empty keys are not "duplicates" for rejection purposes, but they are still a
 data-loss case in practice.
 
-A grammar-invalid (but non-empty) key is excluded from `checkFormat`'s unconditional-throw duplicate check
-the same way an empty key is (both `continue` past the `isDuplicateAt` call for that index) -- the fatal
-duplicate check would be too severe for content already downgraded to a warning. But `checkFormat` now also
-runs a second, warn-only `isDuplicateAt` check right alongside the grammar warning for exactly this case, so
-two identical grammar-invalid keys (e.g. `GT:1KG:1KG`) warn about BOTH the grammar violation (once per
-occurrence) and the duplicate (once, eagerly, at construction time) -- rather than leaving the duplicate to
-be discovered only if a caller later happens to read that sample's properties, which independently and
-lazily warns "Sample contains duplicate FORMAT key" via `VcfSample.properties()` regardless (the same
-data-loss mechanics as the empty-key case above apply here too: the second occurrence's value is still
-silently dropped from the materialized property map, warning or not).
+A grammar-invalid (but non-empty) key is **not** excluded from `checkFormat`'s unconditional-throw
+duplicate check the way an empty key is -- this was a real defect, fixed by the Phase 3 writer-compliance
+review's Path B kickoff (finding #4). An earlier version of `checkFormat` `continue`d past the
+`isDuplicateAt` call for a grammar-invalid key, on the theory that the fatal duplicate check would be too
+severe for content already downgraded to a warning, and instead ran a second, warn-only `isDuplicateAt`
+check right alongside the grammar warning -- but that carve-out waived VCFv4.3.tex:429's separate,
+unconditional "duplicate keys are not allowed" floor for a case that gets no other protection: unlike the
+empty-key case above (which the spec's own zero-length-field rule already treats differently, and which
+`EMPTY_FIELD_HANDLING.md`'s policy deliberately keeps-not-drops for exactly this positional reason), two
+identical grammar-invalid keys (e.g. `GT:1KG:1KG`) silently resolved to the same first value on write
+(`VcfSample.getProperty` is structurally first-occurrence-only), with no warning ever naming the loss
+itself. `checkFormat` now throws for this case exactly as it does for a well-formed duplicate -- the
+grammar violation itself still only warns, once per occurrence, but a duplicate grammar-invalid key is no
+longer additionally exempt from the duplicate floor. See `VcfPosition.checkFormat`'s own comment for the
+live bcftools 1.23.1 corroboration (`FORMAT="GT:1XY:1XY:DP"` collapses to 3 keys, keeping only the first
+occurrence's sample value) and `VcfPositionTest#testLenientConstructorThrowsForDuplicateGrammarInvalidFormatKeys`/
+`VcfParserTest#testDuplicateMalformedFormatKeyThrowsInsteadOfSilentlyDroppingASampleValue` for the
+regression tests.
 
 ## A different kind of "empty": a metadata attribute-list value
 

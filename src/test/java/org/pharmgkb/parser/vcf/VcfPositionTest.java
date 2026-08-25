@@ -2064,22 +2064,23 @@ public class VcfPositionTest {
   }
 
   @Test
-  public void testLenientConstructorWarnsBothGrammarAndDuplicateForTwoInvalidFormatKeys() {
-    // regression test: a grammar-invalid key skips checkFormat's own unconditional-throw isDuplicateAt call
-    // (that check is deliberately fatal, too severe for content already downgraded to a warning) -- but a
-    // grammar-invalid duplicate is not silently un-flagged as a duplicate altogether: a second, warn-only
-    // isDuplicateAt check right alongside the grammar warning now catches it too, eagerly, rather than
-    // leaving it to be discovered only if a caller later reads that sample's properties (which independently,
-    // lazily, warns "Sample contains duplicate FORMAT key" via VcfSample.properties() regardless). Two
-    // identical malformed keys warn about BOTH the grammar violation (twice, once per occurrence) and the
-    // duplicate (once, for the second occurrence).
+  public void testLenientConstructorThrowsForDuplicateGrammarInvalidFormatKeys() {
+    // regression test, updated by the Phase 3 writer-compliance review's Path B fix (finding #4): a
+    // grammar-invalid FORMAT key that is ALSO duplicated now hits checkFormat's unconditional duplicate-key
+    // throw, the same as a well-formed duplicate -- it no longer gets a second, independent leniency
+    // exemption on top of the grammar one. Before this fix, this exact input warned about the duplicate
+    // instead of throwing, which meant VcfSample.getProperty(key)'s first-occurrence-only lookup silently
+    // resolved both "1KG" positions to the same first value on write -- see checkFormat's own comment for the
+    // full rationale and the live bcftools 1.23.1 corroboration. The grammar violation itself is still
+    // warn-only, once per occurrence, right up until the second occurrence's duplicate check fires and
+    // throws.
     StringWriter sink = new StringWriter();
     List<String> format = new java.util.ArrayList<>(List.of("GT", "1KG", "1KG"));
-    VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("1", 100, null, "A", null, null, null,
-        null, format, -1);
-    assertEquals(List.of("GT", "1KG", "1KG"), position.getFormat());
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> lenientContext(new VcfWarnings(sink)).newPosition("1", 100, null, "A", null, null, null, null, format,
+            -1));
+    assertTrue(ex.getMessage().contains("Duplicate FORMAT key \"1KG\""));
     assertEquals(2, org.apache.commons.lang3.StringUtils.countMatches(sink.toString(), "tag-name grammar"));
-    assertTrue(sink.toString().contains("Duplicate FORMAT key \"1KG\""));
   }
 
   @Test

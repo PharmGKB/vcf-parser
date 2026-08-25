@@ -945,16 +945,29 @@ public final class VcfPosition {
         }
         warnings.warn("FORMAT ID \"{}\" does not match the required tag-name grammar (must start with a letter " +
             "or underscore, followed only by letters, digits, underscores, or periods); keeping it as-is", f);
-        // A grammar-invalid key skips the unconditional-throw duplicate check below entirely (that check is
-        // deliberately fatal, per VCFv4.3.tex:429 -- see the check's own comment -- which would be too severe
-        // for content already downgraded to a warning here). But VcfSample.properties() independently detects
-        // and warns about the same duplication anyway, once the sample's property map is actually built --
-        // deferred to first access rather than proactive. Checking (and warning) here too surfaces it eagerly,
-        // right alongside the grammar warning, instead of leaving it to be discovered only if a caller happens
-        // to read this specific key later. Uses isDuplicateAt/seen the same way the unconditional check below
-        // does (registering this occurrence too), just warn-only instead of throwing.
+        // A grammar-invalid key that is ALSO duplicated still hits the unconditional duplicate-key throw below
+        // -- it does not get a second, independent leniency exemption on top of the grammar one. Uses
+        // isDuplicateAt/seen the same way the unconditional check below does (registering this occurrence
+        // too). This carve-out used to warn-and-continue here instead of throwing, exempting a doubly-invalid
+        // key from the duplicate floor every OTHER key (grammar-valid or not) is held to -- but that was never
+        // this carve-out's actual purpose: it exists so one badly-named key doesn't abort an otherwise-parseable
+        // record (VCFv4.3.tex:429's tag-name grammar is warn-and-recover, per this method's own comment above),
+        // not to also waive VCFv4.3.tex:429's separate, unconditional "duplicate keys are not allowed" floor.
+        // Left in place, the exemption caused real, silent data loss: VcfSample.getProperty(key) is
+        // structurally first-occurrence-only in every internal representation (no positional-access
+        // alternative exists anywhere in that class), and VcfWriter.addSampleConditionally looks up each
+        // FORMAT position's value by key name, so a duplicated key's SECOND occurrence resolved to the same
+        // first value on write, silently dropping it -- with no warning naming the loss itself (only the
+        // grammar warning above and, if a caller happened to read this key later, VcfSample.properties()'s own
+        // separate duplicate-key warning). Confirmed live against installed bcftools 1.23.1: given
+        // FORMAT="GT:1XY:1XY:DP" with sample value "0/1:aa:bb:5", bcftools reports
+        // "[W::vcf_parse_format_alloc4] Duplicate FORMAT tag 1XY", collapses to 3 keys, and keeps only the
+        // FIRST occurrence's value ("aa"), silently dropping "bb" -- the identical loss shape, corroborating
+        // that this is a genuine defect, not a legitimate leniency. Found by the Phase 3 writer-compliance
+        // review's Path B kickoff.
         if (isDuplicateAt(format, i, seen)) {
-          warnings.warn("Duplicate FORMAT key \"{}\"; keeping only the first occurrence", f);
+          throw new VcfFormatException("Duplicate FORMAT key \"" + InternalUtils.truncateAndEscapeForMessage(f) +
+              "\"");
         }
         continue;
       }

@@ -2752,6 +2752,36 @@ public class VcfParserTest {
   }
 
   @Test
+  public void testDuplicateMalformedFormatKeyThrowsInsteadOfSilentlyDroppingASampleValue(@TempDir Path tempDir)
+      throws IOException {
+    // regression test for the Phase 3 writer-compliance review's Path B kickoff (finding #4): a grammar-invalid
+    // FORMAT key that is ALSO duplicated ("1KG" appearing twice) previously warned about the duplicate instead
+    // of throwing -- the same leniency the test above pins for a single occurrence, but wrongly extended to
+    // cover the duplicate-key floor too. VcfSample.getProperty(key) is structurally first-occurrence-only, so
+    // the record parsed successfully but silently resolved BOTH "1KG" sample values to the first one ("5"),
+    // permanently losing the second ("6") with no warning naming the loss itself. VcfPosition.checkFormat now
+    // throws here, the same as it already does for a well-formed duplicate key, aborting the file rather than
+    // accepting a record it cannot represent losslessly.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\n" +
+        "1\t100\t.\tA\tT\t.\t.\t.\tGT:1KG:1KG\t0/1:5:6\n";
+    Path vcfFile = tempDir.resolve("sample.vcf");
+    Files.writeString(vcfFile, vcf);
+    Path warningsFile = tempDir.resolve("warnings.log");
+
+    List<VcfPosition> positions = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromFile(vcfFile)
+        .warningsToFile(warningsFile)
+        .parseWith((metadata, record) -> positions.add(record.getPosition()))
+        .build()) {
+      assertThrows(VcfFormatException.class, parser::parse);
+    }
+    assertTrue(positions.isEmpty());
+  }
+
+  @Test
   public void testRecordWithMalformedFormatKeySurvivesWriteAndReparse() throws IOException {
     // AGENTS.md's Writer Validation and Round-Trip Policy: a record accepted by the parser (here, one with a
     // malformed FORMAT key that is now warned about and kept, not rejected) must be writable and reparseable
