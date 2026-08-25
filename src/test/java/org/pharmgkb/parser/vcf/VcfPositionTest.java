@@ -93,6 +93,10 @@ public class VcfPositionTest {
     VcfFormatException ex = assertThrows(VcfFormatException.class,
         () -> STRICT_CONTEXT.newPosition(hugeChrom, 1, null, "C", null, null, null, null, null, -1));
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    // the length bound alone is not discriminative here (a leaky "truncated" notice appended without actually
+    // cutting the string would still pass it) -- found by the ninth re-verification round's test-coverage
+    // pass; asserting the raw untruncated value is absent proves truncation actually happened
+    assertFalse(ex.getMessage().contains(hugeChrom), "raw untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 
@@ -103,6 +107,9 @@ public class VcfPositionTest {
     VcfFormatException ex = assertThrows(VcfFormatException.class,
         () -> STRICT_CONTEXT.newPosition("chr", 1, null, hugeRef, null, null, null, null, null, -1));
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    // see testCheckChromosomeInvalidCharacterMessageIsTruncated's identical comment on why this is needed
+    // alongside the length bound
+    assertFalse(ex.getMessage().contains(hugeRef), "raw untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 350, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 
@@ -139,6 +146,9 @@ public class VcfPositionTest {
         () -> STRICT_CONTEXT.newPosition("chr", 1, Arrays.asList(hugeId, hugeId), "C", null, null, null, null,
             null, -1));
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    // see testCheckChromosomeInvalidCharacterMessageIsTruncated's identical comment on why this is needed
+    // alongside the length bound
+    assertFalse(ex.getMessage().contains(hugeId), "raw untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 
@@ -150,6 +160,9 @@ public class VcfPositionTest {
         () -> STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, Arrays.asList(hugeFilter, hugeFilter),
             null, null, -1));
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    // see testCheckChromosomeInvalidCharacterMessageIsTruncated's identical comment on why this is needed
+    // alongside the length bound
+    assertFalse(ex.getMessage().contains(hugeFilter), "raw untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 
@@ -162,6 +175,9 @@ public class VcfPositionTest {
     VcfFormatException ex = assertThrows(VcfFormatException.class,
         () -> STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, info, null, -1));
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    // see testCheckChromosomeInvalidCharacterMessageIsTruncated's identical comment on why this is needed
+    // alongside the length bound
+    assertFalse(ex.getMessage().contains(hugeKey), "raw untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 
@@ -176,6 +192,14 @@ public class VcfPositionTest {
             Collections.singletonList(hugeKey), -1));
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
     assertFalse(ex.getMessage().contains("\t"), "message must not contain a raw tab: " + ex.getMessage());
+    // the assertFalse above only proves escaping happened, not truncation -- escaping runs unconditionally
+    // before truncation, so it would still pass even if truncation were a no-op (a "leaky" fix that appends
+    // the "... (truncated)" notice without actually cutting the string). Checking for the ESCAPED-but-
+    // untruncated form (raw tab replaced with its two-char "\t" escape) closes that gap -- found by the ninth
+    // re-verification round's test-coverage pass.
+    String escapedHugeKey = "X" + "9".repeat(150) + "\\tY";
+    assertFalse(ex.getMessage().contains(escapedHugeKey),
+        "escaped-but-untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 
@@ -188,6 +212,10 @@ public class VcfPositionTest {
         .toBuilder().rawQuality(hugeQual).build();
     VcfFormatException ex = assertThrows(VcfFormatException.class, position::getQuality);
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    // see testCheckChromosomeInvalidCharacterMessageIsTruncated's identical comment on why this is needed
+    // alongside the length bound -- this one is especially close (a 200-char un-truncated message is only
+    // just under the 300-char bound), so the length check alone was nearly a coin flip away from vacuous
+    assertFalse(ex.getMessage().contains(hugeQual), "raw untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 300, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 

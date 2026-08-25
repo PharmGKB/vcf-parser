@@ -247,6 +247,12 @@ public class InfoMetadataTest {
     assertTrue(ex.getMessage().contains("\\r"), "raw CR must be escaped, not embedded verbatim: " + ex.getMessage());
     assertFalse(ex.getMessage().contains("\r"), "message must not contain a raw CR: " + ex.getMessage());
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    // the two assertFalse/assertTrue checks above only prove escaping happened, not truncation -- see
+    // InternalUtilsTest.testCheckReservedFormatConstraintsFtWhitespaceMessageIsTruncatedAndEscaped's identical
+    // comment; checking for the escaped-but-untruncated form closes that gap
+    String escapedHugeNumber = "\\r" + "9".repeat(200);
+    assertFalse(ex.getMessage().contains(escapedHugeNumber),
+        "escaped-but-untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 

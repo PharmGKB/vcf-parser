@@ -117,6 +117,10 @@ public class VcfMetadataTest {
             hugeName, hugeName));
     VcfFormatException ex = assertThrows(VcfFormatException.class, builder::build);
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    // the length bound alone is not discriminative (a leaky "truncated" notice appended without actually
+    // cutting the string would still pass it) -- found by the ninth re-verification round's test-coverage
+    // pass; asserting the raw untruncated value is absent proves truncation actually happened
+    assertFalse(ex.getMessage().contains(hugeName), "raw untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 
@@ -1959,6 +1963,10 @@ public class VcfMetadataTest {
     VcfFormatException ex = assertThrows(VcfFormatException.class, () -> builder.addAlt(badAlt));
     assertTrue(ex.getMessage().contains("must not contain angle brackets"), ex.getMessage());
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    // the length bound alone is not discriminative (a leaky "truncated" notice appended without actually
+    // cutting the string would still pass it) -- found by the ninth re-verification round's test-coverage
+    // pass; asserting the raw untruncated value is absent proves truncation actually happened
+    assertFalse(ex.getMessage().contains(hugeId), "raw untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 

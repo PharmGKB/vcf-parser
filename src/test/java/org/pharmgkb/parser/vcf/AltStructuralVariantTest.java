@@ -72,6 +72,11 @@ public class AltStructuralVariantTest {
     String hugeCode = "x".repeat(150) + ",y";
     VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new AltStructuralVariant(hugeCode));
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    // the length bound alone is not discriminative (a leaky "truncated" notice appended without actually
+    // cutting the string would still pass it, with only ~6 chars of margin) -- found by the ninth
+    // re-verification round's test-coverage pass; asserting the raw untruncated value is absent proves
+    // truncation actually happened
+    assertFalse(ex.getMessage().contains(hugeCode), "raw untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 
@@ -81,6 +86,9 @@ public class AltStructuralVariantTest {
     String hugeCode = "x".repeat(150) + "::";
     VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new AltStructuralVariant(hugeCode));
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    // see testWhitespaceOrCommaRejectionMessageIsTruncated's identical comment on why this is needed alongside
+    // the length bound
+    assertFalse(ex.getMessage().contains(hugeCode), "raw untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 
@@ -90,6 +98,9 @@ public class AltStructuralVariantTest {
     String hugeCode = "x".repeat(150);
     VcfFormatException ex = assertThrows(VcfFormatException.class, () -> new AltStructuralVariant(hugeCode));
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    // see testWhitespaceOrCommaRejectionMessageIsTruncated's identical comment on why this is needed alongside
+    // the length bound
+    assertFalse(ex.getMessage().contains(hugeCode), "raw untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 250, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 

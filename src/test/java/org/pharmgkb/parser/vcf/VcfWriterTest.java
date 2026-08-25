@@ -1903,6 +1903,10 @@ public class VcfWriterTest {
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     VcfFormatException e = assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
     assertTrue(e.getMessage().contains("truncated"), e.getMessage());
+    // the length bound alone is not discriminative (a leaky "truncated" notice appended without actually
+    // cutting the string would still pass it) -- found by the ninth re-verification round's test-coverage
+    // pass; asserting the raw untruncated value is absent proves truncation actually happened
+    assertFalse(e.getMessage().contains(hugeKey), "raw untruncated value must not appear: " + e.getMessage());
     assertTrue(e.getMessage().length() < 250, "message was not bounded: " + e.getMessage().length() + " chars");
   }
 
@@ -2223,6 +2227,9 @@ public class VcfWriterTest {
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     VcfFormatException e = assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
     assertTrue(e.getMessage().contains("truncated"), e.getMessage());
+    // see testValidateBeforeWriteEqualsSignInRawPropertyKeyMessageIsTruncated's identical comment on why this
+    // is needed alongside the length bound
+    assertFalse(e.getMessage().contains(hugeValue), "raw untruncated value must not appear: " + e.getMessage());
     assertTrue(e.getMessage().length() < 350, "message was not bounded: " + e.getMessage().length() + " chars");
   }
 
@@ -2253,6 +2260,9 @@ public class VcfWriterTest {
     VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
     VcfFormatException e = assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
     assertTrue(e.getMessage().contains("truncated"), e.getMessage());
+    // see testValidateBeforeWriteEqualsSignInRawPropertyKeyMessageIsTruncated's identical comment on why this
+    // is needed alongside the length bound
+    assertFalse(e.getMessage().contains(hugeMapKey), "raw untruncated value must not appear: " + e.getMessage());
     assertTrue(e.getMessage().length() < 400, "message was not bounded: " + e.getMessage().length() + " chars");
   }
 
@@ -2274,6 +2284,9 @@ public class VcfWriterTest {
     VcfFormatException e = assertThrows(VcfFormatException.class,
         () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
     assertTrue(e.getMessage().contains("truncated"), e.getMessage());
+    // see testValidateBeforeWriteEqualsSignInRawPropertyKeyMessageIsTruncated's identical comment on why this
+    // is needed alongside the length bound
+    assertFalse(e.getMessage().contains(hugeKey), "raw untruncated value must not appear: " + e.getMessage());
     assertTrue(e.getMessage().length() < 300, "message was not bounded: " + e.getMessage().length() + " chars");
   }
 
@@ -2294,6 +2307,12 @@ public class VcfWriterTest {
     VcfFormatException e = assertThrows(VcfFormatException.class, () -> writer.writeHeader(metadata));
     assertTrue(e.getMessage().contains("truncated"), e.getMessage());
     assertFalse(e.getMessage().contains("\t"), "message must not contain a raw tab: " + e.getMessage());
+    // the assertFalse above only proves escaping happened, not truncation -- see
+    // VcfPositionTest.testCheckFormatTabMessageIsTruncatedAndEscapesTheEmbeddedTab's identical comment;
+    // checking for the escaped-but-untruncated form closes that gap
+    String escapedHugeSampleName = "x".repeat(200) + "\\tY";
+    assertFalse(e.getMessage().contains(escapedHugeSampleName),
+        "escaped-but-untruncated value must not appear: " + e.getMessage());
     assertTrue(e.getMessage().length() < 300, "message was not bounded: " + e.getMessage().length() + " chars");
   }
 
@@ -3419,6 +3438,9 @@ public class VcfWriterTest {
     VcfFormatException e = assertThrows(VcfFormatException.class,
         () -> writer.writeLine(metadata, position, Collections.singletonList(sample)));
     assertTrue(e.getMessage().contains("truncated"), e.getMessage());
+    // see testValidateBeforeWriteEqualsSignInRawPropertyKeyMessageIsTruncated's identical comment on why this
+    // is needed alongside the length bound
+    assertFalse(e.getMessage().contains(hugeChrom), "raw untruncated value must not appear: " + e.getMessage());
     assertTrue(e.getMessage().length() < 300, "message was not bounded: " + e.getMessage().length() + " chars");
   }
 

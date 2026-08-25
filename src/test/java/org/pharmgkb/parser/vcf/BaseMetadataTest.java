@@ -196,10 +196,16 @@ public class BaseMetadataTest {
     // value (unlike Map.of, these tolerate one).
     Map<String, String> map = new LinkedHashMap<>();
     map.put("ID", "DP");
-    map.put("X".repeat(200), null);
+    String hugeKey = "X".repeat(200);
+    map.put(hugeKey, null);
     VcfFormatException ex = assertThrows(VcfFormatException.class,
         () -> new BaseMetadata(LENIENT_CONTEXT, "TEST", map));
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    // the length bound alone is not discriminative (a leaky "truncated" notice appended without actually
+    // cutting the string would still pass it, at 237 chars) -- found by the ninth re-verification round's
+    // policy/doc-alignment pass, the same defect class its own sibling round-8 commit fixed elsewhere but
+    // missed on this test, added one commit later in the same round
+    assertFalse(ex.getMessage().contains(hugeKey), "raw untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 300, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 

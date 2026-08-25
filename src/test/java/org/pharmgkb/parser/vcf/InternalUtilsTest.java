@@ -530,6 +530,13 @@ public class InternalUtilsTest {
     assertTrue(ex.getMessage().contains("\\r"), "raw CR must be escaped, not embedded verbatim: " + ex.getMessage());
     assertFalse(ex.getMessage().contains("\r"), "message must not contain a raw CR: " + ex.getMessage());
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    // the two assertFalse/assertTrue checks above only prove escaping happened, not truncation -- escaping
+    // runs unconditionally before truncation, so they'd still pass even if truncation were a no-op. Checking
+    // for the ESCAPED-but-untruncated form closes that gap -- found by the ninth re-verification round's
+    // test-coverage pass.
+    String escapedHugeCode = "q10 \\r" + "9".repeat(200);
+    assertFalse(ex.getMessage().contains(escapedHugeCode),
+        "escaped-but-untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 350, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 
@@ -544,6 +551,10 @@ public class InternalUtilsTest {
     VcfFormatException ex = assertThrows(VcfFormatException.class,
         () -> InternalUtils.checkReservedFormatConstraints("FT", hugeValue, VcfVersion.V4_2, null));
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    // the length bound alone is not discriminative (a leaky "truncated" notice appended without actually
+    // cutting the string would still pass it, at 321 chars) -- found by the ninth re-verification round's
+    // test-coverage pass; asserting the raw untruncated value is absent proves truncation actually happened
+    assertFalse(ex.getMessage().contains(hugeValue), "raw untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 350, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 
