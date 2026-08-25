@@ -610,6 +610,24 @@ class VcfSampleTest {
   }
 
   @Test
+  void testBuilderPropertyMaterializationThrowsForDuplicateKeyInsteadOfSilentlyDroppingAValue() {
+    // regression test for the Phase 3 writer-compliance review's Task 5 second re-verification round
+    // (corroborated by two independent agents), user-approved fix (2026-08-25): Builder.property()'s
+    // first-call materialization of a pending keys()/values() list used to keep the first value for a
+    // duplicate key via putIfAbsent, with NO warning at all (this builder has no warnings sink to emit one
+    // through) and no way for build()'s later validation to ever notice, since a Map cannot itself hold a
+    // duplicate key once collapsed -- the one remaining public-API route around
+    // testNewSampleThrowsForDuplicateKeyInsteadOfSilentlyDroppingAValue's own newly-unconditional floor
+    // above, and worse than before that floor existed (silently succeeds even under a strict context, where
+    // the constructor now guarantees a hard failure). property() itself now throws during materialization.
+    VcfSample.Builder builder = new VcfSample.Builder(STRICT_CONTEXT)
+        .keys(Arrays.asList("GT", "GT"))
+        .values(Arrays.asList("0/1", "1/1"));
+    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> builder.property("XX", "yy"));
+    assertTrue(ex.getMessage().contains("Duplicate FORMAT key \"GT\""), ex.getMessage());
+  }
+
+  @Test
   void testPropertiesMaterializationKeepsFirstOccurrenceOnDuplicateKeyViaTrustedBypass() {
     // properties() (the materialization path triggered by getPropertyKeys()/propertyEntrySet()/validate())
     // previously let the LAST occurrence of a duplicate key silently overwrite the first, while getProperty()

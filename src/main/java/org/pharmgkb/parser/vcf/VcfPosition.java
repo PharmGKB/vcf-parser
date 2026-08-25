@@ -536,9 +536,12 @@ public final class VcfPosition {
    * @return Whether {@code list.get(index)} equals any earlier element in {@code list}. If {@code seen} is
    * non-null, it is used (and mutated) as an accumulating membership set instead of scanning {@code list}
    * directly -- see {@link #DUPLICATE_SCAN_THRESHOLD}'s own comment for why a caller must supply one once
-   * {@code list} is no longer small. A caller skipping this method entirely for one index (e.g. an empty
-   * FORMAT sub-field name) must not call it for that index at all, not call it and ignore the result: skipping
-   * the call is also what keeps that index's value out of {@code seen} for every later comparison.
+   * {@code list} is no longer small. A caller that skips this method entirely for one index must not call it
+   * for that index at all, not call it and ignore the result: skipping the call is also what keeps that
+   * index's value out of {@code seen} for every later comparison. As of the Phase 3 writer-compliance
+   * review's Task 5 first re-verification round (finding B), every {@code checkFormat} branch -- including a
+   * grammar-invalid key and an empty key -- calls this for every index; there is currently no FORMAT-key
+   * shape this method is skipped for.
    */
   private static boolean isDuplicateAt(List<String> list, int index, @Nullable Set<String> seen) {
     String value = list.get(index);

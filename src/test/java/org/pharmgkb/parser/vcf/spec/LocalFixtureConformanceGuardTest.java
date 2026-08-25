@@ -65,12 +65,13 @@ class LocalFixtureConformanceGuardTest {
 
   @Test
   void testWriteExceptionIsReportedAsCleanFailureNotRawException() throws IOException {
-    // an INFO key containing whitespace parses successfully (with a warning) via the lazy rawInfo path, but
-    // VcfPosition.checkInfoEntries's key-whitespace check is unconditional and only actually runs on first
-    // getInfo()/getInfoKeys() access -- VcfWriter.addInfoOrDot calls exactly that during write() to enumerate
-    // INFO for writing, so it throws there instead. The exact shape HTS_SPECS_BASELINE_STATUS.md's "INFO
-    // contains a whitespace" row documents (failed_body_info_028.vcf's "RS Q=123"), now exercised through
-    // this class's own (previously unguarded) write phase instead.
+    // an INFO key containing whitespace parses successfully with NO warning at all (the check is deferred,
+    // not skipped) via the lazy rawInfo path, but VcfPosition.checkInfoEntries's key-whitespace check is
+    // unconditional -- not a warn-or-throw -- and only actually runs on first getInfo()/getInfoKeys() access.
+    // VcfWriter.addInfoOrDot calls exactly that during write() to enumerate INFO for writing, so it throws
+    // there instead, with no warning ever having fired at parse time. The exact shape
+    // HTS_SPECS_BASELINE_STATUS.md's "INFO contains a whitespace" row documents (failed_body_info_028.vcf's
+    // "RS Q=123"), now exercised through this class's own (previously unguarded) write phase instead.
     String vcf = "##fileformat=VCFv4.3\n" +
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
         "1\t100\t.\tA\tT\t.\t.\tRS Q=123\n";

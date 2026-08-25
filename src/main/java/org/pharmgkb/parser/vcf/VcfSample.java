@@ -968,15 +968,14 @@ public final class VcfSample {
      * Sets a single property -- the natural replacement for {@code VcfSample}'s former {@code putProperty(String,
      * String)}, now that {@code VcfSample} itself has no mutation routes. Switches this builder to the property-map
      * representation (like {@link #properties}) if it isn't already: on first call, materializes any parallel-list
-     * representation set via {@link #keys}/{@link #values} into a fresh map (keeping the first value for a
-     * duplicate key, matching {@code VcfSample}'s own materialization convention, minus the warning -- this builder
-     * has no warnings sink of its own to emit one through), then reuses that same map for every subsequent
-     * {@code property}/{@link #properties} call. Unlike {@link #keys}/{@link #values}/{@link #properties}, this does
-     * not itself run {@link VcfSample#checkNoStructuralDelimiter} on {@code key}/{@code value} -- {@link #build()}
-     * always re-validates the whole property map anyway (see its own Javadoc), so validating here too would be
-     * redundant.
+     * representation set via {@link #keys}/{@link #values} into a fresh map, then reuses that same map for every
+     * subsequent {@code property}/{@link #properties} call. Unlike {@link #keys}/{@link #values}/{@link #properties},
+     * this does not itself run {@link VcfSample#checkNoStructuralDelimiter} on {@code key}/{@code value} --
+     * {@link #build()} always re-validates the whole property map anyway (see its own Javadoc), so validating here
+     * too would be redundant.
      *
-     * @throws VcfFormatException if {@code key} is null
+     * @throws VcfFormatException if {@code key} is null, or if the {@link #keys}/{@link #values} lists being
+     * materialized contain a duplicate key
      */
     public Builder property(String key, @Nullable String value) {
       // key is typed non-@Nullable, but nothing enforces that at runtime; reject immediately per AGENTS.md's
@@ -990,7 +989,22 @@ public final class VcfSample {
         List<String> values = m_values;
         if (keys != null && values != null) {
           for (int i = 0; i < keys.size(); i++) {
-            materialized.putIfAbsent(keys.get(i), values.get(i));
+            String k = keys.get(i);
+            // Unconditional, matching the constructor's own duplicate-key floor (see its own comment) --
+            // this materialization used to silently keep the first value for a duplicate key via
+            // putIfAbsent, with no warning at all (this builder has no warnings sink to emit one through)
+            // and no way for build()'s later re-validation to ever notice, since a Map cannot itself hold a
+            // duplicate key once collapsed. That made this the one remaining public-API route around the
+            // constructor's new unconditional throw -- worse than before the throw existed, since it now
+            // silently succeeds even under a strict context where the constructor guarantees a hard failure.
+            // Found by the Phase 3 writer-compliance review's Task 5 second re-verification round
+            // (corroborated by two independent agents), user-approved fix (2026-08-25): throw here too,
+            // rather than materializing past it.
+            if (materialized.containsKey(k)) {
+              throw new VcfFormatException("Duplicate FORMAT key \"" + InternalUtils.truncateAndEscapeForMessage(k) +
+                  "\"");
+            }
+            materialized.put(k, values.get(i));
           }
         }
         m_properties = materialized;
