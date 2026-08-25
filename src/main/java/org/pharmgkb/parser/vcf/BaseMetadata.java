@@ -152,9 +152,15 @@ public sealed class BaseMetadata permits IdMetadata, PedigreeMetadata {
       // VCF parsing (InternalUtils.parseAttribute/tokenizeAttributeList always produce a non-null name and
       // value together, or drop the whole attribute), but this loop already runs unconditionally at
       // construction (via the Map-based constructor every parsed declaration uses) and on every validate()
-      // re-check, so this is one more check on an already-active path, not a new one.
+      // re-check, so this is one more check on an already-active path, not a new one. That same Map-based
+      // constructor IS directly reachable from the public addXxx(Map)/replaceXxx(Map) overloads with a
+      // caller-supplied HashMap/LinkedHashMap (unlike Map.of, these tolerate a null value), so entry.getKey()
+      // below needs the same truncateAndEscapeForMessage treatment as every other public-construction site in
+      // this class family -- found by the eighth re-verification round's fresh bug hunt (confirmed live: an
+      // 100,000-char key with a null value produced a 100,037-char, unbounded exception message).
       if (entry.getValue() == null) {
-        throw new VcfFormatException("Metadata property \"" + entry.getKey() + "\" has a null value");
+        throw new VcfFormatException("Metadata property \"" + InternalUtils.truncateAndEscapeForMessage(entry.getKey()) +
+            "\" has a null value");
       }
       InternalUtils.checkNoLineTerminator(entry.getKey(), entry.getValue());
     }

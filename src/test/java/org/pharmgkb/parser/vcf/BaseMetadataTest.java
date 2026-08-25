@@ -187,6 +187,23 @@ public class BaseMetadataTest {
   }
 
   @Test
+  public void testConstructorRejectsNullPropertyValueMessageIsTruncated() {
+    // regression test found by the eighth re-verification round's fresh bug hunt: validateProperties()'s null-
+    // value message embedded the raw property key verbatim and unbounded. Unlike the bypass-only test above,
+    // this needs no trustedMutableProperties() bypass at all -- validateProperties() runs unconditionally at
+    // the end of the Map-based constructor (line 87), so this is directly reachable from the public
+    // addXxx(Map)/replaceXxx(Map) overloads via a caller-supplied HashMap/LinkedHashMap containing a null
+    // value (unlike Map.of, these tolerate one).
+    Map<String, String> map = new LinkedHashMap<>();
+    map.put("ID", "DP");
+    map.put("X".repeat(200), null);
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> new BaseMetadata(LENIENT_CONTEXT, "TEST", map));
+    assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    assertTrue(ex.getMessage().length() < 300, "message was not bounded: " + ex.getMessage().length() + " chars");
+  }
+
+  @Test
   public void testDefaultWarningsSinkIsSharedLogger() {
     // LENIENT_CONTEXT's own sink is VcfWarnings.DEFAULT (Task 7 removed setWarningsSink, so this is the only
     // sink a BaseMetadata not built with an explicit VcfWarnings can ever have) -- must warn to the shared
