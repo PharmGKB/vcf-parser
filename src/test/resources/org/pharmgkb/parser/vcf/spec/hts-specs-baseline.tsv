@@ -218,3 +218,9 @@ test/vcf/4.2/passed/complexfile_passed_000.vcf	writer-bytediff	byte-diff	57 of 7
 test/vcf/4.2/passed/passed_meta_contig.vcf	writer-bytediff	byte-diff	9 of 11 lines differ, first difference at line 3: "##contig=<ID=1,length=123456>" original, "##contig=<ID=1AC,length=123456>" written
 test/vcf/4.3/passed/complexfile_passed_000.vcf	writer-bytediff	byte-diff	26 of 75 lines differ, first difference at line 15: "##ALT=<ID=DEL,Description="Deletion">" original, "##INFO=<ID=AA,Number=1,Type=String,Description="Ancestral Allele, ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/pilot_data/technical/reference/ancestral_alignments/README">" written
 test/vcf/4.5/passed/zero_length_LAA.vcf	writer-bytediff	byte-diff	6 of 11 lines differ, first difference at line 5: "1	100	zero_length_EC	C	T	.	.	.	LAA:LEC	:	1:1" original, "1	100	zero_length_EC	C	T	.	.	.	LAA:LEC	.:.	1:1" written
+test/vcf/4.1/failed/failed_body_info_028.vcf	writer-semantic	write-exception	[Line #4] Error parsing data: INFO column entry "RS Q=123" contains whitespace
+test/vcf/4.1/failed/failed_body_qual_000.vcf	writer-semantic	semantic-diff-exception	[Line #4] Error parsing data: QUAL 'quality' is not a number -- see getRawQuality() for the original text
+test/vcf/4.2/failed/failed_body_info_028.vcf	writer-semantic	write-exception	[Line #4] Error parsing data: INFO column entry "RS Q=123" contains whitespace
+test/vcf/4.2/failed/failed_body_qual_000.vcf	writer-semantic	semantic-diff-exception	[Line #4] Error parsing data: QUAL 'quality' is not a number -- see getRawQuality() for the original text
+test/vcf/4.3/failed/failed_body_info_028.vcf	writer-semantic	write-exception	[Line #4] Error parsing data: INFO column entry "RS Q=123" contains whitespace
+test/vcf/4.3/failed/failed_body_qual_000.vcf	writer-semantic	semantic-diff-exception	[Line #4] Error parsing data: QUAL 'quality' is not a number -- see getRawQuality() for the original text

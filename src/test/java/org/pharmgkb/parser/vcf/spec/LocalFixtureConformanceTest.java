@@ -104,6 +104,38 @@ class LocalFixtureConformanceTest {
         () -> checkRoundTripByteDiff(file)));
   }
 
+  // Phase 3 writer-compliance review's Path B kickoff (finding #6): failed/ fixtures were never round-tripped
+  // at all, even though a ##ExpectParser=warn/silent fixture parses successfully and has real data to write
+  // back out -- exactly the "lenient-recovery content" AGENTS.md's Writer Validation and Round-Trip Policy
+  // governs. Demonstrated live (before this factory existed) that alt-doubled-comma.vcf round-trips
+  // semantically cleanly but nothing tested it. Filtered to warn/silent only, not throw: a throw fixture never
+  // reaches the writer, so there's nothing to round-trip. No byte-identical counterpart, for the same reason
+  // HtsSpecsConformanceTest's own analogous factory has none (see that class's comment): this corpus's
+  // failed/ content is defined by needing recovery/normalization on the way in, so byte-identity was never a
+  // guarantee it could satisfy, and every failed/ fixture would need a ##RoundTripDivergenceReason= just to
+  // avoid a near-universal, non-actionable failure -- that key is also currently disallowed on failed/
+  // fixtures by localFixtureHeadersAreWellFormed above, a restriction this factory does not disturb.
+
+  @TestFactory
+  Stream<DynamicTest> localFailedFixturesRoundTripSemantically() throws IOException {
+    Path dir = FIXTURES_ROOT.resolve("failed");
+    List<Path> allFiles = new ArrayList<>();
+    collectVcfFiles(dir, allFiles);
+    List<DynamicTest> emptyDirGuards = requireNonEmpty(dir, allFiles);
+    if (!emptyDirGuards.isEmpty()) {
+      return emptyDirGuards.stream();
+    }
+    List<Path> files = new ArrayList<>();
+    for (Path file : allFiles) {
+      String expectParser = LocalFixtureMetadata.parse(file).expectParser().orElse("throw");
+      if (!"throw".equals(expectParser)) {
+        files.add(file);
+      }
+    }
+    return files.stream().map(file -> DynamicTest.dynamicTest(relativeName(file),
+        () -> checkRoundTripSemantic(file)));
+  }
+
   @TestFactory
   Stream<DynamicTest> localFailedFixturesMatchExpectation() throws IOException {
     Path dir = FIXTURES_ROOT.resolve("failed");

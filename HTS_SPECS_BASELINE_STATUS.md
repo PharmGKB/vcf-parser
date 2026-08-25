@@ -341,6 +341,21 @@ issue draft yet.
 | Duplicate `##contig` line dropped | `passed_meta_contig.vcf` (4.1, 4.2) | 2 | Permanently accepted, deliberate | Direct, intended consequence of the duplicate-metadata-ID keep-first policy. See `DUPLICATE_METADATA_ID_HANDLING.md`. |
 | Empty sample value substituted | `zero_length_LAA.vcf` (4.5) | 1 | Permanently accepted | Matches this library's established empty-field normalization policy. See `EMPTY_FIELD_HANDLING.md`. |
 
+## `writer-semantic` entries (6) — `failed/` fixtures whose round trip throws, added by Phase 3's finding #6
+
+Before Phase 3's writer-compliance review (finding #6), `failedFixturesRoundTripSemantically` did not exist --
+`failed/` fixtures were never round-tripped at all, only checked for `parser-no-throw`/`parser-throw-or-warn`.
+Adding that factory (reusing the existing `checkRoundTripSemantic` unchanged, which already returns early for
+a fixture that doesn't even parse) raised the frozen total from **845** to **1359**, confirmed via
+`./gradlew htsSpecsUpdateBaseline` producing a diff of exactly 6 insertions (verified: `git diff` on
+`hts-specs-baseline.tsv` showed 6 new lines, zero removed/modified) and a subsequent `./gradlew htsSpecsTest`
+reporting `1359/1359 checks match baseline, 0 new/stale, 0 per-version row(s) moved`.
+
+| Cause | Fixtures | Count | Status | Details |
+|---|---|---|---|---|
+| Non-numeric QUAL throws on write | `failed_body_qual_000.vcf` (4.1, 4.2, 4.3) | 3 | Permanently accepted | The identical, already-documented "Non-numeric QUAL" row above (`VcfPosition.getQuality()` throws unconditionally for a non-numeric QUAL) now also surfaces on the writer side: `checkRoundTripSemantic`'s `semanticDiff` phase calls `getQuality()` on both `before`/`after` to compare them, so it throws for exactly the reason that row already explains -- caught by the `semantic-diff-exception` guard `checkRoundTripSemantic` already has for this class of exception. |
+| INFO key whitespace throws on write | `failed_body_info_028.vcf` (4.1, 4.2, 4.3) | 3 | Permanently accepted | The identical, already-documented "INFO contains a whitespace" row above (`VcfPosition.checkInfoEntries` throws unconditionally for whitespace in an INFO key) now also surfaces on the writer side: `VcfWriter.addInfoOrDot` calls `position.getInfoKeys()`/`getInfo(key)` to enumerate INFO for writing, on both the default and `validateBeforeWrite()` paths, which forces the same lazy check to run and throw during `checkRoundTripSemantic`'s `write` phase -- caught by its existing `write-exception` guard. |
+
 ## Non-valid URL fixtures: why permanently accepted
 
 Several `failed/` fixtures use `##CauseOfFailure=Non-valid URL` for an `##assembly=`/`##pedigreeDB=`

@@ -232,6 +232,41 @@ class HtsSpecsConformanceTest {
         () -> checkRoundTripByteDiff(file)));
   }
 
+  // Phase 3 writer-compliance review's Path B kickoff (finding #6): failed/ fixtures were never round-tripped
+  // at all, even though the ones this library accepts leniently (a warning, not a throw -- see
+  // failedFixturesThrowOrWarn above) parse successfully and have real data to write back out, exactly the
+  // "lenient-recovery content" AGENTS.md's Writer Validation and Round-Trip Policy governs. checkRoundTripSemantic
+  // already returns early for a fixture that doesn't even parse (see its own comment), so reusing it unchanged
+  // here is safe: a fixture this library genuinely rejects contributes no dynamic-test failure, only the ones
+  // actually accepted (silently or with a warning) get exercised. Baseline-driven, exactly like the passed/
+  // round-trip check above -- a genuine divergence (e.g. a recovered value that doesn't survive
+  // write-then-reparse, or one that throws on write for an already-documented reason such as HTS_SPECS_BASELINE_
+  // STATUS.md's "INFO contains a whitespace" row) is recorded, not a hard failure, since this corpus's failed/
+  // fixtures are deliberately non-compliant content and the point of this factory is coverage, not a
+  // zero-divergence guarantee.
+  //
+  // Deliberately semantic-only, no byte-identical counterpart: measured directly (running this factory before
+  // adding it) that a byte-diff version would fail on the overwhelming majority of accepted failed/ fixtures --
+  // hundreds of near-universal divergences from declaration reordering and the recovered value itself being
+  // normalized on write (the exact "recovery" this corpus's content is defined by), which would bloat the
+  // baseline with noise rather than tracking a meaningful exception. The semantic check is what AGENTS.md's
+  // policy actually requires ("without losing fields or producing malformed column structure"); byte-identity
+  // was never a guarantee this corpus's non-compliant content could satisfy.
+
+  @TestFactory
+  Stream<DynamicTest> failedFixturesRoundTripSemantically() throws IOException {
+    List<Path> files = new ArrayList<>();
+    for (String version : FAILED_VERSIONS) {
+      collectVcfFiles(fixtureDir(version, "failed"), files);
+    }
+    if (files.isEmpty()) {
+      return Stream.of(DynamicTest.dynamicTest("hts-specs checkout missing", () ->
+          fail("No failed/ fixtures found under " + htsSpecsDir() + " -- run `./gradlew htsSpecsCheckout` first")));
+    }
+    return files.stream().map(file -> DynamicTest.dynamicTest(relativeName(file),
+        () -> checkRoundTripSemantic(file)));
+  }
+
   private static void collectVcfFiles(Path dir, List<Path> into) throws IOException {
     if (!Files.isDirectory(dir)) {
       return;
