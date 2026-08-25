@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.stream.Stream;
 import ch.qos.logback.classic.Logger;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -390,8 +391,15 @@ class HtsSpecsConformanceTest {
       before = WriterRoundTrip.parseFile(file);
     } catch (RuntimeException e) {
       // this fixture already fails parser-no-throw (or is baselined there) -- there's no successfully-parsed
-      // data to write, so there's nothing to test about the writer here; skip rather than reporting a
-      // misleading "write-exception" for what is actually a parse failure
+      // data to write, so there's nothing to test about the writer here. Reports as SKIPPED with the reason
+      // visible (matching LocalFixtureConformanceTest.checkRoundTripByteDiff's identical pattern for a
+      // not-applicable round-trip check), rather than silently PASSED -- a plain `return` here would make a
+      // fixture that later starts failing parser-no-throw look, in this dynamic test's own report, identical
+      // to one that was actually round-tripped and found clean, rather than one round-tripping never checked.
+      // Currently never reached: no passed/failed fixture in the checked-out corpus is baselined for
+      // parser-no-throw today (2026-08-25), so this is a not-yet-exercised safety net, not a live divergence.
+      Assumptions.abort(fixturePath + " (writer-semantic): does not parse (see parser-no-throw) -- nothing to " +
+          "round-trip");
       return;
     }
     String written;
@@ -443,7 +451,9 @@ class HtsSpecsConformanceTest {
     try {
       before = WriterRoundTrip.parseFile(file);
     } catch (RuntimeException e) {
-      // see checkRoundTripSemantic: a fixture that doesn't even parse has nothing meaningful to byte-diff
+      // see checkRoundTripSemantic's identical branch for why this is Assumptions.abort(), not a plain return
+      Assumptions.abort(fixturePath + " (writer-bytediff): does not parse (see parser-no-throw) -- nothing to " +
+          "byte-diff");
       return;
     }
     String written;
