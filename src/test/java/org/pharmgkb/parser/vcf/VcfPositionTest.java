@@ -112,7 +112,16 @@ public class VcfPositionTest {
     // was the one site the fifth re-verification round's finding #1b fix missed in this class -- every sibling
     // checkXxx throw here was already wrapped, but this one still embedded the raw ALT value verbatim and
     // unbounded.
-    String hugeAlt = "Q" + "A".repeat(150);
+    //
+    // hugeAlt is deliberately much larger than the sibling checkRef/checkChromosome tests' 150-char values:
+    // ALT_BASE_PATTERN's own toString (fixed, not attacker-controlled -- it includes the breakpoint
+    // sub-patterns) is itself embedded alongside the truncated value and is 521 chars on its own, so a value
+    // only a little larger than that would let an unbounded, un-truncated embedding of base still slip under
+    // a loose length bound -- found by the seventh re-verification round's test-coverage pass, which measured
+    // that a 150-char base's raw (unfixed) message would still have been only 711 chars, under the previous
+    // 900-char bound. 5000 chars leaves no such room: a regression that stopped truncating base would produce
+    // a message over 5000 chars, comfortably failing the bound below.
+    String hugeAlt = "Q" + "A".repeat(5000);
     VcfFormatException ex = assertThrows(VcfFormatException.class,
         () -> STRICT_CONTEXT.newPosition("chr", 1, null, "C", List.of(hugeAlt), null, null, null, null, -1));
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
