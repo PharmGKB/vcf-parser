@@ -4537,6 +4537,11 @@ public class VcfWriterTest {
       VcfFormatException ex = assertThrows(VcfFormatException.class,
           () -> writer.writeHeader(metadataDeclaring(hugeFileFormat)));
       assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+      // the length bound alone is not discriminative (an un-truncated 206-char embed would still pass it) --
+      // found by the eighth re-verification round's test-coverage pass; asserting the raw huge value is
+      // absent proves truncation actually happened, not merely that the message mentions the word
+      assertFalse(ex.getMessage().contains(hugeFileFormat),
+          "raw untruncated value must not appear: " + ex.getMessage());
       assertTrue(ex.getMessage().length() < 700, "message was not bounded: " + ex.getMessage().length() + " chars");
     }
   }

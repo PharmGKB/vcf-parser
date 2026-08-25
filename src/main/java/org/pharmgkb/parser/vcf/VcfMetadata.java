@@ -547,8 +547,11 @@ public final class VcfMetadata {
       // it, so it shows the source spelling (quotes included) -- raw-use item 3, "source-form diagnostics", in
       // VALIDATION_PHILOSOPHY.md's value/encoding rule. Every other ID read in this class is unquoted.
       // truncateAndEscapeForMessage still applies on top of that raw read: the ID's own length is never
-      // bounded by public construction, reachable via addXxx/addPedigree/replaceXxx -- found by the seventh
-      // re-verification round's fresh bug hunt.
+      // bounded, even though this branch is reachable only through the package-private addXxx(md)/
+      // addPedigree(md)/replaceXxx(md) overloads (not directly by an external caller -- those constructors
+      // are themselves package-private) -- found by the seventh re-verification round's fresh bug hunt;
+      // corrected by the eighth round, which traced that this is internal defensive hardening, not an
+      // externally-reachable gap the way the other five sites this same finding covered are.
       throw new VcfFormatException("Declaration " + kind + " " +
           InternalUtils.truncateAndEscapeForMessage(md.getPropertyRaw("ID")) + " was built under a " +
           "different VcfContext; warnings and version semantics would route to the wrong context");

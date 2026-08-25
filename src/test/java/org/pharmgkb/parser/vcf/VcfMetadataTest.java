@@ -151,6 +151,10 @@ public class VcfMetadataTest {
     VcfMetadata.Builder builder = new VcfMetadata.Builder(STRICT_CONTEXT).setFileFormat("VCFv4.2");
     VcfFormatException ex = assertThrows(VcfFormatException.class, () -> builder.addRawProperty(hugeName, null));
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    // the length bound alone is not discriminative (an un-truncated 200-char embed would still pass it) --
+    // found by the eighth re-verification round's test-coverage pass; asserting the raw huge value is absent
+    // proves truncation actually happened, not merely that the message mentions the word
+    assertFalse(ex.getMessage().contains(hugeName), "raw untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 350, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 
@@ -162,6 +166,9 @@ public class VcfMetadataTest {
     VcfFormatException ex = assertThrows(VcfFormatException.class,
         () -> builder.addRawProperty(hugeName, "value"));
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    // see testBuilderAddRawPropertyNullValueMessageIsTruncated's identical comment on why this is needed
+    // alongside the length bound
+    assertFalse(ex.getMessage().contains(hugeName), "raw untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 350, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 
@@ -175,20 +182,29 @@ public class VcfMetadataTest {
     VcfMetadata.Builder builder = new VcfMetadata.Builder(LENIENT_CONTEXT);
     VcfFormatException ex = assertThrows(VcfFormatException.class, () -> builder.setFileFormat(hugeFileFormat));
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    // see testBuilderAddRawPropertyNullValueMessageIsTruncated's identical comment on why this is needed
+    // alongside the length bound
+    assertFalse(ex.getMessage().contains(hugeFileFormat),
+        "raw untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 400, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 
   @Test
   public void testAddInfoRejectsDeclarationFromDifferentContextMessageIsTruncated() {
     // regression test found by the seventh re-verification round's fresh bug hunt: checkSameContext embedded
-    // the declaration's raw ID verbatim and unbounded -- reachable via addXxx/addPedigree/replaceXxx with a
-    // caller-constructed declaration whose ID has no length bound
+    // the declaration's raw ID verbatim and unbounded. Reachable only through the package-private
+    // addXxx(md)/addPedigree(md)/replaceXxx(md) overloads exercised here (this test is in-package; an
+    // external caller cannot construct an InfoMetadata directly to reach the same path) -- internal
+    // defensive hardening, not an externally-reachable gap, per the eighth round's correction
     VcfContext otherContext = VcfContext.lenient("VCFv4.2", new VcfWarnings(new StringWriter()));
     String hugeId = "X" + "9".repeat(200);
     InfoMetadata md = new InfoMetadata(otherContext, hugeId, "d", InfoType.String, "1", null, null);
     VcfMetadata.Builder builder = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2");
     VcfFormatException ex = assertThrows(VcfFormatException.class, () -> builder.addInfo(md));
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    // see testBuilderAddRawPropertyNullValueMessageIsTruncated's identical comment on why this is needed
+    // alongside the length bound
+    assertFalse(ex.getMessage().contains(hugeId), "raw untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 400, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 
@@ -201,6 +217,9 @@ public class VcfMetadataTest {
     VcfFormatException ex = assertThrows(VcfFormatException.class,
         () -> builder.replaceInfo(hugeId, "d", InfoType.String, "1", null, null));
     assertTrue(ex.getMessage().contains("truncated"), ex.getMessage());
+    // see testBuilderAddRawPropertyNullValueMessageIsTruncated's identical comment on why this is needed
+    // alongside the length bound
+    assertFalse(ex.getMessage().contains(hugeId), "raw untruncated value must not appear: " + ex.getMessage());
     assertTrue(ex.getMessage().length() < 400, "message was not bounded: " + ex.getMessage().length() + " chars");
   }
 
