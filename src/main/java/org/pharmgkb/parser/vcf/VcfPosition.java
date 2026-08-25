@@ -892,6 +892,27 @@ public final class VcfPosition {
         }
         warnings.warn("FORMAT contains an empty sub-field name (VCF does not allow zero-length fields); keeping " +
             "it as-is, but it cannot be looked up in metadata");
+        // An empty key that is ALSO duplicated still hits the unconditional duplicate-key throw below -- the
+        // "keep, don't drop" decision above is about preserving THIS key's own column position (dropping it
+        // would misalign every later key's index), a distinct question from whether a SECOND empty key is a
+        // "duplicate" of the first. It is, for exactly the reason finding #4's identical fix for a
+        // grammar-invalid duplicate key gives: VcfSample.getProperty("") is structurally first-occurrence-only,
+        // so VcfWriter.addSampleConditionally resolves both empty-keyed positions to the same first value on
+        // write, silently dropping the second -- the identical loss shape, not a merely-theoretical one.
+        // Confirmed live against installed bcftools 1.23.1: given FORMAT="GT:::DP" with sample value
+        // "0/1:X:Y:5", bcftools reports "[W::vcf_parse_format_alloc4] Duplicate FORMAT tag ", collapses to 3
+        // keys ("GT::DP"), and keeps only the FIRST empty key's value ("X"), silently dropping "Y" -- see
+        // BcftoolsDependencyTest#testDuplicateEmptyFormatKeyBcftoolsMisalignsSampleValues and
+        // BCFTOOLS_VERSION_DEPENDENCIES.md's matching entry. Found by the Phase 3 writer-compliance review's
+        // Task 5 first re-verification round (finding B), user-approved fix (2026-08-25): unlike the
+        // grammar-invalid case, VCFv4.3.tex:429's duplicate-key regex doesn't even match an empty string, so
+        // "two empty keys aren't the same key" is a more defensible spec reading than the grammar-invalid
+        // carve-out ever was -- but the actual defect (permanent, undiagnosed value loss on write) doesn't
+        // depend on that identity question, only on whether the write path can tell the two positions apart,
+        // and it can't.
+        if (isDuplicateAt(format, i, seen)) {
+          throw new VcfFormatException("Duplicate FORMAT key \"\"");
+        }
         continue;
       }
       // Deliberately narrower than checkIds()/checkFilters()'s full containsWhitespace() throw: a tab or

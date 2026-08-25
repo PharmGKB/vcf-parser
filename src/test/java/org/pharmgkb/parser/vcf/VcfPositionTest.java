@@ -866,13 +866,18 @@ public class VcfPositionTest {
   }
 
   @Test
-  public void testMultipleEmptyFormatKeysNotTreatedAsDuplicates() {
-    // an empty FORMAT key is already handled (kept as-is, warned about) separately; two of them are not a "duplicate"
-    // in the sense the spec means. Uses the lenient 11-arg constructor overload -- the bare 10-arg constructor is
-    // now strict and throws for an empty sub-field name instead of keeping it.
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, null,
-        new ArrayList<>(Arrays.asList("GT", "", "")), -1);
-    assertEquals(Arrays.asList("GT", "", ""), position.getFormat());
+  public void testMultipleEmptyFormatKeysAreTreatedAsDuplicates() {
+    // regression test, updated by the Phase 3 writer-compliance review's Task 5 first re-verification
+    // round (finding B): two empty FORMAT keys used to NOT be treated as a "duplicate" in the sense the
+    // spec means, since an empty key is already handled (kept as-is, warned about) separately -- but that
+    // silently lost the second empty-keyed sample value on write (VcfSample.getProperty("") is
+    // first-occurrence-only), the identical defect class already fixed for a grammar-invalid duplicate.
+    // A SECOND empty key now throws; see VcfPositionTest#testLenientConstructorThrowsForDuplicateEmptyFormatKeys
+    // for the fuller regression test (including the single-empty-key case, still kept and only warned
+    // about). Uses the lenient 11-arg constructor overload -- the bare 10-arg constructor is strict and
+    // throws for an empty sub-field name at all, before ever reaching the duplicate question.
+    assertThrows(VcfFormatException.class, () -> LENIENT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null,
+        null, new ArrayList<>(Arrays.asList("GT", "", "")), -1));
   }
 
   @Test
@@ -2081,6 +2086,28 @@ public class VcfPositionTest {
             -1));
     assertTrue(ex.getMessage().contains("Duplicate FORMAT key \"1KG\""));
     assertEquals(2, org.apache.commons.lang3.StringUtils.countMatches(sink.toString(), "tag-name grammar"));
+  }
+
+  @Test
+  public void testLenientConstructorThrowsForDuplicateEmptyFormatKeys() {
+    // sibling of testLenientConstructorThrowsForDuplicateGrammarInvalidFormatKeys above, for the EMPTY-key
+    // carve-out rather than the grammar-invalid one -- regression test for the Phase 3 writer-compliance
+    // review's Task 5 first re-verification round (finding B), user-approved fix (2026-08-25): an empty
+    // FORMAT key that is ALSO duplicated now hits checkFormat's unconditional duplicate-key throw too,
+    // instead of the old warn-and-continue. A single empty key is unaffected -- still kept, not dropped
+    // (see checkFormat's own comment for the positional-index reasoning that stays true regardless of this
+    // fix), and still only warns.
+    StringWriter sink = new StringWriter();
+    List<String> singleEmpty = new java.util.ArrayList<>(List.of("GT", ""));
+    VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("1", 100, null, "A", null, null, null,
+        null, singleEmpty, -1);
+    assertEquals(List.of("GT", ""), position.getFormat());
+    assertTrue(sink.toString().contains("empty sub-field name"));
+
+    List<String> duplicateEmpty = new java.util.ArrayList<>(List.of("GT", "", "", "DP"));
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> LENIENT_CONTEXT.newPosition("1", 100, null, "A", null, null, null, null, duplicateEmpty, -1));
+    assertTrue(ex.getMessage().contains("Duplicate FORMAT key \"\""));
   }
 
   @Test

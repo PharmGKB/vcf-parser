@@ -77,7 +77,8 @@ The parser rejects a file whose structure or mandatory record fields are invalid
 - Invalid `REF`/`ALT` bases; whitespace where the spec forbids it (`CHROM`, `ID`, `FILTER`, and an `INFO` key --
   a `FORMAT` key's own, narrower rule is its own bullet below); a `FILTER` of `0`; a `FILTER` missing value
   (`.`) combined with another filter code; an `INFO` missing value (`.`) combined with a real property; or a
-  `FORMAT` in which `GT` is present but not the first sub-field or a (non-empty) key is duplicated.
+  `FORMAT` in which `GT` is present but not the first sub-field or a key is duplicated (including an empty
+  key -- kept in place, not dropped, but a second occurrence still throws).
 - A `FILTER` entry containing a literal `;`, or a `FORMAT` key containing a literal `:` -- both unconditional
   (thrown regardless of strict/lenient), matching this same section's `ID`/`INFO` treatment of their own
   delimiters. VCFv4.3.tex line 362 states, for `FILTER`, "String, no whitespace or semicolons permitted,

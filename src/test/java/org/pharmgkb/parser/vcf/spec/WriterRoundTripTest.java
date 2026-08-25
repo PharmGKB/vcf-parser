@@ -4,9 +4,11 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.pharmgkb.parser.vcf.VcfFormatException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -440,44 +442,22 @@ class WriterRoundTripTest {
   }
 
   @Test
-  void testDuplicateEmptyFormatKeyRoundTripsWithoutColumnCorruption() throws IOException {
-    // FORMAT=GT:: has two empty sub-field names -- VcfPosition.checkFormat excludes an empty key from its
-    // duplicate-key rejection (see EMPTY_FIELD_HANDLING.md's "duplicate FORMAT keys" section), so this parses
-    // successfully into a VcfSample with two "" properties ("aa" then "bb"). The guarantee here is structural,
-    // not completeness: the second empty-keyed value ("bb") is not recoverable and is lost on write (this
-    // matches the repo's existing accepted trade-off for FORMAT sub-fields beyond the header declaration) -- but
-    // the column count and delimiter placement stay correct, so the line remains well-formed and re-parseable.
+  void testDuplicateEmptyFormatKeyThrowsInsteadOfSilentlyDroppingASampleValue() throws IOException {
+    // FORMAT=GT:: has two empty sub-field names -- regression test, updated by the Phase 3 writer-
+    // compliance review's Task 5 first re-verification round (finding B): VcfPosition.checkFormat used to
+    // exclude an empty key from its duplicate-key rejection unconditionally (see EMPTY_FIELD_HANDLING.md's
+    // "duplicate FORMAT keys" section, also updated by this fix), so this used to parse successfully into a
+    // VcfSample with two "" properties ("aa" then "bb") and silently lose "bb" on write -- the identical
+    // defect class finding #4 closed for a duplicated, grammar-invalid key. An empty key that appears once
+    // is unaffected (still kept, not dropped, per EMPTY_FIELD_HANDLING.md's positional-index reasoning); a
+    // SECOND occurrence of it now throws the same as any other duplicate key.
     String vcf =
         "##fileformat=VCFv4.2\n" +
         "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
         "1\t100\t.\tA\tT\t.\tPASS\t.\tGT::\t0/1:aa:bb\n";
-    WriterRoundTrip.ParsedFile parsed = WriterRoundTrip.parseText(vcf);
-
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    WarnCapturingAppender appender = new WarnCapturingAppender();
-    appender.start();
-    root.addAppender(appender);
-    String written;
-    try {
-      written = WriterRoundTrip.write(parsed);
-      // the duplicate-empty-key materialization warning fires on write (VcfWriter.addSampleConditionally's
-      // extra-property check is what triggers VcfSample's lazy materialization), not on parse
-      assertTrue(appender.hasWarnOrHigher());
-    } finally {
-      root.detachAppender(appender);
-      appender.stop();
-    }
-    // verified actual output: the writer reads each FORMAT key with sample.getProperty(key), which -- both before
-    // and after materialization -- resolves the empty key "" to its FIRST occurrence's value ("aa"); "bb" is
-    // dropped entirely, and "aa" is written for BOTH empty-keyed columns, not just the first
-    String expected =
-        "##fileformat=VCFv4.2\n" +
-        "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
-        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
-        "1\t100\t.\tA\tT\t.\tPASS\t.\tGT::\t0/1:aa:aa\n";
-    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(expected, written));
+    VcfFormatException e = assertThrows(VcfFormatException.class, () -> WriterRoundTrip.parseText(vcf));
+    assertTrue(e.getMessage().contains("Duplicate FORMAT key"), e.getMessage());
   }
 
   // --- Task 4 / D4 regression: the model layer never percent-decodes or percent-encodes a value on either the

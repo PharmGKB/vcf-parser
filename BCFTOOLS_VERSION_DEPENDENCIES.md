@@ -451,30 +451,32 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
   (`checkIds()`, `checkAltBases()`, `checkInfoEntries()`) that had no bcftools evidence at all before this
   commit.
 
-### QUAL raw text, a directly-constructed sample name, and a duplicated grammar-invalid FORMAT key
+### QUAL raw text, a directly-constructed sample name, and a duplicated grammar-invalid or empty FORMAT key
 - Test: `BcftoolsDependencyTest#testTabCorruptedQualBcftoolsMisreadsFilterAndInfo`,
   `#testTabCorruptedSampleNameBcftoolsSilentlyInflatesSampleCount`,
-  `#testDuplicateGrammarInvalidFormatKeyBcftoolsMisalignsSampleValues`
-- Reasoning: Phase 3 writer-compliance review's Task 4 fixes 1, 2, and 4 (findings of the same numbers) --
-  three more instances of the identical "reachable only through direct construction, corroborated by
-  measured bcftools misbehavior" shape the corrupting-character-surface entry above documents for
-  ID/ALT/FILTER/INFO/FORMAT, extended to three sites that entry's own title doesn't cover (QUAL's raw text,
-  a `#CHROM` sample column name, and FORMAT's grammar-invalid-key carve-out specifically). None of these
-  three decisions is a spec tie bcftools breaks -- each rests on an explicit spec floor already ("invalid
-  delimiter handling that changes field alignment" per `AGENTS.md`'s Parser Validation Policy for the first
-  two; VCFv4.3.tex:429's "duplicate keys are not allowed" for the third) -- the bcftools evidence
-  corroborates the severity/impact of getting it wrong, it doesn't supply the rule. A tab-corrupted QUAL
-  silently shifts FILTER/INFO one column each (exit 0, no diagnostic naming the actual shift); a
-  tab-corrupted sample name silently inflates the header's own sample count while `VcfMetadata.
-  getNumSamples()` still reports the original, smaller count, then fails the whole record outright once
-  data lines are written against the mismatch (exit 8); a duplicated grammar-invalid FORMAT key collapses
-  to fewer keys and keeps only the first occurrence's sample value, silently dropping the rest (exit 0,
-  same `[W::vcf_parse_format_alloc4] Duplicate FORMAT tag` diagnostic the well-formed-duplicate case above
-  already has evidence for). Must be re-checked on a bcftools upgrade only in the sense every entry in this
-  file is: if bcftools ever stopped exhibiting any of these three misbehaviors, that would not change this
-  library's own decision to reject the input (the floor is spec-explicit, not bcftools-contingent), but it
-  would mean the corroborating evidence recorded in the code comments and here is stale and should be
-  re-measured or removed.
+  `#testDuplicateGrammarInvalidFormatKeyBcftoolsMisalignsSampleValues`,
+  `#testDuplicateEmptyFormatKeyBcftoolsMisalignsSampleValues`
+- Reasoning: Phase 3 writer-compliance review's Task 4 fixes 1, 2, and 4, plus Task 5's first
+  re-verification round finding B (the empty-key sibling of finding #4, left open by Task 4 and closed in
+  a follow-up fix) -- four instances of the identical "reachable only through direct construction,
+  corroborated by measured bcftools misbehavior" shape the corrupting-character-surface entry above
+  documents for ID/ALT/FILTER/INFO/FORMAT, extended to sites that entry's own title doesn't cover (QUAL's
+  raw text, a `#CHROM` sample column name, and FORMAT's grammar-invalid-key and empty-key carve-outs
+  specifically). None of these four decisions is a spec tie bcftools breaks -- each rests on an explicit
+  spec floor already ("invalid delimiter handling that changes field alignment" per `AGENTS.md`'s Parser
+  Validation Policy for the first two; VCFv4.3.tex:429's "duplicate keys are not allowed" for the other
+  two) -- the bcftools evidence corroborates the severity/impact of getting it wrong, it doesn't supply the
+  rule. A tab-corrupted QUAL silently shifts FILTER/INFO one column each (exit 0, no diagnostic naming the
+  actual shift); a tab-corrupted sample name silently inflates the header's own sample count while
+  `VcfMetadata.getNumSamples()` still reports the original, smaller count, then fails the whole record
+  outright once data lines are written against the mismatch (exit 8); a duplicated grammar-invalid or
+  empty FORMAT key each collapse to fewer keys and keep only the first occurrence's sample value, silently
+  dropping the rest (exit 0, the same `[W::vcf_parse_format_alloc4] Duplicate FORMAT tag` diagnostic the
+  well-formed-duplicate case above already has evidence for, empty tag name included). Must be re-checked
+  on a bcftools upgrade only in the sense every entry in this file is: if bcftools ever stopped exhibiting
+  any of these four misbehaviors, that would not change this library's own decision to reject the input
+  (the floor is spec-explicit, not bcftools-contingent), but it would mean the corroborating evidence
+  recorded in the code comments and here is stale and should be re-measured or removed.
 
 ### A data line whose CHROM begins with `#`
 - Test: `BcftoolsDependencyTest#testHashLedChromosomeBcftoolsAcceptsAsOrdinaryData`

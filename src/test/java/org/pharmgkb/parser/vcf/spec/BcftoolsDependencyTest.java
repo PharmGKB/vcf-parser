@@ -1771,6 +1771,27 @@ class BcftoolsDependencyTest {
   }
 
   @Test
+  void testDuplicateEmptyFormatKeyBcftoolsMisalignsSampleValues() throws IOException, InterruptedException {
+    // VcfPosition.checkFormat() now throws for a duplicated EMPTY FORMAT key too, the same as it already did
+    // for a well-formed or grammar-invalid duplicate (finding B of Phase 3's Task 5 first re-verification
+    // round) -- the "keep, don't drop" leniency for a single empty key (so its column position isn't lost)
+    // must not also waive the separate, unconditional duplicate-key floor for a SECOND empty key. A FORMAT
+    // key list intended as 4 entries (GT, two empty positions, DP) reproduces as the wire text "GT:::DP":
+    // bcftools reports "[W::vcf_parse_format_alloc4] Duplicate FORMAT tag " (empty name), collapses to 3
+    // keys ("GT::DP"), and keeps only the FIRST empty key's sample value ("X"), silently dropping the second
+    // ("Y") -- the identical silent-data-loss shape the well-formed/grammar-invalid duplicate cases already
+    // have evidence for above.
+    String vcf = "##fileformat=VCFv4.3\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:::DP\t0/1:X:Y:5\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("[W::vcf_parse_format_alloc4] Duplicate FORMAT tag "), result.output());
+    assertTrue(result.output().lines().anyMatch(line -> line.endsWith("GT::DP\t0/1:X:5")), result.output());
+  }
+
+  @Test
   void testHashLedChromosomeBcftoolsAcceptsAsOrdinaryData() throws IOException, InterruptedException {
     // VcfParser used to reject any line starting with '#' after the column header outright ("VCF has no
     // comment syntax"); VCFv4.3.tex:262's contig-name grammar already includes '#' as a legal CHROM
