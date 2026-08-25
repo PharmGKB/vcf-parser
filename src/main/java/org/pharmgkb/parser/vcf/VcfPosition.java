@@ -255,7 +255,9 @@ public final class VcfPosition {
       // Found by the Phase 3 writer-compliance review's Path A kickoff (confirmed live against installed
       // bcftools 1.23.1: given "1\t100\t.\tA\tT\t10\t20\tPASS\t.", a raw tab-corrupted QUAL="10\t20" is
       // written straight through, and bcftools reads FILTER="20"/INFO="PASS" -- exit 0, only warnings about
-      // the resulting undefined FILTER/INFO values, no diagnostic naming the actual column shift at all).
+      // the resulting undefined FILTER/INFO values, no diagnostic naming the actual column shift at all --
+      // see BcftoolsDependencyTest#testTabCorruptedQualBcftoolsMisreadsFilterAndInfo and
+      // BCFTOOLS_VERSION_DEPENDENCIES.md's matching entry).
       if (rawQual.contains("\t")) {
         throw new VcfFormatException("QUAL text \"" + InternalUtils.truncateAndEscapeForMessage(rawQual) +
             "\" contains a tab");
@@ -868,10 +870,13 @@ public final class VcfPosition {
     if (format.size() == 1 && ".".equals(format.get(0))) {
       return new ArrayList<>();
     }
-    // duplicate keys are explicitly disallowed by the VCF spec (VCFv4.3+ states this outright; empty and
-    // grammar-invalid keys are excluded from this check since they're already handled, and warned about,
-    // separately below). isDuplicateAt (see checkIds() above and DUPLICATE_SCAN_THRESHOLD's own comment)
-    // dispatches between an allocation-free scan and a HashSet<String> depending on list size.
+    // duplicate keys are explicitly disallowed by the VCF spec (VCFv4.3+ states this outright; only an
+    // EMPTY key is excluded from this check, since it's already handled, and warned about, separately below
+    // -- a grammar-invalid-but-non-empty key is NOT excluded: see the isDuplicateAt call inside the
+    // grammar-invalid branch further down, added by the Phase 3 writer-compliance review's finding #4, for
+    // why it hits this same unconditional floor too). isDuplicateAt (see checkIds() above and
+    // DUPLICATE_SCAN_THRESHOLD's own comment) dispatches between an allocation-free scan and a
+    // HashSet<String> depending on list size.
     Set<String> seen = format.size() > DUPLICATE_SCAN_THRESHOLD ? new HashSet<>() : null;
     for (int i = 0; i < format.size(); i++) {
       String f = format.get(i);
@@ -964,7 +969,8 @@ public final class VcfPosition {
         // "[W::vcf_parse_format_alloc4] Duplicate FORMAT tag 1XY", collapses to 3 keys, and keeps only the
         // FIRST occurrence's value ("aa"), silently dropping "bb" -- the identical loss shape, corroborating
         // that this is a genuine defect, not a legitimate leniency. Found by the Phase 3 writer-compliance
-        // review's Path B kickoff.
+        // review's Path B kickoff -- see BcftoolsDependencyTest#testDuplicateGrammarInvalidFormatKeyBcftoolsMisalignsSampleValues
+        // and BCFTOOLS_VERSION_DEPENDENCIES.md's matching entry.
         if (isDuplicateAt(format, i, seen)) {
           throw new VcfFormatException("Duplicate FORMAT key \"" + InternalUtils.truncateAndEscapeForMessage(f) +
               "\"");

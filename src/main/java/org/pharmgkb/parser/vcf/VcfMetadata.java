@@ -149,15 +149,22 @@ public final class VcfMetadata {
       // getNumSamples() still reports 1 -- writing that metadata's own data lines (with exactly 1 sample's
       // FORMAT data, matching what this library actually knows about) then makes bcftools fail outright to
       // parse them: "[E::vcf_parse_format_check7] Number of columns ... does not match the number of samples
-      // (1 vs 2)", exit code 8. VcfWriter.validateMetadata() (validateBeforeWrite() mode only) already
+      // (1 vs 2)", exit code 8 -- see BcftoolsDependencyTest#testTabCorruptedSampleNameBcftoolsSilentlyInflatesSampleCount
+      // and BCFTOOLS_VERSION_DEPENDENCIES.md's matching entry. VcfWriter.validateMetadata() (validateBeforeWrite() mode only) already
       // rejects both the tab and the line terminator, but the default path has nothing else guarding against
       // either, and this constructor -- the single point where columns is actually consumed, per this
       // method's own null-check comment above -- had neither check either, so a caller-constructed sample
       // name reached the default write path completely unvalidated. Only reachable through direct
       // construction: VcfParser.parseColumnInfo splits the header line on tab, so a sample name produced by
-      // parsing a real file can never itself contain a tab, and a physical line can never itself contain a
-      // line terminator either (VcfParser.readPhysicalLine already splits on one). Found by the Phase 3
-      // writer-compliance review's Path A kickoff (finding #2).
+      // parsing a real file can never itself contain a tab. A lone CR/LF is NOT excluded the same way --
+      // readPhysicalLine() stopped treating a lone CR as a line separator, so it survives as ordinary
+      // content within one physical line (see this same file's own parseColumnInfo, which is why it runs
+      // its own unconditional InternalUtils.checkNoLineTerminator("sample name", ...) on every sample name
+      // before ever calling setColumns(); that pre-existing, independent parse-time check, not any property
+      // of readPhysicalLine() itself, is what actually keeps a real parsed file's sample name free of a line
+      // terminator). Found by the Phase 3 writer-compliance review's Path A kickoff (finding #2); the
+      // readPhysicalLine() misattribution above was itself found and corrected by that same review's first
+      // re-verification round.
       InternalUtils.checkNoLineTerminator("sample name", sampleName);
       if (sampleName.contains("\t")) {
         throw new VcfFormatException("Sample name \"" + InternalUtils.truncateAndEscapeForMessage(sampleName) +

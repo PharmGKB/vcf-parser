@@ -1711,6 +1711,66 @@ class BcftoolsDependencyTest {
   }
 
   @Test
+  void testTabCorruptedQualBcftoolsMisreadsFilterAndInfo() throws IOException, InterruptedException {
+    // VcfPosition.Builder.rawQuality()/rawInfo() now reject an embedded tab at construction (Phase 3
+    // writer-compliance review, finding #1) -- only reachable through direct construction, since a real
+    // parsed file's QUAL column can never itself contain a tab. Given "1\t100\t.\tA\tT\t10\t20\tPASS\t.",
+    // a raw tab-corrupted QUAL="10\t20" is written straight through, and bcftools silently reads
+    // FILTER="20"/INFO="PASS" instead -- exit 0, only warnings about the resulting undefined FILTER/INFO
+    // values, no diagnostic naming the actual column shift at all.
+    String vcf = "##fileformat=VCFv4.3\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tT\t10\t20\tPASS\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("[W::vcf_parse_filter] FILTER '20' is not defined in the header"),
+        result.output());
+    assertTrue(result.output().lines().anyMatch(line -> line.endsWith("A\tT\t10\t20\tPASS")), result.output());
+  }
+
+  @Test
+  void testTabCorruptedSampleNameBcftoolsSilentlyInflatesSampleCount() throws IOException, InterruptedException {
+    // VcfMetadata's constructor now rejects a tab (or line terminator) in a directly-constructed sample name
+    // (finding #2) -- only reachable through direct construction, since VcfParser.parseColumnInfo splits the
+    // header line on tab. A metadata with one intended sample named "S1\tS2" writes a #CHROM line bcftools
+    // reads as TWO samples ("S1", "S2"), silently (exit 0, no warning at all about the header itself);
+    // writing that metadata's own data line (with exactly 1 sample's FORMAT data, matching what this library
+    // actually knows about) then makes bcftools fail outright to parse it.
+    String header = "##fileformat=VCFv4.3\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\tS2\n";
+    BcftoolsResult headerOnly = runBcftools(header, "view", "-h");
+    assertEquals(0, headerOnly.exitCode(), headerOnly.output());
+    assertFalse(headerOnly.output().contains("[W::") || headerOnly.output().contains("[E::"), headerOnly.output());
+    assertTrue(headerOnly.output().lines().anyMatch(line -> line.endsWith("FORMAT\tS1\tS2")), headerOnly.output());
+
+    String withOneSamplesWorthOfData = header + "1\t100\t.\tA\tT\t.\tPASS\t.\tGT\t0/1\n";
+    BcftoolsResult result = runBcftools(withOneSamplesWorthOfData, "view");
+    assertEquals(8, result.exitCode(), result.output());
+    assertTrue(result.output().contains(
+        "[E::vcf_parse_format_check7] Number of columns at 1:100 does not match the number of samples (1 vs 2)"),
+        result.output());
+  }
+
+  @Test
+  void testDuplicateGrammarInvalidFormatKeyBcftoolsMisalignsSampleValues() throws IOException, InterruptedException {
+    // VcfPosition.checkFormat() now throws for a duplicated, grammar-invalid FORMAT key too, the same as it
+    // already did for a well-formed duplicate (finding #4) -- the leniency carve-out for a grammar-invalid
+    // key (so one badly-named key doesn't abort an otherwise-parseable record) must not also waive the
+    // separate, unconditional duplicate-key floor. A FORMAT key list intended as 4 entries (GT, a
+    // grammar-invalid "1XY" appearing twice, DP) reproduces as the wire text "GT:1XY:1XY:DP": bcftools
+    // reports "[W::vcf_parse_format_alloc4] Duplicate FORMAT tag 1XY", collapses to 3 keys, and keeps only
+    // the FIRST occurrence's sample value ("aa"), silently dropping the second ("bb") -- the identical
+    // silent-data-loss shape the well-formed-duplicate case already has evidence for above.
+    String vcf = "##fileformat=VCFv4.3\n##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:1XY:1XY:DP\t0/1:aa:bb:5\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("[W::vcf_parse_format_alloc4] Duplicate FORMAT tag 1XY"), result.output());
+    assertTrue(result.output().lines().anyMatch(line -> line.endsWith("GT:1XY:DP\t0/1:aa:5")), result.output());
+  }
+
+  @Test
   void testHashLedChromosomeBcftoolsAcceptsAsOrdinaryData() throws IOException, InterruptedException {
     // VcfParser used to reject any line starting with '#' after the column header outright ("VCF has no
     // comment syntax"); VCFv4.3.tex:262's contig-name grammar already includes '#' as a legal CHROM
