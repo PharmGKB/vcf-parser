@@ -49,7 +49,18 @@ public class VcfParser implements Closeable {
   private static final List<String> FIXED_FIELD_NAMES =
       List.of("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO");
 
+  /**
+   * The default maximum length, in characters, {@link #readPhysicalLine()} accumulates for one physical line
+   * before rejecting it -- see {@link Builder#maxLineLength}. This library trusts its input to be a VCF file
+   * rather than defending against adversarial content, but a line this large is never a legitimate VCF record
+   * (even a very wide, many-sample cohort file falls far short); it almost always means a missing line
+   * terminator or non-VCF/corrupted input, which would otherwise grow {@link #m_lineBuilder} without bound
+   * before ever reaching the column-count check that would reject it.
+   */
+  public static final int DEFAULT_MAX_LINE_LENGTH = 256 * 1024 * 1024;
+
   private final boolean m_rsidsOnly;
+  private final int m_maxLineLength;
   private final BufferedReader m_reader;
   private @Nullable VcfMetadata m_vcfMetadata;
   // the one context for this parse, built from ##fileformat on physical line 1 (see parseMetadata()) and shared
@@ -120,11 +131,12 @@ public class VcfParser implements Closeable {
 
 
   private VcfParser(BufferedReader reader, boolean rsidsOnly, VcfLineParser lineParser,
-      @Nullable Path warningsFile) {
+      @Nullable Path warningsFile, int maxLineLength) {
     m_reader = reader;
     m_rsidsOnly = rsidsOnly;
     m_vcfLineParser = lineParser;
     m_warningsFile = warningsFile;
+    m_maxLineLength = maxLineLength;
   }
 
 
@@ -345,10 +357,12 @@ public class VcfParser implements Closeable {
       if (newlineIdx < 0) {
         m_lineBuilder.append(m_lineReadBuffer, start, m_lineReadBufferLen - start);
         m_lineReadBufferPos = m_lineReadBufferLen;
+        checkLineLength();
         continue;
       }
       m_lineBuilder.append(m_lineReadBuffer, start, newlineIdx - start);
       m_lineReadBufferPos = newlineIdx + 1;
+      checkLineLength();
       // strip a single CR immediately preceding this LF (the CRLF terminator) -- but only that one, and only
       // right here: a CR anywhere else in m_lineBuilder is ordinary content this method must never treat as a
       // separator, which is the whole point of not delegating to readLine()
@@ -357,6 +371,23 @@ public class VcfParser implements Closeable {
         m_lineBuilder.setLength(len - 1);
       }
       return m_lineBuilder.toString();
+    }
+  }
+
+  /**
+   * Rejects a physical line once {@link #m_lineBuilder} exceeds {@link #m_maxLineLength}, checked after every
+   * append inside {@link #readPhysicalLine()} rather than only once the whole line has been accumulated -- the
+   * whole point is to bound how large {@link #m_lineBuilder} is ever allowed to grow, not just how large the
+   * final returned line is.
+   */
+  private void checkLineLength() {
+    if (m_lineBuilder.length() > m_maxLineLength) {
+      // m_lineNumber isn't incremented until readPhysicalLine() returns (see its callers), so it still holds
+      // the PREVIOUS physical line's number here; +1 names the line actually being accumulated
+      throw new VcfFormatException("Physical line exceeds the maximum line length of " + m_maxLineLength +
+          " characters; this usually indicates a missing line terminator or non-VCF/corrupted input rather " +
+          "than an unusually large VCF record. See VcfParser.Builder#maxLineLength(int) to raise this limit " +
+          "if a legitimate file needs it.", m_lineNumber + 1);
     }
   }
 
@@ -960,6 +991,7 @@ public class VcfParser implements Closeable {
     private VcfLineParser m_vcfLineParser;
     private boolean m_warningsToFile;
     private @Nullable Path m_warningsFile;
+    private int m_maxLineLength = DEFAULT_MAX_LINE_LENGTH;
 
 
     /**
@@ -1016,6 +1048,23 @@ public class VcfParser implements Closeable {
      */
     public Builder rsidsOnly() {
       m_rsidsOnly = true;
+      return this;
+    }
+
+    /**
+     * Overrides {@link VcfParser#DEFAULT_MAX_LINE_LENGTH}, the maximum number of characters a single physical
+     * line may accumulate to before parsing rejects it with {@link VcfFormatException}. Raise this only for a
+     * legitimate file whose lines exceed the default; this is a sanity floor against a missing line terminator
+     * or non-VCF/corrupted input, not a security control -- this library trusts its input rather than
+     * defending against adversarial content.
+     *
+     * @throws IllegalArgumentException if {@code maxLineLength} is not positive
+     */
+    public Builder maxLineLength(int maxLineLength) {
+      if (maxLineLength <= 0) {
+        throw new IllegalArgumentException("maxLineLength must be positive, was " + maxLineLength);
+      }
+      m_maxLineLength = maxLineLength;
       return this;
     }
 
@@ -1109,7 +1158,7 @@ public class VcfParser implements Closeable {
               "name from");
         }
       }
-      return new VcfParser(m_reader, m_rsidsOnly, m_vcfLineParser, resolvedWarningsFile);
+      return new VcfParser(m_reader, m_rsidsOnly, m_vcfLineParser, resolvedWarningsFile, m_maxLineLength);
     }
   }
 }

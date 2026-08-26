@@ -1226,6 +1226,74 @@ public class VcfParserTest {
   }
 
   @Test
+  void testMaxLineLengthRejectsNonPositiveValue() {
+    assertThrows(IllegalArgumentException.class, () -> new VcfParser.Builder().maxLineLength(0));
+    assertThrows(IllegalArgumentException.class, () -> new VcfParser.Builder().maxLineLength(-1));
+  }
+
+  @Test
+  void testMaxLineLengthThrowsWhenAPhysicalLineExceedsTheConfiguredLimit() throws IOException {
+    // regression test: readPhysicalLine() used to grow its internal buffer without any bound, so a single
+    // pathologically long physical line (e.g. from a missing line terminator, or non-VCF/corrupted input)
+    // would consume memory proportional to its length before the column-count check ever got a chance to
+    // reject it.
+    String header = "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    String dataLine = "chr1\t100\t" + "A".repeat(1000) + "\tA\tT\t.\tPASS\t.\n";
+    String vcf = header + dataLine;
+
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             // one character short of dataLine's own length once its trailing "\n" is stripped
+             .maxLineLength(dataLine.length() - 2)
+             .parseWith((metadata, record) -> fail("should never reach a callback for a rejected line"))
+             .build()) {
+      VcfFormatException ex = assertThrows(VcfFormatException.class, parser::parse);
+      assertThat(ex.getMessage(), containsString("exceeds the maximum line length"));
+    }
+  }
+
+  @Test
+  void testMaxLineLengthAllowsALineExactlyAtTheConfiguredLimit() throws IOException {
+    String header = "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    String dataLine = "chr1\t100\t" + "A".repeat(1000) + "\tA\tT\t.\tPASS\t.\n";
+    String vcf = header + dataLine;
+
+    List<VcfPosition> positions = new ArrayList<>();
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             // exactly dataLine's own length once its trailing "\n" is stripped -- must not throw
+             .maxLineLength(dataLine.length() - 1)
+             .parseWith((metadata, record) -> positions.add(record.getPosition()))
+             .build()) {
+      parser.parse();
+    }
+    assertEquals(1, positions.size());
+  }
+
+  @Test
+  void testMaxLineLengthThrowsAfterTheFirstBufferChunkRatherThanAccumulatingTheWholeOversizedLine() throws IOException {
+    // regression test: the check must fire as the internal buffer grows, not only once a full (possibly
+    // enormous) line has already been accumulated -- otherwise the bound on memory growth this option exists
+    // for would be illusory. A single unterminated line far longer than one internal buffer refill (8192
+    // characters) with no newline anywhere proves the check fires on an early chunk, not after consuming the
+    // whole line.
+    String header = "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    String hugeUnterminatedLine = "A".repeat(50_000); // no trailing newline -- final, unterminated "line"
+    String vcf = header + hugeUnterminatedLine;
+
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .maxLineLength(100)
+             .parseWith((metadata, record) -> fail("should never reach a callback for a rejected line"))
+             .build()) {
+      assertThrows(VcfFormatException.class, parser::parse);
+    }
+  }
+
+  @Test
   void testFile() throws Exception {
 
     try (VcfParser ignored = new VcfParser.Builder()
