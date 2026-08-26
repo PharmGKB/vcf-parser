@@ -267,12 +267,14 @@ final class WriterRoundTrip {
   }
 
   /**
-   * @return empty if the two texts are identical after normalizing line endings ({@code \r\n} and {@code \r} both
-   * treated as {@code \n}), or a short description of how many lines differ and the first one otherwise.
+   * @return empty if the two texts are byte-for-byte identical, or a short description of how many lines
+   * differ and the first one otherwise. No line-ending normalization: {@link VcfWriter} always emits {@code \n},
+   * never the platform separator, so a genuine divergence here (e.g. a stray {@code \r}) is a real defect,
+   * not a cosmetic difference to tolerate.
    */
   static Optional<String> byteDiff(String original, String written) {
-    List<String> originalLines = normalizeLines(original);
-    List<String> writtenLines = normalizeLines(written);
+    List<String> originalLines = List.of(original.split("\n", -1));
+    List<String> writtenLines = List.of(written.split("\n", -1));
     int max = Math.max(originalLines.size(), writtenLines.size());
     int differing = 0;
     String firstDiff = null;
@@ -290,9 +292,5 @@ final class WriterRoundTrip {
       return Optional.empty();
     }
     return Optional.of(differing + " of " + max + " lines differ, first difference at " + firstDiff);
-  }
-
-  private static List<String> normalizeLines(String text) {
-    return List.of(text.replace("\r\n", "\n").replace("\r", "\n").split("\n", -1));
   }
 }

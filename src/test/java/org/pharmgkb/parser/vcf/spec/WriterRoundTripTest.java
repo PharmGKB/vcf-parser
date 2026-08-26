@@ -36,8 +36,10 @@ class WriterRoundTripTest {
   }
 
   @Test
-  void testByteDiffIgnoresLineEndingDifferences() {
-    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff("A\r\nB\r\n", "A\nB\n"));
+  void testByteDiffDetectsLineEndingDifferences() {
+    Optional<String> diff = WriterRoundTrip.byteDiff("A\r\nB\r\n", "A\nB\n");
+    assertTrue(diff.isPresent());
+    assertTrue(diff.get().contains("line 1"));
   }
 
   @Test
