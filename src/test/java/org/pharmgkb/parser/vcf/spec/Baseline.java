@@ -24,7 +24,7 @@ import org.jspecify.annotations.Nullable;
  * still baselined, but its {@code category} or {@code reason} no longer matches the baselined row -- i.e. it
  * diverges for a different reason than the one on record). Also tallies totals for the version x check-type
  * summary report, and collects every mismatch (NEW, STALE, or CHANGED) for the findings report. One instance is
- * shared across a whole {@code HtsSpecsConformanceTest} run, since results accumulate across all four check
+ * shared across a whole {@code HtsSpecsConformanceTest} run, since results accumulate across all six check
  * factories.
  *
  * <p>In update mode (system property {@code htsSpecsUpdateBaseline=true}), {@link #check} never reports a
