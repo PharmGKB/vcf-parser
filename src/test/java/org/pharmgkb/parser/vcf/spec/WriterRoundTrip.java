@@ -72,8 +72,20 @@ final class WriterRoundTrip {
   }
 
   static String write(ParsedFile parsed) throws IOException {
+    return write(parsed, false);
+  }
+
+  /**
+   * @param validateBeforeWrite if true, builds the {@link VcfWriter} with
+   * {@link VcfWriter.Builder#validateBeforeWrite()} instead of the default writer.
+   */
+  static String write(ParsedFile parsed, boolean validateBeforeWrite) throws IOException {
     StringWriter sw = new StringWriter();
-    try (VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build()) {
+    VcfWriter.Builder builder = new VcfWriter.Builder().toWriter(new PrintWriter(sw));
+    if (validateBeforeWrite) {
+      builder.validateBeforeWrite();
+    }
+    try (VcfWriter writer = builder.build()) {
       writer.writeHeader(parsed.metadata());
       for (int i = 0; i < parsed.positions().size(); i++) {
         writer.writeLine(parsed.metadata(), parsed.positions().get(i), parsed.samples().get(i));
