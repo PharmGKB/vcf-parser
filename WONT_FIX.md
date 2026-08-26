@@ -758,3 +758,40 @@ deployment. `VcfWarnings`'s constructor Javadoc now states this explicitly inste
 Revisit only if warning-volume amplification is observed against a genuinely trusted file (i.e. a
 correctness/performance bug in how many warnings a given input generates), not as a defense against
 adversarial input.
+
+## `VcfPosition.checkFormat`'s duplicate-FORMAT-key check stays unconditional and eager
+
+`AGENTS.md`'s Parser Validation Policy calls out FORMAT as a field where eager, parse-time validation should
+generally be deferred. `checkFormat`'s duplicate-key check (`VcfPosition.java`, all three `isDuplicateAt`
+call sites inside it) does the opposite: it throws unconditionally -- not gated on `VcfContext.isLenient()`,
+not deferred to `validate()`/`validateBeforeWrite()` -- for every FORMAT key list `VcfParser` produces,
+whether the duplicated key's own name is grammar-valid or grammar-invalid. A future reader who knows the
+general policy but not this exception could read this as a policy violation worth "fixing" by relaxing it to
+warn-and-continue like FORMAT's other content checks.
+
+**Decision: won't fix -- this is a deliberate, load-bearing exception, not an oversight.** `VcfSample.
+getProperty(key)` is structurally first-occurrence-only in every internal representation (confirmed by
+reading the class: the parallel-list scan returns on the first match, and `properties()`'s map
+materialization explicitly warns and skips a repeat key rather than overwriting). `VcfWriter` resolves each
+sample's FORMAT position by key name. So a duplicate key that got through as a warning, rather than a throw,
+would resolve to the same first value on every later read AND on write -- permanently and silently dropping
+every later occurrence's data, with no diagnostic ever naming the loss unless a caller happens to invoke the
+opt-in `validate()`/`validateBeforeWrite()` path, which most callers never do. Deferring this check would not
+just delay detection (the way deferring a lazy type-conversion check is safe, since the caller eventually
+calls the typed getter that reports it) -- it would make detection depend on an opt-in diagnostic call that
+may never happen, so the loss could be permanent. `VcfSample`'s own constructor independently enforces the
+identical floor (unconditionally, for the same reason) for a sample built directly, outside any
+`VcfPosition`/FORMAT list at all -- see its own comment, added by the Phase 3 writer-compliance review's
+Task 5 finding A. Confirmed live against installed bcftools 1.23.1's own behavior for this shape too (see
+`BcftoolsDependencyTest#testDuplicateGrammarInvalidFormatKeyBcftoolsMisalignsSampleValues`/
+`testFormatColonCorruptedKeyBcftoolsMisalignsSampleValues`/`testDuplicateEmptyFormatKeyBcftoolsMisalignsSampleValues`).
+
+The performance cost of the check itself is already minimized, not left naive: `isDuplicateAt` (shared with
+`checkIds`/`checkFilters`) dispatches between an allocation-free O(n) scan for a typical short list (FORMAT
+lists in real files are almost always well under `DUPLICATE_SCAN_THRESHOLD`, 8) and a `HashSet<String>` for a
+longer one, avoiding the O(n²) CPU-exhaustion shape a pure scan would otherwise hit on a maliciously long
+FORMAT column -- the same threshold and reasoning as the `##PEDIGREE`/ID-list fixes elsewhere in this file.
+`VcfPositionTest#testLenientConstructorHandlesManyFormatKeysWithoutQuadraticSlowdown` (50,000 FORMAT keys, a
+3-second budget) proves this holds for FORMAT specifically, not just by sharing code with the already-tested
+ID case. Revisit only if a future change finds a way to guarantee detection some other way that doesn't
+depend on an opt-in diagnostic call the caller might never make.

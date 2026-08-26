@@ -2197,6 +2197,29 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testLenientConstructorHandlesManyFormatKeysWithoutQuadraticSlowdown() {
+    // regression test, mirroring testLenientConstructorHandlesManyIdsWithoutQuadraticSlowdown above:
+    // checkFormat's duplicate-key check shares the identical isDuplicateAt/DUPLICATE_SCAN_THRESHOLD dispatch
+    // with checkIds/checkFilters (same shared helper, same threshold constant), but had no FORMAT-specific
+    // stress test proving that sharing actually holds at scale rather than just by reading the source. FORMAT
+    // is a delimiter-separated list inside a single column the same way ID/FILTER are, so its element count is
+    // equally attacker-controlled/unbounded, and this check is unconditional (runs regardless of leniency --
+    // see checkFormat's own comment on why it can never be relaxed to avoid the silent FORMAT-value loss a
+    // duplicate key would otherwise cause), so it cannot be skipped for a large FORMAT list either.
+    List<String> format = new java.util.ArrayList<>(50_000);
+    for (int i = 0; i < 50_000; i++) {
+      format.add("F" + i);
+    }
+    assertTimeoutPreemptively(java.time.Duration.ofSeconds(3), () -> {
+      StringWriter sink = new StringWriter();
+      VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("1", 100, null, "A", null, null, null,
+          null, format, -1);
+      assertEquals(50_000, position.getFormat().size());
+      assertEquals("", sink.toString());
+    });
+  }
+
+  @Test
   public void testNewWithTrustedFormatSkipsFormatValidationThatThePublicConstructorEnforces() {
     // regression/contract test: newWithTrustedFormat() is VcfParser's own per-record FORMAT-cache fast path --
     // it must skip checkFormat's validation entirely, unlike the public constructor, which must still reject
