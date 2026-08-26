@@ -26,6 +26,14 @@ public class MemoryMappedVcfDataStore {
   private final Map<Locus, List<VcfPosition>> m_locusToPositions = new HashMap<>();
   private final Map<String, List<VcfSample>> m_idToSamples = new HashMap<>();
   private final Map<Locus, List<List<VcfSample>>> m_locusToSamplesList = new HashMap<>();
+  // The metadata that was active when each record was stored, index-aligned (id-keyed) or list-index-aligned
+  // (locus-keyed) with m_idToSamples/m_locusToSamplesList above. MemoryMappedVcfLineParser.parseLine() can be
+  // called repeatedly with different metadata (e.g. reusing one store across files with a different sample
+  // order), which replaces m_metadata below; without a per-record copy, every by-name sample/genotype lookup
+  // would resolve a sample name against whichever metadata is current rather than the metadata that was in
+  // effect when that particular record was stored, silently returning the wrong sample.
+  private final Map<String, VcfMetadata> m_idToMetadata = new HashMap<>();
+  private final Map<Locus, List<VcfMetadata>> m_locusToMetadataList = new HashMap<>();
   // Dedicated file-order lists for getAllPositions()/getAllSamples() below, appended to directly by
   // MemoryMappedVcfLineParser.parseLine() alongside the locus maps above. A LinkedHashMap keyed on locus was
   // tried for this previously, but that only orders *loci*, not individual records: flattening
@@ -129,10 +137,11 @@ public class MemoryMappedVcfDataStore {
 
   public @Nullable VcfSample getSampleForId(String positionId, String sampleId) {
     List<VcfSample> samples = m_idToSamples.get(positionId);
-    if (samples == null) {
+    VcfMetadata metadata = m_idToMetadata.get(positionId);
+    if (samples == null || metadata == null) {
       return null;
     }
-    return getOrNull(samples, m_metadata.getSampleIndex(sampleId));
+    return getOrNull(samples, metadata.getSampleIndex(sampleId));
   }
 
   public @Nullable VcfSample getSampleForId(String positionId, int sampleIndex) {
@@ -140,11 +149,13 @@ public class MemoryMappedVcfDataStore {
   }
 
   public @Nullable VcfSample getSampleAtLocus(String chromosome, long position, int recordIndex, String sampleId) {
-    List<VcfSample> samples = getOrNull(m_locusToSamplesList.get(new Locus(chromosome, position)), recordIndex);
-    if (samples == null) {
+    Locus locus = new Locus(chromosome, position);
+    List<VcfSample> samples = getOrNull(m_locusToSamplesList.get(locus), recordIndex);
+    VcfMetadata metadata = getOrNull(m_locusToMetadataList.get(locus), recordIndex);
+    if (samples == null || metadata == null) {
       return null;
     }
-    return getOrNull(samples, m_metadata.getSampleIndex(sampleId));
+    return getOrNull(samples, metadata.getSampleIndex(sampleId));
   }
 
   public @Nullable VcfSample getSampleAtLocus(String chromosome, long position, int recordIndex, int sampleIndex) {
@@ -155,10 +166,11 @@ public class MemoryMappedVcfDataStore {
   public VcfSample.@Nullable Genotype getGenotypeForId(String positionId, String sampleId) {
     VcfPosition position = m_idToPosition.get(positionId);
     List<VcfSample> samples = m_idToSamples.get(positionId);
-    if (position == null || samples == null) {
+    VcfMetadata metadata = m_idToMetadata.get(positionId);
+    if (position == null || samples == null || metadata == null) {
       return null;
     }
-    VcfSample sample = getOrNull(samples, m_metadata.getSampleIndex(sampleId));
+    VcfSample sample = getOrNull(samples, metadata.getSampleIndex(sampleId));
     return sample == null ? null : sample.getGenotype(position);
   }
 
@@ -168,12 +180,13 @@ public class MemoryMappedVcfDataStore {
     // bounds-checking recordIndex against the samples list's presence/size alone (via getOrNull below) also
     // guards positions.get(recordIndex) below: MemoryMappedVcfLineParser.parseLine() populates both maps in
     // lockstep (one add() call each, same locus, every record), so positions.size() == samplesList.size()
-    // always holds for a given locus.
+    // == metadataList.size() always holds for a given locus.
     List<VcfSample> samples = getOrNull(m_locusToSamplesList.get(locus), recordIndex);
-    if (samples == null) {
+    VcfMetadata metadata = getOrNull(m_locusToMetadataList.get(locus), recordIndex);
+    if (samples == null || metadata == null) {
       return null;
     }
-    VcfSample sample = getOrNull(samples, m_metadata.getSampleIndex(sampleId));
+    VcfSample sample = getOrNull(samples, metadata.getSampleIndex(sampleId));
     return sample == null ? null : sample.getGenotype(positions.get(recordIndex));
   }
 
@@ -221,6 +234,14 @@ public class MemoryMappedVcfDataStore {
 
   protected Map<Locus, List<List<VcfSample>>> getLocusToSamplesList() {
     return m_locusToSamplesList;
+  }
+
+  protected Map<String, VcfMetadata> getIdToMetadata() {
+    return m_idToMetadata;
+  }
+
+  protected Map<Locus, List<VcfMetadata>> getLocusToMetadataList() {
+    return m_locusToMetadataList;
   }
 
   protected List<VcfPosition> getPositionsInFileOrder() {

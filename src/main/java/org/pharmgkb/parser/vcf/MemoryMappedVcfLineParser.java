@@ -92,6 +92,10 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
     MemoryMappedVcfDataStore.Locus locus = new MemoryMappedVcfDataStore.Locus(position.getChromosome(), position.getPosition());
     m_dataStore.getLocusToPositions().computeIfAbsent(locus, l -> new ArrayList<>()).add(position);
     m_dataStore.getLocusToSamplesList().computeIfAbsent(locus, l -> new ArrayList<>()).add(sampleData);
+    // records this record's own metadata alongside its samples, in lockstep with the list above -- see
+    // MemoryMappedVcfDataStore's m_idToMetadata/m_locusToMetadataList field comment for why a by-name lookup
+    // must resolve against the metadata that was active when this record was stored, not whatever is current
+    m_dataStore.getLocusToMetadataList().computeIfAbsent(locus, l -> new ArrayList<>()).add(metadata);
     // also record file order directly (not derivable from the locus maps above -- see
     // MemoryMappedVcfDataStore's m_positionsInFileOrder/m_samplesListInFileOrder field comment) for
     // getAllPositions()/getAllSamples()
@@ -104,6 +108,9 @@ public class MemoryMappedVcfLineParser implements VcfLineParser {
       if (!containsId || m_duplicateIdHandler == DuplicateHandler.KEEP_LAST) {
         m_dataStore.getIdToPosition().put(id, position);
         m_dataStore.getIdToSamples().put(id, sampleData);
+        // see MemoryMappedVcfDataStore's m_idToMetadata field comment for why this is stored per-record
+        // rather than resolved from the data store's single shared/current metadata at lookup time
+        m_dataStore.getIdToMetadata().put(id, metadata);
       }
     }
   }

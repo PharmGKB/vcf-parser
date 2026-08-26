@@ -185,6 +185,58 @@ public class MemoryMappedVcfDataStoreParserTest {
   }
 
   @Test
+  public void testByNameLookupsResolveAgainstEachRecordsOwnMetadataInsteadOfWhicheverIsCurrent() {
+    // regression test: MemoryMappedVcfLineParser.parseLine() overwrites the data store's single m_metadata
+    // field on every call, and the store's own by-name lookups used to resolve a sample name against that
+    // one shared/current field -- so reusing the store across two parseLine() calls whose metadata declared
+    // samples in a different order made every by-name lookup on the FIRST record's data silently resolve to
+    // the WRONG sample (e.g. "S1" returning S2's genotype) rather than throwing or returning null. Each
+    // record's metadata is now tracked alongside its samples so a later parseLine() call with reordered
+    // metadata cannot retroactively change how an earlier record's sample names resolve.
+    VcfMetadata metadataS1First = new VcfMetadata.Builder(STRICT_CONTEXT)
+        .setFileFormat("VCFv4.2")
+        .setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1", "S2"))
+        .build();
+    VcfMetadata metadataS2First = new VcfMetadata.Builder(STRICT_CONTEXT)
+        .setFileFormat("VCFv4.2")
+        .setColumns(List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S2", "S1"))
+        .build();
+    VcfSample s1Sample = STRICT_CONTEXT.newSample(List.of("GT"), List.of("0/0"));
+    VcfSample s2Sample = STRICT_CONTEXT.newSample(List.of("GT"), List.of("1/1"));
+
+    VcfPosition firstPosition = STRICT_CONTEXT.newPosition("1", 100, List.of("rs1"), "A", List.of("T"), null, null,
+        null, null, -1);
+    VcfPosition secondPosition = STRICT_CONTEXT.newPosition("1", 200, List.of("rs2"), "A", List.of("T"), null, null,
+        null, null, -1);
+
+    MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder().build();
+    lineParser.parseMetadata(metadataS1First);
+    lineParser.parseLine(metadataS1First, STRICT_CONTEXT.newRecord(firstPosition, List.of(s1Sample, s2Sample)));
+    // a second parseLine() call with sample order reversed must not change how the FIRST record's "S1"/"S2"
+    // resolve
+    lineParser.parseMetadata(metadataS2First);
+    lineParser.parseLine(metadataS2First, STRICT_CONTEXT.newRecord(secondPosition, List.of(s2Sample, s1Sample)));
+
+    MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
+
+    assertEquals(s1Sample, dataStore.getSampleForId("rs1", "S1"));
+    assertEquals(s2Sample, dataStore.getSampleForId("rs1", "S2"));
+    assertEquals(s1Sample, dataStore.getSampleAtLocus("1", 100, 0, "S1"));
+    assertEquals(s2Sample, dataStore.getSampleAtLocus("1", 100, 0, "S2"));
+    assertEquals(s1Sample.getGenotype(firstPosition), dataStore.getGenotypeForId("rs1", "S1"));
+    assertEquals(s2Sample.getGenotype(firstPosition), dataStore.getGenotypeForId("rs1", "S2"));
+    assertEquals(s1Sample.getGenotype(firstPosition), dataStore.getGenotypeAtLocus("1", 100, 0, "S1"));
+    assertEquals(s2Sample.getGenotype(firstPosition), dataStore.getGenotypeAtLocus("1", 100, 0, "S2"));
+
+    // the second record's own (reordered) metadata resolves correctly too -- this isn't just the first
+    // record "winning" by being stored first
+    assertEquals(s2Sample, dataStore.getSampleForId("rs2", "S2"));
+    assertEquals(s1Sample, dataStore.getSampleForId("rs2", "S1"));
+    assertEquals(s2Sample, dataStore.getSampleAtLocus("1", 200, 0, "S2"));
+    assertEquals(s1Sample, dataStore.getSampleAtLocus("1", 200, 0, "S1"));
+  }
+
+  @Test
   public void testGetPositionForId() throws IOException {
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(VcfParserTest.class.getResourceAsStream(
         "/vcfposition.vcf")))) {
