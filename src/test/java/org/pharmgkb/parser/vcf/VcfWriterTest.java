@@ -5130,6 +5130,53 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testFormatNumberPreCheckOnlyRunsTypeCheckForPlainDigitNumbers() throws Exception {
+    // Regression test for the isAllDigits(String) pre-check added ahead of Integer.parseInt(format.getNumber())
+    // in addSampleConditionally (VcfWriter.java, "now make sure the sample doesn't contain extra keys" +/- a
+    // few lines above): that pre-check must agree exactly with what parseInt itself would have decided, for
+    // both a plain-digit Number ("1", unquoted -- distinct from testQuotedFormatNumberStillRunsTheDefaultPathTypeCheck's
+    // quoted "1" above) and a common non-digit Number ("A"). XX pins the digit case still reaches the type
+    // check; YY pins the non-digit case still skips it, exactly as it did before this pre-check existed (via
+    // parseInt("A") throwing into the old empty catch).
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##FORMAT=<ID=XX,Number=1,Type=Integer,Description=\"d\">\n" +
+        "##FORMAT=<ID=YY,Number=A,Type=Integer,Description=\"d\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "chr1\t1\t.\tA\tT,G\t.\t.\t.\tXX:YY\tabc:abc\n";
+    List<VcfRecord> records = new ArrayList<>();
+    VcfMetadata metadata;
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder().fromReader(reader)
+             .parseWith((md, record) -> records.add(record)).build()) {
+      parser.parse();
+      metadata = parser.getMetadata();
+    }
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);   // after parsing
+    try {
+      StringWriter sw = new StringWriter();
+      try (VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build()) {
+        writer.writeHeader(metadata);
+        writer.writeLine(metadata, records.get(0).getPosition(), records.get(0).getSamples());
+      }
+      assertTrue(appender.anyMessageContains("Property XX for sample #0 is not of type Integer"),
+          "Number=1 (unquoted) must still reach the type check; got "
+              + appender.getRelevantWarnOrHigherMessages(Set.of()));
+      assertFalse(appender.anyMessageContains("Property YY for sample #0 is not of type Integer"),
+          "Number=A must still skip the type check, exactly like the pre-fix parseInt-throws-and-is-caught " +
+              "behavior; got " + appender.getRelevantWarnOrHigherMessages(Set.of()));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void testInfoFlagWithNonconformingNumberOneWarnsForDotValueOnDefaultPath() throws Exception {
     // regression test for the fifth re-verification round's finding #2: addInfoOrDot's default-path (non-
     // validateBeforeWrite()) "just test" type-conversion probe (VcfWriter.java:1191,

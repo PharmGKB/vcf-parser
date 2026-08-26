@@ -1133,9 +1133,18 @@ public class VcfWriter implements Closeable {
       FormatMetadata format = metadata.getFormats().get(key);
       if (!m_validateBeforeWrite && format != null) {
         Integer number = null;
-        try {
-          number = Integer.parseInt(format.getNumber());
-        } catch (NumberFormatException ignored) {}
+        // isAllDigits pre-check: format.getNumber() is "."/"A"/"G"/"R" for many common, legitimate FORMAT keys
+        // (e.g. AD's Number=R) -- parseInt threw and immediately got caught below for every one of those, on
+        // every sample write, and exception construction (fillInStackTrace) is measurably expensive at scale.
+        // Skips the attempt for anything that isn't a plain digit string, so parseInt is only reached for a
+        // Number that already looks numeric (the catch below stays as defense-in-depth for a value that
+        // somehow passed FormatMetadata's own construction-time NUMBER_PATTERN check but still isn't parseable).
+        String numberString = format.getNumber();
+        if (isAllDigits(numberString)) {
+          try {
+            number = Integer.parseInt(numberString);
+          } catch (NumberFormatException ignored) {}
+        }
         if (number != null && number == 1 && format.getType() != null) {
           try {
             InternalUtils.convertProperty(format.getType(), value, m_warnings);
@@ -1168,6 +1177,24 @@ public class VcfWriter implements Closeable {
       }
     }
     sb.append("\t");
+  }
+
+  /**
+   * @return true only if {@code s} is non-null, non-empty, and every character is an ASCII digit --
+   * matches exactly the digit-string half of {@link InternalUtils#NUMBER_PATTERN}, so this agrees with what
+   * {@code Integer.parseInt} above is actually being asked to parse.
+   */
+  private static boolean isAllDigits(@Nullable String s) {
+    if (s == null || s.isEmpty()) {
+      return false;
+    }
+    for (int i = 0; i < s.length(); i++) {
+      char c = s.charAt(i);
+      if (c < '0' || c > '9') {
+        return false;
+      }
+    }
+    return true;
   }
 
   private void addInfoOrDot(VcfMetadata metadata, VcfPosition position, VcfVersion recordVersion, StringBuilder sb) {
