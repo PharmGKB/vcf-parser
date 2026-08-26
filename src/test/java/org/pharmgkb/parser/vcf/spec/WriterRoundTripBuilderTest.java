@@ -3,6 +3,8 @@ package org.pharmgkb.parser.vcf.spec;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import ch.qos.logback.classic.Logger;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
 import org.junit.jupiter.api.Test;
@@ -12,8 +14,10 @@ import org.pharmgkb.parser.vcf.VcfContext;
 import org.pharmgkb.parser.vcf.VcfMetadata;
 import org.pharmgkb.parser.vcf.VcfPosition;
 import org.pharmgkb.parser.vcf.VcfSample;
+import org.slf4j.LoggerFactory;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -105,8 +109,7 @@ class WriterRoundTripBuilderTest {
     WriterRoundTrip.ParsedFile before =
         new WriterRoundTrip.ParsedFile(metadata, List.of(position), List.of(List.of(sample)));
 
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
 
     WarnCapturingAppender defaultAppender = new WarnCapturingAppender();
     defaultAppender.start();
@@ -135,9 +138,15 @@ class WriterRoundTripBuilderTest {
             "diverges only in the warning text, never in the written output");
     assertTrue(defaultAppender.anyMessageContains("Property XX for sample #0 is not of type Integer"),
         "default writer: expected its own message shape; got " +
-            defaultAppender.getRelevantWarnOrHigherMessages(java.util.Set.of()));
-    assertTrue(validatedAppender.anyMessageContains("FORMAT XX for sample #0 value abc is not of type"),
+            defaultAppender.getRelevantWarnOrHigherMessages(Set.of()));
+    assertTrue(validatedAppender.anyMessageContains("FORMAT XX for sample #0 value abc is not of type Long"),
         "validateBeforeWrite(): expected its own, differently-worded message shape; got " +
-            validatedAppender.getRelevantWarnOrHigherMessages(java.util.Set.of()));
+            validatedAppender.getRelevantWarnOrHigherMessages(Set.of()));
+    assertFalse(defaultAppender.anyMessageContains("FORMAT XX for sample #0 value abc is not of type Long"),
+        "default writer: should not see validateBeforeWrite()'s message shape; got " +
+            defaultAppender.getRelevantWarnOrHigherMessages(Set.of()));
+    assertFalse(validatedAppender.anyMessageContains("Property XX for sample #0 is not of type Integer"),
+        "validateBeforeWrite(): should not see the default writer's message shape; got " +
+            validatedAppender.getRelevantWarnOrHigherMessages(Set.of()));
   }
 }
