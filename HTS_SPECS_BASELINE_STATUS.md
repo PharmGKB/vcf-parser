@@ -116,12 +116,12 @@ The frozen total moved from 617 to **845** (`build/reports/hts-specs-conformance
 row, confirmed via a plain `./gradlew htsSpecsTest` run reporting `845/845 checks match baseline, 0
 new/stale, 0 per-version row(s) moved`):
 
-| Version | parser-no-throw | parser-throw-or-warn | parser-warn-content | writer-bytediff | writer-semantic |
-|---|---|---|---|---|---|
-| 4.1 | 25 | 193 | 3 | 25 | 25 |
-| 4.2 | 25 | 190 | 3 | 25 | 25 |
-| 4.3 | 25 | 224 | 4 | 25 | 25 |
-| 4.5 | 1 | -- | -- | 1 | 1 |
+| Version | parser-no-throw | parser-throw-or-warn | parser-warn-content | writer-bytediff | writer-semantic | writer-warning-invariant |
+|---|---|---|---|---|---|---|
+| 4.1 | 25 | 193 | 3 | 25 | 25 | 22 |
+| 4.2 | 25 | 190 | 3 | 25 | 25 | 22 |
+| 4.3 | 25 | 224 | 4 | 25 | 25 | 22 |
+| 4.5 | 1 | -- | -- | 1 | 1 | -- |
 
 4.3's `parser-throw-or-warn` total (224) is every 4.3 `failed/` fixture; of those, 75 are the newly-baselined
 divergences and the rest already throw or warn correctly. 4.3's `parser-warn-content` count of 4 reflects all
