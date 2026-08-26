@@ -2,7 +2,7 @@
 
 [![Build Status](https://github.com/PharmGKB/vcf-parser/actions/workflows/build.yml/badge.svg)](https://github.com/PharmGKB/vcf-parser/actions/workflows/build.yml)
 [![codecov.io](https://codecov.io/github/PharmGKB/vcf-parser/coverage.svg?branch=main)](https://codecov.io/github/PharmGKB/vcf-parser?branch=main)
-[![Maven Central](https://maven-badges.herokuapp.com/maven-central/org.pharmgkb/vcf-parser/badge.svg)](https://maven-badges.herokuapp.com/maven-central/org.pharmgkb/vcf-parser)
+[![Maven Central](https://img.shields.io/maven-central/v/org.pharmgkb/vcf-parser.svg?label=Maven%20Central)](https://central.sonatype.com/artifact/org.pharmgkb/vcf-parser)
 
 This is a Java 17 streaming parser and writer for [VCF](http://en.wikipedia.org/wiki/Variant_Call_Format),
 requiring no runtime configuration beyond what's shown below. The target specification is VCF 4.3;
@@ -12,6 +12,11 @@ read the way that version defines them, and a declared version this library does
 nearest one it does, with a warning. Where versions merely differ in how much they spell out, or the input is
 ambiguous, VCF 4.3 semantics decide (see `AGENTS.md`'s Spec Ambiguity Decision Hierarchy for how those
 decisions get made).
+
+> **Development version:** This branch documents the unreleased VCF 4.3-targeted
+> implementation. The latest published Maven artifact is `0.3.1`, which predates
+> the current VCF 4.3 behavior and should not be assumed equivalent to this source.
+> Use the published artifact only with its corresponding release documentation.
 
 It validates record structure strictly but defers validation of non-structural content (INFO, FILTER,
 FORMAT, sample values, and metadata declarations) for performance -- see
@@ -45,7 +50,9 @@ The structured metadata declarations VCF defines (`##INFO`, `##FORMAT`, `##FILTE
 Values are handed back as the raw text the file contained -- this library never percent-decodes an INFO or
 sample value, and never percent-encodes one on write.
 [`VcfPercentEncoding`](src/main/java/org/pharmgkb/parser/vcf/VcfPercentEncoding.java) is an opt-in utility for
-callers who need the decoded form.
+callers who need the decoded form. Use it only for INFO values, sample values, and
+structured metadata attribute values; do not apply it indiscriminately to IDs, FILTER
+codes, FORMAT/INFO keys, metadata declaration IDs, or symbolic ALT alleles.
 
 ```java
 try (VcfParser parser = new VcfParser.Builder()
@@ -58,15 +65,23 @@ try (VcfParser parser = new VcfParser.Builder()
 }
 ```
 
+`parse()` consumes the file and returns no collection; the `VcfLineParser` callback
+receives each parsed record as it is read, so process or store records there. The
+`fromFile()` builder reads uncompressed `.vcf` text only. For gzip/BGZF input, use an
+appropriate decompressor and pass the resulting reader through `fromReader()`.
+
 Check out [`VcfParserTest.java`](src/test/java/org/pharmgkb/parser/vcf/VcfParserTest.java) for a quick and
 dirty view of it in action.
 
 [`MemoryMappedVcfLineParser`](src/main/java/org/pharmgkb/parser/vcf/MemoryMappedVcfLineParser.java) is an example
-`VcfLineParser` implementation, showing how to read an entire file into memory for constant-time record lookup; it
-is not part of the core parser. VCF permits multiple records at the same locus, so each locus is stored as a list of
-records, and every record seen at a locus is kept with no configuration needed. A repeated `ID`, by contrast, is not
-a normal VCF occurrence, so it remains single-valued and `Builder.setDuplicateIdHandler` controls whether it's
-rejected or which record wins.
+`VcfLineParser` implementation, showing how to read an entire file into memory for
+constant-time record lookup; it is not part of the core parser and is intended only
+for short files where random access justifies the memory cost. It is not thread-safe.
+VCF permits multiple records at the same locus, so each locus is stored as a list and
+every record seen there is kept. A repeated `ID` is handled separately in the
+ID-based lookup: `Builder.setDuplicateIdHandler` can reject the duplicate, keep the
+first ID mapping, or replace it with the last one. The records themselves remain in
+the locus-based collection.
 
 
 ## Writing a file
@@ -194,4 +209,4 @@ Requires Java 17 or later. Licensed under the [Mozilla Public License 2.0](LICEN
 
 ### Non-Maven
 
-You can download jars from the [Central Maven Repository](http://search.maven.org/#search%7Cga%7C1%7Cg%3A%22org.pharmgkb%22%20a%3A%22vcf-parser%22).
+You can download jars from the [Central Maven Repository](https://central.sonatype.com/artifact/org.pharmgkb/vcf-parser).
