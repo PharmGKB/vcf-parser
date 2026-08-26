@@ -88,4 +88,56 @@ class WriterRoundTripBuilderTest {
       assertTrue(diff.isEmpty(), () -> "validateBeforeWrite=" + validate + ": " + diff.orElse(""));
     }
   }
+
+  @Test
+  void testFormatTypeConversionFailureWarnsDifferentlyButWritesIdenticallyBetweenWriterConfigurations()
+      throws IOException {
+    VcfContext context = strict();
+    VcfMetadata metadata = new VcfMetadata.Builder(context)
+        .setFileFormat("VCFv4.3")
+        .setColumns(List.of("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .addFormat("XX", "Custom field", "1", FormatType.Integer)
+        .addFilter("PASS", "All filters passed")
+        .build();
+    VcfPosition position = context.newPosition("1", 100, null, "A", List.of("T"), null, List.of("PASS"),
+        ArrayListMultimap.create(), List.of("XX"), 2);
+    VcfSample sample = context.newSample(List.of("XX"), List.of("abc"));
+    WriterRoundTrip.ParsedFile before =
+        new WriterRoundTrip.ParsedFile(metadata, List.of(position), List.of(List.of(sample)));
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+
+    WarnCapturingAppender defaultAppender = new WarnCapturingAppender();
+    defaultAppender.start();
+    root.addAppender(defaultAppender);
+    String defaultWritten;
+    try {
+      defaultWritten = WriterRoundTrip.write(before, false);
+    } finally {
+      root.detachAppender(defaultAppender);
+      defaultAppender.stop();
+    }
+
+    WarnCapturingAppender validatedAppender = new WarnCapturingAppender();
+    validatedAppender.start();
+    root.addAppender(validatedAppender);
+    String validatedWritten;
+    try {
+      validatedWritten = WriterRoundTrip.write(before, true);
+    } finally {
+      root.detachAppender(validatedAppender);
+      validatedAppender.stop();
+    }
+
+    assertEquals(defaultWritten, validatedWritten,
+        "the unconvertible XX value is preserved verbatim by both writer configurations -- this case " +
+            "diverges only in the warning text, never in the written output");
+    assertTrue(defaultAppender.anyMessageContains("Property XX for sample #0 is not of type Integer"),
+        "default writer: expected its own message shape; got " +
+            defaultAppender.getRelevantWarnOrHigherMessages(java.util.Set.of()));
+    assertTrue(validatedAppender.anyMessageContains("FORMAT XX for sample #0 value abc is not of type"),
+        "validateBeforeWrite(): expected its own, differently-worded message shape; got " +
+            validatedAppender.getRelevantWarnOrHigherMessages(java.util.Set.of()));
+  }
 }
