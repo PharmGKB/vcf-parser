@@ -739,3 +739,22 @@ where a raw, non-`VcfFormatException` `RuntimeException` carrying untrusted cont
 three `catch (RuntimeException e)` blocks -- at that point this stops being a hypothetical and the fix would
 be the same `InternalUtils.truncateAndEscapeForMessage` treatment as everywhere else, applied inside
 `VcfFormatException`'s own constructor rather than at each of the three call sites.
+
+## `VcfWarnings.warn()` writes synchronously with no volume limit
+
+Raised by an external release-readiness audit (`docs/issues/2026-08-25-2004-release-audit.md`, R3),
+verified 2026-08-25: `VcfWarnings.warn()` (`VcfWarnings.java:84-97`) writes each warning synchronously,
+holding `m_lock`, with no cap on how many warnings accumulate or how large the message volume gets. A file
+with a very large number of malformed entries produces a correspondingly large number of synchronous
+writes; with an in-memory sink (e.g. `StringWriter`) that's unbounded memory growth, and with a slow or
+remote sink, warning volume directly gates parsing/writing throughput.
+
+**Decision: won't fix.** This library trusts its input rather than defending against adversarial content
+(see the "Resource-bounding policy for untrusted VCF input" discussion this same audit prompted in
+`TODO.md`) -- a mistake-riddled but genuine VCF from a trusted source is not expected to generate enough
+warnings to matter, and choosing a fast, appropriately-buffered warning sink for a file that might is the
+caller's own responsibility, not something this library can discharge for them without knowing their
+deployment. `VcfWarnings`'s constructor Javadoc now states this explicitly instead of leaving it implicit.
+Revisit only if warning-volume amplification is observed against a genuinely trusted file (i.e. a
+correctness/performance bug in how many warnings a given input generates), not as a defense against
+adversarial input.

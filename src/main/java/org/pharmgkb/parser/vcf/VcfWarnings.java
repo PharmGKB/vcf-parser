@@ -58,7 +58,11 @@ public final class VcfWarnings implements Closeable {
   /**
    * @param sink where {@link #warn} writes, or {@code null} to always use the shared SLF4J logger (matching
    * {@link #DEFAULT}'s own behavior -- {@code new VcfWarnings(null)} and {@link #DEFAULT} behave identically,
-   * but {@link #DEFAULT} avoids a redundant allocation for the common case)
+   * but {@link #DEFAULT} avoids a redundant allocation for the common case). {@link #warn} writes to this sink
+   * synchronously, with no volume limit -- a slow sink (e.g. a remote or heavily-contended stream) directly
+   * gates parsing/writing throughput, and a very warning-heavy file grows an in-memory sink (e.g.
+   * {@link java.io.StringWriter}) without bound. Choosing a fast, appropriately-buffered sink is the caller's
+   * responsibility.
    */
   public VcfWarnings(@Nullable Writer sink) {
     m_sink = sink;
