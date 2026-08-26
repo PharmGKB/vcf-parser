@@ -491,8 +491,7 @@ class HtsSpecsConformanceTest {
 
   private static void checkRoundTripWarningInvariant(Path file) throws IOException {
     String fixturePath = relativeName(file);
-    ch.qos.logback.classic.Logger root =
-        (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
 
     WarnCapturingAppender beforeAppender = new WarnCapturingAppender();
     beforeAppender.start();
