@@ -33,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -1123,6 +1124,66 @@ public class VcfWriterTest {
       assertTrue(sw.toString().contains("\tGT\t0/1"));
       assertFalse(sw.toString().contains("DP"));
       assertTrue(appender.anyMessageContains("contains extra property DP"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testWritingManySamplesWithManyFormatKeysCompletesWithoutQuadraticSlowdown() throws IOException {
+    // regression test: addSampleConditionally's "extra property" check used to call
+    // position.getFormat().contains(key) -- an O(n) List scan -- once for every one of a sample's own
+    // properties, making a write O(F^2) per sample for F FORMAT keys, O(samples x F^2) overall. Found live via
+    // JFR profiling while verifying the sibling fix in VcfSample.getProperty() (GET_PROPERTY_MATERIALIZE_
+    // THRESHOLD): this was actually the dominant remaining cost, not the getProperty() scan the release-
+    // readiness audit named. Measured directly before this fix: 100 samples x 2048 FORMAT keys took
+    // ~900ms-1s; a single sample alone doesn't stress this enough to distinguish fixed from broken within a
+    // tight timeout, so this test uses 100 samples, matching how the defect was actually measured. Also proves
+    // the warning itself still fires correctly at this scale, not just that it's fast: one property ("EXTRA")
+    // is deliberately not declared in FORMAT, on every sample.
+    int f = 8192;
+    int numSamples = 100;
+    List<String> formatOnlyKeys = new ArrayList<>(f);
+    VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2");
+    List<String> columns = new ArrayList<>(
+        Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT"));
+    for (int s = 0; s < numSamples; s++) {
+      columns.add("S" + s);
+    }
+    mdBuilder.setColumns(columns);
+    for (int i = 0; i < f; i++) {
+      formatOnlyKeys.add("F" + i);
+      mdBuilder.addFormat("F" + i, "desc", "1", FormatType.String);
+    }
+    VcfMetadata metadata = mdBuilder.build();
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null,
+        formatOnlyKeys, -1);
+    List<VcfSample> samples = new ArrayList<>(numSamples);
+    for (int s = 0; s < numSamples; s++) {
+      List<String> keys = new ArrayList<>(formatOnlyKeys);
+      List<String> values = new ArrayList<>(f + 1);
+      for (int i = 0; i < f; i++) {
+        values.add("v" + i);
+      }
+      keys.add("EXTRA"); // not declared in FORMAT -- must still be detected and warned about, on every sample
+      values.add("x");
+      samples.add(LENIENT_CONTEXT.newSample(keys, values));
+    }
+
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer.writeHeader(metadata);
+      assertTimeoutPreemptively(java.time.Duration.ofSeconds(1), () ->
+          writer.writeLine(metadata, position, samples));
+      assertTrue(appender.anyMessageContains("contains extra property EXTRA"));
     } finally {
       root.detachAppender(appender);
       appender.stop();

@@ -27,8 +27,11 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>To avoid allocating a map for every sample on every line (the common parse-then-read path), the FORMAT keys and
  * their values are kept as parallel lists and read by a short linear scan. A {@link LinkedHashMap} is materialized
- * only the first time a keys/entries view is requested (or supplied directly via the map constructor), writing
- * {@link #m_properties} (and clearing {@link #m_keys}/{@link #m_values}) at that point. That caching has no
+ * the first time a keys/entries view is requested, {@link #getProperty(String)} is called on a sample with more
+ * than {@link #GET_PROPERTY_MATERIALIZE_THRESHOLD} keys (bounding repeated single-key lookups, e.g. a writer
+ * reading every declared FORMAT key in a row, to O(F) total rather than O(F^2)), or a map is supplied directly via
+ * the map constructor -- writing {@link #m_properties} (and clearing {@link #m_keys}/{@link #m_values}) at that
+ * point. That caching has no
  * observable effect on a single-threaded caller, but it is unsynchronized, so <b>this class is not thread-safe</b>:
  * sharing one instance across threads before its property views have been read at least once is not safe without
  * external synchronization. A caller that needs a changed sample derives a new one via {@link #toBuilder()}.</p>
@@ -36,6 +39,15 @@ import org.jspecify.annotations.Nullable;
  * @author Mark Woon
  */
 public final class VcfSample {
+
+  // Above this many FORMAT keys, getProperty(String) below materializes the property map on its first call
+  // instead of doing its own linear scan -- mirrors VcfPosition.DUPLICATE_SCAN_THRESHOLD's identical hybrid
+  // reasoning (own comment there has the full measurement): a caller reading every FORMAT key in a row (as
+  // VcfWriter's write path does, one getProperty() call per declared key) turns an unmaterialized sample's
+  // repeated linear scans into O(F^2) total work for F keys -- measured directly: 100 samples x 2048 FORMAT
+  // keys took ~900ms-1s to write, growing quadratically, before this fix. Below the threshold, the current
+  // allocation-free scan stays cheaper than building a LinkedHashMap for a single lookup.
+  private static final int GET_PROPERTY_MATERIALIZE_THRESHOLD = 8;
 
   // Lean representation used on the parse path; both null once m_properties has been materialized. VcfParser may
   // pass the same List instance as m_keys to multiple VcfSample objects for the same data line (one independent
@@ -399,6 +411,12 @@ public final class VcfSample {
    * percent-decodes a sample (FORMAT) value; see {@link VcfPercentEncoding} if you need semantic text.
    */
   public @Nullable String getProperty(String key) {
+    if (m_properties == null && m_keys != null && m_keys.size() > GET_PROPERTY_MATERIALIZE_THRESHOLD) {
+      // see GET_PROPERTY_MATERIALIZE_THRESHOLD's own comment: bounds repeated-lookup cost to O(F) total
+      // rather than O(F^2) for a large key list, at the cost of one map build even when only a single key is
+      // ever looked up -- worthwhile only once the list is no longer small, which is exactly this gate
+      properties();
+    }
     if (m_properties != null) {
       return m_properties.get(key);
     }

@@ -55,6 +55,14 @@ public class VcfWriter implements Closeable {
 
   private static final Logger sf_logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
+  // Above this many declared FORMAT keys, addSampleConditionally's "extra property" check below builds a
+  // HashSet once instead of repeatedly scanning the FORMAT list with List.contains() (an O(n) scan) for each
+  // of the sample's own keys -- otherwise O(F) scans x F keys is O(F^2) overall, the same shape (and the same
+  // fix) as VcfSample.GET_PROPERTY_MATERIALIZE_THRESHOLD's identical reasoning. Found live via JFR profiling
+  // while verifying that other fix: this List.contains() call, not the getProperty() scan the release-
+  // readiness audit named, was the dominant remaining cost for a sample with many FORMAT keys.
+  private static final int FORMAT_LOOKUP_MATERIALIZE_THRESHOLD = 8;
+
   private final @Nullable Path m_file;
   private final PrintWriter m_writer;
   private final boolean m_validateBeforeWrite;
@@ -1146,10 +1154,18 @@ public class VcfWriter implements Closeable {
 
     // now make sure the sample doesn't contain extra keys
     if (!m_validateBeforeWrite) {
-      sample.getPropertyKeys().stream().filter(key -> !position.getFormat().contains(key)).forEach(key -> {
-        m_warnings.warn("Sample #{} contains extra property {} " +
-            "(on line {})", sampleIndex, key, lineBeingWritten());
-      });
+      // See FORMAT_LOOKUP_MATERIALIZE_THRESHOLD's own comment: formatKeys (already computed above, this same
+      // record's own FORMAT list) is reused directly rather than re-fetching position.getFormat(), and wrapped
+      // in a HashSet once above the threshold instead of letting Collection.contains() re-scan it as a plain
+      // List for every one of the sample's own keys.
+      Collection<String> formatKeyLookup = formatKeys.size() > FORMAT_LOOKUP_MATERIALIZE_THRESHOLD
+          ? new HashSet<>(formatKeys) : formatKeys;
+      for (String key : sample.getPropertyKeys()) {
+        if (!formatKeyLookup.contains(key)) {
+          m_warnings.warn("Sample #{} contains extra property {} " +
+              "(on line {})", sampleIndex, key, lineBeingWritten());
+        }
+      }
     }
     sb.append("\t");
   }
