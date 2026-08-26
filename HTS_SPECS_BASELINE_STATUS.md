@@ -112,16 +112,31 @@ new `parser-throw-or-warn` divergences on 4.3 `failed/` fixtures (verified addit
 mechanically to keep the gate green; per-cluster triage (bcftools/vcf_validator consultation, permanently
 accepted vs. candidate-for-filing, etc.) is a follow-up task in this same phase, not done here.
 
-The frozen total moved from 617 to **845** (`build/reports/hts-specs-conformance/summary.md`'s `**Total**`
-row, confirmed via a plain `./gradlew htsSpecsTest` run reporting `845/845 checks match baseline, 0
-new/stale, 0 per-version row(s) moved`):
+At the time of this expansion, the frozen total moved from 617 to **845** (`build/reports/hts-specs-
+conformance/summary.md`'s `**Total**` row, confirmed via a plain `./gradlew htsSpecsTest` run reporting
+`845/845 checks match baseline, 0 new/stale, 0 per-version row(s) moved`). That snapshot is retained above
+as narrative context for this provenance section; it is not the table's current state.
+
+The table below instead reflects the gate's *current* total, confirmed by running `./gradlew htsSpecsTest`
+and reading `build/reports/hts-specs-conformance/summary.md`'s `**Total**` row: **1425**. Two later changes
+drove the jump from 845 to 1425 and were never folded back into this table until now: (a) the
+`writer-semantic` column's own count grew from 25/25/25/1 to its current, much larger values when a later
+phase added the `failed/`-fixture semantic-check factory (`failedFixturesRoundTripSemantically`, see the
+`writer-semantic` section below) on top of the original `passed/`-only scope this table was last synced
+against (that original scope's 25/25/25/1 matches `writer-bytediff`'s own counts, since both checked the
+same `passed/` fixture set); and (b) this newest change (the
+`2026-08-26-0141-writer-round-trip-oracle-gaps-r7-plan.md` plan) added the `writer-warning-invariant` column
+itself (22/22/22/-- = 66 new checks -- see below for what it checks).
 
 | Version | parser-no-throw | parser-throw-or-warn | parser-warn-content | writer-bytediff | writer-semantic | writer-warning-invariant |
 |---|---|---|---|---|---|---|
-| 4.1 | 25 | 193 | 3 | 25 | 25 | 22 |
-| 4.2 | 25 | 190 | 3 | 25 | 25 | 22 |
-| 4.3 | 25 | 224 | 4 | 25 | 25 | 22 |
+| 4.1 | 25 | 193 | 3 | 25 | 188 | 22 |
+| 4.2 | 25 | 190 | 3 | 25 | 185 | 22 |
+| 4.3 | 25 | 224 | 4 | 25 | 216 | 22 |
 | 4.5 | 1 | -- | -- | 1 | 1 | -- |
+
+`writer-warning-invariant` reparses a cleanly-round-tripped `passed/` fixture (one with zero warnings on its
+original parse) and asserts that reparsing its written output introduces no new warnings.
 
 4.3's `parser-throw-or-warn` total (224) is every 4.3 `failed/` fixture; of those, 75 are the newly-baselined
 divergences and the rest already throw or warn correctly. 4.3's `parser-warn-content` count of 4 reflects all
