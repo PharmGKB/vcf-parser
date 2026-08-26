@@ -528,3 +528,24 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
   warning once per record, this library's dedup granularity would no longer match bcftools' own -- though the
   underlying noise-reduction rationale (VCFv4.3.tex:238 only recommends a `##contig` declaration) would still
   independently justify keeping the dedup regardless.
+
+### FT's opaque treatment as a scalar String, no reserved-grammar awareness
+- Test: `BcftoolsDependencyTest#testFtOpaqueDuplicateCodeBcftoolsAcceptsSilently`
+- Reasoning: `WONT_FIX.md`'s "`InternalUtils.checkFilterLikeValue`'s FT grammar diverges from
+  `VcfPosition.checkFilters`'s FILTER-column grammar for repeated `PASS`/`.` codes" entry. Added for
+  completeness alongside the other two entries below, though none of the three's own "Revisit" conditions
+  name a bcftools upgrade as a trigger -- the decisions rest on this library's own design tradeoffs, and
+  bcftools's behavior is cited only as corroborating evidence, not as the thing being matched.
+
+### GLE has no reference-tool behavior to design a recovery strategy against
+- Test: `BcftoolsDependencyTest#testWellFormedGleValueBcftoolsHardErrors`
+- Reasoning: `WONT_FIX.md`'s "`VcfParser`'s legacy `GLE` FORMAT-value splitter can silently misattribute
+  content from a corrupted GLE value to the next FORMAT key" entry. bcftools rejects even the spec's own
+  well-formed `GLE` worked example outright, so there is no reference implementation's recovery behavior to
+  measure this library's own more-permissive `GLE_VALUE_PATTERN` handling against.
+
+### A missing trailing newline at end of file
+- Test: `BcftoolsDependencyTest#testMissingTrailingNewlineBcftoolsAcceptsSilently`
+- Reasoning: `WONT_FIX.md`'s "A missing trailing newline at end of file is not detected" entry. bcftools
+  itself does not warn or fail on a file whose last line has no terminator, so this library's identical
+  tolerance is not a gap relative to the reference implementation.

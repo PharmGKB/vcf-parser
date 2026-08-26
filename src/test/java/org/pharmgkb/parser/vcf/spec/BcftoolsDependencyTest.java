@@ -1878,5 +1878,51 @@ class BcftoolsDependencyTest {
     assertEquals(1, warningCount, result.output());
   }
 
+  @Test
+  void testFtOpaqueDuplicateCodeBcftoolsAcceptsSilently() throws IOException, InterruptedException {
+    // indexes WONT_FIX.md's "InternalUtils.checkFilterLikeValue's FT grammar diverges from
+    // VcfPosition.checkFilters's FILTER-column grammar for repeated PASS/. codes" entry: bcftools treats the
+    // reserved FT FORMAT value as an opaque String with no knowledge of its own reserved grammar, unlike the
+    // FILTER column (a different field), so a same-code repetition round-trips unchanged with no warning.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##FORMAT=<ID=FT,Number=.,Type=String,Description=\"Genotype filter\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGT:FT\t0/1:q10;q10\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("0/1:q10;q10"), result.output());
+  }
+
+  @Test
+  void testWellFormedGleValueBcftoolsHardErrors() throws IOException, InterruptedException {
+    // indexes WONT_FIX.md's "VcfParser's legacy GLE FORMAT-value splitter can silently misattribute content
+    // from a corrupted GLE value to the next FORMAT key" entry's "no reference-tool behavior to consult"
+    // premise: bcftools treats GLE as an ordinary colon-delimited scalar with no special-case handling, so
+    // even the spec's own well-formed worked example (VCFv4.2.tex line 225) fails outright.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "##FORMAT=<ID=GLE,Number=1,Type=String,Description=\"Genotype Likelihoods\">\n" +
+        "##contig=<ID=chr1,length=1000000>\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "chr1\t1\trs1\tA\tT\t.\tPASS\t.\tGLE\t0:-75.22,1:-223.42,0/0:-323.03,1/0:-99.29,1/1:-802.53\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(8, result.exitCode(), result.output());
+    assertTrue(result.output().contains("[E::vcf_parse_format_max3] Incorrect number of FORMAT fields"),
+        result.output());
+  }
+
+  @Test
+  void testMissingTrailingNewlineBcftoolsAcceptsSilently() throws IOException, InterruptedException {
+    // indexes WONT_FIX.md's "A missing trailing newline at end of file is not detected" entry: bcftools
+    // itself does not warn or fail on a file whose last line has no terminator, so this library's own
+    // identical tolerance isn't a gap relative to the reference implementation. Contrast with
+    // testTrailingBlankLineAtEofBcftoolsRejects above, which is a genuinely different shape (an extra empty
+    // line, not a missing terminator on the last real line).
+    String vcf = "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000000>\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t1\trs1\tA\tT\t.\tPASS\t.";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().contains("chr1\t1\trs1\tA\tT\t.\tPASS\t."), result.output());
+  }
+
   private record BcftoolsResult(int exitCode, String output) {}
 }
