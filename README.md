@@ -128,9 +128,11 @@ to (building a file from scratch, or a synthetic record for a test), everything 
 `##fileformat` (and the VCF version that resolves to, which is what version-dependent reads consult), its
 warning destination, and whether a recoverable content violation warns or throws.
 
-Every model object (`VcfPosition`, `VcfSample`, `VcfRecord`, and the metadata layer) is immutable once
-constructed -- there are no setters. To derive a changed copy, call its `toBuilder()`, change what you need on
-the resulting builder, and call `build()`.
+Every model object (`VcfPosition`, `VcfSample`, `VcfRecord`, and the metadata layer) has no setters -- to
+derive a changed copy, call its `toBuilder()`, change what you need on the resulting builder, and call
+`build()`. The one exception is `validate()` (used internally by `VcfWriter.validateBeforeWrite()`, but
+public and callable directly): it can normalize some internal state in place, such as dropping an empty
+FILTER entry, rather than returning a new object.
 
 ```java
 VcfContext ctx = VcfContext.strict("VCFv4.2");     // or VcfContext.lenient(fileFormat, warnings)
@@ -138,6 +140,7 @@ VcfPosition position = ctx.newPosition("chr1", 100, null, "A", List.of("T"), nul
     List.of("GT"), -1);
 VcfSample sample = ctx.newSample(List.of("GT"), List.of("0/1"));
 VcfRecord record = ctx.newRecord(position, List.of(sample));
+List<String> columns = List.of("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "SAMPLE1");
 VcfMetadata metadata = new VcfMetadata.Builder(ctx)
     .addInfo("DP", "Total depth", InfoType.Integer, "1", null, null)
     .setColumns(columns)

@@ -29,10 +29,11 @@ principles below to a specific surface -- read this file first for the "why," th
    `VcfPosition.getQuality()`/`getInfo()` parse lazily on first access, not at construction; `VcfSample` keeps
    a lean parallel-list representation and only materializes a `Map` when one is actually needed;
    `VcfWriter`'s default path skips the full structural/semantic revalidation `validateBeforeWrite()` performs.
-4. **Once a header is written, further changes to that header's metadata are rejected.** A `VcfWriter` that
+4. **Once a header is written, `writeLine()` rejects a different metadata object.** A `VcfWriter` that
    already flushed a header must not silently emit records against metadata that no longer matches what was
-   written. This is currently only enforced under `validateBeforeWrite()` (see the interaction note below) --
-   the default path does not detect this.
+   written. Enforced unconditionally in both the default path and `validateBeforeWrite()`, via object
+   identity (`metadata == m_headerMetadata`) -- see the interaction note below for why a deeper mutation
+   check is unnecessary now that `VcfMetadata` is immutable.
 
 ## How principles 1 and 2 are dispatched
 
