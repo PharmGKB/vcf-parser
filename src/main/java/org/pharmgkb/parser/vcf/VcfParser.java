@@ -3,6 +3,7 @@ package org.pharmgkb.parser.vcf;
 import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -681,16 +682,29 @@ public class VcfParser implements Closeable {
     m_lastLineNumber = m_lineNumber;
   }
 
+  /**
+   * @throws UncheckedIOException if the underlying reader's own {@code close()} fails (e.g. a network-backed
+   * stream, or an fsync-on-close error for a local one) -- the warnings file, if any, is still closed/flushed
+   * regardless (via a {@code finally} block), matching {@link VcfWriter#close()}'s equivalent write-failure
+   * behavior.
+   */
   @Override
   public void close() {
     try {
       m_reader.close();
-    } catch (Exception ex) {
-      sf_logger.info("Error closing reader", ex);
+    } catch (IOException ex) {
+      // Propagated, not merely logged: matching VcfWriter.close(), which already surfaces a write failure
+      // (via checkError()/recordWriteError()) rather than swallowing it. A reader-close failure (e.g. a
+      // network-backed stream, or an fsync-on-close error for a local one) is real, actionable information a
+      // caller cannot otherwise detect -- silently logging it at info level gave up that signal entirely.
+      // BREAKING CHANGE: a caller whose Reader's close() throws now gets an UncheckedIOException from this
+      // method, where before it got nothing.
+      throw new UncheckedIOException("Error closing reader", ex);
     } finally {
       // normally already closed by parse()'s own finally; this covers the caller who drove the parse through
       // parseMetadata()/parseNextLine() directly, which now redirect too and so would otherwise leave the
-      // warnings file open and unflushed
+      // warnings file open and unflushed. Runs even when m_reader.close() above throws, so a reader-close
+      // failure never leaves the warnings file open/unflushed as a side effect.
       closeWarningsFile();
     }
   }
@@ -1017,7 +1031,10 @@ public class VcfParser implements Closeable {
     }
 
     /**
-     * Provides a {@link BufferedReader} to the beginning of the VCF file to parse.
+     * Provides a {@link BufferedReader} to the beginning of the VCF file to parse. One-shot: {@link #build()}
+     * consumes this reader and clears it, so a second {@link #build()} call without an intervening
+     * {@code fromReader}/{@link #fromFile} call fails with {@link IllegalStateException} rather than
+     * returning a second {@link VcfParser} silently backed by the same reader.
      */
     public Builder fromReader(BufferedReader reader) {
       Preconditions.checkNotNull(reader);
@@ -1146,6 +1163,15 @@ public class VcfParser implements Closeable {
       if (m_reader == null) {
         throw new IllegalStateException("Must specify either file or reader to parse");
       }
+      BufferedReader reader = m_reader;
+      // Cleared so a second build() call without a fresh fromFile()/fromReader() call hits the null check
+      // above instead of silently returning a second VcfParser backed by the SAME reader as this one.
+      // fromFile()'s branch just above already opens an independent reader on every build() call, so this
+      // only meaningfully guards fromReader(BufferedReader): without it, two VcfParsers built from one
+      // Builder would share the caller's own reader object, and using both (concurrently, or sequentially
+      // without fully draining the first) would silently corrupt each other's read position -- see
+      // VcfWriter.Builder.build()'s identical guard for the write-side analogue.
+      m_reader = null;
       Path resolvedWarningsFile = null;
       if (m_warningsToFile) {
         if (m_warningsFile != null) {
@@ -1158,7 +1184,7 @@ public class VcfParser implements Closeable {
               "name from");
         }
       }
-      return new VcfParser(m_reader, m_rsidsOnly, m_vcfLineParser, resolvedWarningsFile, m_maxLineLength);
+      return new VcfParser(reader, m_rsidsOnly, m_vcfLineParser, resolvedWarningsFile, m_maxLineLength);
     }
   }
 }

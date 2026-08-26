@@ -4,8 +4,10 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.io.Reader;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.io.UncheckedIOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -1317,6 +1319,104 @@ public class VcfParserTest {
       // expected
       assertTrue(ex.getMessage().contains("Not a VCF file"));
     }
+  }
+
+  @Test
+  void testSecondBuildAfterFromReaderFailsFastInsteadOfSharingTheSameReader() throws IOException {
+    // regression test: build() used to leave m_reader set after returning, so a second build() call on the
+    // same Builder (with no intervening fromReader()/fromFile() call) silently returned a second VcfParser
+    // backed by the IDENTICAL BufferedReader as the first -- using both would corrupt each other's read
+    // position with no exception, no warning. fromFile() is unaffected: it opens a fresh reader on every
+    // build() call, verified by the second assertion below.
+    BufferedReader reader = new BufferedReader(new StringReader("##fileformat=VCFv4.2\n"));
+    VcfParser.Builder builder = new VcfParser.Builder()
+        .fromReader(reader)
+        .parseWith((metadata, record) -> {});
+    try (VcfParser first = builder.build()) {
+      IllegalStateException ex = assertThrows(IllegalStateException.class, builder::build);
+      assertTrue(ex.getMessage().contains("Must specify either file or reader"));
+    }
+  }
+
+  @Test
+  void testSecondBuildAfterFromFileStillOpensAnIndependentReader() throws IOException {
+    VcfParser.Builder builder = new VcfParser.Builder()
+        .fromFile(PathUtils.getPathToResource("/rsid.vcf"))
+        .parseWith((metadata, record) -> {});
+    try (VcfParser first = builder.build();
+         VcfParser second = builder.build()) {
+      first.parseMetadata();
+      second.parseMetadata();
+    }
+  }
+
+  @Test
+  void testCloseThrowsUncheckedIOExceptionWhenTheUnderlyingReaderFailsToClose() throws IOException {
+    // regression test: close() used to catch and only log a reader-close failure at info level, discarding a
+    // real, actionable I/O signal (e.g. a network-backed stream, or an fsync-on-close error) with no way for
+    // the caller to detect it -- now it propagates, matching VcfWriter.close()'s equivalent write-failure
+    // behavior.
+    class FailingCloseReader extends Reader {
+      private final Reader m_delegate = new StringReader(
+          "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n");
+
+      @Override
+      public int read(char[] cbuf, int off, int len) throws IOException {
+        return m_delegate.read(cbuf, off, len);
+      }
+
+      @Override
+      public void close() throws IOException {
+        throw new IOException("simulated close failure");
+      }
+    }
+
+    VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new FailingCloseReader()))
+        .parseWith((metadata, record) -> {})
+        .build();
+    parser.parseMetadata();
+    UncheckedIOException ex = assertThrows(UncheckedIOException.class, parser::close);
+    assertTrue(ex.getMessage().contains("Error closing reader"));
+    assertEquals("simulated close failure", ex.getCause().getMessage());
+  }
+
+  @Test
+  void testCloseStillClosesTheWarningsFileWhenTheUnderlyingReaderFailsToClose(@TempDir Path tempDir)
+      throws IOException {
+    // the warnings file must still be closed/flushed via close()'s finally block even when the reader-close
+    // above it throws -- otherwise a reader-close failure would leave the warnings file open/unflushed as an
+    // unrelated side effect
+    class FailingCloseReader extends Reader {
+      // same fixture as testParseSetsWarningsSinkForPedigreeMetadata above -- a known-good trigger for a
+      // deterministic warning
+      private final Reader m_delegate = new StringReader("##fileformat=VCFv4.3\n" +
+          "##PEDIGREE=<Description=\"d\">\n" + // no ID -- required from VCFv4.3, warned rather than dropped
+          "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+          "1\t100\t.\tA\tT\t.\t.\t.\n");
+
+      @Override
+      public int read(char[] cbuf, int off, int len) throws IOException {
+        return m_delegate.read(cbuf, off, len);
+      }
+
+      @Override
+      public void close() throws IOException {
+        throw new IOException("simulated close failure");
+      }
+    }
+
+    Path warningsFile = tempDir.resolve("warnings.log");
+    VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new FailingCloseReader()))
+        .warningsToFile(warningsFile)
+        .parseWith((metadata, record) -> {})
+        .build();
+    parser.parse();
+    assertThrows(UncheckedIOException.class, parser::close);
+    // if the warnings file were left open, this read would still succeed on Linux (no exclusive-lock
+    // enforcement), but an unflushed BufferedWriter's content would be missing -- the real assertion
+    assertTrue(Files.readString(warningsFile).contains("PEDIGREE metadata declaration has no ID"));
   }
 
   @Test

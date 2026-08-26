@@ -1410,6 +1410,11 @@ public class VcfWriter implements Closeable {
       return this;
     }
 
+    /**
+     * One-shot: {@link #build()} consumes this writer and clears it, so a second {@link #build()} call
+     * without an intervening {@code toWriter}/{@link #toFile} call fails with {@link IllegalStateException}
+     * rather than returning a second {@link VcfWriter} silently backed by the same writer.
+     */
     public Builder toWriter(PrintWriter writer) {
       // same caller-configuration-object reasoning as toFile(Path) above
       Preconditions.checkNotNull(writer);
@@ -1528,6 +1533,13 @@ public class VcfWriter implements Closeable {
 
     public VcfWriter build() throws IOException {
       PrintWriter writer = m_writer;
+      // Cleared so a second build() call without a fresh toFile()/toWriter() call hits the null check below
+      // instead of silently returning a second VcfWriter backed by the SAME writer as this one. toFile()'s
+      // branch just below already opens an independent writer on every build() call, so this only
+      // meaningfully guards toWriter(PrintWriter): without it, two VcfWriters built from one Builder would
+      // share the caller's own writer object, and using both would silently interleave/corrupt each other's
+      // output -- see VcfParser.Builder.build()'s identical guard for the read-side analogue.
+      m_writer = null;
       boolean weOpenedWriter = false;
       if (m_file != null) {
         // a plain Charset-based OutputStreamWriter silently replaces malformed input (e.g. an unpaired surrogate)

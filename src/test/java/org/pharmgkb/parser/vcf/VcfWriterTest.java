@@ -3897,6 +3897,31 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testSecondBuildAfterToWriterFailsFastInsteadOfSharingTheSameWriter() throws IOException {
+    // regression test: build() used to leave m_writer set after returning, so a second build() call on the
+    // same Builder (with no intervening toWriter()/toFile() call) silently returned a second VcfWriter
+    // backed by the IDENTICAL PrintWriter as the first -- using both would interleave/corrupt each other's
+    // output with no exception, no warning. toFile() is unaffected: it opens a fresh writer on every
+    // build() call, verified by the second assertion below.
+    VcfWriter.Builder builder = new VcfWriter.Builder().toWriter(new PrintWriter(new StringWriter()));
+    try (VcfWriter first = builder.build()) {
+      IllegalStateException ex = assertThrows(IllegalStateException.class, builder::build);
+      assertTrue(ex.getMessage().contains("Must specify either file or writer"));
+    }
+  }
+
+  @Test
+  public void testSecondBuildAfterToFileStillOpensAnIndependentWriter(@org.junit.jupiter.api.io.TempDir Path tempDir)
+      throws IOException {
+    VcfWriter.Builder builder = new VcfWriter.Builder().toFile(tempDir.resolve("out.vcf"));
+    try (VcfWriter first = builder.build();
+         VcfWriter second = builder.build()) {
+      assertTrue(first.isValid());
+      assertTrue(second.isValid());
+    }
+  }
+
+  @Test
   public void testWarningsToFileAccumulatesAcrossMultipleWriteLineCalls(@org.junit.jupiter.api.io.TempDir Path tempDir)
       throws IOException {
     VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder(LENIENT_CONTEXT);
