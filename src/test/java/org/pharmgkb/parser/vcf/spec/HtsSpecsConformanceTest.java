@@ -233,6 +233,20 @@ class HtsSpecsConformanceTest {
         () -> checkRoundTripByteDiff(file)));
   }
 
+  @TestFactory
+  Stream<DynamicTest> passedFixturesRoundTripWithoutNewWarnings() throws IOException {
+    List<Path> files = new ArrayList<>();
+    for (String version : PASSED_VERSIONS) {
+      collectVcfFiles(fixtureDir(version, "passed"), files);
+    }
+    if (files.isEmpty()) {
+      return Stream.of(DynamicTest.dynamicTest("hts-specs checkout missing", () ->
+          fail("No passed/ fixtures found under " + htsSpecsDir() + " -- run `./gradlew htsSpecsCheckout` first")));
+    }
+    return files.stream().map(file -> DynamicTest.dynamicTest(relativeName(file),
+        () -> checkRoundTripWarningInvariant(file)));
+  }
+
   // Phase 3 writer-compliance review's Path B kickoff (finding #6): failed/ fixtures were never round-tripped
   // at all, even though the ones this library accepts leniently (a warning, not a throw -- see
   // failedFixturesThrowOrWarn above) parse successfully and have real data to write back out, exactly the
@@ -473,6 +487,76 @@ class HtsSpecsConformanceTest {
         ? fixturePath + " (writer-bytediff): " + diff.get()
         : "baseline entry for " + fixturePath +
             " (writer-bytediff) no longer reproduces -- remove it from hts-specs-baseline.tsv");
+  }
+
+  private static void checkRoundTripWarningInvariant(Path file) throws IOException {
+    String fixturePath = relativeName(file);
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+
+    WarnCapturingAppender beforeAppender = new WarnCapturingAppender();
+    beforeAppender.start();
+    root.addAppender(beforeAppender);
+    WriterRoundTrip.ParsedFile before;
+    try {
+      before = WriterRoundTrip.parseFile(file);
+    } catch (RuntimeException e) {
+      Assumptions.abort(fixturePath + " (writer-warning-invariant): does not parse (see parser-no-throw) -- " +
+          "nothing to check");
+      return;
+    } finally {
+      root.detachAppender(beforeAppender);
+      beforeAppender.stop();
+    }
+    if (beforeAppender.hasWarnOrHigherExcluding(GENERIC_NOISE_WARNINGS)) {
+      Assumptions.abort(fixturePath + " (writer-warning-invariant): original parse already warned -- " +
+          "invariant only applies to a fixture that parsed cleanly");
+      return;
+    }
+
+    String written;
+    try {
+      written = WriterRoundTrip.write(before);
+    } catch (RuntimeException e) {
+      boolean acceptable = BASELINE.check(fixturePath, "writer-warning-invariant", true, "write-exception",
+          String.valueOf(e.getMessage()));
+      assertTrue(acceptable, () -> fixturePath + " (writer-warning-invariant): unexpectedly threw while " +
+          "writing: " + e.getMessage());
+      return;
+    }
+
+    WarnCapturingAppender afterAppender = new WarnCapturingAppender();
+    afterAppender.start();
+    root.addAppender(afterAppender);
+    boolean reparseThrew = false;
+    String reparseMessage = null;
+    try {
+      WriterRoundTrip.parseText(written);
+    } catch (RuntimeException e) {
+      reparseThrew = true;
+      reparseMessage = String.valueOf(e.getMessage());
+    } finally {
+      root.detachAppender(afterAppender);
+      afterAppender.stop();
+    }
+    if (reparseThrew) {
+      boolean acceptable = BASELINE.check(fixturePath, "writer-warning-invariant", true, "reparse-exception",
+          reparseMessage);
+      String finalReparseMessage = reparseMessage;
+      assertTrue(acceptable, () -> fixturePath + " (writer-warning-invariant): unexpectedly threw while " +
+          "re-parsing written output: " + finalReparseMessage);
+      return;
+    }
+
+    boolean newWarnings = afterAppender.hasWarnOrHigherExcluding(GENERIC_NOISE_WARNINGS);
+    boolean acceptable = BASELINE.check(fixturePath, "writer-warning-invariant", newWarnings,
+        "new-warning-on-reparse",
+        newWarnings ? String.valueOf(afterAppender.getRelevantWarnOrHigherMessages(GENERIC_NOISE_WARNINGS)) : "");
+    assertTrue(acceptable, () -> newWarnings
+        ? fixturePath + " (writer-warning-invariant): reparse of a cleanly-round-tripped fixture produced " +
+            "new warning(s): " + afterAppender.getRelevantWarnOrHigherMessages(GENERIC_NOISE_WARNINGS)
+        : "baseline entry for " + fixturePath +
+            " (writer-warning-invariant) no longer reproduces -- remove it from hts-specs-baseline.tsv");
   }
 
   private static String htsSpecsDir() {
