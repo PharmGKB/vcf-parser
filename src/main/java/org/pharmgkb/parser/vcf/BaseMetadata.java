@@ -186,7 +186,7 @@ public sealed class BaseMetadata permits IdMetadata, PedigreeMetadata {
    * is a freshly-allocated snapshot copy rather than an unmodifiable view, so it is safe for a caller to mutate
    * and it is deliberately <em>not</em> memoized: mutating it affects only the returned copy, never this
    * declaration. Preserves {@code m_properties}' own declaration order (a {@link LinkedHashMap}, not a plain
-   * {@link HashMap}) -- {@link #getPropertyKeys()} and {@link VcfWriter}'s default write path both rely on
+   * {@link java.util.HashMap}) -- {@link #getPropertyKeys()} and {@link VcfWriter}'s default write path both rely on
    * that order matching declaration order for a parse-then-write round trip to reproduce the input's attribute
    * order (see this class's own constructor Javadoc), and this is the accessor a caller reaches for to
    * transform a declaration's properties before rebuilding it (e.g. {@code props.put("Source", "x");
