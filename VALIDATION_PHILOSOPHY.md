@@ -104,7 +104,13 @@ manual construction: both reuse `InternalUtils.convertProperty(ReservedProperty,
 validation probe on the already-split-multimap/discrete-key-value construction paths (never the parser's own
 lazy/trusted paths), so a reserved key's value gets the identical warn-or-throw-on-mismatch,
 throw-unconditionally-on-unparseable treatment at construction time under Principle 1 that it already got at
-read time under Principle 2/3.
+read time under Principle 2/3. Under a lenient context, this has a deliberately accepted consequence: the
+construction-time probe's own warning is discarded (it exists only to trigger a strict-context throw early),
+so a caller who then reads the identical value back through `getInfo(ReservedInfoProperty)`/
+`getProperty(ReservedFormatProperty)` sees the same warning emitted a second time, since that independent
+read-time call graph has no way to know the construction-time probe already ran. This affects only manual
+construction combined with a subsequent typed read -- never a genuinely parsed file, since `VcfParser` always
+uses the lazy `rawInfo`/trusted paths this eager probe explicitly excludes.
 
 **The input shape never decides strictness.** A declaration class still has two constructors -- a typed
 `(id, description, ...)` one and a `Map`-based one -- but they differ only in input format: the typed one

@@ -685,6 +685,35 @@ public class VcfPositionTest {
     assertEquals(Arrays.asList("AN", "AC", "AF"), new ArrayList<>(p.getInfoKeys()));
   }
 
+  @Test
+  public void testManuallyConstructedPositionDoubleWarnsOnReservedKeyBetweenConstructionAndFirstRead() {
+    // Pinning test for a deliberately accepted consequence -- see VALIDATION_PHILOSOPHY.md's
+    // checkReservedInfoTypes/checkReservedFormatTypes paragraph. The already-split-multimap construction
+    // path eagerly probes DP (a reserved Long-typed key) at construction time, discarding the result; the
+    // caller's own first typed read then runs the identical probe again via getInfo(ReservedInfoProperty)'s
+    // independent call graph, which has no way to know construction already warned about this exact value.
+    // Never reachable through VcfParser, which always uses the lazy rawInfo path this eager probe excludes.
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      ListMultimap<String, String> info = ArrayListMultimap.create();
+      info.put("DP", "-5");
+      VcfPosition p = LENIENT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, info, null, -1);
+      assertEquals(1, appender.countMessagesContaining("INFO DP value \"-5\" is a negative number"),
+          "construction-time eager probe should warn once");
+      p.getInfo(ReservedInfoProperty.Depth);
+      assertEquals(2, appender.countMessagesContaining("INFO DP value \"-5\" is a negative number"),
+          "the caller's own first read re-warns, since it's an independent call graph from the eager probe");
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
   private static VcfPosition newPosition() {
     return STRICT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, null, null, -1);
   }
