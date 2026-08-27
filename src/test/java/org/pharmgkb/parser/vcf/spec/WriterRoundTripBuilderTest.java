@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 import ch.qos.logback.classic.Logger;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
@@ -14,6 +15,7 @@ import org.pharmgkb.parser.vcf.VcfContext;
 import org.pharmgkb.parser.vcf.VcfMetadata;
 import org.pharmgkb.parser.vcf.VcfPosition;
 import org.pharmgkb.parser.vcf.VcfSample;
+import org.pharmgkb.parser.vcf.VcfWarnings;
 import org.slf4j.LoggerFactory;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -148,5 +150,99 @@ class WriterRoundTripBuilderTest {
     assertFalse(validatedAppender.anyMessageContains("Property XX for sample #0 is not of type Integer"),
         "validateBeforeWrite(): should not see the default writer's message shape; got " +
             validatedAppender.getRelevantWarnOrHigherMessages(Set.of()));
+  }
+
+  private record MatrixCase(String key, String description, String number, FormatType type, String value,
+      boolean includeGt, String expectedWarningSubstring) {}
+
+  private static final List<MatrixCase> AT_OR_AFTER_43_CASES = List.of(
+      new MatrixCase("GLE", "custom", "1", FormatType.String, "abc", true, null),
+      new MatrixCase("CNL", "Copy number genotype likelihood", "G", FormatType.Float,
+          "-0.1,-0.2,-0.3,-0.2,-0.2", true, null),
+      new MatrixCase("CNP", "Copy number posterior probabilities", "G", FormatType.Float,
+          "0.1,0.2,0.3,0.2,0.2", true, null),
+      new MatrixCase("PP", "Phred-scaled genotype posterior probabilities", "G", FormatType.Integer,
+          "0,3,10", true, null),
+      new MatrixCase("AD", "Total read depth for each allele", "R", FormatType.Integer, "10,5", true, null),
+      new MatrixCase("ADF", "Read depth for each allele on the forward strand", "R", FormatType.Integer,
+          "6,3", true, null),
+      new MatrixCase("ADR", "Read depth for each allele on the reverse strand", "R", FormatType.Integer,
+          "4,2", true, null),
+      new MatrixCase("GP", "d", "G", FormatType.Float, "5.0", false, "does not lie in the interval"));
+
+  private static WriterRoundTrip.ParsedFile buildMatrixParsedFile(VcfContext context, String fileFormat,
+      MatrixCase c) {
+    VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder(context).setFileFormat(fileFormat)
+        .setColumns(List.of("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"));
+    if (c.includeGt()) {
+      mdBuilder.addFormat("GT", "Genotype", "1", FormatType.String);
+    }
+    mdBuilder.addFormat(c.key(), c.description(), c.number(), c.type());
+    VcfMetadata metadata = mdBuilder.build();
+    List<String> format = c.includeGt() ? List.of("GT", c.key()) : List.of(c.key());
+    List<String> values = c.includeGt() ? List.of("0/1", c.value()) : List.of(c.value());
+    VcfPosition position = context.newPosition("1", 100, null, "A", List.of("T"), null, null, null, format, -1);
+    VcfSample sample = context.newSample(format, values);
+    return new WriterRoundTrip.ParsedFile(metadata, List.of(position), List.of(List.of(sample)));
+  }
+
+  private static void assertMatrixCaseRoundTripsCleanly(Supplier<VcfContext> contextSupplier,
+      String fileFormat, MatrixCase c, String expectedFallbackWarningSubstring) throws IOException {
+    Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    WriterRoundTrip.ParsedFile before;
+    String written;
+    try {
+      // contextSupplier is invoked only after the appender above is attached: VcfContext.lenient(...) resolves
+      // the declared fileformat via VcfVersion.resolve, which warns immediately (VcfVersion.java) rather than
+      // lazily -- constructing the fallback context before attaching the appender (as the caller previously did)
+      // would lose that warning before there was anything listening for it.
+      before = buildMatrixParsedFile(contextSupplier.get(), fileFormat, c);
+      // validateBeforeWrite=true is required to reach checkReservedFormatConstraints at all -- see
+      // VcfWriter.writeLine's m_validateBeforeWrite guard around validateInfo/validateSamples, and
+      // WriterRoundTripTest's assertRoundTripsCleanly, which the same fix was applied to first.
+      written = WriterRoundTrip.write(before, true);
+      if (expectedFallbackWarningSubstring != null) {
+        assertTrue(appender.anyMessageContains(expectedFallbackWarningSubstring),
+            c.key() + ": expected the fallback warning");
+      }
+      if (c.expectedWarningSubstring() == null) {
+        assertFalse(appender.anyMessageContains("does not lie in the interval"),
+            c.key() + " (" + fileFormat + "): unexpected range-check warning");
+      } else {
+        assertTrue(appender.anyMessageContains(c.expectedWarningSubstring()),
+            c.key() + " (" + fileFormat + "): expected a warning containing \"" + c.expectedWarningSubstring() +
+                "\"");
+      }
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    WriterRoundTrip.ParsedFile after = WriterRoundTrip.parseText(written);
+    Optional<String> diff = WriterRoundTrip.semanticDiff(before, after);
+    assertTrue(diff.isEmpty(), () -> c.key() + " (" + fileFormat + "): semantic mismatch: " + diff.orElse(""));
+  }
+
+  @Test
+  void testVersionSensitiveReservedKeysRoundTripAtV43AndUnderFallbackFrom44() throws IOException {
+    // R8: builder-sourced counterpart to WriterRoundTripTest's parser-sourced version matrix. This file's
+    // own established convention (see its class Javadoc) is direct builder construction, so the pre-4.3
+    // side of the matrix is intentionally not duplicated here -- WriterRoundTripTest already covers it
+    // parser-sourced, and this class's whole existing suite is 4.3-only. This test covers the 4.3 case AND
+    // the "fallback" case (declared VCFv4.4 resolving to V4_3) together, via direct builder construction.
+    for (MatrixCase c : AT_OR_AFTER_43_CASES) {
+      // A lenient (not strict()) VCFv4.3 context is required here, unlike this file's other tests: unlike
+      // VcfParser's own trusted sample construction, VcfContext.newSample's public path always runs
+      // checkReservedFormatTypes eagerly (VcfSample's constructor), and strict() throws instead of warning on
+      // a content violation (see VcfContext.strict's own Javadoc) -- so a strict context could never construct
+      // GP's deliberately out-of-range value at all, let alone reach the writer's own warning this test targets.
+      assertMatrixCaseRoundTripsCleanly(
+          () -> VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT), "VCFv4.3", c, null);
+      assertMatrixCaseRoundTripsCleanly(
+          () -> VcfContext.lenient("VCFv4.4", VcfWarnings.DEFAULT), "VCFv4.4", c,
+          "Reading ##fileformat=VCFv4.4 as VCF 4.3 -- this library does not implement VCFv4.4 semantics");
+    }
   }
 }
