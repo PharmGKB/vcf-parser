@@ -3672,4 +3672,41 @@ public class VcfParserTest {
     }
   }
 
+  @Test
+  public void testPpFormatKeyIsOrdinaryCustomKeyBeforeV43ButReservedFromV43() throws IOException {
+    // R8 (PP end-to-end gap): PP has no VCFv4.2 declaration at all (ReservedFormatProperty.isAddedAtV4_3),
+    // so a pre-4.3 file's own custom PP key must parse as an ordinary, unchecked custom key, but a 4.3
+    // file's PP must be classified as the reserved Number=G/Type=Integer key and converted accordingly.
+    String vcf42 = "##fileformat=VCFv4.2\n" +
+        "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##FORMAT=<ID=PP,Number=1,Type=String,Description=\"custom\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "1\t100\t.\tA\tT\t.\t.\t.\tGT:PP\t0/1:xyz\n";
+    List<VcfRecord> records42 = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(vcf42)))
+        .parseWith((metadata, record) -> records42.add(record))
+        .build()) {
+      parser.parse();
+    }
+    assertEquals(1, records42.size());
+    assertEquals("xyz", records42.get(0).getSamples().get(0).getProperty("PP"));
+
+    String vcf43 = "##fileformat=VCFv4.3\n" +
+        "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##FORMAT=<ID=PP,Number=G,Type=Integer,Description=\"Phred-scaled genotype posterior probabilities\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "1\t100\t.\tA\tT\t.\t.\t.\tGT:PP\t0/1:0,3,10\n";
+    List<VcfRecord> records43 = new ArrayList<>();
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(vcf43)))
+        .parseWith((metadata, record) -> records43.add(record))
+        .build()) {
+      parser.parse();
+    }
+    assertEquals(1, records43.size());
+    VcfSample sample43 = records43.get(0).getSamples().get(0);
+    assertEquals(List.of(0L, 3L, 10L), sample43.getProperty(ReservedFormatProperty.PhredScaledPosteriorProbabilities));
+  }
+
 }
