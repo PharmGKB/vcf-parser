@@ -106,12 +106,11 @@ public class MemoryMappedVcfDataStore {
   /**
    * @return An unmodifiable view of every record at this locus, in the order they were read, or null if this
    * locus was never read. {@link #getGenotypeAtLocus}'s {@code recordIndex} indexes into this list and into
-   * {@link #getSamplesAtLocus}'s in lockstep -- returning a live-mutable list here would let a caller desync
-   * that alignment with an ordinary {@code List.remove()}/{@code clear()}, silently misattributing a sample's
+   * {@link #getSamplesAtLocus}'s in lockstep -- a live-mutable list here would let a caller desync that
+   * alignment with an ordinary {@code List.remove()}/{@code clear()}, silently misattributing a sample's
    * genotype to the wrong position (or throwing an unrelated {@code IndexOutOfBoundsException}) with no
    * indication anything went wrong. This view still reflects this store's own later mutations (e.g. during
-   * parsing), the same as before -- only caller-side mutation is now blocked, at the point of the caller's own
-   * mistake, not somewhere far away.
+   * parsing) -- only mutation through this returned list is blocked.
    */
   public @Nullable List<VcfPosition> getPositionsAtLocus(String chromosome, long position) {
     List<VcfPosition> positions = m_locusToPositions.get(new Locus(chromosome, position));
@@ -121,13 +120,12 @@ public class MemoryMappedVcfDataStore {
   /**
    * @return An unmodifiable view of the samples for every record at this locus, index-aligned with
    * {@link #getPositionsAtLocus}, or null if this locus was never read. See that method's own Javadoc for why
-   * this outer list is unmodifiable rather than the live-mutable list returned before. Each element (one
-   * record's per-sample list, the same object {@link #getSamplesForId} returns for that record) is
-   * unmodifiable too: {@link MemoryMappedVcfLineParser#parseLine} stores {@link VcfRecord#getSamples}, which
-   * is an unmodifiable view on every {@code VcfRecord} construction path. That closes the inner-list variant
-   * of the same desync -- a caller can no longer shift a record's own sample indices out of alignment with
-   * the {@code #CHROM} line's declared sample columns and silently misdirect
-   * {@link #getSampleAtLocus}/{@link #getGenotypeAtLocus} to the wrong sample. The contained
+   * this outer list is unmodifiable. Each element (one record's per-sample list, the same object
+   * {@link #getSamplesForId} returns for that record) is unmodifiable too: {@link
+   * MemoryMappedVcfLineParser#parseLine} stores {@link VcfRecord#getSamples}, which is an unmodifiable view on
+   * every {@code VcfRecord} construction path. This prevents a caller from shifting a record's own sample
+   * indices out of alignment with the {@code #CHROM} line's declared sample columns and silently
+   * misdirecting {@link #getSampleAtLocus}/{@link #getGenotypeAtLocus} to the wrong sample. The contained
    * {@link VcfSample} objects themselves remain mutable.
    */
   public @Nullable List<List<VcfSample>> getSamplesAtLocus(String chromosome, long position) {

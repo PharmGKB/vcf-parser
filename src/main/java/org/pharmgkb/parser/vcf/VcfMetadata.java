@@ -771,10 +771,8 @@ public final class VcfMetadata {
     /**
      * @param context the one context for this parse or write. It supplies the warnings destination for every
      * check this builder and the {@link VcfMetadata} it builds perform, and decides whether each of those
-     * checks warns and recovers ({@link VcfContext#lenient}) or throws ({@link VcfContext#strict}) -- replacing
-     * the former {@code lenient(VcfWarnings)} opt-in, whose null-sink-means-strict encoding tied strictness to
-     * a sink rather than to a policy object. It is also what every declaration built through this builder is
-     * bound to.
+     * checks warns and recovers ({@link VcfContext#lenient}) or throws ({@link VcfContext#strict}). It is also
+     * what every declaration built through this builder is bound to.
      */
     public Builder(VcfContext context) {
       m_context = Preconditions.checkNotNull(context, "context must not be null");

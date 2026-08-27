@@ -301,8 +301,7 @@ public final class VcfContext {
    * <p>
    * <b>Null checks run before any dereference.</b> A context comparison such as
    * {@code position.getContext() != this} would raw-crash with {@code NullPointerException} on a null
-   * position, which AGENTS.md's Public API Null-Safety Policy forbids -- the caller must get a
-   * {@code VcfFormatException} naming the actual mistake.
+   * position; instead, the caller gets a {@code VcfFormatException} naming the actual mistake.
    *
    * @throws VcfFormatException on any null, or if any component carries a different context instance
    */

@@ -166,6 +166,11 @@ public sealed class BaseMetadata permits IdMetadata, PedigreeMetadata {
     }
   }
 
+  // Quoting is an encoding artifact of the header syntax, not part of the value -- see
+  // VALIDATION_PHILOSOPHY.md's Principle 3 ("Unquoting before internal use"). Every public getter that
+  // delegates to this method (ContigMetadata's assembly/taxonomy/md5/URL, FormatMetadata/InfoMetadata's
+  // Number) states the unquoting behavior itself but deliberately doesn't cite this file by name -- an
+  // internal design-rationale doc isn't resolvable from published Javadoc.
   @Nullable
   public final String getPropertyUnquoted(String key) {
     String got = m_properties.get(key);

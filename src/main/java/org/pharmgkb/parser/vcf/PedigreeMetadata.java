@@ -21,23 +21,6 @@ import java.util.Map;
  * unlike {@code InfoMetadata} and friends, this class has no typed constructor that needs to insert anything,
  * since {@code ##PEDIGREE} has no fixed schema. The only way to change a PEDIGREE entry's content is to build a
  * new instance and rebuild the {@link VcfMetadata} around it via {@link VcfMetadata#toBuilder()}.
- * <p>
- * That extra strictness is deliberate, not incidental: {@code VcfMetadata.Builder}'s {@code addPedigree}
- * dedupes on a {@code Set} of the {@code ID}s it has already seen, and nothing recomputes that set. If a
- * {@code PedigreeMetadata} already in the builder's list could have its own {@code ID} mutated in place, the
- * set would silently go stale -- a genuinely new {@code ID=A} would be rejected as a duplicate of an {@code A}
- * that no longer exists, and the real duplicate would be accepted. The other seven keyed types cannot make the
- * same guarantee (six because their typed constructors need the inserters; {@code ##META} because it never
- * overrides them either, despite having no typed constructor of its own to justify one), which is why the
- * equivalent stale-key gap for them -- an in-place {@code ID} mutation leaving {@code getId()} and the map key
- * disagreeing; quoting is not a cause, since both read the unquoted value -- is a documented, writer-caught
- * residual rather than a closed one; see {@code WONT_FIX.md}.
- * <p>
- * One in-package route remains, for every declaration type including this one:
- * {@code BaseMetadata.trustedMutableProperties()}, the deliberately unchecked test-only bypass. It is
- * package-private and has no production call site, but a caller reaching for it on a stored PEDIGREE entry can
- * still desync the builder's set. Nothing may treat "the PEDIGREE dedup set can never go stale" as an absolute
- * invariant of this package's own code -- only of its public API.
  *
  * @author Mark Woon
  */
