@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 import org.pharmgkb.parser.vcf.BaseMetadata;
 import org.pharmgkb.parser.vcf.PedigreeMetadata;
 import org.pharmgkb.parser.vcf.VcfLineParser;
@@ -267,6 +268,19 @@ final class WriterRoundTrip {
   }
 
   /**
+   * Escapes a raw CR/LF/tab as its literal {@code \r}/{@code \n}/{@code \t} so a diagnostic message can't
+   * embed a control character that would visually corrupt the console output the message is printed to --
+   * mirrors {@code InternalUtils.truncateAndEscapeForMessage}'s own escaping (not its truncation, which
+   * isn't needed here: a fixture line's length is already bounded by the fixture it came from). Duplicated
+   * rather than reused because that method is package-private in {@code org.pharmgkb.parser.vcf}, a
+   * different package from this one.
+   */
+  @Nullable
+  private static String escapeForMessage(@Nullable String value) {
+    return value == null ? null : value.replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t");
+  }
+
+  /**
    * @return empty if the two texts are byte-for-byte identical, or a short description of how many lines
    * differ and the first one otherwise. No line-ending normalization: {@link VcfWriter} always emits {@code \n},
    * never the platform separator, so a genuine divergence here (e.g. a stray {@code \r}) is a real defect,
@@ -284,7 +298,8 @@ final class WriterRoundTrip {
       if (!Objects.equals(o, w)) {
         differing++;
         if (firstDiff == null) {
-          firstDiff = "line " + (i + 1) + ": \"" + o + "\" original, \"" + w + "\" written";
+          firstDiff = "line " + (i + 1) + ": \"" + escapeForMessage(o) + "\" original, \"" +
+              escapeForMessage(w) + "\" written";
         }
       }
     }

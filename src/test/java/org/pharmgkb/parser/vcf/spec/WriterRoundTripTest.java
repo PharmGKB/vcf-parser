@@ -48,6 +48,19 @@ class WriterRoundTripTest {
   }
 
   @Test
+  void testByteDiffMessageEscapesEmbeddedControlCharacters() {
+    // TODO.md: byteDiff's failure message used to embed a raw \r/other control character literally when
+    // reporting the first differing line, which can visually corrupt the console output the message is
+    // printed to. A stray \r on the "original" side (as in testByteDiffDetectsLineEndingDifferences above)
+    // is exactly this shape, but that test never checked the message's own escaping -- only that it named
+    // the right line.
+    Optional<String> diff = WriterRoundTrip.byteDiff("A\r\nB\n", "A\nB\n");
+    assertTrue(diff.isPresent());
+    assertFalse(diff.get().contains("\r"), "message must not embed a raw control character: " + diff.get());
+    assertTrue(diff.get().contains("\\r"), "message must show the escaped form instead: " + diff.get());
+  }
+
+  @Test
   void testParseWriteReparseRoundTripOfSimpleFixtureMatchesSemantically() throws IOException {
     WriterRoundTrip.ParsedFile before = WriterRoundTrip.parseText(SAMPLE_VCF);
     String written = WriterRoundTrip.write(before);
