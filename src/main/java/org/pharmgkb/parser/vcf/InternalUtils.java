@@ -1814,6 +1814,36 @@ public class InternalUtils {
     return convertNonEmptyProperty(toJavaType(type), value, warnings);
   }
 
+  // TODO.md: reverse of the two toJavaType overloads above -- a type-mismatch diagnostic that only has the
+  // already-resolved Java class in hand (VcfWriter's validateFormatValue/validateInfoValue, reached from
+  // both a declared FormatType/InfoType, converted via toJavaType, and a reserved property's own
+  // getType(), which never went through a FormatType/InfoType at all) previously named that Java
+  // implementation detail directly (e.g. "is not of type Long"), inconsistent with the sibling default
+  // write path, which names the VCF-facing type the caller actually declared (e.g. "is not of type
+  // Integer") for the identical declared type. Both FormatType and InfoType map to the same four classes
+  // (Character/String stay disjoint from Long/VcfFloat's own two callers); INFO's Flag is the only type
+  // with no FORMAT-side equivalent. A caller never legitimately reaches the default branch: every value
+  // reaching this method resolved from a FormatType/InfoType or a reserved property's canonical type,
+  // both drawn only from this same five-class set.
+  static String describeJavaTypeAsVcfType(Class<?> type) {
+    if (type == Long.class) {
+      return "Integer";
+    }
+    if (type == VcfFloat.class) {
+      return "Float";
+    }
+    if (type == Character.class) {
+      return "Character";
+    }
+    if (type == String.class) {
+      return "String";
+    }
+    if (type == Boolean.class) {
+      return "Flag";
+    }
+    throw new VcfFormatException("Class " + type.getSimpleName() + " isn't a mapped VCF Type?!");
+  }
+
   private static @Nullable Object convertElement(Class<?> clas, @Nullable String value, VcfWarnings warnings) {
     if (clas == Boolean.class) {
       // Checked before the generic null/"." early return just below, unlike every other clas branch: for

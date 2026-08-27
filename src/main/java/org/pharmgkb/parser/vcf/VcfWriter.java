@@ -986,7 +986,8 @@ public class VcfWriter implements Closeable {
       try {
         InternalUtils.convertNonEmptyProperty(type, value, m_warnings);
       } catch (VcfFormatException e) {
-        m_warnings.warn("INFO {} value {} is not of type {}", key, value, type.getSimpleName());
+        m_warnings.warn("INFO {} value {} is not of type {}", key, value,
+            InternalUtils.describeJavaTypeAsVcfType(type));
       }
       // validateBeforeWrite()'s own policy is warn-always for semantically-non-compliant-but-safe content,
       // regardless of the written object's own strict/lenient origin -- see AGENTS.md's Writer Validation
@@ -1059,7 +1060,7 @@ public class VcfWriter implements Closeable {
         InternalUtils.convertNonEmptyProperty(type, element, m_warnings);
       } catch (VcfFormatException e) {
         m_warnings.warn("FORMAT {} for sample #{} value {} is not of type {}", key, sampleIndex, element,
-            type.getSimpleName());
+            InternalUtils.describeJavaTypeAsVcfType(type));
       }
       // validateBeforeWrite()'s own policy is warn-always for semantically-non-compliant-but-safe content,
       // regardless of the written object's own strict/lenient origin -- see AGENTS.md's Writer Validation

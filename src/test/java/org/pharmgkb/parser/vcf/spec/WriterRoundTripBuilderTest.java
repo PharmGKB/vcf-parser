@@ -151,16 +151,81 @@ class WriterRoundTripBuilderTest {
     assertEquals(defaultWritten, validatedWritten,
         "the unconvertible XX value is preserved verbatim by both writer configurations -- this case " +
             "diverges only in the warning text, never in the written output");
+    // TODO.md: both message SHAPES still differ (structure/field-name style), but both now name the VCF
+    // type ("Integer") the caller actually declared, not one path's own Java implementation detail
+    // (previously "Long") a caller has no reason to know maps back to it.
     assertTrue(defaultAppender.anyMessageContains("Property XX for sample #0 is not of type Integer"),
         "default writer: expected its own message shape; got " +
             defaultAppender.getRelevantWarnOrHigherMessages(Set.of()));
-    assertTrue(validatedAppender.anyMessageContains("FORMAT XX for sample #0 value abc is not of type Long"),
-        "validateBeforeWrite(): expected its own, differently-worded message shape; got " +
+    assertTrue(validatedAppender.anyMessageContains("FORMAT XX for sample #0 value abc is not of type Integer"),
+        "validateBeforeWrite(): expected its own, differently-shaped message; got " +
             validatedAppender.getRelevantWarnOrHigherMessages(Set.of()));
-    assertFalse(defaultAppender.anyMessageContains("FORMAT XX for sample #0 value abc is not of type Long"),
+    assertFalse(defaultAppender.anyMessageContains("FORMAT XX for sample #0 value abc is not of type Integer"),
         "default writer: should not see validateBeforeWrite()'s message shape; got " +
             defaultAppender.getRelevantWarnOrHigherMessages(Set.of()));
     assertFalse(validatedAppender.anyMessageContains("Property XX for sample #0 is not of type Integer"),
+        "validateBeforeWrite(): should not see the default writer's message shape; got " +
+            validatedAppender.getRelevantWarnOrHigherMessages(Set.of()));
+  }
+
+  @Test
+  void testInfoTypeConversionFailureWarnsDifferentlyButWritesIdenticallyBetweenWriterConfigurations()
+      throws IOException {
+    // TODO.md: the INFO-side twin of the FORMAT test above -- the identical wording-divergence defect
+    // shape (default path names the VCF type, validateBeforeWrite() named the resolved Java class instead)
+    // recurred here too (VcfWriter's validateInfoValue vs. its default-path addInfoOrDot), closed by the
+    // same InternalUtils.describeJavaTypeAsVcfType reverse lookup used by the FORMAT-side fix.
+    VcfContext context = strict();
+    VcfMetadata metadata = new VcfMetadata.Builder(context)
+        .setFileFormat("VCFv4.3")
+        .setColumns(List.of("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
+        .addInfo("XX", "Custom field", InfoType.Integer, "1", null, null)
+        .addFilter("PASS", "All filters passed")
+        .build();
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("XX", "abc");
+    VcfPosition position = context.newPosition("1", 100, null, "A", List.of("T"), null, List.of("PASS"),
+        info, List.of(), 2);
+    WriterRoundTrip.ParsedFile before =
+        new WriterRoundTrip.ParsedFile(metadata, List.of(position), List.of(List.of()));
+
+    Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+
+    WarnCapturingAppender defaultAppender = new WarnCapturingAppender();
+    defaultAppender.start();
+    root.addAppender(defaultAppender);
+    String defaultWritten;
+    try {
+      defaultWritten = WriterRoundTrip.write(before, false);
+    } finally {
+      root.detachAppender(defaultAppender);
+      defaultAppender.stop();
+    }
+
+    WarnCapturingAppender validatedAppender = new WarnCapturingAppender();
+    validatedAppender.start();
+    root.addAppender(validatedAppender);
+    String validatedWritten;
+    try {
+      validatedWritten = WriterRoundTrip.write(before, true);
+    } finally {
+      root.detachAppender(validatedAppender);
+      validatedAppender.stop();
+    }
+
+    assertEquals(defaultWritten, validatedWritten,
+        "the unconvertible XX value is preserved verbatim by both writer configurations -- this case " +
+            "diverges only in the warning text, never in the written output");
+    assertTrue(defaultAppender.anyMessageContains("Property XX is not of type Integer"),
+        "default writer: expected its own message shape; got " +
+            defaultAppender.getRelevantWarnOrHigherMessages(Set.of()));
+    assertTrue(validatedAppender.anyMessageContains("INFO XX value abc is not of type Integer"),
+        "validateBeforeWrite(): expected its own, differently-shaped message; got " +
+            validatedAppender.getRelevantWarnOrHigherMessages(Set.of()));
+    assertFalse(defaultAppender.anyMessageContains("INFO XX value abc is not of type Integer"),
+        "default writer: should not see validateBeforeWrite()'s message shape; got " +
+            defaultAppender.getRelevantWarnOrHigherMessages(Set.of()));
+    assertFalse(validatedAppender.anyMessageContains("Property XX is not of type Integer"),
         "validateBeforeWrite(): should not see the default writer's message shape; got " +
             validatedAppender.getRelevantWarnOrHigherMessages(Set.of()));
   }
