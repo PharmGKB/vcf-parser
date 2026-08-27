@@ -452,13 +452,15 @@ unchecked `java.io.UncheckedIOException`, but only checks periodically (every 10
 internal buffer on every line. A failure detected mid-stream releases the underlying resource immediately, as
 part of the same detection, rather than leaving it open until some later `close()` call. Calling `close()` is
 still required to guarantee that all remaining buffered output is flushed and that a failure not yet caught by a
-periodic check is reported. A detected write failure, or simply closing the writer at all (even cleanly, with no
-error), permanently invalidates the `VcfWriter`: `isValid()` becomes `false`, and any further
-`writeHeader()`/`writeLine()` call throws `IllegalStateException`
+periodic check is reported. A detected failure of this primary output writer, or simply closing the writer at
+all (even cleanly, with no error), permanently invalidates the `VcfWriter`: `isValid()` becomes `false`, and any
+further `writeHeader()`/`writeLine()` call throws `IllegalStateException`
 instead of attempting to write again -- retrying after a write failure, or reusing a writer after closing it, is
 never safe, since the underlying writer may already be in a partially-written or otherwise inconsistent state, or
 simply already released. `close()` itself is idempotent: calling it again after the first call has no effect,
-matching `java.io.Closeable#close()`'s own documented contract.
+matching `java.io.Closeable#close()`'s own documented contract. A failure of the separate warnings sink (a
+`VcfWriter` built with `warningsToFile()`) surfaces the identical `UncheckedIOException` from the same methods
+but does not invalidate the writer -- only the primary output writer's own failure does.
 
 ## Lenient — warns when encountered or accessed and preserves usable data
 
