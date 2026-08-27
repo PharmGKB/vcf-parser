@@ -3,8 +3,12 @@ package org.pharmgkb.parser.vcf.spec;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import ch.qos.logback.classic.Logger;
 import org.junit.jupiter.api.Test;
+import org.pharmgkb.parser.vcf.FormatType;
 import org.pharmgkb.parser.vcf.VcfFormatException;
+import org.slf4j.LoggerFactory;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -554,5 +558,143 @@ class WriterRoundTripTest {
         parsed.metadata().getFilters().get("q10").getPropertyRaw("Description"));
     String written = WriterRoundTrip.write(parsed);
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
+  }
+
+  private record MatrixCase(String key, String description, String number, FormatType type, String value,
+      boolean includeGt, String expectedWarningSubstring) {}
+
+  private static final List<MatrixCase> PRE_43_CASES = List.of(
+      new MatrixCase("GLE", "Genotype likelihoods", "G", FormatType.String,
+          "0:-75.22,1:-223.42,0/0:-323.03,1/0:-99.29,1/1:-802.53", true, null),
+      new MatrixCase("CNL", "Copy number genotype likelihood", ".", FormatType.Float, "-0.1,-0.2,-0.3", true, null),
+      new MatrixCase("CNP", "custom", "1", FormatType.Float, "0.5", true, null),
+      new MatrixCase("PP", "custom", "1", FormatType.String, "xyz", true, null),
+      new MatrixCase("AD", "custom", "1", FormatType.String, "xyz", true, null),
+      new MatrixCase("ADF", "custom", "1", FormatType.String, "xyz", true, null),
+      new MatrixCase("ADR", "custom", "1", FormatType.String, "xyz", true, null),
+      new MatrixCase("GP", "d", "G", FormatType.Float, "5.0,5.0,5.0", false, null));
+
+  private static final List<MatrixCase> AT_OR_AFTER_43_CASES = List.of(
+      new MatrixCase("GLE", "custom", "1", FormatType.String, "abc", true, null),
+      new MatrixCase("CNL", "Copy number genotype likelihood", "G", FormatType.Float,
+          "-0.1,-0.2,-0.3,-0.2,-0.2", true, null),
+      new MatrixCase("CNP", "Copy number posterior probabilities", "G", FormatType.Float,
+          "0.1,0.2,0.3,0.2,0.2", true, null),
+      new MatrixCase("PP", "Phred-scaled genotype posterior probabilities", "G", FormatType.Integer,
+          "0,3,10", true, null),
+      new MatrixCase("AD", "Total read depth for each allele", "R", FormatType.Integer, "10,5", true, null),
+      new MatrixCase("ADF", "Read depth for each allele on the forward strand", "R", FormatType.Integer,
+          "6,3", true, null),
+      new MatrixCase("ADR", "Read depth for each allele on the reverse strand", "R", FormatType.Integer,
+          "4,2", true, null),
+      new MatrixCase("GP", "d", "G", FormatType.Float, "5.0,5.0,5.0", false, "does not lie in the interval"));
+
+  private static String buildVersionMatrixVcf(String fileFormat, MatrixCase c) {
+    StringBuilder sb = new StringBuilder();
+    sb.append("##fileformat=").append(fileFormat).append('\n');
+    // ##contig/##SAMPLE declare the record's own CHROM ("1") and #CHROM sample column ("S1") -- without them,
+    // VcfParser's/VcfWriter's own unrelated cross-checks ("samples in the header but not in the metadata",
+    // "CHROM has no ##contig metadata") would warn on every case, masking whether the reserved-key mechanism
+    // under test warned or not. Same pattern as testCorrectlyDeclaredReservedKeysRoundTripWithoutWarning above.
+    sb.append("##contig=<ID=1,length=1000000>\n");
+    sb.append("##SAMPLE=<ID=S1,Description=\"S1\">\n");
+    if (c.includeGt()) {
+      sb.append("##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n");
+    }
+    sb.append("##FORMAT=<ID=").append(c.key()).append(",Number=").append(c.number())
+        .append(",Type=").append(c.type()).append(",Description=\"").append(c.description()).append("\">\n");
+    sb.append("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n");
+    String format = c.includeGt() ? "GT:" + c.key() : c.key();
+    String sample = c.includeGt() ? "0/1:" + c.value() : c.value();
+    sb.append("1\t100\t.\tA\tT\t.\t.\t.\t").append(format).append('\t').append(sample).append('\n');
+    return sb.toString();
+  }
+
+  private static void assertRoundTripsCleanly(String fileFormat, MatrixCase c) throws IOException {
+    Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    WriterRoundTrip.ParsedFile before;
+    String written;
+    try {
+      before = WriterRoundTrip.parseText(buildVersionMatrixVcf(fileFormat, c));
+      // validateBeforeWrite=true: the reserved-key content checks this test targets (checkReservedFormatConstraints,
+      // e.g. GP's [0,1] range check) run only under VcfWriter's validateBeforeWrite() diagnostics path -- see
+      // VcfWriter.validateSamples, called only when m_validateBeforeWrite -- never on the parse path or the default
+      // write path (deferred until a getter, per AGENTS.md's Parser Validation Policy). The plan's original
+      // WriterRoundTrip.write(before) (default, non-validating writer) could never observe any of these warnings;
+      // this is fixed to match the mechanism this test (and its cited source, VcfWriterTest
+      // .testValidateBeforeWriteGenotypePosteriorRangeCheckIsVersionGated, which itself uses validateBeforeWrite())
+      // actually exercises.
+      written = WriterRoundTrip.write(before, true);
+      if (c.expectedWarningSubstring() == null) {
+        assertFalse(appender.hasWarnOrHigher(), () -> c.key() + " (" + fileFormat + "): unexpected warning(s): " +
+            appender.getRelevantWarnOrHigherMessages(Set.of()));
+      } else {
+        assertTrue(appender.anyMessageContains(c.expectedWarningSubstring()),
+            c.key() + " (" + fileFormat + "): expected a warning containing \"" + c.expectedWarningSubstring() +
+                "\"");
+      }
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    WriterRoundTrip.ParsedFile after = WriterRoundTrip.parseText(written);
+    Optional<String> diff = WriterRoundTrip.semanticDiff(before, after);
+    assertTrue(diff.isEmpty(), () -> c.key() + " (" + fileFormat + "): semantic mismatch: " + diff.orElse(""));
+  }
+
+  @Test
+  void testVersionSensitiveReservedKeysRoundTripAcrossThePre43And43Boundary() throws IOException {
+    // R8: every version-sensitive reserved FORMAT key (GLE removed at 4.3; CNL/CNP/PP/AD/ADF/ADR added at
+    // 4.3; GP's [0,1] range check added at 4.3) previously had zero round-trip coverage in this file. Each
+    // case's value is reused verbatim from an already-passing unit test elsewhere in this codebase (see
+    // e.g. VcfSampleTest.testAlleleDepthAndPosteriorProbabilityKeysAreListTyped, VcfWriterTest
+    // .testValidateBeforeWriteGenotypePosteriorRangeCheckIsVersionGated), so this test's correctness rests
+    // on already-verified behavior, not a newly hand-simulated expectation.
+    assertEquals(PRE_43_CASES.size(), AT_OR_AFTER_43_CASES.size());
+    for (int i = 0; i < PRE_43_CASES.size(); i++) {
+      MatrixCase pre = PRE_43_CASES.get(i);
+      MatrixCase post = AT_OR_AFTER_43_CASES.get(i);
+      assertEquals(pre.key(), post.key());
+      assertRoundTripsCleanly("VCFv4.2", pre);
+      assertRoundTripsCleanly("VCFv4.3", post);
+    }
+  }
+
+  @Test
+  void testVersionSensitiveReservedKeysBehaveAs43WhenDeclaredFileformatFallsBackFrom44() throws IOException {
+    // R8: the "fallback" dimension named by TODO.md's original R8 title -- a declared VCFv4.4 (outside
+    // 4.1-4.3) resolves to VcfVersion.HIGHEST_IMPLEMENTED (V4_3) via VcfVersion.resolve, with a warning (see
+    // VcfVersion.resolve's own Javadoc). Reuses AT_OR_AFTER_43_CASES unchanged except the declared
+    // ##fileformat, confirming the fallback genuinely produces the same 4.3 behavior end to end.
+    for (MatrixCase post : AT_OR_AFTER_43_CASES) {
+      Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+      WarnCapturingAppender appender = new WarnCapturingAppender();
+      appender.start();
+      root.addAppender(appender);
+      WriterRoundTrip.ParsedFile before;
+      String written;
+      try {
+        before = WriterRoundTrip.parseText(buildVersionMatrixVcf("VCFv4.4", post));
+        // see assertRoundTripsCleanly's comment above: validateBeforeWrite=true is required to reach
+        // checkReservedFormatConstraints at all.
+        written = WriterRoundTrip.write(before, true);
+        assertTrue(appender.anyMessageContains(
+            "Reading ##fileformat=VCFv4.4 as VCF 4.3 -- this library does not implement VCFv4.4 semantics"),
+            post.key() + ": expected the fallback warning");
+        if (post.expectedWarningSubstring() != null) {
+          assertTrue(appender.anyMessageContains(post.expectedWarningSubstring()),
+              post.key() + ": expected the same 4.3-side warning to still fire under fallback");
+        }
+      } finally {
+        root.detachAppender(appender);
+        appender.stop();
+      }
+      WriterRoundTrip.ParsedFile after = WriterRoundTrip.parseText(written);
+      Optional<String> diff = WriterRoundTrip.semanticDiff(before, after);
+      assertTrue(diff.isEmpty(), () -> post.key() + " (fallback): semantic mismatch: " + diff.orElse(""));
+    }
   }
 }
