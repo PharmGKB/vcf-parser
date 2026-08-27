@@ -23,6 +23,15 @@ import org.slf4j.LoggerFactory;
 
 /**
  * This class parses a VCF file.
+ * <p>
+ * Not safe for concurrent use: parsing advances unsynchronized internal state (the current line number, the
+ * accumulated physical-line buffer, and the last-seen CHROM/POS used by {@code checkPositionOrdering}) on every
+ * call, so sharing one instance across threads can corrupt that state. An instance owns the {@link
+ * java.io.Reader} it was built from ({@link Builder#fromReader}/{@link Builder#fromFile}) for its entire
+ * lifetime; {@link #close} closes that reader and permanently invalidates the instance. {@link Builder#fromReader}
+ * is one-shot -- {@link Builder#build()} consumes and clears the supplied reader -- so a second {@code build()}
+ * without an intervening {@code fromReader}/{@code fromFile} call fails rather than returning a second
+ * {@code VcfParser} silently backed by the same reader.
  *
  * @author Mark Woon
  */

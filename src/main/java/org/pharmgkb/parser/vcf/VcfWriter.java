@@ -48,6 +48,16 @@ import org.slf4j.LoggerFactory;
  * silently being ignored by the now-closed underlying writer. {@link #close} itself is idempotent: a second
  * call has no effect, matching {@link java.io.Closeable#close()}'s own documented contract, regardless of
  * whether the first call threw.
+ * <p>
+ * Not safe for concurrent use: {@link #writeHeader}/{@link #writeLine}/{@link #close} all read and mutate
+ * unsynchronized instance state (whether the header has been written, whether this instance is still valid),
+ * so sharing one instance across threads can interleave output or corrupt that state. An instance
+ * unconditionally owns the underlying {@link java.io.PrintWriter} it was built from -- {@link #close} closes it
+ * regardless of whether it came from {@link Builder#toFile} or a caller-supplied {@link Builder#toWriter}, so a
+ * caller must not close that writer itself or reuse it elsewhere. {@link Builder#toWriter} is one-shot -- {@link
+ * Builder#build()} consumes and clears the supplied writer -- so a second {@code build()} without an
+ * intervening {@code toWriter}/{@code toFile} call fails rather than returning a second {@code VcfWriter}
+ * silently backed by the same writer.
  *
  * @author Douglas Myers-Turnbull
  */
