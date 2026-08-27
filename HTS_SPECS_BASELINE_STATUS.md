@@ -118,25 +118,31 @@ conformance/summary.md`'s `**Total**` row, confirmed via a plain `./gradlew htsS
 as narrative context for this provenance section; it is not the table's current state.
 
 The table below instead reflects the gate's *current* total, confirmed by running `./gradlew htsSpecsTest`
-and reading `build/reports/hts-specs-conformance/summary.md`'s `**Total**` row: **1425**. Two later changes
-drove the jump from 845 to 1425 and were never folded back into this table until now: (a) the
+and reading `build/reports/hts-specs-conformance/summary.md`'s `**Total**` row: **1435**. Three later changes
+drove the jump from 845 to 1435 and were never folded back into this table until now: (a) the
 `writer-semantic` column's own count grew from 25/25/25/1 to its current, much larger values when a later
 phase added the `failed/`-fixture semantic-check factory (`failedFixturesRoundTripSemantically`, see the
 `writer-semantic` section below) on top of the original `passed/`-only scope this table was last synced
 against (that original scope's 25/25/25/1 matches `writer-bytediff`'s own counts, since both checked the
-same `passed/` fixture set); and (b) this newest change (the
-`2026-08-26-0141-writer-round-trip-oracle-gaps-r7-plan.md` plan) added the `writer-warning-invariant` column
-itself (22/22/22/-- = 66 new checks -- see below for what it checks).
+same `passed/` fixture set); (b) the `2026-08-26-0141-writer-round-trip-oracle-gaps-r7-plan.md` plan added the
+`writer-warning-invariant` column itself (22/22/22/-- = 66 checks, one per `passed/` fixture that parsed with
+zero warnings); and (c) the `2026-08-26-1117-declared-version-format-cache-metamorphic-coverage-r8-plan`
+plan's Task 10 reworked that check to run on *every* `passed/` fixture, not just the ones that parsed
+cleanly, raising `writer-warning-invariant`'s per-version counts to 25/25/25/1 (10 more checks -- see below
+for what the strengthened check does, and the "`writer-warning-invariant` entries" section for the 5 new
+divergences it surfaced).
 
 | Version | parser-no-throw | parser-throw-or-warn | parser-warn-content | writer-bytediff | writer-semantic | writer-warning-invariant |
 |---|---|---|---|---|---|---|
-| 4.1 | 25 | 193 | 3 | 25 | 188 | 22 |
-| 4.2 | 25 | 190 | 3 | 25 | 185 | 22 |
-| 4.3 | 25 | 224 | 4 | 25 | 216 | 22 |
-| 4.5 | 1 | -- | -- | 1 | 1 | -- |
+| 4.1 | 25 | 193 | 3 | 25 | 188 | 25 |
+| 4.2 | 25 | 190 | 3 | 25 | 185 | 25 |
+| 4.3 | 25 | 224 | 4 | 25 | 216 | 25 |
+| 4.5 | 1 | -- | -- | 1 | 1 | 1 |
 
-`writer-warning-invariant` reparses a cleanly-round-tripped `passed/` fixture (one with zero warnings on its
-original parse) and asserts that reparsing its written output introduces no new warnings.
+`writer-warning-invariant` reparses every `passed/` fixture's written output and asserts that the reparse's
+full warning set is identical to the original parse's warning set -- not merely that reparsing introduces no
+*new* warning, which was this check's original, weaker form before Task 10 (see above) strengthened it to a
+full before/after set comparison.
 
 4.3's `parser-throw-or-warn` total (224) is every 4.3 `failed/` fixture; of those, 75 are the newly-baselined
 divergences and the rest already throw or warn correctly. 4.3's `parser-warn-content` count of 4 reflects all
@@ -370,6 +376,32 @@ reporting `1359/1359 checks match baseline, 0 new/stale, 0 per-version row(s) mo
 |---|---|---|---|---|
 | Non-numeric QUAL throws on write | `failed_body_qual_000.vcf` (4.1, 4.2, 4.3) | 3 | Permanently accepted | The identical, already-documented "Non-numeric QUAL" row above (`VcfPosition.getQuality()` throws unconditionally for a non-numeric QUAL) now also surfaces on the writer side: `checkRoundTripSemantic`'s `semanticDiff` phase calls `getQuality()` on both `before`/`after` to compare them, so it throws for exactly the reason that row already explains -- caught by the `semantic-diff-exception` guard `checkRoundTripSemantic` already has for this class of exception. |
 | INFO key whitespace throws on write | `failed_body_info_028.vcf` (4.1, 4.2, 4.3) | 3 | Permanently accepted | The identical, already-documented "INFO contains a whitespace" row above (`VcfPosition.checkInfoEntries` throws unconditionally for whitespace in an INFO key) now also surfaces on the writer side: `VcfWriter.addInfoOrDot` calls `position.getInfoKeys()`/`getInfo(key)` to enumerate INFO for writing, on both the default and `validateBeforeWrite()` paths, which forces the same lazy check to run and throw during `checkRoundTripSemantic`'s `write` phase -- caught by its existing `write-exception` guard. |
+
+## `writer-warning-invariant` entries (5) — `passed/` fixtures whose round-trip warning set changed, added by R8's Task 10
+
+Before this change, `checkRoundTripWarningInvariant` used `Assumptions.abort` to skip entirely any `passed/`
+fixture that already warned on its original parse, and only compared "did reparsing the written output
+introduce any *new* warning" for the rest -- never the full before/after warning set. The
+`2026-08-26-1117-declared-version-format-cache-metamorphic-coverage-r8-plan` plan's Task 10 reworked it to run
+on every `passed/` fixture and compare the complete before/after warning sets, which surfaced 5 new
+divergences -- exactly the 3 fixtures already known to diverge on `writer-bytediff` above, since the same
+normalization that changes their written bytes also changes their warning set. Confirmed via `./gradlew
+htsSpecsUpdateBaseline` producing a diff of exactly 5 insertions (verified: `git diff` on
+`hts-specs-baseline.tsv` showed 5 new lines, zero removed/modified) and a subsequent `./gradlew htsSpecsTest`
+reporting `1435/1435 checks match baseline, 0 new/stale, 0 per-version row(s) moved`.
+
+Each row's warning-set change is a direct consequence of a normalization the original parse already performs
+(and already warns about): the normalized content is what actually gets written, so reparsing the
+round-tripped output no longer has the original defect to warn about. None of the three introduces a warning
+that wasn't already present before the round trip -- each `after` set is the `before` set with the
+normalized-away warning removed (plus, for `complexfile_passed_000.vcf`, one warning's cited line number
+shifting down by one, a direct consequence of the dropped metadata line removing one line from the output).
+
+| Cause | Fixtures | Count | Status | Details |
+|---|---|---|---|---|
+| Dropped bracket-wrapped metadata property removes its own warning and shifts a later line number | `complexfile_passed_000.vcf` (4.1, 4.2) | 2 | Permanently accepted | Same underlying divergence as the `writer-bytediff` "Metadata declaration reordering" row above: the original parse drops `##AnalysisTitleBrackets=<"...">` (a bracket-wrapped value with no `=`, which bcftools can't parse) with a warning. Since the written output no longer contains that property, reparsing has nothing left to warn about, and losing that one header line also shifts the unrelated CHROM-discontiguity warning's cited line number down by one (line 50 -> line 49) -- not a new defect, just a byproduct of one fewer header line. |
+| Duplicate `##contig` line dropped removes its own warning | `passed_meta_contig.vcf` (4.1, 4.2) | 2 | Permanently accepted, deliberate | Same underlying divergence as the `writer-bytediff` "Duplicate `##contig` line dropped" row above: the duplicate-metadata-ID keep-first policy drops the second `##contig` declaration on the original parse, with a warning. Since the written output has only one `##contig` line, reparsing has no duplicate left to warn about. See `DUPLICATE_METADATA_ID_HANDLING.md`. |
+| Empty sample value substituted removes its own warning | `zero_length_LAA.vcf` (4.5) | 1 | Permanently accepted | Same underlying divergence as the `writer-bytediff` "Empty sample value substituted" row above: the empty `LAA` sample value is normalized to `.` with a warning on the original parse. Since the written output already contains `.`, reparsing has no empty field left to warn about. See `EMPTY_FIELD_HANDLING.md`. |
 
 ## Non-valid URL fixtures: why permanently accepted
 
