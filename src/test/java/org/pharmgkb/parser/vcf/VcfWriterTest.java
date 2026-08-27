@@ -1243,6 +1243,10 @@ public class VcfWriterTest {
     appender.start();
     root.addAppender(appender);
     try {
+      writeOneGleRecord(VcfContext.lenient("VCFv4.1", VcfWarnings.DEFAULT), "VCFv4.1", "a,,b");
+      assertFalse(appender.anyMessageContains("contains an empty value"));
+      assertFalse(appender.anyMessageContains("Number=2 requires"));
+
       writeOneGleRecord(LENIENT_CONTEXT, "VCFv4.2", "a,,b");
       assertFalse(appender.anyMessageContains("contains an empty value"));
       assertFalse(appender.anyMessageContains("Number=2 requires"));
@@ -1818,6 +1822,59 @@ public class VcfWriterTest {
       writer.writeLine(metadata, position, Collections.singletonList(sample));
       assertTrue(appender.anyMessageContains("no FORMAT metadata with that name"));
       assertTrue(appender.anyMessageContains("FORMAT AD for sample #0 has 1 value(s), but Number=R requires 2"));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  public void testValidateBeforeWriteAppliesUndeclaredPpReservedFallbackOnlyFromV43() throws Exception {
+    // R8 (PP end-to-end gap): PP has no VCFv4.2 declaration at all (ReservedFormatProperty.isAddedAtV4_3),
+    // so an UNDECLARED PP key gets no reserved-canonical Number=G fallback under <=4.2 (nothing to check
+    // against -- an undeclared, non-reserved key is written through unchecked), but does from 4.3 on,
+    // mirroring testValidateBeforeWriteChecksUndeclaredReservedFormatKeyCardinality's existing AD coverage.
+    StringWriter sw42 = new StringWriter();
+    VcfWriter writer42 = new VcfWriter.Builder().toWriter(new PrintWriter(sw42)).validateBeforeWrite().build();
+    VcfMetadata metadata42 = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .addFormat(new FormatMetadata(LENIENT_CONTEXT, "GT", "Genotype", "1", FormatType.String))
+        .build();
+    VcfPosition position42 = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"),
+        VcfFloat.of(new BigDecimal("0")), null, null, List.of("GT", "PP"), -1);
+    LinkedHashMap<String, String> sampleProps42 = new LinkedHashMap<>();
+    sampleProps42.put("GT", "0/1");
+    sampleProps42.put("PP", "1"); // 1 value; would violate Number=G's ploidy-derived count of 3 IF checked
+    VcfSample sample42 = LENIENT_CONTEXT.newSample(sampleProps42);
+
+    VcfContext context43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
+    StringWriter sw43 = new StringWriter();
+    VcfWriter writer43 = new VcfWriter.Builder().toWriter(new PrintWriter(sw43)).validateBeforeWrite().build();
+    VcfMetadata metadata43 = new VcfMetadata.Builder(context43).setFileFormat("VCFv4.3")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        .addFormat(new FormatMetadata(context43, "GT", "Genotype", "1", FormatType.String))
+        .build();
+    VcfPosition position43 = context43.newPosition("chr1", 1, null, "A", List.of("T"),
+        VcfFloat.of(new BigDecimal("0")), null, null, List.of("GT", "PP"), -1);
+    LinkedHashMap<String, String> sampleProps43 = new LinkedHashMap<>();
+    sampleProps43.put("GT", "0/1");
+    sampleProps43.put("PP", "1");
+    VcfSample sample43 = context43.newSample(sampleProps43);
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      writer42.writeHeader(metadata42);
+      writer42.writeLine(metadata42, position42, Collections.singletonList(sample42));
+      assertFalse(appender.anyMessageContains("Number=G requires"));
+
+      writer43.writeHeader(metadata43);
+      writer43.writeLine(metadata43, position43, Collections.singletonList(sample43));
+      assertTrue(appender.anyMessageContains("Number=G requires 3"));
     } finally {
       root.detachAppender(appender);
       appender.stop();
