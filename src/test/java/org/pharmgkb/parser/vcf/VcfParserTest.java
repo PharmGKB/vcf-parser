@@ -3107,6 +3107,78 @@ public class VcfParserTest {
     assertEquals(2, warningCount);
   }
 
+  private record CacheLineResult(List<String> format, List<String> warnings) {}
+
+  /**
+   * Parses {@code header} followed by one data line per entry in {@code lines} (each entry is
+   * {@code {formatColumn, sampleColumn}}), through a single {@link VcfParser} instance so the FORMAT cache
+   * stays live across every line, and returns each line's parsed FORMAT list plus the warnings that line's
+   * own parsing newly emitted (isolated by diffing the appender's message count before/after each record
+   * callback, since the appender itself accumulates across the whole parse).
+   */
+  private static List<CacheLineResult> parseFormatLines(String header, List<String[]> lines) throws IOException {
+    StringBuilder sb = new StringBuilder(header);
+    for (String[] line : lines) {
+      sb.append("1\t100\t.\tA\tT\t.\t.\t.\t").append(line[0]).append('\t').append(line[1]).append('\n');
+    }
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    List<CacheLineResult> results = new ArrayList<>();
+    int[] previousCount = { 0 };
+    try (VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(sb.toString())))
+        .parseWith((metadata, record) -> {
+          List<String> allMessages = appender.getRelevantWarnOrHigherMessages(Set.of());
+          List<String> newMessages = allMessages.subList(previousCount[0], allMessages.size());
+          results.add(new CacheLineResult(record.getPosition().getFormat(), List.copyOf(newMessages)));
+          previousCount[0] = allMessages.size();
+        })
+        .build()) {
+      parser.parse();
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+    return results;
+  }
+
+  @Test
+  public void testFormatCacheProducesIdenticalResultsToFreshParsePerLine() throws IOException {
+    // R8: the FORMAT cache's existing four tests above each pin one scenario's warning COUNT; this is a
+    // genuine hit-vs-miss EQUIVALENCE property instead -- for each line in a sequence mixing repeated,
+    // alternating, malformed, and dot-normalized FORMAT columns, the cache-enabled multi-line parse must
+    // produce exactly the same per-line FORMAT list and warnings as parsing that same line alone (a fresh
+    // VcfParser instance per line, so no cache carryover is even possible).
+    String header = "##fileformat=VCFv4.2\n" +
+        "##SAMPLE=<ID=S1>\n" +
+        "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +
+        "##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">\n" +
+        "##FORMAT=<ID=AD,Number=R,Type=Integer,Description=\"Allele depth\">\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n";
+    List<String[]> sequence = List.of(
+        new String[] { "GT:DP", "0/1:10" },     // miss (first occurrence)
+        new String[] { "GT:DP", "0/1:10" },     // hit (repeated)
+        new String[] { "GT::AD", "0/1::5,5" },  // miss (malformed: empty sub-field)
+        new String[] { "GT:DP", "0/1:10" },     // miss (alternates back)
+        new String[] { ".", "." },              // miss (dot-normalized)
+        new String[] { ".", "." },              // hit (repeated dot)
+        new String[] { "GT:AD", "0/1:5,5" });   // miss (alternates again)
+
+    List<CacheLineResult> cached = parseFormatLines(header, sequence);
+    assertEquals(sequence.size(), cached.size());
+
+    for (int i = 0; i < sequence.size(); i++) {
+      List<CacheLineResult> oracle = parseFormatLines(header, List.<String[]>of(sequence.get(i)));
+      assertEquals(1, oracle.size());
+      assertEquals(oracle.get(0).format(), cached.get(i).format(), "line " + i + " FORMAT list");
+      assertEquals(oracle.get(0).warnings(), cached.get(i).warnings(), "line " + i + " warnings");
+    }
+  }
+
   @Test
   public void testWarningsToFileDefaultNameDerivedFromSourcePath(@org.junit.jupiter.api.io.TempDir Path tempDir)
       throws IOException {
