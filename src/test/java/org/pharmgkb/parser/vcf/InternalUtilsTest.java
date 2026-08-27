@@ -761,6 +761,8 @@ public class InternalUtilsTest {
     // fallback of its own -- must not apply the non-negative-integer rule to a pre-4.3 file's own custom key
     // literally named AD/ADF/ADR, the same shape as the FORMAT-side CNP write-path gap this round also fixed.
     for (String key : new String[] { "AD", "ADF", "ADR" }) {
+      InternalUtils.checkReservedInfoConstraints(key, "-5", VcfVersion.V4_1, VcfWarnings.DEFAULT); // V4_1 behaves like V4_2
+      InternalUtils.checkReservedInfoConstraints(key, "-5", VcfVersion.V4_1, null);
       InternalUtils.checkReservedInfoConstraints(key, "-5", VcfVersion.V4_2, VcfWarnings.DEFAULT); // not yet reserved: no warning
       InternalUtils.checkReservedInfoConstraints(key, "-5", VcfVersion.V4_2, null); // not yet reserved: does not throw either
       VcfFormatException ex = assertThrows(VcfFormatException.class,
@@ -899,6 +901,7 @@ public class InternalUtilsTest {
     try {
       InternalUtils.checkReservedFormatConstraints("GP", "0.5", VcfVersion.V4_3, VcfWarnings.DEFAULT); // valid: no warn
       InternalUtils.checkReservedFormatConstraints("GP", "5.0", VcfVersion.V4_2, VcfWarnings.DEFAULT); // <=4.2: no check at all
+      InternalUtils.checkReservedFormatConstraints("GP", "5.0", VcfVersion.V4_1, VcfWarnings.DEFAULT); // V4_1 behaves like V4_2
       assertEquals(0, appender.countMessagesContaining("does not lie in the interval"));
       InternalUtils.checkReservedFormatConstraints("GP", "5.0", VcfVersion.V4_3, VcfWarnings.DEFAULT); // 4.3+: warns
       assertEquals(1, appender.countMessagesContaining("does not lie in the interval"));
@@ -1074,6 +1077,8 @@ public class InternalUtilsTest {
     // version-gated fallback of its own -- must not apply the non-negative-integer rule to a pre-4.3 file's
     // own custom key literally named AD/ADF/ADR, the same shape as this same method's own CNP branch.
     for (String key : new String[] { "AD", "ADF", "ADR" }) {
+      InternalUtils.checkReservedFormatConstraints(key, "-5", VcfVersion.V4_1, VcfWarnings.DEFAULT); // V4_1 behaves like V4_2
+      InternalUtils.checkReservedFormatConstraints(key, "-5", VcfVersion.V4_1, null);
       InternalUtils.checkReservedFormatConstraints(key, "-5", VcfVersion.V4_2, VcfWarnings.DEFAULT); // not yet reserved: no warning
       InternalUtils.checkReservedFormatConstraints(key, "-5", VcfVersion.V4_2, null); // not yet reserved: does not throw either
       VcfFormatException ex = assertThrows(VcfFormatException.class,
@@ -1599,8 +1604,10 @@ public class InternalUtilsTest {
     // declared Number, unlike CNL below. Regression test for the fix that closed VcfWriter's write-path half of
     // this gap (a pre-4.3 file's own custom CNP key previously still got the reserved [0, 1] range check and
     // this cardinality exemption).
+    assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("GLE", VcfVersion.V4_1, "G"));
     assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("GLE", VcfVersion.V4_2, "G"));
     assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("GLE", VcfVersion.V4_3, "G"));
+    assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_1, "G"));
     assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_2, "G"));
     assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_3, "G"));
     assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNP", VcfVersion.V4_3, "4"));
@@ -1619,6 +1626,7 @@ public class InternalUtilsTest {
     assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNL", VcfVersion.V4_3, null));
     // below 4.3, CNL's canonical Number is "." regardless of what's passed in here -- not exempt via this
     // predicate either way, since the version gate alone already excludes it
+    assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNL", VcfVersion.V4_1, "G"));
     assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNL", VcfVersion.V4_2, "G"));
   }
 
@@ -1630,6 +1638,13 @@ public class InternalUtilsTest {
     // since the reserved key no longer exists. Tested here directly, not through getProperty, so a guard placed
     // in VcfSample instead of here would fail this test.
     String gle = "0:-75.22,1:-223.42,0/0:-323.03";
+    StringWriter sink41 = new StringWriter();
+    Object under41 = InternalUtils.convertProperty(
+        ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy, gle,
+        VcfContext.lenient("VCFv4.1", new VcfWarnings(sink41)));
+    assertEquals(gle, under41);
+    assertEquals("", sink41.toString());
+
     StringWriter sink42 = new StringWriter();
     Object under42 = InternalUtils.convertProperty(
         ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy, gle,

@@ -143,12 +143,14 @@ public class ReservedFormatPropertyTest {
     assertEquals("G", ReservedFormatProperty.CopyNumberLikelihood.getExpectedNumber());
     assertEquals("G", ReservedFormatProperty.CopyNumberLikelihood.getExpectedNumber(VcfVersion.V4_3));
     assertEquals(".", ReservedFormatProperty.CopyNumberLikelihood.getExpectedNumber(VcfVersion.V4_2));
+    assertEquals(".", ReservedFormatProperty.CopyNumberLikelihood.getExpectedNumber(VcfVersion.V4_1));
     // the generic Number=G ploidy-derived cardinality check doesn't apply to CNL's own "per potential copy
     // number" G (see the enum entry's own comment) -- exempted only from the version CNL's Number actually
     // becomes "G", AND only when the Number actually in force (a declaration's own stated Number, or this
     // reserved canonical fallback) genuinely resolves to "G"; below 4.3 its canonical Number is "." and the
     // check already skips it for that reason alone
     assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNL", VcfVersion.V4_2, "."));
+    assertFalse(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNL", VcfVersion.V4_1, "."));
     assertTrue(InternalUtils.isExemptFromGenotypeOrderingCardinalityCheck("CNL", VcfVersion.V4_3, "G"));
     // a ##FORMAT=<ID=CNL,...> declaration overriding the canonical Number=G to a concrete count (e.g. Number=4)
     // states a real, checkable cardinality -- see VcfWriterTest's validateBeforeWrite() regression coverage for
