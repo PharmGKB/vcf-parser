@@ -414,7 +414,10 @@ class VcfSampleTest {
     String gle = "0:-75.22,1:-223.42,0/0:-323.03";
     VcfContext context43 = VcfContext.strict("VCFv4.3");
 
-    // accepted under 4.2 through both direct-construction routes
+    // accepted under 4.1/4.2 through both direct-construction routes
+    VcfContext strict41 = VcfContext.strict("VCFv4.1");
+    assertEquals(gle, strict41.newSample(new LinkedHashMap<>(Map.of("GLE", gle))).getProperty("GLE"));
+    assertEquals(gle, new VcfSample.Builder(strict41).property("GLE", gle).build().getProperty("GLE"));
     assertEquals(gle, STRICT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GLE", gle))).getProperty("GLE"));
     assertEquals(gle, new VcfSample.Builder(STRICT_CONTEXT).property("GLE", gle).build().getProperty("GLE"));
 
@@ -466,6 +469,7 @@ class VcfSampleTest {
     // 8); this test covers the delegating route, InternalUtilsTest covers the direct one.
     String gle = "0:-75.22,1:-223.42";
     VcfContext context43 = VcfContext.strict("VCFv4.3");
+    VcfSample sample41 = VcfContext.strict("VCFv4.1").newSample(new LinkedHashMap<>(Map.of("GLE", gle)));
     VcfSample sample42 = STRICT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GLE", gle)));
     // colon-free under 4.3: a colon-bearing value can no longer be constructed there at all (see
     // testGleColonExemptionIsVersionGated), which is exactly why this behavior needs its own fixture
@@ -476,6 +480,10 @@ class VcfSampleTest {
     appender.start();
     root.addAppender(appender);
     try {
+      assertEquals(gle,
+          sample41.getProperty(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy));
+      assertFalse(appender.anyMessageContains("not a reserved key"));
+
       assertEquals(gle,
           sample42.getProperty(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy));
       assertFalse(appender.anyMessageContains("not a reserved key"));
@@ -497,6 +505,7 @@ class VcfSampleTest {
     // behavior 7: a predicate never converts, so it cannot ride on the converter's guard. Under 4.3 the truthful
     // answer is false -- the sample carries a key NAMED GLE, but not the reserved property being asked about.
     VcfContext context43 = VcfContext.strict("VCFv4.3");
+    VcfSample sample41 = VcfContext.strict("VCFv4.1").newSample(new LinkedHashMap<>(Map.of("GLE", "abc")));
     VcfSample sample42 = STRICT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GLE", "abc")));
     VcfSample sample43 = context43.newSample(new LinkedHashMap<>(Map.of("GLE", "abc")));
 
@@ -505,6 +514,9 @@ class VcfSampleTest {
     appender.start();
     root.addAppender(appender);
     try {
+      assertTrue(sample41.containsProperty(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy));
+      assertFalse(appender.anyMessageContains("not a reserved key"));
+
       assertTrue(sample42.containsProperty(ReservedFormatProperty.GenotypeLikelihoodsOfHeterogenousPloidy));
       assertFalse(appender.anyMessageContains("not a reserved key"));
 
@@ -515,6 +527,37 @@ class VcfSampleTest {
       // and the gate is specific to GLE: every other reserved constant is unaffected under 4.3
       VcfSample gt43 = context43.newSample(new LinkedHashMap<>(Map.of("GT", "0|1")));
       assertTrue(gt43.containsProperty(ReservedFormatProperty.Genotype));
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
+  void testGetPropertyReservedFormatPropertyPpIsVersionGated() {
+    // R8 (PP end-to-end gap): mirrors testGetPropertyReservedFormatPropertyGleIsVersionGated's shape, but PP
+    // is the OPPOSITE direction from GLE -- PP has no VCFv4.2 declaration at all
+    // (ReservedFormatProperty.isAddedAtV4_3), so a pre-4.3 file's own custom key named PP must warn-and-null
+    // the same way GLE does post-4.3.
+    VcfContext context41 = VcfContext.strict("VCFv4.1");
+    VcfContext context43 = VcfContext.strict("VCFv4.3");
+    VcfSample sample41 = context41.newSample(new LinkedHashMap<>(Map.of("PP", "1,2,3")));
+    VcfSample sample42 = STRICT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("PP", "1,2,3")));
+    VcfSample sample43 = context43.newSample(new LinkedHashMap<>(Map.of("PP", "1,2,3")));
+
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      assertNull(sample41.getProperty(ReservedFormatProperty.PhredScaledPosteriorProbabilities));
+      assertTrue(appender.anyMessageContains("FORMAT PP is not a reserved key under VCF 4.1"));
+
+      assertNull(sample42.getProperty(ReservedFormatProperty.PhredScaledPosteriorProbabilities));
+      assertTrue(appender.anyMessageContains("FORMAT PP is not a reserved key under VCF 4.2"));
+
+      assertEquals(java.util.Arrays.asList(1L, 2L, 3L),
+          sample43.getProperty(ReservedFormatProperty.PhredScaledPosteriorProbabilities));
     } finally {
       root.detachAppender(appender);
       appender.stop();
