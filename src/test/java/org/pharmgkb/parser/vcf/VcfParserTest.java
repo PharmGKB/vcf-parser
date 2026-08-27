@@ -1663,7 +1663,7 @@ public class VcfParserTest {
       Set<String> actual = new HashSet<>(appender.getRelevantWarnOrHigherMessages(Set.of()));
       Set<String> expected = Set.of(
           "INFO SVLEN has Number '1' but the reserved definition expects '.'",
-          "FORMAT CNQ has Type 'Integer' but the reserved definition expects 'VcfFloat'");
+          "FORMAT CNQ has Type 'Integer' but the reserved definition expects 'Float'");
       assertEquals(expected, actual);
     } finally {
       root.detachAppender(appender);

@@ -102,7 +102,7 @@ public final class FormatMetadata extends IdDescriptionMetadata {
       }
       if (type != null && !InternalUtils.toJavaType(type).equals(reserved.getType())) {
         warnOrThrow("FORMAT {} has Type '{}' but the reserved definition expects '{}'", unquotedId, type,
-            reserved.getType().getSimpleName());
+            InternalUtils.describeJavaTypeAsVcfType(reserved.getType()));
       }
     }
     m_type = type;
@@ -157,7 +157,7 @@ public final class FormatMetadata extends IdDescriptionMetadata {
       }
       if (m_type != null && !InternalUtils.toJavaType(m_type).equals(reserved.getType())) {
         warnOrThrow("{} {} has Type '{}' but the reserved definition expects '{}'", getLabel(), getId(),
-            m_type, reserved.getType().getSimpleName());
+            m_type, InternalUtils.describeJavaTypeAsVcfType(reserved.getType()));
       }
     }
     // VCFv4.2: "For all of the ##INFO, ##FORMAT, ##FILTER, and ##ALT metainformation, extra fields can be included

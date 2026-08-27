@@ -637,7 +637,7 @@ public class InfoMetadataTest {
       assertEquals(0, appender.countMessagesContaining("does not match the required tag-name grammar"));
       assertEquals(0, appender.countMessagesContaining("is not a valid VCF number"));
       assertEquals(1, appender.countMessagesContaining("but the reserved definition expects 'A'"));
-      assertEquals(1, appender.countMessagesContaining("but the reserved definition expects 'VcfFloat'"));
+      assertEquals(1, appender.countMessagesContaining("but the reserved definition expects 'Float'"));
     } finally {
       root.detachAppender(appender);
       appender.stop();

@@ -1913,7 +1913,7 @@ public class VcfWriterTest {
       writer.writeLine(metadata, position1, Collections.emptyList());
       writer.writeLine(metadata, position2, Collections.emptyList());
       assertEquals(1, appender.countMessagesContaining("INFO DP has Type 'Float' but the reserved definition " +
-          "expects 'Long'"));
+          "expects 'Integer'"));
     } finally {
       root.detachAppender(appender);
       appender.stop();

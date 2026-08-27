@@ -301,7 +301,7 @@ public class FormatMetadataTest {
       FormatMetadata md43 = new FormatMetadata(lenient43, InternalUtils.extractProperties(
           new String[]{"ID=PP", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertTrue(appender.anyMessageContains("has Number '1' but the reserved definition expects 'G'"));
-      assertTrue(appender.anyMessageContains("has Type 'String' but the reserved definition expects 'Long'"));
+      assertTrue(appender.anyMessageContains("has Type 'String' but the reserved definition expects 'Integer'"));
       assertEquals("1", md43.getNumber());
       assertEquals(FormatType.String, md43.getType());
     } finally {
@@ -349,7 +349,7 @@ public class FormatMetadataTest {
       FormatMetadata md43 = new FormatMetadata(lenient43, InternalUtils.extractProperties(
           new String[]{"ID=CNP", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertTrue(appender.anyMessageContains("has Number '1' but the reserved definition expects 'G'"));
-      assertTrue(appender.anyMessageContains("has Type 'String' but the reserved definition expects 'VcfFloat'"));
+      assertTrue(appender.anyMessageContains("has Type 'String' but the reserved definition expects 'Float'"));
       assertEquals("1", md43.getNumber());
       assertEquals(FormatType.String, md43.getType());
     } finally {
