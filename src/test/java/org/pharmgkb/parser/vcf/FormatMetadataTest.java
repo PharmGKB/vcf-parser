@@ -392,7 +392,12 @@ public class FormatMetadataTest {
       assertEquals(warnsUnder41, appender.countMessagesContaining("but the reserved definition expects"));
       new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
           new String[]{"ID=CNL", "Number=G", "Type=Float", "Description=\"d\""}, VcfWarnings.DEFAULT));
-      assertTrue(appender.anyMessageContains("has Number 'G' but the reserved definition expects '.'"));
+      // count-based, not anyMessageContains: the V4_1 construction just above already emitted the identical
+      // "has Number 'G' but the reserved definition expects '.'" message, so anyMessageContains would pass
+      // vacuously here even if this V4_2 construction warned zero new times -- mirrors
+      // testGleReservedNumberTypeCheckIsVersionGated's warnsUnder41 * 2 pattern (here doubling from 1 to 2
+      // since CNL's Number-only mismatch emits a single message per construction, not GLE's two).
+      assertEquals(warnsUnder41 * 2, appender.countMessagesContaining("but the reserved definition expects"));
       long warnsUnder42 = appender.countMessagesContaining("but the reserved definition expects");
 
       // 4.3 (the target): Number=G is correct, Number=. is not

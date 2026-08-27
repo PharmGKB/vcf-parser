@@ -235,7 +235,7 @@ class HtsSpecsConformanceTest {
   }
 
   @TestFactory
-  Stream<DynamicTest> passedFixturesRoundTripWithoutNewWarnings() throws IOException {
+  Stream<DynamicTest> passedFixturesRoundTripPreservingWarningSet() throws IOException {
     List<Path> files = new ArrayList<>();
     for (String version : PASSED_VERSIONS) {
       collectVcfFiles(fixtureDir(version, "passed"), files);

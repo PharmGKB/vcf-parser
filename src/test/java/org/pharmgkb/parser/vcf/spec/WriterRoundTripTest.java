@@ -1,6 +1,7 @@
 package org.pharmgkb.parser.vcf.spec;
 
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -610,7 +611,22 @@ class WriterRoundTripTest {
     return sb.toString();
   }
 
+  // raw (pre-substitution) SLF4J message templates for the version resolver's/writer's own fallback warnings --
+  // used with WarnCapturingAppender.hasWarnOrHigherExcluding so assertRoundTripsCleanly's warning-silence
+  // assertion can tolerate exactly the fallback warnings the "declared VCFv4.4" dimension legitimately expects
+  // and nothing else. See VcfVersion.resolve and VcfWriter.writeHeader for the source of each.
+  private static final String READING_FALLBACK_RAW_TEMPLATE =
+      "Reading ##fileformat={} as VCF {} -- this library does not implement {} semantics";
+  private static final String WRITING_FALLBACK_RAW_TEMPLATE =
+      "Writing ##fileformat={} verbatim, but its content was accepted and normalized under " +
+          "VCF {} rules; validity under the declared version is not guaranteed";
+
   private static void assertRoundTripsCleanly(String fileFormat, MatrixCase c) throws IOException {
+    assertRoundTripsCleanly(fileFormat, c, null);
+  }
+
+  private static void assertRoundTripsCleanly(String fileFormat, MatrixCase c,
+      String expectedFallbackWarningSubstring) throws IOException {
     Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     WarnCapturingAppender appender = new WarnCapturingAppender();
     appender.start();
@@ -628,9 +644,17 @@ class WriterRoundTripTest {
       // .testValidateBeforeWriteGenotypePosteriorRangeCheckIsVersionGated, which itself uses validateBeforeWrite())
       // actually exercises.
       written = WriterRoundTrip.write(before, true);
+      Set<String> ignoredTemplates = new HashSet<>();
+      if (expectedFallbackWarningSubstring != null) {
+        assertTrue(appender.anyMessageContains(expectedFallbackWarningSubstring),
+            c.key() + ": expected the fallback warning");
+        ignoredTemplates.add(READING_FALLBACK_RAW_TEMPLATE);
+        ignoredTemplates.add(WRITING_FALLBACK_RAW_TEMPLATE);
+      }
       if (c.expectedWarningSubstring() == null) {
-        assertFalse(appender.hasWarnOrHigher(), () -> c.key() + " (" + fileFormat + "): unexpected warning(s): " +
-            appender.getRelevantWarnOrHigherMessages(Set.of()));
+        assertFalse(appender.hasWarnOrHigherExcluding(ignoredTemplates),
+            () -> c.key() + " (" + fileFormat + "): unexpected warning(s): " +
+                appender.getRelevantWarnOrHigherMessages(ignoredTemplates));
       } else {
         assertTrue(appender.anyMessageContains(c.expectedWarningSubstring()),
             c.key() + " (" + fileFormat + "): expected a warning containing \"" + c.expectedWarningSubstring() +
@@ -668,33 +692,12 @@ class WriterRoundTripTest {
     // R8: the "fallback" dimension named by TODO.md's original R8 title -- a declared VCFv4.4 (outside
     // 4.1-4.3) resolves to VcfVersion.HIGHEST_IMPLEMENTED (V4_3) via VcfVersion.resolve, with a warning (see
     // VcfVersion.resolve's own Javadoc). Reuses AT_OR_AFTER_43_CASES unchanged except the declared
-    // ##fileformat, confirming the fallback genuinely produces the same 4.3 behavior end to end.
+    // ##fileformat, confirming the fallback genuinely produces the same 4.3 behavior end to end. Delegates to
+    // assertRoundTripsCleanly's fallback-aware overload rather than reimplementing its body, which also gives
+    // this dimension the same full warning-silence assertion the plain 4.3-only dimension gets.
     for (MatrixCase post : AT_OR_AFTER_43_CASES) {
-      Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-      WarnCapturingAppender appender = new WarnCapturingAppender();
-      appender.start();
-      root.addAppender(appender);
-      WriterRoundTrip.ParsedFile before;
-      String written;
-      try {
-        before = WriterRoundTrip.parseText(buildVersionMatrixVcf("VCFv4.4", post));
-        // see assertRoundTripsCleanly's comment above: validateBeforeWrite=true is required to reach
-        // checkReservedFormatConstraints at all.
-        written = WriterRoundTrip.write(before, true);
-        assertTrue(appender.anyMessageContains(
-            "Reading ##fileformat=VCFv4.4 as VCF 4.3 -- this library does not implement VCFv4.4 semantics"),
-            post.key() + ": expected the fallback warning");
-        if (post.expectedWarningSubstring() != null) {
-          assertTrue(appender.anyMessageContains(post.expectedWarningSubstring()),
-              post.key() + ": expected the same 4.3-side warning to still fire under fallback");
-        }
-      } finally {
-        root.detachAppender(appender);
-        appender.stop();
-      }
-      WriterRoundTrip.ParsedFile after = WriterRoundTrip.parseText(written);
-      Optional<String> diff = WriterRoundTrip.semanticDiff(before, after);
-      assertTrue(diff.isEmpty(), () -> post.key() + " (fallback): semantic mismatch: " + diff.orElse(""));
+      assertRoundTripsCleanly("VCFv4.4", post,
+          "Reading ##fileformat=VCFv4.4 as VCF 4.3 -- this library does not implement VCFv4.4 semantics");
     }
   }
 }

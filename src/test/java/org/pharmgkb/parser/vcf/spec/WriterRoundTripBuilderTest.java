@@ -1,6 +1,7 @@
 package org.pharmgkb.parser.vcf.spec;
 
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -168,12 +169,30 @@ class WriterRoundTripBuilderTest {
           "6,3", true, null),
       new MatrixCase("ADR", "Read depth for each allele on the reverse strand", "R", FormatType.Integer,
           "4,2", true, null),
-      new MatrixCase("GP", "d", "G", FormatType.Float, "5.0", false, "does not lie in the interval"));
+      new MatrixCase("GP", "d", "G", FormatType.Float, "5.0,5.0,5.0", false, "does not lie in the interval"));
+
+  // raw (pre-substitution) SLF4J message templates for the writer's/version resolver's own fallback and
+  // range-check warnings -- used with WarnCapturingAppender.hasWarnOrHigherExcluding so the warning-silence
+  // assertion below can tolerate exactly the warnings a given case legitimately expects and nothing else. See
+  // VcfVersion.resolve, VcfWriter.writeHeader, and InternalUtils.checkFractionalRange for the source of each.
+  private static final String READING_FALLBACK_RAW_TEMPLATE =
+      "Reading ##fileformat={} as VCF {} -- this library does not implement {} semantics";
+  private static final String WRITING_FALLBACK_RAW_TEMPLATE =
+      "Writing ##fileformat={} verbatim, but its content was accepted and normalized under " +
+          "VCF {} rules; validity under the declared version is not guaranteed";
+  private static final String RANGE_CHECK_RAW_TEMPLATE = "{} {} value \"{}\" does not lie in the interval [0, 1]";
 
   private static WriterRoundTrip.ParsedFile buildMatrixParsedFile(VcfContext context, String fileFormat,
       MatrixCase c) {
     VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder(context).setFileFormat(fileFormat)
-        .setColumns(List.of("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"));
+        .setColumns(List.of("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "S1"))
+        // ##contig/##SAMPLE declare the record's own CHROM ("1") and #CHROM sample column ("S1") -- without
+        // them, VcfWriter's own unrelated cross-checks ("CHROM has no ##contig metadata", "samples in the
+        // header but not in the metadata") would warn on every case, which the warning-silence assertion
+        // below would otherwise have to (incorrectly) tolerate. Mirrors WriterRoundTripTest's
+        // buildVersionMatrixVcf, which declares the same two lines for the same reason.
+        .addContig("1", 1_000_000L, null, null, null, null, null)
+        .addSample("S1", "S1");
     if (c.includeGt()) {
       mdBuilder.addFormat("GT", "Genotype", "1", FormatType.String);
     }
@@ -204,9 +223,12 @@ class WriterRoundTripBuilderTest {
       // VcfWriter.writeLine's m_validateBeforeWrite guard around validateInfo/validateSamples, and
       // WriterRoundTripTest's assertRoundTripsCleanly, which the same fix was applied to first.
       written = WriterRoundTrip.write(before, true);
+      Set<String> ignoredTemplates = new HashSet<>();
       if (expectedFallbackWarningSubstring != null) {
         assertTrue(appender.anyMessageContains(expectedFallbackWarningSubstring),
             c.key() + ": expected the fallback warning");
+        ignoredTemplates.add(READING_FALLBACK_RAW_TEMPLATE);
+        ignoredTemplates.add(WRITING_FALLBACK_RAW_TEMPLATE);
       }
       if (c.expectedWarningSubstring() == null) {
         assertFalse(appender.anyMessageContains("does not lie in the interval"),
@@ -215,7 +237,16 @@ class WriterRoundTripBuilderTest {
         assertTrue(appender.anyMessageContains(c.expectedWarningSubstring()),
             c.key() + " (" + fileFormat + "): expected a warning containing \"" + c.expectedWarningSubstring() +
                 "\"");
+        ignoredTemplates.add(RANGE_CHECK_RAW_TEMPLATE);
       }
+      // full warning-silence assertion (beyond the specific substrings checked above): this is the check the
+      // method's own "Cleanly" name promises but, until R8's final-review fix wave, never actually verified --
+      // every one of the 16 builder-side matrix cases previously also emitted unasserted metadata cross-check
+      // warnings (silenced above by declaring ##contig/##SAMPLE) and, for GP specifically, an unasserted
+      // "Number=G requires 3" cardinality warning alongside the intended range-check warning.
+      assertFalse(appender.hasWarnOrHigherExcluding(ignoredTemplates),
+          c.key() + " (" + fileFormat + "): unexpected warning(s) beyond the expected ones: " +
+              appender.getRelevantWarnOrHigherMessages(ignoredTemplates));
     } finally {
       root.detachAppender(appender);
       appender.stop();

@@ -3755,14 +3755,24 @@ public class VcfParserTest {
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
         "1\t100\t.\tA\tT\t.\t.\t.\tGT:PP\t0/1:xyz\n";
     List<VcfRecord> records42 = new ArrayList<>();
+    VcfMetadata[] metadata42 = new VcfMetadata[1];
     try (VcfParser parser = new VcfParser.Builder()
         .fromReader(new BufferedReader(new StringReader(vcf42)))
-        .parseWith((metadata, record) -> records42.add(record))
+        .parseWith((metadata, record) -> { records42.add(record); metadata42[0] = metadata; })
         .build()) {
       parser.parse();
     }
     assertEquals(1, records42.size());
-    assertEquals("xyz", records42.get(0).getSamples().get(0).getProperty("PP"));
+    VcfRecord record42 = records42.get(0);
+    assertEquals("xyz", record42.getSamples().get(0).getProperty("PP"));
+    // Strengthened per R8's final-review finding #7: getProperty(String) returns PP's raw value regardless
+    // of whether it was classified as reserved, so it would pass unchanged even if the version gate were
+    // completely broken. getProperty(position, metadata, key) instead resolves PP through this file's own
+    // declared (non-reserved, Number=1/Type=String) ##FORMAT definition -- if PP were incorrectly treated as
+    // the 4.3 reserved Number=G/Type=Integer definition instead, converting "xyz" as an Integer would throw
+    // VcfFormatException rather than returning it as a plain String, so this genuinely exercises the version
+    // boundary rather than merely restating the raw value.
+    assertEquals("xyz", record42.getSamples().get(0).getProperty(record42.getPosition(), metadata42[0], "PP"));
 
     String vcf43 = "##fileformat=VCFv4.3\n" +
         "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n" +

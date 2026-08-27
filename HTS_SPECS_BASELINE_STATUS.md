@@ -384,18 +384,23 @@ fixture that already warned on its original parse, and only compared "did repars
 introduce any *new* warning" for the rest -- never the full before/after warning set. The
 `2026-08-26-1117-declared-version-format-cache-metamorphic-coverage-r8-plan` plan's Task 10 reworked it to run
 on every `passed/` fixture and compare the complete before/after warning sets, which surfaced 5 new
-divergences -- exactly the 3 fixtures already known to diverge on `writer-bytediff` above, since the same
-normalization that changes their written bytes also changes their warning set. Confirmed via `./gradlew
+divergences from the same 3 fixtures already known to diverge on `writer-bytediff` above, across their
+4.1/4.2 versions, since the same normalization that changes their written bytes also changes their warning
+set. This is not a 1:1 row count with `writer-bytediff`'s 6 rows for these fixtures: the VCFv4.3 copy of
+`complexfile_passed_000.vcf` (one of those 6 rows) does not get a matching `writer-warning-invariant` row,
+because that fixture's 4.3-version content uses a key=value metadata form, not the bracket-wrapped form
+dropped at 4.1/4.2, so nothing changes in its warning set -- see the table below. Confirmed via `./gradlew
 htsSpecsUpdateBaseline` producing a diff of exactly 5 insertions (verified: `git diff` on
 `hts-specs-baseline.tsv` showed 5 new lines, zero removed/modified) and a subsequent `./gradlew htsSpecsTest`
 reporting `1435/1435 checks match baseline, 0 new/stale, 0 per-version row(s) moved`.
 
 Each row's warning-set change is a direct consequence of a normalization the original parse already performs
 (and already warns about): the normalized content is what actually gets written, so reparsing the
-round-tripped output no longer has the original defect to warn about. None of the three introduces a warning
-that wasn't already present before the round trip -- each `after` set is the `before` set with the
-normalized-away warning removed (plus, for `complexfile_passed_000.vcf`, one warning's cited line number
-shifting down by one, a direct consequence of the dropped metadata line removing one line from the output).
+round-tripped output no longer has the original defect to warn about. Each row's `after` set is the `before`
+set minus the normalized-away warning, with one exception: for `complexfile_passed_000.vcf`, one remaining
+message's cited line number also shifts down by one (line 50 -> line 49), a direct consequence of the
+dropped metadata line removing one line from the output -- so that message's exact text does technically
+differ from anything in the `before` set, even though it reports the same underlying warning.
 
 | Cause | Fixtures | Count | Status | Details |
 |---|---|---|---|---|
