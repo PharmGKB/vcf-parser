@@ -3,6 +3,7 @@ package org.pharmgkb.parser.vcf;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -74,5 +75,26 @@ public class ReservedInfoPropertyTest {
     // default, which is where the null check lives so it applies uniformly to every implementor, not just
     // ReservedFormatProperty's CNL override (see ReservedFormatPropertyTest's own version of this test)
     assertThrows(VcfFormatException.class, () -> ReservedInfoProperty.AlleleCount.getExpectedNumber(null));
+  }
+
+  @Test
+  public void testVersionAwareFromIdWithholdsKeysAddedAtV4_3() {
+    // R8: the INFO-side mirror of ReservedFormatPropertyTest.testVersionAwareFromIdWithholdsKeysAddedAtV4_3
+    // -- AD/ADF/ADR have no VCFv4.2 declaration at all (see each constant's own comment and
+    // ReservedInfoProperty.isAddedAtV4_3), so fromId(String, VcfVersion) must not classify them as reserved
+    // under a version that predates their introduction. Previously untested at this version-aware layer for
+    // the INFO side (only ReservedFormatPropertyTest's FORMAT-side twin existed). V4_1 is included alongside
+    // V4_2 since VcfVersion.java documents them as currently behaviorally identical everywhere.
+    for (ReservedInfoProperty property : java.util.List.of(
+        ReservedInfoProperty.AlleleDepth, ReservedInfoProperty.AlleleDepthForward,
+        ReservedInfoProperty.AlleleDepthReverse)) {
+      assertTrue(ReservedInfoProperty.isAddedAtV4_3(property));
+      assertNull(ReservedInfoProperty.fromId(property.getId(), VcfVersion.V4_1));
+      assertNull(ReservedInfoProperty.fromId(property.getId(), VcfVersion.V4_2));
+      assertEquals(property, ReservedInfoProperty.fromId(property.getId(), VcfVersion.V4_3));
+    }
+    // every other reserved key is unaffected by isAddedAtV4_3
+    assertFalse(ReservedInfoProperty.isAddedAtV4_3(ReservedInfoProperty.AlleleCount));
+    assertFalse(ReservedInfoProperty.isAddedAtV4_3(null));
   }
 }
