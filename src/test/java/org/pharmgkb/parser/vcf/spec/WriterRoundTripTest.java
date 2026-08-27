@@ -66,6 +66,13 @@ class WriterRoundTripTest {
     String written = WriterRoundTrip.write(before);
     WriterRoundTrip.ParsedFile after = WriterRoundTrip.parseText(written);
     assertEquals(Optional.empty(), WriterRoundTrip.semanticDiff(before, after));
+
+    // this fixture is fully spec-compliant, so validateBeforeWrite() has nothing to warn about or
+    // canonicalize -- the two writer configurations must produce byte-identical output, matching
+    // WriterRoundTripBuilderTest's own dual-mode assertion for builder-constructed records
+    String validatedWritten = WriterRoundTrip.write(before, true);
+    assertEquals(written, validatedWritten,
+        "a fully-compliant fixture has no reason for the two writer configurations to produce different output");
   }
 
   @Test
@@ -181,6 +188,11 @@ class WriterRoundTripTest {
     }
     String written = WriterRoundTrip.write(parsed);
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
+
+    // no warning was recorded above, so validateBeforeWrite() has nothing to canonicalize either -- the two
+    // writer configurations must produce byte-identical output
+    String validatedWritten = WriterRoundTrip.write(parsed, true);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(written, validatedWritten));
   }
 
   @Test
