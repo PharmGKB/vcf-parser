@@ -185,11 +185,11 @@ determines which was actually intended, or needs a dev-build version-naming sche
 
 ## Multiple independent checks warn separately about the same underlying defect
 
-Three unrelated cases all produce more than one warning for what is, from a caller's point of view, a single
+Four unrelated cases all produce more than one warning for what is, from a caller's point of view, a single
 defect. In every case, no data is lost or corrupted, and coordinating the checks to suppress a duplicate
 warning would require new complexity (a shared flag, cross-method state, or a loop restructure) for a purely
 cosmetic issue. The shape differs per case (documented in each sub-case below), which is why they're
-recorded separately rather than as one code location, but the underlying reasoning is the same in all three.
+recorded separately rather than as one code location, but the underlying reasoning is the same in all four.
 
 ### `VcfPosition.checkFilters`: repeated `PASS` entries
 
@@ -242,12 +242,42 @@ the `GT` case above (not the `checkFilters` case), this is two independently-rea
 firing twice: parsing one malformed header line produces both warnings in the same log, both correct, both
 about the same root cause.
 
-**Decision: won't fix, for all three sub-cases above.** Each is either a single check re-firing on a
-degenerate, unlikely-in-practice input (`checkFilters`), or two independently-reachable, independently
-correct checks with no other coupling (`GT`, missing/blank ID) -- coordinating either shape would add real
-complexity for output that is informative rather than misleading. Revisit any sub-case if a real
-(non-test-harness) caller reports it as genuinely noisy, or if the relevant methods are ever unified onto one
-shared implementation for an unrelated reason that would make deduplication free.
+### A non-canonical but parseable `Float` value, written then read back
+
+`VcfWriter.addInfoOrDot` (`VcfWriter.java:1288-1294`) and `addSampleConditionally`
+(`VcfWriter.java:1185-1192`) each run a discarded `InternalUtils.convertProperty` type-probe -- purely
+diagnostic, gated on `!m_validateBeforeWrite` and a scalar (`Number=1`) declaration -- purely to warn if the
+value doesn't match its declared `Type`. `VcfPosition.getInfo(VcfMetadata, String)` (`VcfPosition.java:1582`)
+and `VcfSample.getProperty(VcfPosition, VcfMetadata, String)` (`VcfSample.java:632`) independently run the
+same conversion later, when a caller reads the value back through either metadata-aware typed getter. Both
+routes bottom out in the same `InternalUtils.convertElement`.
+
+For most `Type` mismatches (`Integer`/`Character`), this doesn't double-warn: `convertElement` throws
+`VcfFormatException`, which the write-time probe catches and turns into a warning, but which the read-time
+getters let propagate as a thrown exception instead (per their own documented contract -- there is no sane
+value to hand back as that Java type, though the raw string stays available via the untyped
+`getInfo(String)`). Warn-once-then-throw-once is not a double warning, and is exactly the two methods'
+intended, documented behavior: the writer's contract is to remain writable for safely-representable content
+regardless of semantic validity (see AGENTS.md's Writer Validation and Round-Trip Policy), while a typed
+getter's contract is to convert or admit it can't.
+
+The one `Type` that genuinely double-warns is `Float`: `VcfFloat.parse` (via `parseDecimal`,
+`VcfFloat.java:170`) warns rather than throws when `BigDecimal` accepts a value that doesn't match VCF's
+Float grammar (e.g. `"5."`) and returns normally. Nothing on the write side intercepts that warning (no
+exception was thrown, so the probe's own catch block never runs), and the read-time getter reaches the
+identical `parseDecimal` call and warns again with the same message. Unlike the `GT` case above, the two call
+graphs here are not just independently-reachable within the same process -- the write and the later read can
+be entirely separate `VcfWriter`/`VcfPosition` instances, potentially in different processes (write to a
+file, read it back in an unrelated program later), so there is no coherent shared state to dedup against
+without embedding "already warned about this value" into the serialized file itself, which isn't reasonable.
+
+**Decision: won't fix, for all four sub-cases above.** Each is either a single check re-firing on a
+degenerate, unlikely-in-practice input (`checkFilters`), or independently-reachable, independently correct
+checks with no other coupling (`GT`, missing/blank ID, non-canonical `Float`) -- coordinating any of these
+shapes would add real complexity for output that is informative rather than misleading, and for the `Float`
+case specifically, the write and read sides may not even share a process to coordinate through. Revisit any
+sub-case if a real (non-test-harness) caller reports it as genuinely noisy, or if the relevant methods are
+ever unified onto one shared implementation for an unrelated reason that would make deduplication free.
 
 ## RESOLVED: A quoted-empty or quoted-whitespace-only `ID` escaped the missing/blank-`ID` check
 
