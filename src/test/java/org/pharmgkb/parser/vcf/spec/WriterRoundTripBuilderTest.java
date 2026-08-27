@@ -47,6 +47,10 @@ class WriterRoundTripBuilderTest {
         .addInfo("DP", "Total depth", InfoType.Integer, "1", null, null)
         .addFilter("PASS", "All filters passed")
         .addAlt("DEL", "Deletion")
+        // TODO.md: this file's design spec named "one contig declaration" among this test's own coverage,
+        // but no addContig call was ever added -- a builder-constructed ##contig round trip was untested
+        // even though WriterRoundTrip.compareDeclarations("contig", ...) does compare contigs.
+        .addContig("1", 1_000_000L, null, null, null, null, null)
         .build();
     ListMultimap<String, String> info = ArrayListMultimap.create();
     info.put("DP", "10");
@@ -66,6 +70,14 @@ class WriterRoundTripBuilderTest {
     WriterRoundTrip.ParsedFile afterDefault = WriterRoundTrip.parseText(defaultWritten);
     Optional<String> diff = WriterRoundTrip.semanticDiff(before, afterDefault);
     assertTrue(diff.isEmpty(), () -> "default writer semantic mismatch: " + diff.orElse(""));
+
+    // TODO.md: the design's "assert byteDiff is empty" language doesn't literally apply to a
+    // builder-sourced file (there's no original wire text to diff against) -- this is the meaningful
+    // builder-side analog, mirroring WriterRoundTripTest's own parsed-input double-round-trip idempotency
+    // check: writing the reparsed content a second time must reproduce the exact same bytes as the first
+    // write, confirming the written form is genuinely stable, not merely happening to work once.
+    String rewritten = WriterRoundTrip.write(afterDefault, false);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(defaultWritten, rewritten));
   }
 
   @Test
