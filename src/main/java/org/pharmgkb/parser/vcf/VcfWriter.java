@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -513,6 +514,20 @@ public class VcfWriter implements Closeable {
             m_warnings.warn("Position {}:{} has ALT {}, but there is no ALT metadata with that name (on line {})",
                 position.getChromosome(), position.getPosition(), base, lineBeingWritten()));
 
+    // Mirrors the ALT check just above: FORMAT is a record-level column, identical for every sample, so an
+    // undeclared FORMAT key is warned once per record here rather than once per sample.
+    // addSampleConditionally used to run this same check itself on every one of its own per-sample calls,
+    // multiplying (undeclared keys) x (samples) duplicate lines for one record-level defect -- found by the
+    // release-readiness audit. Gated the same way the warning it replaces was: validateSamples (called above,
+    // under validateBeforeWrite()) already covers this for that mode.
+    if (!m_validateBeforeWrite) {
+      position.getFormat().stream()
+          .filter(key -> !metadata.getFormats().containsKey(key))
+          .forEach(key ->
+              m_warnings.warn("Position {}:{} has FORMAT {}, but there is no FORMAT metadata with that name " +
+                  "(on line {})", position.getChromosome(), position.getPosition(), key, lineBeingWritten()));
+    }
+
     // these columns can be skipped completely
     addFormatConditionally(position, numSamples, sb);
     int sampleIndex = 0;
@@ -902,11 +917,32 @@ public class VcfWriter implements Closeable {
   private void validateSamples(VcfMetadata metadata, VcfPosition position, List<VcfSample> samples,
       VcfVersion recordVersion) {
     List<String> formatKeys = position.getFormat();
+    // See FORMAT_LOOKUP_MATERIALIZE_THRESHOLD's own comment: avoid a plain List.contains() re-scan of
+    // formatKeys for every one of a sample's own keys once it's large -- the same fix as
+    // addSampleConditionally's identical "extra property" check, mirrored here for the validateBeforeWrite()
+    // path, which the release-readiness audit found this method was still missing (O(F^2) per sample).
+    Collection<String> formatKeyLookup = formatKeys.size() > FORMAT_LOOKUP_MATERIALIZE_THRESHOLD
+        ? new HashSet<>(formatKeys) : formatKeys;
+    // Warned and resolved once per record here, not once per sample below: FORMAT is a record-level column,
+    // so every sample shares the identical answer to "is this key declared, and if not, does it have a
+    // reserved fallback." Warning inside the per-sample loop below used to multiply (undeclared keys) x
+    // (samples) duplicate lines for one record-level defect -- found by the release-readiness audit; mirrors
+    // validateInfo's own per-record (not per-value) treatment of the identical INFO-side situation just above.
+    Map<String, ReservedFormatProperty> reservedFallbackForUndeclaredKey = new HashMap<>();
+    for (String key : formatKeys) {
+      if (!metadata.getFormats().containsKey(key)) {
+        m_warnings.warn("Position {}:{} contains FORMAT {}, but there is no FORMAT metadata with that name",
+            position.getChromosome(), position.getPosition(), key);
+        // version-aware: GLE stops being a reserved key at VCFv4.3, so an undeclared 4.3+ key named GLE gets
+        // no reserved-canonical fallback at all, matching getProperty(VcfPosition, VcfMetadata, String)
+        reservedFallbackForUndeclaredKey.put(key, ReservedFormatProperty.fromId(key, recordVersion));
+      }
+    }
     for (int sampleIndex = 0; sampleIndex < samples.size(); sampleIndex++) {
       VcfSample sample = samples.get(sampleIndex);
       sample.validate();
       for (String key : sample.getPropertyKeys()) {
-        if (!formatKeys.contains(key)) {
+        if (!formatKeyLookup.contains(key)) {
           throw new VcfFormatException("Sample #" + sampleIndex + " contains property " +
               InternalUtils.truncateAndEscapeForMessage(key) + ", but it is not declared in FORMAT");
         }
@@ -915,23 +951,13 @@ public class VcfWriter implements Closeable {
       for (String key : formatKeys) {
         String value = sample.getProperty(key);
         FormatMetadata format = metadata.getFormats().get(key);
-        // format==null and value==null are independent conditions, checked separately rather than as one
-        // if/else-if chain, so both warnings fire when both apply -- matching addSampleConditionally's default
-        // write path, which warns about an undeclared FORMAT key unconditionally (before even checking whether
-        // the value is null). Without this, a null value for an undeclared key silently dropped the "no FORMAT
-        // metadata with that name" warning here, even though the default path always emits it.
-        if (format == null) {
-          m_warnings.warn("Sample #{} contains FORMAT {}, but there is no FORMAT metadata with that name", sampleIndex, key);
-        }
         if (value == null) {
           m_warnings.warn("Sample #{} is missing property {}", sampleIndex, key);
         } else if (format == null) {
           // still validate a reserved key's value against its own canonical Number/Type, matching
           // getProperty(VcfPosition, VcfMetadata, String)'s identical read-path fallback for exactly this
           // situation -- see validateInfo's identical INFO-side fallback for the full rationale
-          // version-aware: GLE stops being a reserved key at VCFv4.3, so an undeclared 4.3+ key named GLE gets
-          // no reserved-canonical fallback at all, matching getProperty(VcfPosition, VcfMetadata, String)
-          ReservedFormatProperty reserved = ReservedFormatProperty.fromId(key, recordVersion);
+          ReservedFormatProperty reserved = reservedFallbackForUndeclaredKey.get(key);
           if (reserved != null) {
             // version-aware: CNL is the one reserved key whose expected Number differs by version -- see its
             // own comment in ReservedFormatProperty for the citations
@@ -1115,12 +1141,8 @@ public class VcfWriter implements Closeable {
     for (int i = 0; i < formatKeys.size(); i++) {
       String key = formatKeys.get(i);
 
-      if (!m_validateBeforeWrite && !metadata.getFormats().containsKey(key)) {
-        m_warnings.warn("Sample #{} for {}:{} contains FORMAT {}, but there is no FORMAT metadata with that name " +
-                "(on line {})",
-            sampleIndex, position.getChromosome(), position.getPosition(), key, lineBeingWritten());
-      }
-
+      // The "no FORMAT metadata with that name" warning for this key, if any, is now emitted once per record
+      // by the caller (writeLine), before this method's own per-sample loop begins -- not here.
       String value = sample.getProperty(key);
       if (value == null) {
         if (!m_validateBeforeWrite) {

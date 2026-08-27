@@ -1191,6 +1191,112 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testValidateBeforeWriteWritingManySamplesWithManyFormatKeysCompletesWithoutQuadraticSlowdown()
+      throws IOException {
+    // regression test: validateSamples' own "is this key declared in FORMAT" check (the validateBeforeWrite()
+    // diagnostics-path analogue of the sibling test above) used to call formatKeys.contains(key) -- an O(n)
+    // List scan -- once for every one of a sample's own keys, making a write O(F^2) per sample for F FORMAT
+    // keys, O(samples x F^2) overall. Found by the release-readiness audit; measured directly before this fix:
+    // 50 samples x 4096 FORMAT keys took ~861ms, vs. ~150-170ms after -- the 500ms budget below has comfortable
+    // margin on both sides. Every FORMAT key is declared and present on every sample here (unlike the sibling
+    // test's deliberate extra key) -- the O(F^2) cost is driven by the per-sample membership scan itself, not
+    // by whether it ever finds a mismatch, and an undeclared/extra key would throw here instead of warn,
+    // exiting before the full scale is exercised.
+    int f = 4096;
+    int numSamples = 50;
+    List<String> formatOnlyKeys = new ArrayList<>(f);
+    VcfMetadata.Builder mdBuilder = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2");
+    List<String> columns = new ArrayList<>(
+        Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT"));
+    for (int s = 0; s < numSamples; s++) {
+      columns.add("S" + s);
+    }
+    mdBuilder.setColumns(columns);
+    for (int i = 0; i < f; i++) {
+      formatOnlyKeys.add("F" + i);
+      mdBuilder.addFormat("F" + i, "desc", "1", FormatType.String);
+    }
+    VcfMetadata metadata = mdBuilder.build();
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null,
+        formatOnlyKeys, -1);
+    List<VcfSample> samples = new ArrayList<>(numSamples);
+    for (int s = 0; s < numSamples; s++) {
+      List<String> values = new ArrayList<>(f);
+      for (int i = 0; i < f; i++) {
+        values.add("v" + i);
+      }
+      samples.add(LENIENT_CONTEXT.newSample(new ArrayList<>(formatOnlyKeys), values));
+    }
+
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+    try {
+      writer.writeHeader(metadata);
+      assertTimeoutPreemptively(java.time.Duration.ofMillis(500), () ->
+          writer.writeLine(metadata, position, samples));
+    } finally {
+      writer.close();
+    }
+  }
+
+  @Test
+  public void testUndeclaredFormatKeyWarnsOncePerRecordNotOncePerSample() throws Exception {
+    // regression test: both write paths used to warn "no FORMAT metadata with that name" once per SAMPLE for
+    // an undeclared FORMAT key, even though FORMAT is a record-level column identical for every sample in
+    // that record -- a real multi-sample record with one undeclared key produced (samples) duplicate lines
+    // for one record-level defect. Found by the release-readiness audit.
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
+            "S1", "S2", "S3", "S4", "S5"))
+        .addFormat(new FormatMetadata(LENIENT_CONTEXT, "GT", "Genotype", "1", FormatType.String))
+        .build();
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null,
+        null, List.of("GT", "UNDECL"), -1);
+    List<VcfSample> samples = new ArrayList<>(5);
+    for (int i = 0; i < 5; i++) {
+      LinkedHashMap<String, String> props = new LinkedHashMap<>();
+      props.put("GT", "0/1");
+      props.put("UNDECL", "x"); // never declared via ##FORMAT=<ID=UNDECL,...>
+      samples.add(LENIENT_CONTEXT.newSample(props));
+    }
+
+    ch.qos.logback.classic.Logger root =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+
+    // default write path
+    StringWriter sw1 = new StringWriter();
+    VcfWriter defaultWriter = new VcfWriter.Builder().toWriter(new PrintWriter(sw1)).build();
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender1 =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender1.start();
+    root.addAppender(appender1);
+    try {
+      defaultWriter.writeHeader(metadata);
+      defaultWriter.writeLine(metadata, position, samples);
+      assertEquals(1, appender1.countMessagesContaining("no FORMAT metadata with that name"));
+    } finally {
+      root.detachAppender(appender1);
+      appender1.stop();
+    }
+
+    // validateBeforeWrite() diagnostics path
+    StringWriter sw2 = new StringWriter();
+    VcfWriter diagnosticsWriter = new VcfWriter.Builder().toWriter(new PrintWriter(sw2)).validateBeforeWrite().build();
+    org.pharmgkb.parser.vcf.spec.WarnCapturingAppender appender2 =
+        new org.pharmgkb.parser.vcf.spec.WarnCapturingAppender();
+    appender2.start();
+    root.addAppender(appender2);
+    try {
+      diagnosticsWriter.writeHeader(metadata);
+      diagnosticsWriter.writeLine(metadata, position, samples);
+      assertEquals(1, appender2.countMessagesContaining("no FORMAT metadata with that name"));
+    } finally {
+      root.detachAppender(appender2);
+      appender2.stop();
+    }
+  }
+
+  @Test
   public void testValidateBeforeWriteDoesNotWarnAboutGleCardinality() throws Exception {
     // GLE's declared Number=G describes its conventional expected-value shape for tooling, but GLE's own value is
     // not a comma-delimited list the way every other FORMAT key's Number=G value is -- its commas are part of its
