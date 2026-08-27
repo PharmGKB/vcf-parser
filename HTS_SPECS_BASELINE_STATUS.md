@@ -305,7 +305,7 @@ is actually called (`getQuality()`, `getInfo(ReservedInfoProperty)`, `getGenotyp
 `getProperty(VcfPosition, VcfMetadata, String)`) never runs during the automated suite at all. This is
 deliberate, not an oversight -- see `DeferredValidationLineParser`'s own Javadoc and the sibling
 `LocalFixtureConformanceTest` harness, which wires it in directly; `HtsSpecsConformanceTest` does not, because
-its outcomes are baseline-diffed across up to 845 rows rather than hand-written per fixture, and wiring in
+its outcomes are baseline-diffed across up to 1435 rows rather than hand-written per fixture, and wiring in
 deferred validation there risks two distinct failure modes measured directly while investigating the TODO.md
 item this section closes out (`HtsSpecsConformanceTest` may have silently unverified deferred-validation
 warnings, filed 2026-08-16):
@@ -384,9 +384,11 @@ fixture that already warned on its original parse, and only compared "did repars
 introduce any *new* warning" for the rest -- never the full before/after warning set. The
 `2026-08-26-1117-declared-version-format-cache-metamorphic-coverage-r8-plan` plan's Task 10 reworked it to run
 on every `passed/` fixture and compare the complete before/after warning sets, which surfaced 5 new
-divergences from the same 3 fixtures already known to diverge on `writer-bytediff` above, across their
-4.1/4.2 versions, since the same normalization that changes their written bytes also changes their warning
-set. This is not a 1:1 row count with `writer-bytediff`'s 6 rows for these fixtures: the VCFv4.3 copy of
+divergences from the same 3 fixtures already known to diverge on `writer-bytediff` above -- two of them
+(`complexfile_passed_000.vcf`, `passed_meta_contig.vcf`) across their 4.1/4.2 versions, the third
+(`zero_length_LAA.vcf`) at its own 4.5-only version -- since the same normalization that changes their
+written bytes also changes their warning set. This is not a 1:1 row count with `writer-bytediff`'s 6 rows
+for these fixtures: the VCFv4.3 copy of
 `complexfile_passed_000.vcf` (one of those 6 rows) does not get a matching `writer-warning-invariant` row,
 because that fixture's 4.3-version content uses a key=value metadata form, not the bracket-wrapped form
 dropped at 4.1/4.2, so nothing changes in its warning set -- see the table below. Confirmed via `./gradlew
