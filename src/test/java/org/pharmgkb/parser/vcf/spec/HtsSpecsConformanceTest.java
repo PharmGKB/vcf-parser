@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Stream;
 import ch.qos.logback.classic.Logger;
 import org.junit.jupiter.api.AfterAll;
@@ -497,8 +498,13 @@ class HtsSpecsConformanceTest {
     beforeAppender.start();
     root.addAppender(beforeAppender);
     WriterRoundTrip.ParsedFile before;
+    Set<String> beforeMessages;
     try {
       before = WriterRoundTrip.parseFile(file);
+      // TreeSet, not Set.copyOf: Set.copyOf's iteration order is randomized per JVM run (JDK's hash-flood
+      // protection for its immutable collections), which would make the "before=...after=..." reason string
+      // baselined by one run fail to string-match the same run's re-verification in a later JVM invocation.
+      beforeMessages = new TreeSet<>(beforeAppender.getRelevantWarnOrHigherMessages(GENERIC_NOISE_WARNINGS));
     } catch (RuntimeException e) {
       Assumptions.abort(fixturePath + " (writer-warning-invariant): does not parse (see parser-no-throw) -- " +
           "nothing to check");
@@ -507,11 +513,10 @@ class HtsSpecsConformanceTest {
       root.detachAppender(beforeAppender);
       beforeAppender.stop();
     }
-    if (beforeAppender.hasWarnOrHigherExcluding(GENERIC_NOISE_WARNINGS)) {
-      Assumptions.abort(fixturePath + " (writer-warning-invariant): original parse already warned -- " +
-          "invariant only applies to a fixture that parsed cleanly");
-      return;
-    }
+    // R8: no longer aborts here for a fixture that already warned on its original parse -- comparing the
+    // FULL before/after warning set (not just "did any new warning appear") lets a fixture that already
+    // warns still be checked, catching e.g. "warning A silently became warning B on reparse" (found by R7's
+    // final whole-branch review as this check's own weaker-than-ideal gate).
 
     String written;
     try {
@@ -529,8 +534,10 @@ class HtsSpecsConformanceTest {
     root.addAppender(afterAppender);
     boolean reparseThrew = false;
     String reparseMessage = null;
+    Set<String> afterMessages = new TreeSet<>();
     try {
       WriterRoundTrip.parseText(written);
+      afterMessages = new TreeSet<>(afterAppender.getRelevantWarnOrHigherMessages(GENERIC_NOISE_WARNINGS));
     } catch (RuntimeException e) {
       reparseThrew = true;
       reparseMessage = String.valueOf(e.getMessage());
@@ -547,13 +554,14 @@ class HtsSpecsConformanceTest {
       return;
     }
 
-    boolean newWarnings = afterAppender.hasWarnOrHigherExcluding(GENERIC_NOISE_WARNINGS);
-    boolean acceptable = BASELINE.check(fixturePath, "writer-warning-invariant", newWarnings,
-        "new-warning-on-reparse",
-        newWarnings ? String.valueOf(afterAppender.getRelevantWarnOrHigherMessages(GENERIC_NOISE_WARNINGS)) : "");
-    assertTrue(acceptable, () -> newWarnings
-        ? fixturePath + " (writer-warning-invariant): reparse of a cleanly-round-tripped fixture produced " +
-            "new warning(s): " + afterAppender.getRelevantWarnOrHigherMessages(GENERIC_NOISE_WARNINGS)
+    boolean warningSetChanged = !beforeMessages.equals(afterMessages);
+    Set<String> finalAfterMessages = afterMessages;
+    boolean acceptable = BASELINE.check(fixturePath, "writer-warning-invariant", warningSetChanged,
+        "warning-set-changed",
+        warningSetChanged ? "before=" + beforeMessages + " after=" + finalAfterMessages : "");
+    assertTrue(acceptable, () -> warningSetChanged
+        ? fixturePath + " (writer-warning-invariant): round trip changed the warning set -- before=" +
+            beforeMessages + " after=" + finalAfterMessages
         : "baseline entry for " + fixturePath +
             " (writer-warning-invariant) no longer reproduces -- remove it from hts-specs-baseline.tsv");
   }
