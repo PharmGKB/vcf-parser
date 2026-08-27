@@ -32,17 +32,21 @@ import org.slf4j.LoggerFactory;
  * {@link Builder#validateBeforeWrite()} for full structural validation and semantic-compliance diagnostics.
  * <p>
  * {@link #close} must always be called to guarantee output is completely flushed and any write failure
- * (disk full, broken pipe, or an encoding failure) is reported -- such a failure surfaces as an unchecked
- * {@link java.io.UncheckedIOException} from {@link #writeHeader}, {@link #writeLine}, or {@link #close} itself,
- * and permanently invalidates this instance: the underlying writer may be left in a partially-written or otherwise
- * inconsistent state, so retrying is never safe and no further work is attempted. A write failure detected
- * mid-stream (not just at {@link #close}) also releases the underlying resource immediately, as part of the same
- * failure, rather than leaving it open until some later {@link #close} call. Call {@link #isValid()} to
- * check without triggering an exception; once invalid, {@link #writeHeader} and {@link #writeLine} both throw
- * {@link IllegalStateException} (with the exception that first signaled the failure as the cause) instead
- * of doing anything further. A {@link VcfFormatException} thrown for ordinary content rejection (e.g. a
- * sample-count mismatch, or invalid metadata in {@link Builder#validateBeforeWrite()} mode), by contrast,
- * does not invalidate this instance -- nothing was corrupted, so a corrected call can succeed normally afterward.
+ * (disk full, broken pipe, or an encoding failure) of the primary output writer is reported -- such a failure
+ * surfaces as an unchecked {@link java.io.UncheckedIOException} from {@link #writeHeader}, {@link #writeLine},
+ * or {@link #close} itself, and permanently invalidates this instance: the underlying writer may be left in a
+ * partially-written or otherwise inconsistent state, so retrying is never safe and no further work is
+ * attempted. A write failure detected mid-stream (not just at {@link #close}) also releases the underlying
+ * resource immediately, as part of the same failure, rather than leaving it open until some later
+ * {@link #close} call. Call {@link #isValid()} to check without triggering an exception; once invalid,
+ * {@link #writeHeader} and {@link #writeLine} both throw {@link IllegalStateException} (with the exception
+ * that first signaled the failure as the cause) instead of doing anything further. A {@link VcfFormatException}
+ * thrown for ordinary content rejection (e.g. a sample-count mismatch, or invalid metadata in
+ * {@link Builder#validateBeforeWrite()} mode), by contrast, does not invalidate this instance -- nothing was
+ * corrupted, so a corrected call can succeed normally afterward. Nor does a failure of the separate warnings
+ * sink (see {@link Builder#warningsToFile}): it surfaces as the identical {@link java.io.UncheckedIOException}
+ * from the same methods, but leaves {@link #isValid()} {@code true} and this instance otherwise usable --
+ * only the primary output writer's own failure invalidates it.
  * <p>
  * Closing this instance, even cleanly with no error, also permanently invalidates it the same way -- a
  * {@link #writeHeader}/{@link #writeLine} call made afterward throws {@link IllegalStateException} instead of
