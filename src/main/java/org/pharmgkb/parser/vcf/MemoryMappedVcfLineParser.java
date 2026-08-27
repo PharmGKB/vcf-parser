@@ -26,6 +26,12 @@ import com.google.common.base.Preconditions;
  * consumer to decide what, if anything, to do about duplicates. A repeated {@code ID}, by contrast, is not a normal
  * VCF occurrence and is still treated as a single-valued duplicate: by default, a {@link VcfFormatException} is
  * thrown each time a duplicate ID is found. To change this behavior, see {@link Builder#setDuplicateIdHandler}.
+ * <p>
+ * One instance can be reused across more than one independent {@code VcfParser} parse (e.g. to index several
+ * files into a single lookup), but doing so gives duplicate-ID detection no way to distinguish an ID repeated
+ * within one file from an ID that merely happens to repeat across unrelated files -- both are treated
+ * identically, with no reset between parses. Use a fresh instance per file unless that cross-file collision
+ * behavior is actually wanted.
  *
  * @author Douglas Myers-Turnbull
  */

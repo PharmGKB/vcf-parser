@@ -71,7 +71,13 @@ public class MemoryMappedVcfDataStore {
   }
 
   /**
-   * @return The metadata, or null if parsing has not happened yet.
+   * @return The metadata, or null if parsing has not happened yet. If this instance is reused across more
+   * than one parse (e.g. several files with different sample orders), this reflects only the
+   * most-recently-parsed header, not every record obtainable from this store. This does not affect
+   * by-name lookups ({@link #getSampleForId}, {@link #getSampleAtLocus}, {@link #getGenotypeForId},
+   * {@link #getGenotypeAtLocus}), which always resolve a sample/genotype name against the metadata that
+   * was active when that particular record was stored, not against this method's own (possibly later)
+   * return value.
    */
   public @Nullable VcfMetadata getMetadata() {
     return m_metadata;
