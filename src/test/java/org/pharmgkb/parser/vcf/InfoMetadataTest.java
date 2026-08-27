@@ -344,6 +344,13 @@ public class InfoMetadataTest {
     // the INFO-side mirror of FORMAT's own AD/ADF/ADR/PP/CNP gap). "Number=." is the form many real-world 4.2
     // pipelines emit for a custom AD-named key; regression test for the same fix as FormatMetadataTest's
     // testAdReservedNumberCheckIsVersionGated -- this must not warn/throw under 4.2, but must under 4.3+.
+    StringWriter sink41 = new StringWriter();
+    InfoMetadata md41 = new InfoMetadata(VcfContext.lenient("VCFv4.1", new VcfWarnings(sink41)),
+        InternalUtils.extractProperties(
+            new String[]{"ID=AD", "Number=.", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT));
+    assertEquals(".", md41.getNumber());
+    assertFalse(sink41.toString().contains("reserved definition expects"));
+
     StringWriter sink42 = new StringWriter();
     InfoMetadata md42 = new InfoMetadata(lenientContext(new VcfWarnings(sink42)), InternalUtils.extractProperties(
         new String[]{"ID=AD", "Number=.", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT));

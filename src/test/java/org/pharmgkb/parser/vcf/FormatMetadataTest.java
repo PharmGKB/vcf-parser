@@ -190,10 +190,16 @@ public class FormatMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+      VcfContext lenient41 = VcfContext.lenient("VCFv4.1", VcfWarnings.DEFAULT);
+      new FormatMetadata(lenient41, InternalUtils.extractProperties(
           new String[]{"ID=GLE", "Number=2", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertTrue(appender.anyMessageContains("has Number '2' but the reserved definition expects 'G'"));
       assertTrue(appender.anyMessageContains("has Type 'Integer' but the reserved definition expects 'String'"));
+      long warnsUnder41 = appender.countMessagesContaining("but the reserved definition expects");
+
+      new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=GLE", "Number=2", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT));
+      assertEquals(warnsUnder41 * 2, appender.countMessagesContaining("but the reserved definition expects"));
       long warnsUnder42 = appender.countMessagesContaining("but the reserved definition expects");
 
       VcfContext lenient43 = VcfContext.lenient("VCFv4.3", VcfWarnings.DEFAULT);
@@ -274,8 +280,15 @@ public class FormatMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      // under 4.2, PP is not yet reserved, so a mismatched declaration is an ordinary custom key and must
-      // not warn
+      // under 4.1/4.2, PP is not yet reserved, so a mismatched declaration is an ordinary custom key and
+      // must not warn
+      VcfContext lenient41 = VcfContext.lenient("VCFv4.1", VcfWarnings.DEFAULT);
+      FormatMetadata md41 = new FormatMetadata(lenient41, InternalUtils.extractProperties(
+          new String[]{"ID=PP", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
+      assertFalse(appender.hasWarnOrHigher());
+      assertEquals("1", md41.getNumber());
+      assertEquals(FormatType.String, md41.getType());
+
       FormatMetadata md42 = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
           new String[]{"ID=PP", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertFalse(appender.hasWarnOrHigher());
@@ -319,6 +332,13 @@ public class FormatMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
+      VcfContext lenient41 = VcfContext.lenient("VCFv4.1", VcfWarnings.DEFAULT);
+      FormatMetadata md41 = new FormatMetadata(lenient41, InternalUtils.extractProperties(
+          new String[]{"ID=CNP", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
+      assertFalse(appender.hasWarnOrHigher());
+      assertEquals("1", md41.getNumber());
+      assertEquals(FormatType.String, md41.getType());
+
       FormatMetadata md42 = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
           new String[]{"ID=CNP", "Number=1", "Type=String", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertFalse(appender.hasWarnOrHigher());
@@ -357,10 +377,19 @@ public class FormatMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
-      // 4.2: Number=. is correct, Number=G is not
-      new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+      // 4.1/4.2: Number=. is correct, Number=G is not
+      VcfContext lenient41 = VcfContext.lenient("VCFv4.1", VcfWarnings.DEFAULT);
+      new FormatMetadata(lenient41, InternalUtils.extractProperties(
           new String[]{"ID=CNL", "Number=.", "Type=Float", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertFalse(appender.hasWarnOrHigher());
+      new FormatMetadata(lenient41, InternalUtils.extractProperties(
+          new String[]{"ID=CNL", "Number=G", "Type=Float", "Description=\"d\""}, VcfWarnings.DEFAULT));
+      assertTrue(appender.anyMessageContains("has Number 'G' but the reserved definition expects '.'"));
+      long warnsUnder41 = appender.countMessagesContaining("but the reserved definition expects");
+
+      new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
+          new String[]{"ID=CNL", "Number=.", "Type=Float", "Description=\"d\""}, VcfWarnings.DEFAULT));
+      assertEquals(warnsUnder41, appender.countMessagesContaining("but the reserved definition expects"));
       new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
           new String[]{"ID=CNL", "Number=G", "Type=Float", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertTrue(appender.anyMessageContains("has Number 'G' but the reserved definition expects '.'"));
@@ -535,6 +564,12 @@ public class FormatMetadataTest {
     appender.start();
     root.addAppender(appender);
     try {
+      VcfContext lenient41 = VcfContext.lenient("VCFv4.1", VcfWarnings.DEFAULT);
+      FormatMetadata md41 = new FormatMetadata(lenient41, InternalUtils.extractProperties(
+          new String[]{"ID=AD", "Number=.", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT));
+      assertFalse(appender.hasWarnOrHigher());
+      assertEquals(".", md41.getNumber());
+
       FormatMetadata md42 = new FormatMetadata(LENIENT_CONTEXT, InternalUtils.extractProperties(
           new String[]{"ID=AD", "Number=.", "Type=Integer", "Description=\"d\""}, VcfWarnings.DEFAULT));
       assertFalse(appender.hasWarnOrHigher());
