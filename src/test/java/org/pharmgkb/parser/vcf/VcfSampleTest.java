@@ -48,6 +48,28 @@ class VcfSampleTest {
     VcfSample sample = STRICT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
     assertThrows(UnsupportedOperationException.class, () -> sample.getPropertyKeys().remove("GT"));
     assertEquals("0/1", sample.getProperty("GT"));
+    // memoization claim ("the same instance is returned on every call") -- a mutation-testing sweep found
+    // dropping the m_propertyKeysView memoization assignment survives both ./gradlew test and
+    // ./gradlew htsSpecsTest without this assertion.
+    assertSame(sample.getPropertyKeys(), sample.getPropertyKeys());
+  }
+
+  @Test
+  void testPropertyEntrySetRejectsEntrySetValueInsteadOfSilentlyDefeatingIt() {
+    // regression test: propertyEntrySet()'s own Javadoc makes a STRONGER claim than getPropertyKeys()'s
+    // sibling test above -- not just that the set itself is unmodifiable, but that an entry OBTAINED from it
+    // also rejects Map.Entry#setValue, rather than exposing a back door that mutates this instance despite
+    // the set refusing structural changes. Collections.unmodifiableMap(...).entrySet() (what this method
+    // actually returns) already closes that back door; Collections.unmodifiableSet(map.entrySet()) would NOT
+    // (its own entries remain mutable), so this pins the specific wrapper used, not just "some" unmodifiable
+    // view. Also pins the memoization claim ("the same instance is returned on every call"), the identical
+    // shape a mutation-testing sweep found untested for getPropertyKeys()'s own memoization (see
+    // testGetPropertyKeysRejectsDirectMutationInsteadOfSilentlyDefeatingIt's sibling coverage gap).
+    VcfSample sample = STRICT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("GT", "0/1")));
+    Map.Entry<String, String> entry = sample.propertyEntrySet().iterator().next();
+    assertThrows(UnsupportedOperationException.class, () -> entry.setValue("9/9"));
+    assertEquals("0/1", sample.getProperty("GT"));
+    assertSame(sample.propertyEntrySet(), sample.propertyEntrySet());
   }
 
   @Test

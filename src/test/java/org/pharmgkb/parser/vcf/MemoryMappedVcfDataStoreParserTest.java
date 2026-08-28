@@ -277,6 +277,56 @@ public class MemoryMappedVcfDataStoreParserTest {
   }
 
   @Test
+  public void testDuplicateIdHandlerKeepFirstKeepsTheFirstRecordsIdLookup() throws IOException {
+    // regression test: DuplicateHandler.KEEP_FIRST/KEEP_LAST had zero executable test coverage -- every other
+    // test runs the default FAIL, under which the containsId check at MemoryMappedVcfLineParser.java's
+    // "!containsId ||" line makes the KEEP_LAST clause unreachable and the KEEP_FIRST mode is never exercised
+    // at all. Two records share ID "rs1" at different loci (POS 100/200); under KEEP_FIRST, the ID-based
+    // lookup must keep pointing at the FIRST record, while the locus-based lookup still returns both.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t100\trs1\tA\tT\t.\t.\t.\n" +
+        "chr1\t200\trs1\tC\tG\t.\t.\t.\n";
+    MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder()
+        .setDuplicateIdHandler(MemoryMappedVcfLineParser.DuplicateHandler.KEEP_FIRST)
+        .build();
+    new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .parseWith(lineParser)
+        .build().parse();
+    MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
+
+    assertEquals(100, dataStore.getPositionForId("rs1").getPosition());
+    assertEquals(1, dataStore.getPositionsAtLocus("chr1", 100).size());
+    assertEquals(1, dataStore.getPositionsAtLocus("chr1", 200).size());
+  }
+
+  @Test
+  public void testDuplicateIdHandlerKeepLastKeepsTheLastRecordsIdLookup() throws IOException {
+    // Companion to testDuplicateIdHandlerKeepFirstKeepsTheFirstRecordsIdLookup: under KEEP_LAST, the identical
+    // input's ID-based lookup must instead point at the SECOND (last) record, while the locus-based lookup
+    // still returns both -- pinning the one branch (MemoryMappedVcfLineParser.java's
+    // "m_duplicateIdHandler == DuplicateHandler.KEEP_LAST" clause) a mutation-testing sweep found survives
+    // both ./gradlew test and ./gradlew htsSpecsTest without this test.
+    String vcf = "##fileformat=VCFv4.2\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t100\trs1\tA\tT\t.\t.\t.\n" +
+        "chr1\t200\trs1\tC\tG\t.\t.\t.\n";
+    MemoryMappedVcfLineParser lineParser = new MemoryMappedVcfLineParser.Builder()
+        .setDuplicateIdHandler(MemoryMappedVcfLineParser.DuplicateHandler.KEEP_LAST)
+        .build();
+    new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .parseWith(lineParser)
+        .build().parse();
+    MemoryMappedVcfDataStore dataStore = lineParser.getDataStore();
+
+    assertEquals(200, dataStore.getPositionForId("rs1").getPosition());
+    assertEquals(1, dataStore.getPositionsAtLocus("chr1", 100).size());
+    assertEquals(1, dataStore.getPositionsAtLocus("chr1", 200).size());
+  }
+
+  @Test
   public void testMalformedGenotypeConvertsToVcfFormatException() throws IOException {
     // ALT has one allele (T), so valid GT indices are 0 (REF) and 1; index 5 is out of range
     String outOfRange = "##fileformat=VCFv4.2\n" +
@@ -533,6 +583,18 @@ public class MemoryMappedVcfDataStoreParserTest {
       assertNotNull(dataStore.getAllSamples());
       assertTrue(dataStore.getAllSamples().isEmpty());
     }
+  }
+
+  @Test
+  public void testGetAllPositionsAndGetAllSamplesReturnNullBeforeParsingHasHappenedAtAll() {
+    // Companion to testHeaderOnlyVcfReturnsEmptyNotNullPositionsAndSamples above: a brand-new data store, with
+    // no parse() call at all yet, must return null from both getAllPositions() and getAllSamples() -- both
+    // Javadocs promise this and distinguish it from the empty-but-non-null case that sibling test pins. A
+    // mutation-testing sweep found this side of the contract entirely untested: return null -> return new
+    // ArrayList<>() survives both ./gradlew test and ./gradlew htsSpecsTest for both methods without this test.
+    MemoryMappedVcfDataStore dataStore = new MemoryMappedVcfDataStore();
+    assertNull(dataStore.getAllPositions());
+    assertNull(dataStore.getAllSamples());
   }
 
   @Test
