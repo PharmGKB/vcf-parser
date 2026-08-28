@@ -833,16 +833,36 @@ public class InternalUtils {
    */
   @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
   public static void fillEmptyEntriesWithDot(String fieldName, List<String> list, @Nullable VcfWarnings warnings) {
+    fillEmptyEntriesWithDot(fieldName, list, warnings, null, -1);
+  }
+
+  /**
+   * @param keys parallel to {@code list} (same size) when non-{@code null} -- each index's own descriptive key
+   * name (e.g. a FORMAT key), named in the warning instead of the bare {@code fieldName}, so a caller with
+   * many repeated-shape violations (e.g. one per sample per record) can actually locate which one this
+   * particular warning is about instead of getting an identical, unlocatable message every time. {@code null}
+   * keeps the original, {@code fieldName}-only message.
+   * @param lineNumber appended to the warning as "(on line N)" when {@code >= 0}; a negative value omits it
+   */
+  @RestrictedApi(explanation = RESTRICTED_API_EXPLANATION)
+  public static void fillEmptyEntriesWithDot(String fieldName, List<String> list, @Nullable VcfWarnings warnings,
+      @Nullable List<String> keys, int lineNumber) {
     for (int i = 0; i < list.size(); i++) {
       if (list.get(i) == null) {
         throw new VcfFormatException(fieldName + " contains a null entry");
       }
       if (list.get(i).isEmpty()) {
+        String label = keys == null ? fieldName : fieldName + " for key \"" + keys.get(i) + "\"";
         if (warnings == null) {
-          throw new VcfFormatException(fieldName + " contains an empty entry (VCF does not allow zero-length fields)");
+          throw new VcfFormatException(label + " contains an empty entry (VCF does not allow zero-length fields)");
         }
-        warnings.warn("{} contains an empty entry (VCF does not allow zero-length fields); treating it as the " +
-            "missing value '.'", fieldName);
+        if (lineNumber >= 0) {
+          warnings.warn("{} contains an empty entry (VCF does not allow zero-length fields); treating it as " +
+              "the missing value '.' (on line {})", label, lineNumber);
+        } else {
+          warnings.warn("{} contains an empty entry (VCF does not allow zero-length fields); treating it as " +
+              "the missing value '.'", label);
+        }
         list.set(i, ".");
       }
     }

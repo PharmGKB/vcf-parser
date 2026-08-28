@@ -54,6 +54,12 @@ public final class VcfWarnings implements Closeable {
   private final Object m_lock = new Object();
   private final @Nullable Writer m_sink;
   private boolean m_closed;
+  // see warn()'s own comment on FLUSH_INTERVAL for why this counts down instead of flushing on every call
+  private int m_warningsSinceFlush;
+
+  // matches VcfWriter's own periodic write-failure-check interval (every 1000 lines) -- the identical
+  // "detect a failure promptly without paying a syscall on every single call" tradeoff, for the same reason.
+  private static final int FLUSH_INTERVAL = 1000;
 
   /**
    * @param sink where {@link #warn} writes, or {@code null} to always use the shared SLF4J logger (matching
@@ -95,15 +101,23 @@ public final class VcfWarnings implements Closeable {
       try {
         m_sink.write(formatted);
         m_sink.write('\n');
-        // flushed unconditionally, not just relying on the sink's own eventual auto-flush: openFile() wraps
-        // its file in a BufferedWriter, whose default ~8KB buffer would otherwise silently absorb every
-        // write() call below that threshold with no error at all, even when the underlying file is already
-        // unwritable (e.g. disk full, permission revoked, fd closed) -- contradicting this method's own
-        // documented "writes to this sink synchronously" contract and the callers (VcfParser/VcfWriter) that
-        // depend on a sink failure surfacing here, not being silently lost until some later, unrelated
-        // write() call happens to cross the buffer boundary or close() (which only logs, never rethrows).
-        // Found by the 2026-08-27 19:12 release audit.
-        m_sink.flush();
+        // Flushed periodically (every FLUSH_INTERVAL warnings), not on every call: openFile() wraps its file
+        // in a BufferedWriter, whose default ~8KB buffer would otherwise silently absorb every write() call
+        // below that threshold with no error at all, even when the underlying file is already unwritable
+        // (e.g. disk full, permission revoked, fd closed) -- contradicting this method's own documented
+        // "writes to this sink synchronously" contract and the callers (VcfParser/VcfWriter) that depend on a
+        // sink failure surfacing here, not being silently lost until some later, unrelated write() call
+        // happens to cross the buffer boundary or close() (which only logs, never rethrows). Flushing on
+        // EVERY call (as an earlier fix did) closes that gap completely but costs one write(2) syscall per
+        // warning -- measured at a ~10x throughput collapse for a file with many violations, 16M warnings
+        // producing a 1.84 GB byte-identical log. Matching VcfWriter's own periodic (every-1000-line)
+        // write-failure check instead keeps detection prompt without paying that cost on every single call;
+        // close() (via the underlying Writer's own close() contract) still always flushes whatever remains
+        // buffered, so nothing is silently lost at end of parse/write regardless of where the counter sits.
+        if (++m_warningsSinceFlush >= FLUSH_INTERVAL) {
+          m_sink.flush();
+          m_warningsSinceFlush = 0;
+        }
       } catch (IOException e) {
         throw new UncheckedIOException("Error writing to the active VCF warnings file", e);
       }

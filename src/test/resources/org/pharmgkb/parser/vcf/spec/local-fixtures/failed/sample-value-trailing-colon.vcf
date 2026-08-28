@@ -4,7 +4,7 @@
 ##Authority=bcftools 1.23.1 silently substitutes "." for the missing trailing DP sub-field ("0/1:" -> "0/1:."), no warning, exit 0 -- confirmed live via bcftools view on 2026-08-15, matching BcftoolsDependencyTest#testSampleValueTrailingEmptySubfieldBcftoolsSubstitutesDot (see that method for the exact invocation).
 ##Authority=vcf_validator 0.10.2 reports this file invalid: "Line 12: Sample #1 is not a valid string." -- measured live via vcf_validator -i <file> -r summary,text on 2026-08-15.
 ##ExpectParser=warn
-##ExpectWarnContains=sample value contains an empty entry
+##ExpectWarnContains=contains an empty entry
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
 ##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">
 ##contig=<ID=chr1,length=1000000>

@@ -646,7 +646,13 @@ public class VcfParser implements Closeable {
           values = new ArrayList<>();
         } else {
           values = toSampleValues(format, data.get(x), context.getVersion());
-          InternalUtils.fillEmptyEntriesWithDot("sample value", values, m_warnings);
+          // sample index (x - 9, 0-based), not a resolved sample NAME: VcfParser has no VcfMetadata field to
+          // resolve one from at this point in the per-line parse. Still locates the warning to a specific
+          // sample and FORMAT key on a specific line, rather than the identical, unlocatable message every
+          // occurrence produced before (measured: 16M byte-identical lines, one bit of information across
+          // 1.84 GB, for a file with many malformed sample values).
+          InternalUtils.fillEmptyEntriesWithDot("sample " + (x - 9) + " value", values, m_warnings, format,
+              m_lineNumber);
           // per the VCF spec, trailing FORMAT sub-fields may be dropped from a sample; pad any missing ones with the
           // missing value so the sample's value count matches the FORMAT key count
           if (format != null) {

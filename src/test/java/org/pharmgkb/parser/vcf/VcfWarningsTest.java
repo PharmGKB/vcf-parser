@@ -125,14 +125,14 @@ class VcfWarningsTest {
   }
 
   @Test
-  void testWarnFlushesSinkAfterEveryWrite() {
-    // regression test (2026-08-27 19:12 release audit): openFile()'s real sink is a BufferedWriter, whose
-    // default ~8KB buffer previously let warn() silently succeed on every write() call below that threshold
-    // even when the underlying file was already unwritable -- contradicting this method's own documented
-    // "writes to this sink synchronously" contract, and the callers (VcfParser/VcfWriter) that depend on a
-    // sink failure surfacing from warn() itself, not from some later, unrelated call that happens to cross
-    // the buffer boundary. flush() is what actually forces a BufferedWriter to attempt the underlying write
-    // (and therefore to notice a failure) instead of just accumulating it in memory.
+  void testWarnFlushesSinkPeriodicallyRatherThanOnEveryWrite() {
+    // regression test: an earlier fix (2026-08-27 19:12 release audit) flushed on EVERY warn() call, since
+    // openFile()'s real sink is a BufferedWriter, whose default ~8KB buffer would otherwise let warn()
+    // silently succeed on every write() call below that threshold even when the underlying file was already
+    // unwritable. That fix worked but cost one write(2) syscall per warning -- measured at a ~10x throughput
+    // collapse for a file with many violations (16M warnings, 1.84 GB of byte-identical log). This now
+    // flushes every 1000 warnings instead (matching VcfWriter's own periodic write-failure-check interval),
+    // trading prompt-but-not-immediate detection for that cost back.
     java.util.concurrent.atomic.AtomicInteger flushCount = new java.util.concurrent.atomic.AtomicInteger();
     Writer sink = new Writer() {
       @Override public void write(char[] cbuf, int off, int len) {}
@@ -140,10 +140,37 @@ class VcfWarningsTest {
       @Override public void close() {}
     };
     VcfWarnings warnings = new VcfWarnings(sink);
-    warnings.warn("first");
-    warnings.warn("second");
-    assertEquals(2, flushCount.get(),
-        "each warn() call must flush immediately, not rely on the sink's own buffering to eventually surface a failure");
+    for (int i = 0; i < 999; i++) {
+      warnings.warn("warning " + i);
+    }
+    assertEquals(0, flushCount.get(), "must not flush before the periodic threshold is reached");
+    warnings.warn("warning 999"); // the 1000th call
+    assertEquals(1, flushCount.get(), "must flush once the periodic threshold is reached");
+    for (int i = 0; i < 999; i++) {
+      warnings.warn("warning " + (1000 + i));
+    }
+    assertEquals(1, flushCount.get(), "the counter must reset after each periodic flush, not flush every call from then on");
+    warnings.warn("warning 1999"); // the 2000th call
+    assertEquals(2, flushCount.get(), "must flush again at the next periodic threshold");
+  }
+
+  @Test
+  void testCloseFlushesWhateverIsStillBufferedSinceTheLastPeriodicFlush() {
+    // Companion to the periodic-flush test above: closing before the periodic threshold is reached must not
+    // silently lose whatever warnings are still sitting in the sink's own buffer -- close() relies on the
+    // underlying Writer's own close() contract (flush-then-close) to guarantee this, not on this class's own
+    // periodic counter ever reaching its threshold.
+    java.util.concurrent.atomic.AtomicInteger flushCount = new java.util.concurrent.atomic.AtomicInteger();
+    Writer sink = new Writer() {
+      @Override public void write(char[] cbuf, int off, int len) {}
+      @Override public void flush() { flushCount.incrementAndGet(); }
+      @Override public void close() { flush(); }
+    };
+    VcfWarnings warnings = new VcfWarnings(sink);
+    warnings.warn("only one, well under the periodic threshold");
+    assertEquals(0, flushCount.get());
+    warnings.close();
+    assertEquals(1, flushCount.get(), "close() must still flush whatever was buffered since the last periodic flush");
   }
 
   @Test

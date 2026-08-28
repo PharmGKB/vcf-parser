@@ -4,7 +4,7 @@
 ##Authority=bcftools 1.23.1's numeric-field parser treats the empty DP sub-field as extreme/unparseable and warns "Extreme FORMAT/DP value encountered and set to missing", substituting "." ("0/1::30" -> "0/1:.:30"), exit 0 -- confirmed live via bcftools view on 2026-08-15, matching BcftoolsDependencyTest#testSampleValueInteriorEmptySubfieldIntegerFieldBcftoolsWarnsAndSubstitutesDot (see that method for the exact invocation).
 ##Authority=vcf_validator 0.10.2 reports this file invalid: "Line 13: Sample #1 is not a valid string." -- measured live via vcf_validator -i <file> -r summary,text on 2026-08-15.
 ##ExpectParser=warn
-##ExpectWarnContains=sample value contains an empty entry
+##ExpectWarnContains=contains an empty entry
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
 ##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">
 ##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">

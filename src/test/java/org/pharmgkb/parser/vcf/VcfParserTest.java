@@ -3285,8 +3285,17 @@ public class VcfParserTest {
       List<CacheLineResult> oracle = parseFormatLines(header, List.<String[]>of(sequence.get(i)));
       assertEquals(1, oracle.size());
       assertEquals(oracle.get(0).format(), cached.get(i).format(), "line " + i + " FORMAT list");
-      assertEquals(oracle.get(0).warnings(), cached.get(i).warnings(), "line " + i + " warnings");
+      // Normalized before comparing: the oracle's solo-line file always places its one data line right after
+      // the shared header (a fixed line number), while the cached multi-line file places line i's data at a
+      // different actual line number as i grows -- a genuine, expected difference in an empty-entry warning's
+      // embedded "(on line N)" text, not a hit-vs-miss processing divergence this test is actually checking for.
+      assertEquals(normalizeLineNumbers(oracle.get(0).warnings()), normalizeLineNumbers(cached.get(i).warnings()),
+          "line " + i + " warnings");
     }
+  }
+
+  private static List<String> normalizeLineNumbers(List<String> warnings) {
+    return warnings.stream().map(w -> w.replaceAll("\\(on line \\d+\\)", "(on line N)")).toList();
   }
 
   @Test

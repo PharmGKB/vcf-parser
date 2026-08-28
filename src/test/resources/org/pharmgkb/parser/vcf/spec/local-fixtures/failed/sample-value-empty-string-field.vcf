@@ -4,7 +4,7 @@
 ##Authority=bcftools 1.23.1's String-field parser is silent (no warning at all) here and represents the empty XX sub-field internally as a raw NUL byte (0x00), not "." -- confirmed live via bcftools view on 2026-08-15, matching BcftoolsDependencyTest#testSampleValueInteriorEmptySubfieldStringFieldBcftoolsStoresRawNulByte (see that method for the exact invocation, including its byte-level verification of the NUL byte).
 ##Authority=vcf_validator 0.10.2 reports this file invalid: "Line 13: Sample #1 is not a valid string." -- measured live via vcf_validator -i <file> -r summary,text on 2026-08-15.
 ##ExpectParser=warn
-##ExpectWarnContains=sample value contains an empty entry
+##ExpectWarnContains=contains an empty entry
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
 ##FORMAT=<ID=XX,Number=1,Type=String,Description="Test string field">
 ##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">
