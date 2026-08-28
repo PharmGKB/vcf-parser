@@ -123,7 +123,7 @@ public final class VcfContext {
       @Nullable List<String> altBases, @Nullable VcfFloat qual, @Nullable List<String> filter,
       @Nullable ListMultimap<String, String> info, @Nullable List<String> format, int lineNumber) {
     return new VcfPosition(this, chr, pos, copyOf(ids), ref, copyOf(altBases), qual, copyOf(filter), copyOf(info),
-        copyOf(format), lineNumber, false, false, null, null);
+        copyOf(format), lineNumber, false, false, true, null, null);
   }
 
   /**
@@ -175,7 +175,7 @@ public final class VcfContext {
       @Nullable ListMultimap<String, String> info, @Nullable List<String> ownedFormat, int lineNumber,
       @Nullable String rawQual, @Nullable String rawInfo) {
     return new VcfPosition(this, chr, pos, ids, ref, altBases, qual, filter, info, ownedFormat, lineNumber,
-        false, false, rawQual, rawInfo);
+        false, false, false, rawQual, rawInfo);
   }
 
   /**
@@ -207,7 +207,7 @@ public final class VcfContext {
       @Nullable ListMultimap<String, String> info, List<String> trustedFormat, int lineNumber,
       @Nullable String rawQual, @Nullable String rawInfo) {
     return new VcfPosition(this, chr, pos, ids, ref, altBases, qual, filter, info, trustedFormat, lineNumber,
-        true, false, rawQual, rawInfo);
+        true, false, false, rawQual, rawInfo);
   }
 
   /**
@@ -232,7 +232,7 @@ public final class VcfContext {
       @Nullable ListMultimap<String, String> info, @Nullable List<String> format, int lineNumber,
       @Nullable String rawQual, @Nullable String rawInfo) {
     return new VcfPosition(this, chr, pos, copyOf(ids), ref, copyOf(altBases), qual, copyOf(filter), copyOf(info),
-        copyOf(format), lineNumber, true, true, rawQual, rawInfo);
+        copyOf(format), lineNumber, true, true, false, rawQual, rawInfo);
   }
 
   /**

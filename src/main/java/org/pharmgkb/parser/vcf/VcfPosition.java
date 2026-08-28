@@ -139,6 +139,11 @@ public final class VcfPosition {
    * itself re-runs whichever of these four checks a field actually changed since it was seeded, so by the time
    * that factory is reached every field is either freshly re-validated or provably unchanged from an
    * already-valid source -- {@code trustedFields=true} tells this constructor not to redundantly check it again.
+   * @param originatedPublicly {@code true} only from {@link VcfContext#newPosition}'s public factories --
+   * {@code false} from every parser-trusted factory ({@code newPositionTakingOwnership}/
+   * {@code newPositionWithTrustedFormat}/{@code newPositionCopyingTrustedFields}). See the comment inside this
+   * constructor's own body for why this is a narrow, deliberate exception to the "never from which factory"
+   * principle stated there.
    * @param rawQual raw, not-yet-parsed QUAL column text to store as {@link #m_rawQuality}, parsed lazily on first
    * {@link #getQuality()}, when {@code qual} is {@code null} -- lets a caller construct a lazily-parsed position
    * in one call instead of a separate post-construction mutation. Ignored (and never stored) when {@code qual}
@@ -158,6 +163,7 @@ public final class VcfPosition {
       int lineNumber,
       boolean trustedFormat,
       boolean trustedFields,
+      boolean originatedPublicly,
       @Nullable String rawQual,
       @Nullable String rawInfo) {
 
@@ -169,7 +175,16 @@ public final class VcfPosition {
       below throws instead of warning when it receives null; see each one's own signature. That null-means-strict
       encoding is now purely an internal convention between this class and its own (and InternalUtils's) private
       check helpers: the strict-vs-lenient DECISION comes from the context, never from which constructor or
-      factory the caller reached.
+      factory the caller reached. `originatedPublicly` is a deliberate, separate exception to that principle,
+      not a contradiction of it: it does not affect the warn-vs-throw decision for any EXISTING check (all of
+      which still answer only to checkWarnings/isLenient()), and gates only the NEW bcftools-interoperability-
+      floor checks inside checkFilters/checkInfoEntries/checkFormat (a comma in a key, or too many FORMAT
+      keys) that must apply regardless of leniency for genuinely public construction, yet must never apply to
+      the parser's own trusted factories -- unlike every other check here, a real parsed file can legitimately
+      contain either shape today, so making these unconditional across every factory the way e.g. checkFilters'
+      own semicolon check is would reject re-parsing/re-emitting a file that parses successfully today. See
+      VCF_SPEC_AMBIGUITIES.md's "Comma in a data-line FILTER code, INFO key, or FORMAT key" and "More than 255
+      FORMAT keys" entries.
      */
     VcfWarnings checkWarnings = context.isLenient() ? context.getWarnings() : null;
 
@@ -183,14 +198,14 @@ public final class VcfPosition {
       altBases = checkAltBases(altBases, ref, checkWarnings);
     }
     if (filter != null && !trustedFields) {
-      filter = checkFilters(filter, checkWarnings);
+      filter = checkFilters(filter, checkWarnings, originatedPublicly);
     }
     if (info != null && !trustedFields) {
-      info = checkInfoEntries(info, checkWarnings);
+      info = checkInfoEntries(info, checkWarnings, originatedPublicly);
       checkReservedInfoTypes(info, context);
     }
     if (format != null && !trustedFormat) {
-      format = checkFormat(format, checkWarnings);
+      format = checkFormat(format, checkWarnings, originatedPublicly);
     }
 
     /*
@@ -469,6 +484,14 @@ public final class VcfPosition {
     if (pos < 0) {
       throw new VcfFormatException("POS " + pos + " is negative");
     }
+    // bcftools 1.23.1's own position type (hts_pos_t) is a 64-bit SIGNED integer with a narrower usable
+    // range than Java's long: bisected live, POS 2^62-1 is accepted and POS 2^62 fails outright (exit 8).
+    // A POS this large is never a legitimate coordinate (real chromosome lengths are in the hundreds of
+    // millions); see VCF_SPEC_AMBIGUITIES.md's "POS beyond the 32-bit signed Integer range" entry for the
+    // full measured boundary.
+    if (pos >= (1L << 62)) {
+      throw new VcfFormatException("POS " + pos + " is at or beyond 2^62, which bcftools cannot read");
+    }
   }
 
   private static void checkRef(String ref) {
@@ -637,8 +660,18 @@ public final class VcfPosition {
    * than warns for PASS combined with other filters); see {@code EMPTY_FIELD_HANDLING.md}. A duplicate FILTER
    * code is left in place (with the same warn-or-throw signal) rather than dropped or deduplicated; see
    * {@code VCF_SPEC_AMBIGUITIES.md}.
+   * @param originatedPublicly {@code true} only for content reaching this method via genuinely public
+   * construction ({@link VcfContext#newPosition}/{@link Builder#build()}'s dirty-field re-validation) --
+   * {@code false} for the parser's own trusted internal factories. Gates the comma check just below,
+   * unconditionally (regardless of {@code warnings}): a comma here produces a file bcftools cannot read at
+   * all (see {@code VCF_SPEC_AMBIGUITIES.md}'s "Comma in a data-line FILTER code, INFO key, or FORMAT key"
+   * entry), but unlike the semicolon check just above it, a real parsed file's FILTER column CAN legitimately
+   * contain a comma (comma is not this field's own split delimiter), so this cannot be unconditional
+   * regardless of origin the way the semicolon check is -- doing so would reject re-parsing/re-emitting a
+   * file that parses successfully today with only a warning.
    */
-  private static List<String> checkFilters(List<String> filters, @Nullable VcfWarnings warnings) {
+  private static List<String> checkFilters(List<String> filters, @Nullable VcfWarnings warnings,
+      boolean originatedPublicly) {
     filters = InternalUtils.dropEmptyEntries("FILTER", filters, warnings);
     Set<String> seen = filters.size() > DUPLICATE_SCAN_THRESHOLD ? new HashSet<>() : null;
     for (int i = 0; i < filters.size(); i++) {
@@ -665,6 +698,17 @@ public final class VcfPosition {
       if (f.contains(";")) {
         throw new VcfFormatException("FILTER column entry \"" + InternalUtils.truncateAndEscapeForMessage(f) +
             "\" contains a semicolon");
+      }
+      // Comma is not FILTER's own list delimiter (semicolon is), so unlike the check just above, a real
+      // parsed file's FILTER column can legitimately contain one -- confirmed live (bcftools 1.23.1) that
+      // an undeclared FILTER code containing a comma makes bcftools synthesize a dummy ##FILTER header line
+      // whose own comma breaks its attribute tokenizer, failing the WHOLE file (exit 8), not just this
+      // record. Gated on originatedPublicly, not on warnings==null, so it applies regardless of a lenient or
+      // strict context -- see this method's own Javadoc for why. See VCF_SPEC_AMBIGUITIES.md's "Comma in a
+      // data-line FILTER code, INFO key, or FORMAT key" entry.
+      if (originatedPublicly && f.contains(",")) {
+        throw new VcfFormatException("FILTER column entry \"" + InternalUtils.truncateAndEscapeForMessage(f) +
+            "\" contains a comma");
       }
       if (f.equals("0")) {
         // hts-specs test/vcf/4.2/failed/failed_body_filter_004.vcf, ##CauseOfFailure=FILTER contains reserved
@@ -723,9 +767,12 @@ public final class VcfPosition {
    * {@code EMPTY_FIELD_HANDLING.md}. Also throws {@link VcfFormatException} -- unconditionally, even when
    * {@code warnings} is non-null, the same as {@link #checkFilters}'s identical {@code '.'}-combined-with-other-
    * filters check -- if a bare {@code "."} (missing value) entry is combined with any other property.
+   * @param originatedPublicly see {@link #checkFilters}'s identical parameter -- gates the comma-in-key check
+   * below the same way and for the same reason (a comma is not this field's own key/value split delimiter, so
+   * a real parsed file's INFO column can legitimately contain one in a key).
    */
   private static ListMultimap<String, String> checkInfoEntries(ListMultimap<String, String> info,
-      @Nullable VcfWarnings warnings) {
+      @Nullable VcfWarnings warnings, boolean originatedPublicly) {
     // same reasoning: info()'s own raw-text-parsing branch already drops an empty key (with a warning) before it
     // ever reaches a built multimap there, so this only has bite for a ListMultimap passed directly to the eager
     // constructor or set later via getInfo() -- previously, neither this constructor nor validate() (which also
@@ -835,6 +882,17 @@ public final class VcfPosition {
         throw new VcfFormatException("INFO key \"" + InternalUtils.truncateAndEscapeForMessage(key) +
             "\" contains ';' or '='");
       }
+      // Unlike ';'/'=' just above (INFO's own key-delimiters, so a parsed key can never contain either), a
+      // comma is INFO's VALUE-list delimiter, not the key's -- a real parsed file's key CAN legitimately
+      // contain one (raw text "A,B=1" parses key "A,B" fine today). Confirmed live (bcftools 1.23.1): an
+      // undeclared INFO key containing a comma makes bcftools synthesize a dummy ##INFO header line whose own
+      // comma breaks its attribute tokenizer, failing the whole file (exit 8). Gated on originatedPublicly,
+      // not warnings==null, so it applies regardless of a lenient or strict context -- see
+      // VCF_SPEC_AMBIGUITIES.md's "Comma in a data-line FILTER code, INFO key, or FORMAT key" entry.
+      if (originatedPublicly && key.contains(",")) {
+        throw new VcfFormatException("INFO key \"" + InternalUtils.truncateAndEscapeForMessage(key) +
+            "\" contains a comma");
+      }
       if (value.contains(";") || value.contains(",")) {
         throw new VcfFormatException("INFO value \"" + InternalUtils.truncateAndEscapeForMessage(value) +
             "\" for key \"" + InternalUtils.truncateAndEscapeForMessage(key) + "\" contains ';' or ','");
@@ -937,10 +995,26 @@ public final class VcfPosition {
    * Verified live against bcftools 1.23.1; per this project's policy of falling back to bcftools when the spec is
    * silent, this is treated as valid here too. An empty sub-field name is warned about and kept as-is, or -- if
    * {@code warnings} is {@code null} (strict mode) -- throws {@link VcfFormatException} instead.
+   * @param originatedPublicly see {@link #checkFilters}'s identical parameter -- gates both the key-count
+   * check and the comma check below the same way and for the same reason.
    */
-  private static List<String> checkFormat(List<String> format, @Nullable VcfWarnings warnings) {
+  private static List<String> checkFormat(List<String> format, @Nullable VcfWarnings warnings,
+      boolean originatedPublicly) {
     if (format.size() == 1 && ".".equals(format.get(0))) {
       return new ArrayList<>();
+    }
+    // htslib's own BCF binary representation caps the number of FORMAT keys at 255 (vcf.c's MAX_N_FMT,
+    // "Limited by size of bcf1_t n_fmt field") -- not a VCF spec rule (vcf_validator 0.10.2 accepts 256
+    // keys with no complaint at all, confirmed live) but a real bcftools interoperability floor: confirmed
+    // live, bcftools 1.23.1 fails the whole file (exit 8, "[E::vcf_parse_format_dict2] FORMAT column ...
+    // lists more identifiers than htslib can handle") at 256 keys, bisected exactly. Gated on
+    // originatedPublicly for the same reason as the comma check below: a real parsed file's FORMAT column
+    // could in principle already exceed 255 keys (this library imposes no count limit of its own), so this
+    // cannot be unconditional regardless of origin. See VCF_SPEC_AMBIGUITIES.md's "More than 255 FORMAT
+    // keys" entry.
+    if (originatedPublicly && format.size() > 255) {
+      throw new VcfFormatException("FORMAT lists " + format.size() + " keys, more than the 255 bcftools 1.23.1 " +
+          "can handle");
     }
     // duplicate keys are explicitly disallowed by the VCF spec (VCFv4.3+ states this outright; only an
     // EMPTY key is excluded from this check, since it's already handled, and warned about, separately below
@@ -1027,6 +1101,18 @@ public final class VcfPosition {
       if (f.contains(":")) {
         throw new VcfFormatException("FORMAT key \"" + InternalUtils.truncateAndEscapeForMessage(f) +
             "\" contains a colon");
+      }
+      // Unlike ':' just above (FORMAT's own key-list delimiter, so a parsed key can never contain it), a
+      // comma is not a FORMAT-column delimiter at all -- a real parsed file's FORMAT key can legitimately
+      // contain one, and today it only fails the tag-name grammar below (warn-or-throw, isLenient()-gated).
+      // Confirmed live (bcftools 1.23.1): an undeclared FORMAT key containing a comma makes bcftools
+      // synthesize a dummy ##FORMAT header line whose own comma breaks its attribute tokenizer, failing the
+      // whole file (exit 8). Gated on originatedPublicly, not warnings==null, and checked before the grammar
+      // branch below so public-lenient construction throws here instead of merely warning -- see
+      // VCF_SPEC_AMBIGUITIES.md's "Comma in a data-line FILTER code, INFO key, or FORMAT key" entry.
+      if (originatedPublicly && f.contains(",")) {
+        throw new VcfFormatException("FORMAT key \"" + InternalUtils.truncateAndEscapeForMessage(f) +
+            "\" contains a comma");
       }
       // tab/LF/CR and ':' are already handled above as their own unconditional structural floors -- this
       // check's remaining job is every OTHER tag-name-grammar violation, including a plain space, vertical
@@ -1154,15 +1240,22 @@ public final class VcfPosition {
       // m_warnings, not the null-means-strict checkWarnings convention: validate() always warns for a
       // recoverable condition rather than throwing, even under a strict context -- matching checkIds/
       // checkAltBases/checkFilters/checkFormat below, which are already passed m_warnings unconditionally.
+      //
+      // originatedPublicly=false: unlike every other check here, checkFilters/checkInfoEntries/checkFormat's
+      // bcftools-floor checks (a comma in a key, too many FORMAT keys) must never newly fire on an already-
+      // constructed position re-validated here, regardless of that position's own origin -- content that
+      // reached this point via public construction/Builder#build() already passed (or would have thrown at)
+      // that same check once; content that reached it via the parser's trusted path must stay exempt, exactly
+      // as it is at construction. See the primary constructor's own originatedPublicly Javadoc.
       checkChromosome(m_chromosome, m_warnings);
       checkPosition(m_position);
       m_ids = checkIds(m_ids, m_warnings);
       checkRef(m_refBases);
       m_altBases = checkAltBases(m_altBases, m_refBases, m_warnings);
-      m_filter = checkFilters(m_filter, m_warnings);
+      m_filter = checkFilters(m_filter, m_warnings, false);
       normalizeFilters();
-      m_info = checkInfoEntries(info(), m_warnings);
-      m_format = checkFormat(m_format, m_warnings);
+      m_info = checkInfoEntries(info(), m_warnings, false);
+      m_format = checkFormat(m_format, m_warnings, false);
     } catch (VcfFormatException ex) {
       if (m_lineNumber >= 0) {
         ex.addMetadata(m_lineNumber, "data");
@@ -1431,7 +1524,17 @@ public final class VcfPosition {
           // checkInfoEntries's recoverable checks (key/value whitespace, an empty key, a bare '=' in a
           // value) -- passing m_warnings unconditionally regardless of context would silently downgrade all
           // of them to warnings for this lazy path only.
-          info = checkInfoEntries(info, m_context.isLenient() ? m_warnings : null);
+          //
+          // originatedPublicly=false (a known, deliberate gap, not an oversight): m_rawInfo reaches here from
+          // either the parser's own trusted rawInfo attachment or a public Builder.rawInfo() call, and
+          // nothing tracks which -- unlike the eager checkInfoEntries call in the constructor/Builder#build(),
+          // which knows its caller's origin directly. Threading that distinction through this lazy path would
+          // need dirty-tracking infrastructure Builder.rawInfo() does not have today. A comma in an INFO key
+          // supplied this way (Builder.rawInfo("A,B=1")) is therefore not caught by the new bcftools-floor
+          // check -- narrower and more indirect than the eager-multimap construction path the finding
+          // reproduced, and left out of scope here; see VCF_SPEC_AMBIGUITIES.md's "Comma in a data-line
+          // FILTER code, INFO key, or FORMAT key" entry.
+          info = checkInfoEntries(info, m_context.isLenient() ? m_warnings : null, false);
         } catch (VcfFormatException ex) {
           throw withLineNumber(ex);
         }
@@ -1960,15 +2063,21 @@ public final class VcfPosition {
       if ((m_altBasesDirty || m_refDirty) && m_altBases != null) {
         m_altBases = checkAltBases(m_altBases, m_ref, checkWarnings);
       }
+      // originatedPublicly=true on all three below: Builder is exclusively public API (VcfParser never
+      // constructs or calls one internally), and each field is only re-checked here when its own dirty flag
+      // marks it as freshly, publicly supplied via a setter -- exactly the "genuinely public construction"
+      // case the bcftools-floor checks inside checkFilters/checkInfoEntries/checkFormat must catch. An
+      // unchanged field already passed (or was exempt from) this same check when it was first seeded, so
+      // this never re-throws on content this build() call didn't itself introduce.
       if (m_filterDirty && m_filter != null) {
-        m_filter = checkFilters(m_filter, checkWarnings);
+        m_filter = checkFilters(m_filter, checkWarnings, true);
       }
       if (m_infoDirty && m_info != null) {
-        m_info = checkInfoEntries(m_info, checkWarnings);
+        m_info = checkInfoEntries(m_info, checkWarnings, true);
         checkReservedInfoTypes(m_info, m_context);
       }
       if (m_formatDirty && m_format != null) {
-        m_format = checkFormat(m_format, checkWarnings);
+        m_format = checkFormat(m_format, checkWarnings, true);
       }
       // This factory's "always copies, so two build() calls (or build() and this builder's own retained fields)
       // never alias each other" contract is no longer independently pinned by a dedicated test: Task 8 made

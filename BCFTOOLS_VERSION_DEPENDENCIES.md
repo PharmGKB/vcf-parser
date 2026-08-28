@@ -484,13 +484,38 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
   revisiting.
 
 ### POS beyond the 32-bit signed Integer range
-- Test: `BcftoolsDependencyTest#testPosBeyond32BitSignedRangeBcftoolsAcceptsSilently`
+- Test: `BcftoolsDependencyTest#testPosBeyond32BitSignedRangeBcftoolsAcceptsSilently`,
+  `#testPosOneBelow2To62BcftoolsAcceptsSilently`, `#testPosAt2To62BcftoolsRejectsOutright`
 - Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "POS beyond the 32-bit signed Integer range" entry. This library
-  parses POS as a Java `long` and only rejects a negative value -- a letter-of-the-spec deviation from
-  `VCFv4.3.tex:100`'s general "Integer (32-bit, signed)" data type -- but bcftools 1.23.1 (whose own
-  position type, `hts_pos_t`, is 64-bit by design) also accepts a POS one past `Integer.MAX_VALUE` silently.
-  Must be re-checked on a bcftools upgrade: if a future bcftools started rejecting an out-of-32-bit-range
-  POS, this library's acceptance would become a round-trip mismatch against real-world bcftools behavior.
+  parses POS as a Java `long` and rejects a negative value or a value at or beyond `2^62` -- the negative
+  check is a letter-of-the-spec deviation from `VCFv4.3.tex:100`'s general "Integer (32-bit, signed)" data
+  type, and the `2^62` upper bound is bcftools 1.23.1's own measured ceiling (whose position type,
+  `hts_pos_t`, is 64-bit by design but does not tolerate the full range of a signed 64-bit integer):
+  bcftools accepts a POS one past `Integer.MAX_VALUE` silently, and also accepts `2^62-1`, but fails the
+  whole file at `2^62` (exit 8). Must be re-checked on a bcftools upgrade: if a future bcftools moved either
+  boundary, this library's acceptance/rejection would become a round-trip mismatch against real-world
+  bcftools behavior.
+
+### Comma in a data-line FILTER code, INFO key, or FORMAT key
+- Test: `BcftoolsDependencyTest#testCommaInFilterCodeBcftoolsFailsTheWholeFile`,
+  `#testCommaInInfoKeyBcftoolsFailsTheWholeFile`, `#testCommaInFormatKeyBcftoolsFailsTheWholeFile`
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "Comma in a data-line FILTER code, INFO key, or FORMAT key" entry.
+  This library rejects an undeclared FILTER code/INFO key/FORMAT key containing a comma at construction, for
+  genuinely public content, because bcftools 1.23.1 synthesizes a dummy `##FILTER`/`##INFO`/`##FORMAT`
+  header line for the undeclared key, whose own comma breaks bcftools' own attribute-list tokenizer, failing
+  the WHOLE file (exit 8). Must be re-checked on a bcftools upgrade: if a future bcftools stopped
+  synthesizing a dummy header line for an undeclared key (or tokenized it more defensively), this library's
+  rejection would become stricter than necessary rather than matching a genuine interoperability floor.
+
+### More than 255 FORMAT keys
+- Test: `BcftoolsDependencyTest#testMoreThan255FormatKeysBcftoolsFailsTheWholeFile`
+- Reasoning: `VCF_SPEC_AMBIGUITIES.md`, "More than 255 FORMAT keys" entry. This library rejects a data-line
+  FORMAT column listing more than 255 keys at construction, for genuinely public content, because bcftools
+  1.23.1's own BCF binary representation caps this at 255 (`vcf.c`'s `MAX_N_FMT`, "Limited by size of
+  `bcf1_t` `n_fmt` field") -- confirmed live, 255 keys accepted, 256 fails the whole file (exit 8). An
+  implementation artifact of bcftools/htslib's binary encoding, not a spec rule (vcf_validator 0.10.2
+  accepts 256 keys with no complaint). Must be re-checked on a bcftools upgrade: if a future bcftools widened
+  or removed this cap, this library's rejection would become stricter than the tool it exists to match.
 
 ### Negative `##contig` `length`
 - Test: `BcftoolsDependencyTest#testNegativeContigLengthBcftoolsDiscardsTheDeclaration`

@@ -1158,8 +1158,11 @@ public class VcfWriterTest {
       mdBuilder.addFormat("F" + i, "desc", "1", FormatType.String);
     }
     VcfMetadata metadata = mdBuilder.build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null,
-        formatOnlyKeys, -1);
+    // newPositionTakingOwnership, not the public newPosition: 8192 keys is far beyond the 255-key
+    // bcftools-interoperability floor the public constructor now enforces (see VcfPosition.checkFormat's own
+    // comment) -- this test is about VcfWriter's per-sample extra-property scan, not that floor.
+    VcfPosition position = LENIENT_CONTEXT.newPositionTakingOwnership("chr1", 1, null, "A", List.of("T"), null,
+        null, null, formatOnlyKeys, -1);
     List<VcfSample> samples = new ArrayList<>(numSamples);
     for (int s = 0; s < numSamples; s++) {
       List<String> keys = new ArrayList<>(formatOnlyKeys);
@@ -1243,8 +1246,11 @@ public class VcfWriterTest {
       mdBuilder.addFormat("F" + i, "desc", "1", FormatType.String);
     }
     VcfMetadata metadata = mdBuilder.build();
-    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null, null,
-        formatOnlyKeys, -1);
+    // newPositionTakingOwnership, not the public newPosition: 4096 keys is far beyond the 255-key
+    // bcftools-interoperability floor the public constructor now enforces (see VcfPosition.checkFormat's own
+    // comment) -- this test is about validateSamples' own membership-scan cost, not that floor.
+    VcfPosition position = LENIENT_CONTEXT.newPositionTakingOwnership("chr1", 1, null, "A", List.of("T"), null,
+        null, null, formatOnlyKeys, -1);
     List<VcfSample> samples = new ArrayList<>(numSamples);
     for (int s = 0; s < numSamples; s++) {
       List<String> values = new ArrayList<>(f);

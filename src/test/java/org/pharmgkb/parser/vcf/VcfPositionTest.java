@@ -145,6 +145,113 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testNewPositionAcceptsPosOneBelow2To62() {
+    // boundary bisected live against bcftools 1.23.1: 2^62-1 is the last value it accepts -- see
+    // VCF_SPEC_AMBIGUITIES.md's "POS beyond the 32-bit signed Integer range" entry
+    long pos = (1L << 62) - 1;
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr", pos, null, "C", null, null, null, null, null, -1);
+    assertEquals(pos, position.getPosition());
+  }
+
+  @Test
+  public void testNewPositionRejectsPosAtOrBeyond2To62() {
+    // same boundary, one past: bcftools 1.23.1 fails outright (exit 8) rather than merely warning
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> STRICT_CONTEXT.newPosition("chr", 1L << 62, null, "C", null, null, null, null, null, -1));
+    assertTrue(ex.getMessage().contains("2^62"), ex.getMessage());
+  }
+
+  @Test
+  public void testNewPositionThrowsForCommaInFilterCodeEvenUnderLenientContext() {
+    // FB-4: a comma in an originated FILTER code makes bcftools synthesize a dummy ##FILTER header line
+    // whose own comma breaks its attribute tokenizer, failing the whole file -- confirmed live (bcftools
+    // 1.23.1). Previously accepted with zero signal, even under a lenient context (checkFilters had no
+    // comma check at all) -- now throws unconditionally for genuinely public construction, regardless of
+    // leniency. See VCF_SPEC_AMBIGUITIES.md's "Comma in a data-line FILTER code, INFO key, or FORMAT key"
+    // entry.
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> LENIENT_CONTEXT.newPosition("chr", 1, null, "C", null, null, List.of("a,b"), null, null, -1));
+    assertTrue(ex.getMessage().contains("comma"), ex.getMessage());
+  }
+
+  @Test
+  public void testNewPositionThrowsForCommaInInfoKeyEvenUnderLenientContext() {
+    // same finding, INFO's own key side -- confirmed live (bcftools 1.23.1): an undeclared INFO key
+    // containing a comma makes bcftools synthesize a dummy ##INFO header line whose own comma breaks its
+    // attribute tokenizer, failing the whole file.
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("A,B", "1");
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> LENIENT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, info, null, -1));
+    assertTrue(ex.getMessage().contains("comma"), ex.getMessage());
+  }
+
+  @Test
+  public void testNewPositionThrowsForCommaInFormatKeyEvenUnderLenientContext() {
+    // same finding, FORMAT's own key side. A comma already fails FORMAT_PATTERN's tag-name grammar and would
+    // throw under a STRICT context, but previously only warned-and-continued under a LENIENT one -- this pins
+    // the new unconditional (regardless of leniency) throw for genuinely public construction.
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> LENIENT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, null, List.of("A,B"), -1));
+    assertTrue(ex.getMessage().contains("comma"), ex.getMessage());
+  }
+
+  @Test
+  public void testNewPositionThrowsForMoreThan255FormatKeys() {
+    // FB-3: htslib's own BCF binary representation caps FORMAT keys at 255 (vcf.c's MAX_N_FMT) -- confirmed
+    // live, bcftools 1.23.1 fails the whole file at 256 keys, bisected exactly (255 accepted, 256 rejected).
+    // See VCF_SPEC_AMBIGUITIES.md's "More than 255 FORMAT keys" entry.
+    List<String> format = new java.util.ArrayList<>(256);
+    for (int i = 0; i < 256; i++) {
+      format.add("F" + i);
+    }
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> LENIENT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, null, format, -1));
+    assertTrue(ex.getMessage().contains("255"), ex.getMessage());
+  }
+
+  @Test
+  public void testNewPositionAccepts255FormatKeys() {
+    // the accepted side of the same bisected boundary as testNewPositionThrowsForMoreThan255FormatKeys
+    List<String> format = new java.util.ArrayList<>(255);
+    for (int i = 0; i < 255; i++) {
+      format.add("F" + i);
+    }
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, null, format, -1);
+    assertEquals(255, position.getFormat().size());
+  }
+
+  @Test
+  public void testNewPositionTakingOwnershipStaysExemptFromTheNewBcftoolsFloorChecks() {
+    // The parser's own trusted factory must stay exempt from FB-3/FB-4's new checks, exactly as it is for
+    // every existing warn-or-throw check in this method: a real file can legitimately contain a comma in an
+    // undeclared FILTER/INFO/FORMAT key, or more than 255 FORMAT keys, and parses successfully today with
+    // only a warning (or no signal at all, for the comma cases) -- re-parsing/re-emitting such a file must
+    // not start throwing. newPositionTakingOwnership is VcfParser's own construction path (see VcfContext),
+    // not the public newPosition tested above.
+    List<String> manyKeys = new java.util.ArrayList<>(256);
+    for (int i = 0; i < 256; i++) {
+      manyKeys.add("F" + i);
+    }
+    VcfPosition position = LENIENT_CONTEXT.newPositionTakingOwnership("chr", 1, null, "C", null, null,
+        List.of("a,b"), null, manyKeys, -1);
+    assertEquals(List.of("a,b"), position.getFilters());
+    assertEquals(256, position.getFormat().size());
+  }
+
+  @Test
+  public void testBuilderBuildThrowsForCommaInAFreshlySetFilterEvenThoughTheOriginalPositionWasParserTrusted() {
+    // Builder is exclusively public API (VcfParser never constructs or calls one internally) -- a caller who
+    // explicitly sets a new FILTER list via the builder is genuinely publicly originating that content, even
+    // if the position it started from came from the parser's trusted path.
+    VcfPosition parsed = LENIENT_CONTEXT.newPositionTakingOwnership("chr", 1, null, "C", null, null,
+        List.of("PASS"), null, null, -1);
+    VcfFormatException ex = assertThrows(VcfFormatException.class,
+        () -> parsed.toBuilder().filters(List.of("a,b")).build());
+    assertTrue(ex.getMessage().contains("comma"), ex.getMessage());
+  }
+
+  @Test
   public void testCheckAltBasesInvalidBaseMessageIsTruncated() {
     // regression test: checkAltBases()'s own invalid-ALT-base throw
     // was the one site the fifth re-verification round's finding #1b fix missed in this class -- every sibling
@@ -2202,7 +2309,7 @@ public class VcfPositionTest {
     // former "lenient constructor rejects a null VcfWarnings" guarantee lives. VcfContext's own constructor
     // still rejects a null sink -- see VcfContextTest.
     assertThrows(NullPointerException.class, () -> new VcfPosition(null, "1", 100, null, "A", null, null,
-        List.of("PASS", "q10"), null, null, -1, false, false, null, null));
+        List.of("PASS", "q10"), null, null, -1, false, false, false, null, null));
   }
 
   @Test
@@ -2291,8 +2398,13 @@ public class VcfPositionTest {
     }
     assertTimeoutPreemptively(java.time.Duration.ofSeconds(3), () -> {
       StringWriter sink = new StringWriter();
-      VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("1", 100, null, "A", null, null, null,
-          null, format, -1);
+      // newPositionTakingOwnership, not the public newPosition: 50,000 keys is far beyond the 255-key
+      // bcftools-interoperability floor the public constructor now enforces (see checkFormat's own comment),
+      // but this test is about checkFormat's internal duplicate-key-scan dispatch (isDuplicateAt/
+      // DUPLICATE_SCAN_THRESHOLD), which newPositionTakingOwnership still runs in full -- it only skips the
+      // new floor check, which is deliberately gated to public construction only.
+      VcfPosition position = lenientContext(new VcfWarnings(sink)).newPositionTakingOwnership("1", 100, null, "A",
+          null, null, null, null, format, -1);
       assertEquals(50_000, position.getFormat().size());
       assertEquals("", sink.toString());
     });

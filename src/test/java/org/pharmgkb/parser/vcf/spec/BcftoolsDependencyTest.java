@@ -1818,6 +1818,86 @@ class BcftoolsDependencyTest {
   }
 
   @Test
+  void testPosAt2To62BcftoolsRejectsOutright() throws IOException, InterruptedException {
+    // The "POS beyond the 32-bit signed Integer range" decision above generalizes bcftools' 64-bit
+    // hts_pos_t into blanket acceptance, but that generalization is wrong once POS reaches 2^62: bisected
+    // live, 2^62-1 (4611686018427387903) is accepted and 2^62 (4611686018427387904) fails the whole file,
+    // exit 8. VcfPosition.checkPosition rejects POS at or beyond this same bound at construction.
+    String vcf = "##fileformat=VCFv4.3\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t4611686018427387904\t.\tA\tC\t.\t.\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(8, result.exitCode(), result.output());
+  }
+
+  @Test
+  void testPosOneBelow2To62BcftoolsAcceptsSilently() throws IOException, InterruptedException {
+    // the accepted side of the same bisected boundary as testPosAt2To62BcftoolsRejectsOutright
+    String vcf = "##fileformat=VCFv4.3\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t4611686018427387903\t.\tA\tC\t.\t.\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(0, result.exitCode(), result.output());
+    assertTrue(result.output().lines().anyMatch(line -> line.startsWith("1\t4611686018427387903\t")),
+        result.output());
+  }
+
+  @Test
+  void testCommaInFilterCodeBcftoolsFailsTheWholeFile() throws IOException, InterruptedException {
+    // No VCF version's FILTER grammar forbids a comma (VCFv4.3.tex:362 forbids only whitespace and
+    // semicolons) -- comma is FILTER's own list delimiter, not a code delimiter, so nothing in the spec's
+    // character grammar rules it out inside one code. Confirmed live: bcftools 1.23.1 synthesizes a dummy
+    // ##FILTER header line for the undeclared code, whose own comma breaks its own attribute tokenizer,
+    // failing the WHOLE file (not merely discarding the one declaration or warning) -- see
+    // VCF_SPEC_AMBIGUITIES.md's "Comma in a data-line FILTER code, INFO key, or FORMAT key" entry.
+    // VcfPosition.checkFilters rejects this at construction for genuinely public content.
+    String vcf = "##fileformat=VCFv4.3\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tC\t.\ta,b\t.\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(8, result.exitCode(), result.output());
+  }
+
+  @Test
+  void testCommaInInfoKeyBcftoolsFailsTheWholeFile() throws IOException, InterruptedException {
+    // same finding, INFO's own key side -- confirmed live, same failure mode and exit code
+    String vcf = "##fileformat=VCFv4.3\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "1\t100\t.\tA\tC\t.\t.\tA,B=1\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(8, result.exitCode(), result.output());
+  }
+
+  @Test
+  void testCommaInFormatKeyBcftoolsFailsTheWholeFile() throws IOException, InterruptedException {
+    // same finding, FORMAT's own key side -- confirmed live, same failure mode and exit code
+    String vcf = "##fileformat=VCFv4.3\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "1\t100\t.\tA\tC\t.\t.\t.\tGT:A,B\t0/1:9\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(8, result.exitCode(), result.output());
+  }
+
+  @Test
+  void testMoreThan255FormatKeysBcftoolsFailsTheWholeFile() throws IOException, InterruptedException {
+    // No VCF version bounds the number of FORMAT keys a data line may list. Confirmed live: bcftools
+    // 1.23.1's own BCF binary representation caps this at 255 (vcf.c's MAX_N_FMT, "Limited by size of
+    // bcf1_t n_fmt field") -- an implementation artifact, not a spec rule, but a real whole-file failure
+    // (exit 8) at 256 keys, bisected exactly against 255 accepted -- see VCF_SPEC_AMBIGUITIES.md's "More
+    // than 255 FORMAT keys" entry. VcfPosition.checkFormat rejects this at construction for genuinely
+    // public content.
+    StringBuilder format = new StringBuilder();
+    StringBuilder sample = new StringBuilder();
+    for (int i = 0; i < 256; i++) {
+      if (i > 0) {
+        format.append(':');
+        sample.append(':');
+      }
+      format.append('F').append(i);
+      sample.append('1');
+    }
+    String vcf = "##fileformat=VCFv4.3\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n" +
+        "1\t100\t.\tA\tC\t.\t.\t.\t" + format + "\t" + sample + "\n";
+    BcftoolsResult result = runBcftools(vcf, "view");
+    assertEquals(8, result.exitCode(), result.output());
+  }
+
+  @Test
   void testNegativeContigLengthBcftoolsDiscardsTheDeclaration() throws IOException, InterruptedException {
     // No VCF version explicitly forbids a negative ##contig length, unlike md5/URL which at least have a
     // format this library checks against -- this decision rests on measured bcftools behavior rather than a

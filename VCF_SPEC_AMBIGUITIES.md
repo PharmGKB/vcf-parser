@@ -1001,12 +1001,73 @@ bound of its own. `VcfParser`/`VcfPosition` parse POS as a Java `long` and only 
 (`VcfPosition.checkPosition`), so `POS=2147483648` (one past `Integer.MAX_VALUE`) parses silently -- a
 letter-of-the-spec deviation.
 
-**Decision:** accept, no code change. Confirmed live that bcftools 1.23.1 also accepts
-`POS=2147483648` silently (exit 0, preserved verbatim) -- htslib's own position type (`hts_pos_t`) is
-64-bit by design, so real-world tooling already normalizes to the more permissive reading this library's
-existing `long`-based parsing happens to match. vcf_validator 0.10.2 crashes on it (an `stoi` overflow, not
-a considered rejection), which is discounted as uninformative per `AGENTS.md`, not corroborating evidence
-either way.
+**Decision:** accept up to `2^62-1`, reject at or beyond `2^62`. Confirmed live that bcftools 1.23.1 also
+accepts `POS=2147483648` silently (exit 0, preserved verbatim) -- htslib's own position type (`hts_pos_t`)
+is 64-bit by design, so real-world tooling already normalizes to the more permissive reading this library's
+existing `long`-based parsing happens to match, up to a point. That permissiveness is not unbounded: bisected
+live, bcftools 1.23.1 accepts `POS=4611686018427387903` (`2^62-1`) but fails the whole file at
+`POS=4611686018427387904` (`2^62`), exit 8 -- `hts_pos_t` is a 64-bit *signed* integer with internal
+arithmetic that overflows below Java `long`'s own range. `VcfPosition.checkPosition` rejects a POS at or
+beyond that bound unconditionally, the same tier as its existing negative-POS check; no legitimate
+coordinate is anywhere near this range. vcf_validator 0.10.2 crashes on `POS=2147483648` (an `stoi`
+overflow, not a considered rejection), which is discounted as uninformative per `AGENTS.md`, not
+corroborating evidence either way.
+
+### Comma in a data-line FILTER code, INFO key, or FORMAT key
+
+No VCF version's grammar forbids a comma in a data-line FILTER code (`VCFv4.3.tex:362` forbids only
+whitespace and semicolons), INFO key, or FORMAT key -- comma is each field's own VALUE-list delimiter, not a
+key/code delimiter, so nothing in the spec's character grammar rules it out at that position.
+
+**Decision:** reject at construction, but only for genuinely public construction (`VcfContext#newPosition`,
+or `VcfPosition.Builder#build()` re-validating a field a setter just changed) -- the parser's own trusted
+factories stay exempt, unchanged. Confirmed live (bcftools 1.23.1): an undeclared FILTER code, INFO key, or
+FORMAT key containing a comma makes bcftools synthesize a dummy `##FILTER`/`##INFO`/`##FORMAT` header line
+for it, whose own comma breaks bcftools' own attribute tokenizer, failing the WHOLE file (exit 8) -- not
+merely warning or discarding the one entry. `AGENTS.md`'s Writer Validation and Round-Trip Policy makes the
+bcftools output floor absolute for content originated through public construction, and this shape meets it
+squarely (whole-file failure, not per-record). The asymmetry this closes: declaring such a key already threw
+unconditionally (`addFilter`/`addContig`'s comma rejection, `InternalUtils.checkMetadataPropertyEncoding`),
+but referencing an undeclared one from a data line previously only warned (or said nothing at all, for
+FILTER, which had no comma check whatsoever).
+
+Scoped to public construction only, not every factory: unlike a genuine structural delimiter (FILTER's `;`,
+INFO's `;`/`=`, FORMAT's `:`), which a real parsed file can never contain in this position because parsing
+itself splits on it, a comma is not any of these fields' own key/code delimiter -- a real file can
+legitimately contain one today, and does parse successfully with only a warning (INFO/FORMAT) or no signal
+at all (FILTER, previously unchecked). Applying the throw regardless of origin would reject re-parsing or
+re-emitting such a file, which `AGENTS.md`'s Parser Validation Policy and Writer Validation and Round-Trip
+Policy both treat as a recoverable, warn-and-preserve case, not a rejection. See
+`VcfPosition.checkFilters`/`checkInfoEntries`/`checkFormat`'s own `originatedPublicly` parameter for the
+implementation, and `BcftoolsDependencyTest#testCommaInFilterCodeBcftoolsFailsTheWholeFile` (and its
+INFO/FORMAT-key siblings) for the live evidence.
+
+One known, narrower gap left open: a comma in an INFO key supplied via `VcfPosition.Builder#rawInfo(String)`
+(lazily parsed and validated on first `getInfo()` call) is not caught, since nothing currently distinguishes
+that raw text's own origin (parser-trusted vs. public `Builder#rawInfo`) the way the eager, already-split
+construction path does. Narrower and more indirect than the reproduced case above; left unhandled rather
+than adding new dirty-tracking infrastructure `Builder#rawInfo` does not have today.
+
+### More than 255 FORMAT keys
+
+No VCF version's grammar bounds the number of FORMAT keys a data line's FORMAT column may list.
+
+**Decision:** reject at construction above 255 keys, scoped to public construction only (the identical
+scoping and reasoning as the comma decision just above -- a real parsed file could in principle already
+list more than 255 FORMAT keys, this library imposing no count limit of its own, so this cannot be
+unconditional regardless of origin either). This is an htslib implementation artifact, not a spec rule or a
+biologically-motivated limit: htslib's `vcf.c` defines `MAX_N_FMT 255 /* Limited by size of bcf1_t n_fmt
+field */` -- its BCF binary struct uses a single byte to count FORMAT keys. Confirmed live: bcftools 1.23.1
+fails the whole file (exit 8, `"FORMAT column ... lists more identifiers than htslib can handle"`) at 256
+keys, bisected exactly (255 accepted, 256 rejected); vcf_validator 0.10.2 (a separate, non-htslib
+implementation) accepts 256 keys with no complaint at all, confirming this is bcftools/htslib's own encoding
+choice, not a genuine interoperability floor every VCF tool shares. Treated as the same absolute
+bcftools-output-floor case as the comma decision above regardless: `AGENTS.md`'s policy does not carve out
+an exception for a floor that happens to be tool-implementation-specific rather than spec-motivated, and the
+project's own test suite already demonstrates the library can construct and write far larger FORMAT lists
+without a quadratic slowdown (`VcfPositionTest#testNewPositionTakingOwnershipStaysExemptFromTheNewBcftoolsFloorChecks`
+and its scale-test siblings, which use the parser-trusted factory specifically to stay exempt from this
+floor while still exercising the algorithmic-scaling behavior).
 
 ### BOM-prefixed file / `+`-prefixed POS
 

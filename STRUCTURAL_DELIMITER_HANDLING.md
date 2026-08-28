@@ -12,6 +12,15 @@ and a lenient context -- see "Severity: unconditional throw" below for why. It i
 replace bullet) is also unconditional, for an unrelated reason -- a missing replace target is a programming
 error, not content a warning could recover from.
 
+A sibling decision governs a comma at a different structural position -- a data-line FILTER code, INFO key,
+or FORMAT key, rather than a metadata attribute -- with a narrower throw (public construction only, not
+every construction path): see `VCF_SPEC_AMBIGUITIES.md`'s "Comma in a data-line FILTER code, INFO key, or
+FORMAT key" entry. That narrower scoping is required there and not here because a data-line FILTER/INFO/
+FORMAT key's own comma is not a structural split delimiter for that field (unlike this document's metadata
+attribute-list comma), so a real parsed file can legitimately contain one; this document's own comma is
+always unconditional because the metadata attribute-list grammar has no equivalent "a real parsed
+declaration could already contain this" exemption to preserve.
+
 **Construction-time unconditionality is not the whole story.** `InternalUtils.checkMetadataPropertyEncoding`
 is the construction-time entry point (still unconditional -- every problem throws), and
 `checkMetadataPropertyEncodingForWrite` is its `validateBeforeWrite()` counterpart, which throws only for a
