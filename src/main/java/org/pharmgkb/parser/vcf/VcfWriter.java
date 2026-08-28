@@ -133,6 +133,10 @@ public class VcfWriter implements Closeable {
    *
    * @throws IllegalStateException if {@link #isValid()} is already {@code false} -- this instance must be
    * abandoned after any prior write failure, not reused.
+   * @throws VcfFormatException if {@code metadata} fails a structural check this method enforces before
+   * writing anything (e.g. a target/declared version mismatch, or -- under {@link Builder#validateBeforeWrite()}
+   * -- a semantic metadata violation). A rejected attempt writes nothing, so a corrected retry with different
+   * metadata is safe.
    * @throws UncheckedIOException if a write failure is detected here. This permanently invalidates the instance
    * and releases the underlying writer immediately (see the class Javadoc) -- retrying is never safe, since some
    * header lines may have already reached the underlying writer.
@@ -340,7 +344,12 @@ public class VcfWriter implements Closeable {
    * {@link #writeHeader} must be called first, and {@code metadata} must be the same object instance given to it.
    *
    * @throws IllegalStateException if {@link #isValid()} is already {@code false} -- this instance must be
-   * abandoned after any prior write failure, not reused.
+   * abandoned after any prior write failure, not reused, or if {@code metadata} is not the same instance
+   * {@link #writeHeader} was given.
+   * @throws VcfFormatException if {@code position}/{@code samples} contain content that cannot be written at
+   * all (e.g. a null element the default path's null-safety checks reject), or -- under
+   * {@link Builder#validateBeforeWrite()} -- structurally invalid output this diagnostics mode rejects rather
+   * than emit. This record is not written; earlier records already written are unaffected.
    * @throws UncheckedIOException if a write failure is detected (only possible on a call that lands on the
    * periodic 1000-line checkpoint; most calls cannot throw this). This permanently invalidates the instance and
    * releases the underlying writer immediately (see the class Javadoc) -- retrying is never safe, since some data

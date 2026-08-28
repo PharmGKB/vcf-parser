@@ -243,7 +243,7 @@ public class InternalUtils {
 
   /**
    * Grammar for a metadata declaration's attribute NAME. The VCF spec states none -- VCFv4.3.tex:117 gives
-   * only "the value is itself a comma-separated list of key=value pairs, enclosed within `<' and `>'
+   * only "the value is itself a comma-separated list of key=value pairs, enclosed within `&lt;' and `&gt;'
    * characters", leaving `key' an undefined nonterminal (identically in 4.2/4.4/4.5) -- so per AGENTS.md's
    * Decision Hierarchy bcftools governs. htslib 1.23.1 `vcf.c:695' carries this exact regex as a comment
    * above its scanner: "^[A-Za-z_][0-9A-Za-z_.]*$". A name outside it makes bcftools discard the whole

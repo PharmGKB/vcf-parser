@@ -510,7 +510,7 @@ public final class VcfMetadata {
    * @return Whether {@code value} (trimmed) starts with {@code <} but does not end with a closing {@code >}
    * -- distinct from {@link #collidesWithAttributeListGrammar}, which requires BOTH a leading {@code <} and a
    * trailing {@code >} before it even looks at what's between them. A value like {@code "<abc"} (VCFv4.3.tex
-   * line 109: an unstructured value "may not be empty and must not start with a '<' character") never reaches
+   * line 109: an unstructured value "may not be empty and must not start with a {@code '<'} character") never reaches
    * that method's own check at all, since it fails the {@code endsWith(">")} half immediately -- so it was
    * never rejected by anything and parsed with zero warnings.
    * <p>Confirmed directly (bcftools 1.23.1) that this shape is genuinely malformed to bcftools too, in two

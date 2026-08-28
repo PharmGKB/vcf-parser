@@ -59,8 +59,12 @@ jar {
 }
 
 tasks.withType(Javadoc) {
-  // disable the crazy super-strict doclint tool in Java 8
-  options.addStringOption('Xdoclint:none', '-quiet')
+  // Keeps reference/syntax/HTML enforcement (broken @link/@see, malformed HTML, etc.) but drops the noisy,
+  // low-value "missing" category (no comment, no @param, no @return) that would otherwise dominate the
+  // output. A clean run is now actual evidence the published javadoc is well-formed, not merely silent
+  // because doclint was off.
+  options.addStringOption('Xdoclint:all,-missing', '-quiet')
+  options.addBooleanOption('Werror', true)
 }
 
 task javadocJar(type: Jar, dependsOn: javadoc) {

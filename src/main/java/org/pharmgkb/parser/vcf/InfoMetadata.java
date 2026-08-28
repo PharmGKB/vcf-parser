@@ -6,7 +6,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * This class represents a single VCF INFO metadata line.
- * <p></p>
+ * <p>
  * In 4.1:
  * <pre>{@code
  * ##INFO=<ID=ID,Number=number,Type=type,Description="description">
