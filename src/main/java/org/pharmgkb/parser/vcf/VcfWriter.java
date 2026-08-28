@@ -63,6 +63,12 @@ import org.slf4j.LoggerFactory;
  * Builder#build()} consumes and clears the supplied writer -- so a second {@code build()} without an
  * intervening {@code toWriter}/{@code toFile} call fails rather than returning a second {@code VcfWriter}
  * silently backed by the same writer.
+ * <p>
+ * Retains memory proportional to the number of <em>distinct</em> undeclared CHROM values written, not to the
+ * number of records -- the undeclared-CHROM warning is deduplicated per distinct value (see
+ * {@code m_warnedUndeclaredChromosomes}'s own field comment) rather than emitted once per record, which
+ * requires remembering every distinct value already warned about. {@link VcfParser} makes the identical
+ * tradeoff for an unrelated check (see its own class Javadoc, which also gives the measured cost).
  *
  * @author Douglas Myers-Turnbull
  */
