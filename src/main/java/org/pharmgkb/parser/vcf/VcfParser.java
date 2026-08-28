@@ -273,6 +273,10 @@ public class VcfParser implements Closeable {
    * Parses the entire VCF file (including the metadata).
    * <p>
    * This is the preferred way to read a VCF file.
+   * <p>
+   * If this throws {@link VcfFormatException}, calling it again resumes reading rather than restarting --
+   * see {@link #parseNextLine()}'s Javadoc for exactly what that means (and why it is only supported for a
+   * failure encountered while reading data lines, not during the metadata phase).
    */
   public void parse() throws IOException {
     // checked before activateWarningsFile() below, not after: a second parse() call following a *successful*
@@ -411,6 +415,21 @@ public class VcfParser implements Closeable {
   /**
    * Parses just the next data line available, also reading all the metadata if it has not been read.
    * This is a specialized method; in general calling {@link #parse()} to parse the entire stream is preferred.
+   * <p>
+   * If this throws {@link VcfFormatException} while reading a data line (i.e. after metadata has already
+   * been parsed successfully), the physical line that caused it has already been read from the underlying
+   * stream and cannot be recovered -- calling this method again resumes from the line <em>after</em> it, not
+   * the line itself. If the parser's own checks rejected the line, the {@link VcfLineParser} callback is
+   * never invoked for it at all; if instead the callback itself threw to reject an already-structurally-valid
+   * record (e.g. a duplicate-ID handler configured to fail), the callback was invoked, but the line is
+   * equally unrecoverable either way. A caller that catches the exception and calls this method again to
+   * skip the bad record and keep reading permanently loses that record, with nothing beyond the original
+   * exception marking that it happened.
+   * <p>
+   * This retry pattern is supported only for a failure encountered while reading data lines. Retrying after
+   * a failure during the metadata phase is <strong>not</strong> supported: the retry re-enters metadata
+   * parsing assuming the next unread line is the file's required first {@code ##fileformat} line, which by
+   * then usually is not, producing a misleading "Not a VCF file" exception instead of resuming meaningfully.
    *
    * @return true if a line was read (it may have been skipped without being delivered to the {@link VcfLineParser}
    * callback, e.g. by {@link Builder#rsidsOnly()}); false once the end of the stream is reached -- this happens
