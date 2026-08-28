@@ -228,6 +228,14 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   construction. It stays because `VcfWriter.Builder.validateBeforeWrite()` calls it on every declaration it is
   handed, and because the package-private `BaseMetadata.trustedMutableProperties()` bypass can still produce a
   state no public route can.)
+  **`##ALT`'s structural-variant-code check (`VcfMetadata.validateAlt`) is the one exception to this being a
+  no-op via the polymorphic `validate()` dispatch above**: it is not folded into `IdDescriptionMetadata`'s own
+  `validate()` override, but called directly by `VcfWriter.validateKeyedMetadataEntries` for every `##ALT`
+  entry, specifically so the re-check uses the *writer's own* `VcfContext` (always lenient -- see
+  `VcfWriter.writeHeader`) rather than the entry's originally-stored one. A declaration that warned once at
+  construction time (necessarily under a lenient context, since a strict one would have thrown instead) warns
+  a second time here under `validateBeforeWrite()` -- purely diagnostic, since `validateAlt` never rewrites
+  the declaration either way, so this never changes output bytes.
   **`VcfPosition.validate()` and `VcfSample.validate()` do not work this way for their recoverable conditions**
   -- those always warn, whatever context created them, because they pass their warnings sink to their check
   helpers unconditionally rather than deriving strictness from the context the way the constructor path does.

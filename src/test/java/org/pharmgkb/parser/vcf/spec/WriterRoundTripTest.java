@@ -121,6 +121,12 @@ class WriterRoundTripTest {
     WriterRoundTrip.ParsedFile parsed = WriterRoundTrip.parseText(vcf);
     String written = WriterRoundTrip.write(parsed);
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
+
+    // validateBeforeWrite() does warn here (this fixture has no #CHROM sample columns but a ##SAMPLE
+    // declaration -- checkSampleMetadataMatchesChromColumns's own mismatch check, VcfWriter.java), but that
+    // check never rewrites metadata, so the two writer configurations still produce byte-identical output
+    String validatedWritten = WriterRoundTrip.write(parsed, true);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(written, validatedWritten));
   }
 
   @Test
@@ -135,6 +141,11 @@ class WriterRoundTripTest {
     WriterRoundTrip.ParsedFile parsed = WriterRoundTrip.parseText(vcf);
     String written = WriterRoundTrip.write(parsed);
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
+
+    // fully spec-compliant content triggers no warning at parse time, so validateBeforeWrite() has nothing to
+    // canonicalize -- the two writer configurations must produce byte-identical output
+    String validatedWritten = WriterRoundTrip.write(parsed, true);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(written, validatedWritten));
   }
 
   @Test
@@ -146,6 +157,12 @@ class WriterRoundTripTest {
     WriterRoundTrip.ParsedFile parsed = WriterRoundTrip.parseText(vcf);
     String written = WriterRoundTrip.write(parsed);
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
+
+    // AN/AC/AF have no ##INFO declarations, so both write paths warn "no INFO metadata with that name" for each
+    // (the default path via addInfoOrDot's own inline check, validateBeforeWrite() via validateInfo) -- but
+    // neither check rewrites the INFO text, so the two writer configurations still produce byte-identical output
+    String validatedWritten = WriterRoundTrip.write(parsed, true);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(written, validatedWritten));
   }
 
   @Test
@@ -160,6 +177,11 @@ class WriterRoundTripTest {
     WriterRoundTrip.ParsedFile parsed = WriterRoundTrip.parseText(vcf);
     String written = WriterRoundTrip.write(parsed);
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
+
+    // fully spec-compliant content triggers no warning at parse time, so validateBeforeWrite() has nothing to
+    // canonicalize -- the two writer configurations must produce byte-identical output
+    String validatedWritten = WriterRoundTrip.write(parsed, true);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(written, validatedWritten));
   }
 
   @Test
@@ -222,6 +244,14 @@ class WriterRoundTripTest {
     }
     String written = WriterRoundTrip.write(parsed);
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
+
+    // the invalid ALT ID is preserved verbatim by both write paths: validateBeforeWrite() does re-run
+    // VcfMetadata.validateAlt on this declaration (VcfWriter.validateKeyedMetadataEntries's own full-diagnostics
+    // re-check, warning a second time), but never rewrites or rejects here -- VcfWriter's own VcfContext is
+    // always lenient (see writeHeader), so validateAlt can only warn, not throw, on either invocation -- so the
+    // output bytes stay identical regardless
+    String validatedWritten = WriterRoundTrip.write(parsed, true);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(written, validatedWritten));
   }
 
   @Test
@@ -250,6 +280,11 @@ class WriterRoundTripTest {
     }
     String written = WriterRoundTrip.write(parsed);
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
+
+    // the attribute-order check no longer runs at all (see VCF_SPEC_AMBIGUITIES.md's "##META attribute order"
+    // entry), so validateBeforeWrite() has nothing to canonicalize either
+    String validatedWritten = WriterRoundTrip.write(parsed, true);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(written, validatedWritten));
   }
 
   @Test
@@ -277,6 +312,12 @@ class WriterRoundTripTest {
     }
     String written = WriterRoundTrip.write(parsed);
     assertFalse(written.contains("##reference="));
+
+    // the empty value is dropped by VcfMetadata.Builder.addRawProperty during parsing itself, before either
+    // writer ever runs -- both write paths serialize the same already-recovered metadata, so this stays
+    // dropped under validateBeforeWrite() too, not re-added or rejected
+    String validatedWritten = WriterRoundTrip.write(parsed, true);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(written, validatedWritten));
   }
 
   @Test
@@ -304,6 +345,12 @@ class WriterRoundTripTest {
     String written = WriterRoundTrip.write(parsed);
     assertTrue(written.contains("##contig=<ID=1,length=100>"));
     assertFalse(written.contains("length=200"));
+
+    // the duplicate is dropped by VcfMetadata's own duplicate-ID handling during parsing itself, before either
+    // writer ever runs (see DUPLICATE_METADATA_ID_HANDLING.md) -- both write paths serialize the same
+    // already-deduplicated metadata
+    String validatedWritten = WriterRoundTrip.write(parsed, true);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(written, validatedWritten));
   }
 
   @Test
@@ -329,6 +376,11 @@ class WriterRoundTripTest {
     }
     String written = WriterRoundTrip.write(parsed);
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
+
+    // the FILTER list itself is unchanged by the warning -- VcfPosition.checkFilters only warns, it never
+    // rewrites the list -- so both write paths serialize the same list and must agree
+    String validatedWritten = WriterRoundTrip.write(parsed, true);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(written, validatedWritten));
   }
 
   @Test
@@ -357,6 +409,11 @@ class WriterRoundTripTest {
     String written = WriterRoundTrip.write(parsed);
     assertTrue(written.contains("Father=Dad"));
     assertFalse(written.contains("Mother=Mom"));
+
+    // the duplicate is dropped by PEDIGREE's own conditional dedup rule during parsing itself, before either
+    // writer ever runs -- both write paths serialize the same already-deduplicated metadata
+    String validatedWritten = WriterRoundTrip.write(parsed, true);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(written, validatedWritten));
   }
 
   @Test
@@ -386,6 +443,11 @@ class WriterRoundTripTest {
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
         "1\t100\t.\tA\tT,.,C\t.\tPASS\t.\n";
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(expected, written));
+
+    // the substitution happens in VcfPosition's own ALT list during parsing itself, before either writer ever
+    // runs -- both write paths serialize the same already-substituted list
+    String validatedWritten = WriterRoundTrip.write(parsed, true);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(written, validatedWritten));
   }
 
   @Test
@@ -424,6 +486,11 @@ class WriterRoundTripTest {
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
         "1\t100\t.\tA\t<DEL>\t.\tPASS\t.\n";
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(expected, written));
+
+    // the trailing junk is discarded by the attribute-list tokenizer during parsing itself, before either
+    // writer ever runs -- both write paths serialize the same already-canonicalized Description value
+    String validatedWritten = WriterRoundTrip.write(parsed, true);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(written, validatedWritten));
   }
 
   @Test
@@ -442,6 +509,11 @@ class WriterRoundTripTest {
     WriterRoundTrip.ParsedFile parsed = WriterRoundTrip.parseText(vcf);
     String written = WriterRoundTrip.write(parsed);
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
+
+    // fully spec-compliant content triggers no warning at parse time, so validateBeforeWrite() has nothing to
+    // canonicalize -- the two writer configurations must produce byte-identical output
+    String validatedWritten = WriterRoundTrip.write(parsed, true);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(written, validatedWritten));
   }
 
   @Test
@@ -471,6 +543,11 @@ class WriterRoundTripTest {
     WriterRoundTrip.ParsedFile reparsed = WriterRoundTrip.parseText(written);
     String rewritten = WriterRoundTrip.write(reparsed);
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(written, rewritten));
+
+    // the re-quoting happens during parsing itself (the tokenizer's own truncation recovery), before either
+    // writer ever runs -- both write paths serialize the same already-re-quoted value
+    String validatedWritten = WriterRoundTrip.write(parsed, true);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(written, validatedWritten));
   }
 
   @Test
@@ -524,6 +601,11 @@ class WriterRoundTripTest {
     assertEquals(List.of("a%3Bb%3bc%03Ad%41e"), parsed.positions().get(0).getInfo("XY"));
     String written = WriterRoundTrip.write(parsed);
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
+
+    // no warning was recorded above, so validateBeforeWrite() has nothing to canonicalize either -- the two
+    // writer configurations must produce byte-identical output
+    String validatedWritten = WriterRoundTrip.write(parsed, true);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(written, validatedWritten));
   }
 
   @Test
@@ -555,6 +637,11 @@ class WriterRoundTripTest {
     assertEquals("a%3Bb%3bc%03Ad%41e", parsed.samples().get(0).get(0).getProperty("XZ"));
     String written = WriterRoundTrip.write(parsed);
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
+
+    // no warning was recorded above, so validateBeforeWrite() has nothing to canonicalize either -- the two
+    // writer configurations must produce byte-identical output
+    String validatedWritten = WriterRoundTrip.write(parsed, true);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(written, validatedWritten));
   }
 
   @Test
@@ -584,6 +671,11 @@ class WriterRoundTripTest {
         parsed.metadata().getFilters().get("q10").getPropertyRaw("Description"));
     String written = WriterRoundTrip.write(parsed);
     assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(vcf, written));
+
+    // no warning was recorded above, so validateBeforeWrite() has nothing to canonicalize either -- the two
+    // writer configurations must produce byte-identical output
+    String validatedWritten = WriterRoundTrip.write(parsed, true);
+    assertEquals(Optional.empty(), WriterRoundTrip.byteDiff(written, validatedWritten));
   }
 
   private record MatrixCase(String key, String description, String number, FormatType type, String value,
