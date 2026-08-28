@@ -17,10 +17,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
@@ -29,11 +29,45 @@ jobs:
       - name: Build and test
         run: ./gradlew test
 
+      - name: hts-specs conformance
+        run: ./gradlew htsSpecsTest
+
+      - name: Cache bcftools 1.23.1 build
+        id: cache-bcftools
+        uses: actions/cache@v4
+        with:
+          path: ~/bcftools-build/bcftools-1.23.1/bcftools
+          key: bcftools-1.23.1-${{ runner.os }}-v1
+
+      - name: Build bcftools 1.23.1 from source
+        if: steps.cache-bcftools.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends zlib1g-dev
+          mkdir -p ~/bcftools-build
+          cd ~/bcftools-build
+          curl -fsSL -o htslib.tar.bz2 https://github.com/samtools/htslib/releases/download/1.23.1/htslib-1.23.1.tar.bz2
+          curl -fsSL -o bcftools.tar.bz2 https://github.com/samtools/bcftools/releases/download/1.23.1/bcftools-1.23.1.tar.bz2
+          tar -xjf htslib.tar.bz2
+          tar -xjf bcftools.tar.bz2
+          cd htslib-1.23.1
+          ./configure --disable-libcurl --disable-bz2 --disable-lzma
+          make -j"$(nproc)"
+          cd ../bcftools-1.23.1
+          ./configure --with-htslib=../htslib-1.23.1
+          make -j"$(nproc)"
+
+      - name: bcftools dependency check
+        run: |
+          export PATH="$HOME/bcftools-build/bcftools-1.23.1:$PATH"
+          ./gradlew bcftoolsDependencyTest
+
       - name: Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           files: ./build/reports/jacoco/test/jacocoTestReport.xml
           flags: unittests
+          token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Send Slack notification on failure
         if: failure()
