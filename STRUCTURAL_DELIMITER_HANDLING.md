@@ -618,10 +618,9 @@ evidence. `Payload` is a paraphrase, not the literal probe text. (Row 15 does no
   structural; preserving it" (`InternalUtils.parseOneAttribute`'s own unconditional check,
   `InternalUtils.java:525-528` -- the same check Row 31 below documents for an unquoted trailing quote); this
   is a SEPARATE, unconditional check from the `EncodingProblem`/construction/`validateBeforeWrite()`
-  machinery the rest of this row describes, and it runs on every parse regardless of `isLenient()`. Filed
-  originally as a gap in `VCF_SPEC_AMBIGUITIES.md`'s own "Unquoted metadata attribute value..." entry (see
-  `TODO.md`), whose prose read, by omission, as if parse were silent for this shape -- it isn't, and this row
-  is the parallel gap in this document that the same filed item also names.
+  machinery the rest of this row describes, and it runs on every parse regardless of `isLenient()`. Parse is
+  not silent for this shape: `VCF_SPEC_AMBIGUITIES.md`'s own "Unquoted metadata attribute value..." entry
+  describes the separate, `EncodingProblem`-based check; the parse-time warning above is this row's own.
 - **Public construction:** throws (`checkMetadataPropertyEncoding` throws for every problem).
 - **Validated write:** warns, not throws -- not `unreadableOutput` (bcftools garbles or truncates the
   declaration but the file stays readable).

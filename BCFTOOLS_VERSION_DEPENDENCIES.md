@@ -410,11 +410,9 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
 
 ### `VcfPosition`'s corrupting-character surface: ID/ALT/FILTER/INFO/FORMAT delimiter corruption
 - Test: `BcftoolsDependencyTest#testFormatTabCorruptedKeyBcftoolsFatallyFailsToParse` (a literal tab embedded
-  in a FORMAT key, added as a follow-up fix -- TODO.md's "A literal TAB in a FORMAT key is warn-only under
-  lenient and produces structurally invalid output" entry, filed by this sub-project's own final review as an
-  out-of-scope pre-existing hole; TAB is the record's own column delimiter, not one of the row-set's original
-  field-own delimiters, so it fell outside that sub-project's approved row set -- see TODO.md's companion
-  "deliberate row-set narrowing" entry. Unlike the `;`/`:` shapes below, bcftools fails outright on this wire
+  in a FORMAT key -- TAB is the record's own column delimiter, not one of this surface's other field-own
+  delimiters below, and a literal TAB in a FORMAT key is warn-only under lenient, producing structurally
+  invalid output. Unlike the `;`/`:` shapes below, bcftools fails outright on this wire
   text -- `[E::vcf_parse_format_fill5] Couldn't read GT data: value not a number or '.'`, exit code 8 -- a
   file bcftools cannot read at all, worse than either of the silent-corruption shapes),
   `#testIdSemicolonEntryBcftoolsAcceptsSilently` (ID's own `;` list-join
@@ -429,8 +427,7 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
   earlier "no warning" prediction -- bcftools actually warns `INFO 'X' is not defined in the header` because
   the corrupted second entry is undeclared, but still exits 0 and keeps the wire text unchanged),
   `#testInfoKeyEqualsEntryBcftoolsWarnsButKeepsWireTextUnchanged` (INFO's own `=` key/value separator embedded
-  in a key -- already rejected at construction; added as a follow-up fix, TODO.md's "no dedicated row or
-  evidence" residue -- bcftools splits on the first `=` the same way this library's own parser does, warns
+  in a key -- already rejected at construction; bcftools splits on the first `=` the same way this library's own parser does, warns
   `INFO 'KEY' is not defined in the header` because the corrupted key isn't declared, but still exits 0 and
   keeps the wire text unchanged), `#testInfoValueCommaInScalarKeyBcftoolsAcceptsSilently` (INFO's own `,`
   list-join delimiter embedded in a scalar (`Number=1`) value -- already rejected at construction; bcftools
@@ -440,8 +437,7 @@ changing to match, this library could emit VCF that bcftools itself cannot read 
   `[W::vcf_parse_format_alloc4] Duplicate FORMAT tag GT`, collapses the duplicate key, and silently
   misassigns every sample value after the corruption point -- worse than a rejection),
   `#testWellFormedIdAltFilterInfoFormatBcftoolsAcceptsCleanlyAsControl` (the control row for this whole
-  surface, added as a follow-up fix -- TODO.md's "no control case on the bcftools side" residue; one ordinary
-  record touching every field this surface covers, none of the corrupting shapes, confirming the shared
+  surface; one ordinary record touching every field this surface covers, none of the corrupting shapes, confirming the shared
   `runBcftools` harness itself produces a clean result rather than silently reporting every input invalid)
 - Reasoning: `docs/superpowers/specs/2026-08-18-1000-vcfposition-corrupting-character-surface-design.md`
   (no pre-existing behavior-table document covers this surface; the design's own "no fresh markdown table"

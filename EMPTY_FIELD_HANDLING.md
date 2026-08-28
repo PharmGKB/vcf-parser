@@ -156,9 +156,13 @@ value (`InternalUtils.fillEmptyEntriesWithDot`, called before `context.newTruste
 `VcfSample` even exists, but ordinary Public construction of a `VcfSample` (e.g. `VcfContext.newSample`) does
 not -- correction there is deferred to an explicit `.validate()` call (also what `validateBeforeWrite()`'s own
 `sample.validate()` invokes). A directly-constructed, not-yet-validated `VcfSample` can therefore return the
-empty value from a raw property read, something a parsed one never can. Each of rows 9-11 tables this as two
+empty value from a raw property read, something a parsed one never can -- true regardless of whether that
+construction warned, since rows 9-10's reserved-key warning below is only from a discarded validation probe,
+not a correction to the stored value. Each of rows 9-11 tables this as two
 states rather than one: "Parse / Public construction + `.validate()` / Validated write" (all three converge on
-warn + substitute `.`) and "Public construction, before `.validate()`" (accepts silently, no warning). Default
+warn + substitute `.`) and "Public construction, before `.validate()`" (silent for row 11's non-reserved key;
+rows 9-10's reserved `DP` warns via the construction-time type probe instead, but the stored value is
+unaffected either way). Default
 write for these three rows has its own hot-path duplicate too, `VcfWriter.addSampleConditionally()`, reachable
 via ordinary construction of a legitimately-empty (not structurally invalid) sample value.
 
@@ -179,8 +183,8 @@ round-trip untouched" input the standard requires. Row 18 ("INFO flag `DB;DP=10`
 | [6](#row-6----alt-t-trailing-empty-entry) | ALT | `T,` (trailing) | Decision-bearing | warn + substitute `.` |
 | [7](#row-7----format-key-gtgq-interior-empty-entry) | FORMAT key | `GT::GQ` (interior) | Decision-bearing | warn, kept as-is |
 | [8](#row-8----format-key-gtdp-trailing-empty-entry) | FORMAT key | `GT:DP:` (trailing) | Decision-bearing | warn, kept as-is |
-| [9](#row-9----sample-value-01-under-format-gtdp-trailing-empty-sub-field) | Sample value | `0/1:` under `GT:DP` (trailing) | Decision-bearing | Parse: warn + substitute `.`; Public construction (pre-`validate()`): silent |
-| [10](#row-10----sample-value-0130-under-format-gtdpgq-dp-declared-typeinteger-interior-empty-sub-field) | Sample value | `0/1::30` under `GT:DP:GQ`, `DP` Integer (interior) | Decision-bearing | Parse: warn + substitute `.`; Public construction (pre-`validate()`): silent |
+| [9](#row-9----sample-value-01-under-format-gtdp-trailing-empty-sub-field) | Sample value | `0/1:` under `GT:DP` (trailing) | Decision-bearing | Parse: warn + substitute `.`; Public construction (pre-`validate()`): warns (reserved-key type probe), but `getProperty` still returns the unsubstituted empty string |
+| [10](#row-10----sample-value-0130-under-format-gtdpgq-dp-declared-typeinteger-interior-empty-sub-field) | Sample value | `0/1::30` under `GT:DP:GQ`, `DP` Integer (interior) | Decision-bearing | Parse: warn + substitute `.`; Public construction (pre-`validate()`): warns (reserved-key type probe), but `getProperty` still returns the unsubstituted empty string |
 | [11](#row-11----sample-value-0130-under-format-gtxxgq-xx-declared-typestring-interior-empty-sub-field) | Sample value | `0/1::30` under `GT:XX:GQ`, `XX` String (interior) | Decision-bearing | Parse: warn + substitute `.`; Public construction (pre-`validate()`): silent -- and deliberately diverging from bcftools' own NUL-byte artifact |
 | [12](#row-12----info-top-level-entry-dp10af05-interior-empty-entry) | INFO top-level entry | `DP=10;;AF=0.5` (interior) | Decision-bearing | warn + drop |
 | [13](#row-13----info-top-level-entry-dp10-trailing-empty-entry) | INFO top-level entry | `DP=10;` (trailing) | Decision-bearing | warn + drop |
@@ -417,9 +421,13 @@ Expect to find `XD`, not `AD`, on opening any of those three fixtures; see each 
   load-bearing here regardless.
 - **Parse:** warn + substitute `.` (`InternalUtils.fillEmptyEntriesWithDot`, run eagerly before the `VcfSample`
   is constructed).
-- **Public construction, before an explicit `.validate()` call:** accepts silently -- **not** the same outcome
-  as Parse (see "Naming our paths for rows 1-12" above). A `VcfSample` built directly with an empty string in
-  this position (e.g. via `VcfContext.newSample`) holds it unchanged until `.validate()` runs.
+- **Public construction, before an explicit `.validate()` call:** `DP` is a reserved key
+  (`ReservedFormatProperty.Depth`), so `checkReservedFormatTypes` (run eagerly at construction, per
+  `VALIDATION_PHILOSOPHY.md`'s Principle 1) probes it as a `Long` and warns "Value of type Long is an empty
+  entry ... treating it as the missing value '.'" -- construction is **not** silent for this row. The
+  substitution that warning describes is only the probe's own discarded result, though: `getProperty("DP")`
+  still returns the unmodified, unsubstituted empty string until `.validate()` actually runs, which is the
+  divergence from Parse that matters (see "Naming our paths for rows 1-12" above).
 - **Public construction + `.validate()` / Validated write:** warn + substitute `.` (`VcfSample.validate()`,
   also what `VcfWriter.Builder.validateBeforeWrite()`'s `sample.validate()` call invokes) -- converges with
   Parse's outcome.
@@ -441,7 +449,8 @@ Expect to find `XD`, not `AD`, on opening any of those three fixtures; see each 
 - **vcf_validator 0.10.2 (4.3):** reports the file invalid -- "Line 13: Sample #1 is not a valid string."
   (measured live).
 - **Parse:** warn + substitute `.`, identical mechanism to row 9.
-- **Public construction, before `.validate()`:** accepts silently, identical divergence to row 9.
+- **Public construction, before `.validate()`:** `DP` is reserved, so this warns at construction (the
+  reserved-key type probe) rather than accepting silently -- identical mechanism and divergence to row 9.
 - **Public construction + `.validate()` / Validated write:** warn + substitute `.`.
 - **Default write:** warn + substitute `.`, via `VcfWriter.addSampleConditionally()`.
 - **Test/fixture evidence:**
@@ -472,7 +481,8 @@ Expect to find `XD`, not `AD`, on opening any of those three fixtures; see each 
   (measured live; same message as row 10).
 - **Parse:** warn + substitute `.`, identical mechanism to rows 9-10 -- diverging deliberately from bcftools'
   own NUL-byte artifact, per the classification note above.
-- **Public construction, before `.validate()`:** accepts silently, identical divergence to rows 9-10.
+- **Public construction, before `.validate()`:** `XX` is a non-reserved, test-only key, so no reserved-key
+  type probe runs at construction -- unlike rows 9-10's reserved `DP`, this genuinely accepts silently.
 - **Public construction + `.validate()` / Validated write:** warn + substitute `.`.
 - **Default write:** warn + substitute `.`, via `VcfWriter.addSampleConditionally()`.
 - **Test/fixture evidence:**

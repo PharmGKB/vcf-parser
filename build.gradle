@@ -116,7 +116,7 @@ java {
   targetCompatibility = JavaVersion.VERSION_17
 }
 
-// hts-specs conformance test (see README.md's "hts-specs conformance test" section for rationale and known state)
+// hts-specs conformance test (see README.md's "Conformance and dependency tests" section for rationale and known state)
 ext {
   htsSpecsPinnedSha = 'da617203a9527537746e200abda2885bec3a822c'
   htsSpecsCheckoutDir = layout.buildDirectory.dir('hts-specs-checkout')

@@ -96,8 +96,8 @@ public enum ReservedFormatProperty implements ReservedProperty {
   // getExpectedNumber() below therefore returns m_expectedNumber's target value ("G") unconditionally, and
   // getExpectedNumber(VcfVersion) is overridden with a single named one-off for CNL, the same shape as
   // fromId(String, VcfVersion)'s existing GLE special case immediately below in this file -- NOT a general
-  // per-version reserved-key table (that is TODO.md's separate, deferred "Investigate bumping the target VCF
-  // spec to 4.4 or 4.5" project, which also covers unrelated 4.4/4.5 drift like SVLEN/CN). GLE's own mechanism
+  // per-version reserved-key table (that is a separate, deferred project for whenever the target VCF
+  // specification moves to 4.4/4.5, which also covers unrelated 4.4/4.5 drift like SVLEN/CN). GLE's own mechanism
   // (fromId returning null at 4.3+) does not transfer here: CNL still exists as a reserved key at every version,
   // only its expected Number changes.
 
@@ -238,9 +238,10 @@ public enum ReservedFormatProperty implements ReservedProperty {
    * added with no earlier declaration at all (see that field's own comment). A real per-version table covering
    * <em>meaning</em> drift (a key reserved at every version but whose expected {@code Number}/{@code Type}
    * changes, e.g. {@link #GenotypePosterior GP}/{@link #CopyNumberLikelihood CNL}) is a separate, deferred
-   * project -- see {@code InternalUtils.checkReservedInfoConstraints}'s TODO and {@code TODO.md}'s "Investigate
-   * bumping the target VCF spec to 4.4 or 4.5" entry -- this method only ever answers the narrower existence
-   * question ("is {@code id} reserved at all under {@code version}"), not that broader one.
+   * project for whenever the target VCF specification moves to 4.4/4.5 -- see
+   * {@code InternalUtils.checkReservedInfoConstraints}'s own TODO comment -- this method only ever answers
+   * the narrower existence question ("is {@code id} reserved at all under {@code version}"), not that
+   * broader one.
    *
    * @return the reserved FORMAT property {@code id} names under {@code version}, or {@code null} if {@code id}
    * names none (including a key reserved under an older version but not under {@code version}, or a key not

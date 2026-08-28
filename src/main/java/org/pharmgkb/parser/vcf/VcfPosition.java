@@ -803,8 +803,9 @@ public final class VcfPosition {
       // Tab/LF/CR remain unconditional structural violations regardless of context, for the identical reason as
       // the key check just above: VcfWriter.addInfoOrDot writes this value straight into the record column
       // (sb.append(value)), where a tab adds a column and an LF/CR ends the record, and nothing downstream
-      // catches it (the ';'/',' check below does not cover them, and InternalUtils.checkNoLineTerminator is
-      // only called on the metadata path). Unreachable via a real parsed file for the same reason as the key
+      // catches it (the ';'/',' check below does not cover them, and InternalUtils.checkNoLineTerminator's own
+      // whole-raw-text call in this class's constructor only catches \n/\r, not a tab -- see that call's own
+      // comment). Unreachable via a real parsed file for the same reason as the key
       // check above -- only direct/programmatic construction can reach this.
       if (value.indexOf('\t') >= 0 || value.indexOf('\n') >= 0 || value.indexOf('\r') >= 0) {
         throw new VcfFormatException("INFO value \"" + InternalUtils.truncateAndEscapeForMessage(value) +
@@ -988,7 +989,7 @@ public final class VcfPosition {
       }
       // Deliberately narrower than checkIds()/checkFilters()'s full containsWhitespace() throw: a tab or
       // line terminator embedded in a FORMAT key is structural -- VcfWriter.addFormatConditionally appends a
-      // FORMAT key verbatim (VcfWriter.java:486), so an embedded tab adds a column (tab is the record's own
+      // FORMAT key verbatim (VcfWriter.java:633), so an embedded tab adds a column (tab is the record's own
       // column delimiter) and an embedded LF/CR ends the record early on write; nothing downstream guards
       // against either (InternalUtils.checkNoLineTerminator is only ever called on the metadata and
       // sample-name/value paths, never here). Confirmed live (bcftools 1.23.1): a tab-corrupted FORMAT key

@@ -262,10 +262,15 @@ declared version" for that list, and its lenient section for the five gated rule
   (e.g. an empty sub-field name) now warns once per contiguous block of
   identical FORMAT text, not once per record, since a cache hit skips re-emitting that warning too.
 - **`VcfMetadata`/`Builder`**: covered in "How principles 1 and 2 are dispatched" above.
-- **`VcfSample`**: not part of *construction-time* dispatch at all -- `VcfContext.newSample` and
-  `newTrustedSample` already only throw (a null or mismatched-size key/value list, or -- outside
-  `newTrustedSample` -- a structural delimiter in a key/value), never warn, so there is no throw-vs-warn
-  choice to make at construction for this class. Every check it has is post-construction instead --
+- **`VcfSample`**: `checkNoStructuralDelimiter` (a null or mismatched-size key/value list, or -- outside
+  `newTrustedSample` -- a structural delimiter in a key/value) is unconditional at construction, always
+  throwing, never warning. But `checkReservedFormatTypes`, also run at construction (outside
+  `newTrustedSample`), IS `isLenient()`-gated dispatch: for a reserved key's cardinality mismatch or
+  out-of-range value it warns under a lenient `VcfContext` and throws under a strict one, the identical
+  shape `VcfPosition.checkReservedInfoTypes` uses for INFO (see "How principles 1 and 2 are dispatched"
+  above) -- a genuinely unparseable value still throws unconditionally regardless of context, matching
+  `InternalUtils.convertElement`'s own established unconditional-throw case. So construction is not entirely
+  throw-only for this class. The remaining checks are post-construction --
   `validate()`'s empty-value normalization and `properties()`'s duplicate-FORMAT-key handling always warn,
   regardless of context, but `getProperty(VcfPosition, VcfMetadata, String)` and `getGenotype(VcfPosition)`
   (which reads `GT` through it) are `isLenient()`-aware like any other deferred content check -- warns under a

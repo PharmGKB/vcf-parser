@@ -19,7 +19,9 @@ versions fall back to the nearest implemented version. Otherwise, target VCF 4.3
 semantics apply. The library preserves recoverable violations rather than rejecting
 every semantic defect during initial parsing.
 
-The minimum supported bcftools version is 1.18. VCF specifications are in the
+Every bcftools-informed decision in this repository is pinned to a single measured version, currently 1.23.1
+(`BCFTOOLS_VERSION_DEPENDENCIES.md`; `BcftoolsDependencyTest.EXPECTED_BCFTOOLS_VERSION` fails the gate outright
+on any other installed version) -- there is no supported floor below it. VCF specifications are in the
 `.tex` files from [hts-specs](https://github.com/samtools/hts-specs), not the PDFs.
 
 ## Spec Ambiguity Decision Hierarchy

@@ -779,9 +779,8 @@ with a very large number of malformed entries produces a correspondingly large n
 writes; with an in-memory sink (e.g. `StringWriter`) that's unbounded memory growth, and with a slow or
 remote sink, warning volume directly gates parsing/writing throughput.
 
-**Decision: won't fix.** This library trusts its input rather than defending against adversarial content
-(see the "Resource-bounding policy for untrusted VCF input" discussion this same audit prompted in
-`TODO.md`) -- a mistake-riddled but genuine VCF from a trusted source is not expected to generate enough
+**Decision: won't fix.** This library trusts its input rather than defending against adversarial content --
+a mistake-riddled but genuine VCF from a trusted source is not expected to generate enough
 warnings to matter, and choosing a fast, appropriately-buffered warning sink for a file that might is the
 caller's own responsibility, not something this library can discharge for them without knowing their
 deployment. `VcfWarnings`'s constructor Javadoc now states this explicitly instead of leaving it implicit.

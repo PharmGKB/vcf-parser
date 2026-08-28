@@ -99,7 +99,7 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   check, a deliberate leniency matching bcftools' own measured tolerance -- confirmed live that bcftools only
   warns on a space/VT/FF-corrupted key, exit 0, no column shift, no data loss. Tab
   and LF/CR are different in kind: `VcfWriter.addFormatConditionally` appends a `FORMAT` key verbatim
-  (`VcfWriter.java:583`), so an embedded tab adds a column (tab is the record's own column delimiter) and an
+  (`VcfWriter.java:633`), so an embedded tab adds a column (tab is the record's own column delimiter) and an
   embedded LF/CR ends the record early on write, corrupting record structure rather than merely the key text
   -- confirmed live (bcftools 1.23.1) that a tab-corrupted `FORMAT` key makes bcftools fail outright to read
   the file at all (`[E::vcf_parse_format_fill5]`, exit code 8), a worse outcome than either of the two
@@ -397,8 +397,8 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   `getProperty(String)`/`getInfo(String)` sibling's "not present" contract), but `position`/`metadata` reject
   `null` with a raw `NullPointerException` instead -- a deliberate exception to `AGENTS.md`'s Public API
   Null-Safety Policy's general rule, since these two arguments are VCF content used as a read-time collaborator
-  rather than content being validated for correctness itself; see `TODO.md`'s "Document a third Public API
-  Null-Safety Policy category" entry for the full reasoning.
+  rather than content being validated for correctness itself; see `VALIDATION_PHILOSOPHY.md`'s "A required
+  read-time collaborator is a third raw-`NullPointerException` category" entry for the full reasoning.
 - `VcfWriter.Builder.targetFileFormat(String)` throws `VcfFormatException` from `writeHeader` if it names a
   different VCF version than the metadata declares, before emitting any output: this library implements no
   cross-version conversion, so emitting that declaration would advertise a version the data does not conform

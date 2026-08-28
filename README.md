@@ -76,7 +76,9 @@ dirty view of it in action.
 [`MemoryMappedVcfLineParser`](src/main/java/org/pharmgkb/parser/vcf/MemoryMappedVcfLineParser.java) is an example
 `VcfLineParser` implementation, showing how to read an entire file into memory for
 constant-time record lookup; it is not part of the core parser and is intended only
-for short files where random access justifies the memory cost. It is not thread-safe.
+for short files where random access justifies the memory cost. It is not thread-safe --
+nor is any other core class here (`VcfParser`, `VcfWriter`, `VcfPosition`, `VcfSample`,
+`VcfMetadata`); each documents that in its own class Javadoc.
 VCF permits multiple records at the same locus, so each locus is stored as a list and
 every record seen there is kept. A repeated `ID` is handled separately in the
 ID-based lookup: `Builder.setDuplicateIdHandler` can reject the duplicate, keep the

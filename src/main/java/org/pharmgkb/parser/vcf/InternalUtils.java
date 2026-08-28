@@ -1311,9 +1311,9 @@ public class InternalUtils {
     // not modeled here (VCFv4.4.tex changelog line 2575, "Redefined Number= for SVLEN, ... CN, ... to support
     // multiple symbolic alleles"); END keeps Number=1 but gains a 4.4+-only meaning change (line 2576,
     // "Redefined END as the end position of the longest ALT allele"). None of this is reachable while
-    // VcfVersion.HIGHEST_IMPLEMENTED stays V4_3 -- deferred to the version-aware reserved-key tables TODO.md's
-    // "Investigate bumping the target VCF spec to 4.4 or 4.5" entry already tracks as the next structural
-    // change for this method.
+    // VcfVersion.HIGHEST_IMPLEMENTED stays V4_3 -- deferred to whenever the target VCF specification
+    // (AGENTS.md) moves to 4.4/4.5, which will need version-aware reserved-key tables as the next structural
+    // change for this method regardless.
   }
 
   // fieldType is the literal "INFO" or "FORMAT" prefix for the warning message -- see checkUnitInterval's
@@ -1814,7 +1814,7 @@ public class InternalUtils {
     return convertNonEmptyProperty(toJavaType(type), value, warnings);
   }
 
-  // TODO.md: reverse of the two toJavaType overloads above -- a type-mismatch diagnostic that only has the
+  // Reverse of the two toJavaType overloads above -- a type-mismatch diagnostic that only has the
   // already-resolved Java class in hand (VcfWriter's validateFormatValue/validateInfoValue, reached from
   // both a declared FormatType/InfoType, converted via toJavaType, and a reserved property's own
   // getType(), which never went through a FormatType/InfoType at all) previously named that Java

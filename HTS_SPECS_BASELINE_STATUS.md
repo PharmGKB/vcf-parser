@@ -52,7 +52,8 @@ The same re-verification pass must also check `HtsSpecsConformanceTest`'s `EXPEC
 
 If cross-referencing fixture content directly against a local hts-specs clone (e.g. via `git show`/`git diff`
 rather than through `./gradlew htsSpecsUpdateBaseline`), make sure that clone is on its `master` branch —
-`master` is the branch that matches `htsSpecsPinnedSha` (verified: `master`'s HEAD *is* the pinned SHA). A
+`master` is the branch that matches `htsSpecsPinnedSha` (verified: `git log <pin>..origin/master -- test/vcf`
+is empty, so the fixture corpus hasn't drifted since the pin, even once `master`'s HEAD has advanced past it). A
 clone can be checked out to an arbitrary other branch (a personal fork branch with unmerged, in-progress
 changes, for example) that doesn't reflect the pinned state at all, and comparing against that instead of
 `master` will silently produce wrong conclusions about what this project's baseline is actually pinned to.
@@ -306,9 +307,8 @@ is actually called (`getQuality()`, `getInfo(ReservedInfoProperty)`, `getGenotyp
 deliberate, not an oversight -- see `DeferredValidationLineParser`'s own Javadoc and the sibling
 `LocalFixtureConformanceTest` harness, which wires it in directly; `HtsSpecsConformanceTest` does not, because
 its outcomes are baseline-diffed across up to 1435 rows rather than hand-written per fixture, and wiring in
-deferred validation there risks two distinct failure modes measured directly while investigating the TODO.md
-item this section closes out (`HtsSpecsConformanceTest` may have silently unverified deferred-validation
-warnings, filed 2026-08-16):
+deferred validation there risks two distinct failure modes, measured directly while investigating whether
+`HtsSpecsConformanceTest` might have silently unverified deferred-validation warnings:
 
 - **False credit from a generic, content-independent warning.** `DeferredValidationLineParser` calls
   `sample.getProperty(position, metadata, key)` for every sample property key present, which fires `"FORMAT {}
