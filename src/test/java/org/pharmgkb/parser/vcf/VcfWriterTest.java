@@ -1192,6 +1192,31 @@ public class VcfWriterTest {
   }
 
   @Test
+  public void testWritingOneInfoKeyWithManyValuesCompletesWithoutQuadraticSlowdown() throws IOException {
+    // regression test: addInfoOrDot's per-value loop used to be indexed (for (int i...) { values.get(i); }),
+    // but values is an unmodifiable view over a LinkedListMultimap's per-key value list, where List.get(int)
+    // is O(index) -- an O(n^2) write for one INFO key with n values. Measured before this fix: 64,000 values
+    // took ~2,447 ms; the same payload spread across 64,000 separate single-value keys (isolating the access
+    // pattern from the payload size) took 34 ms. This test's timeout sits comfortably above the fixed cost
+    // and well below the unfixed one, so it fails if the indexed-loop regression ever returns.
+    int n = 64_000;
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    for (int i = 0; i < n; i++) {
+      info.put("AA", "v" + i);
+    }
+    VcfPosition position = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, null, null, info, null, -1);
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .addInfo("AA", "d", InfoType.String, ".", null, null).build();
+
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    writer.writeHeader(metadata);
+    assertTimeoutPreemptively(java.time.Duration.ofSeconds(1), () -> writer.writeLine(metadata, position,
+        Collections.emptyList()));
+    assertEquals(n, position.getInfo("AA").size());
+  }
+
+  @Test
   public void testValidateBeforeWriteWritingManySamplesWithManyFormatKeysCompletesWithoutQuadraticSlowdown()
       throws IOException {
     // regression test: validateSamples' own "is this key declared in FORMAT" check (the validateBeforeWrite()
