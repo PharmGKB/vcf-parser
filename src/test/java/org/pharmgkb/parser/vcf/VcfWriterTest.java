@@ -6,6 +6,7 @@ import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.io.UncheckedIOException;
+import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -3855,6 +3856,54 @@ public class VcfWriterTest {
     assertThrows(UncheckedIOException.class, () -> writer.writeHeader(metadata));
     assertFalse(writer.isValid());
     assertThrows(IllegalStateException.class, () -> writer.writeHeader(metadata));
+  }
+
+  @Test
+  public void testWarningsSinkWriteFailureSurfacesUncheckedIOExceptionWithoutInvalidatingWriter() throws Exception {
+    // regression test (release audit follow-up, docs/issues/2026-08-27-1740-release-audit.md): VcfWriter's own
+    // class Javadoc and VALIDATION_REFERENCE.md's matching paragraph both state that a warningsToFile() sink's
+    // write failure surfaces UncheckedIOException from the same methods as the primary writer's own failure,
+    // but -- unlike that failure -- does NOT invalidate the writer: isValid() stays true and the writer remains
+    // usable afterward. No existing test exercised this: testBuildClosesPrimaryWriterWhenWarningsFileFailsToOpen
+    // only covers the warnings file failing to OPEN at build() time, a different scenario from an already-open
+    // sink that starts failing mid-write.
+    StringWriter sw = new StringWriter();
+    VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).build();
+    // no public API constructs a VcfWriter with a caller-supplied warnings sink (only warningsToFile(Path),
+    // which opens its own file) -- reflection is the only way to substitute an already-open sink that fails on
+    // write, as opposed to failing to open in the first place.
+    Field warningsField = VcfWriter.class.getDeclaredField("m_warnings");
+    warningsField.setAccessible(true);
+    FailingWriter failingSink = new FailingWriter();
+    failingSink.startFailing();
+    warningsField.set(writer, new VcfWarnings(failingSink));
+
+    // ##contig declares chr1 so VcfWriter's own unrelated "CHROM has no ##contig metadata" cross-check
+    // doesn't warn on the SECOND (clean) writeLine call below -- it's deduped per-chromosome, so without
+    // this it would fire there for the first time (having never reached that check on the first call,
+    // which already threw earlier, from the INFO-AC-undeclared warning) and confound the "writer remains
+    // usable" assertion with a second, unrelated UncheckedIOException from the same still-failing sink
+    VcfMetadata metadata = new VcfMetadata.Builder(LENIENT_CONTEXT).setFileFormat("VCFv4.2")
+        .setColumns(Arrays.asList("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"))
+        .addContig("chr1", null, null, null, null, null, null)
+        .build();
+    ListMultimap<String, String> info = ArrayListMultimap.create();
+    info.put("AC", "1"); // undeclared INFO key -- triggers the "no INFO metadata with that name" warning
+    VcfPosition warningPosition = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", List.of("T"), null, null,
+        info, null, -1);
+
+    writer.writeHeader(metadata);
+    assertThrows(UncheckedIOException.class,
+        () -> writer.writeLine(metadata, warningPosition, Collections.emptyList()));
+    assertTrue(writer.isValid(),
+        "a warnings-sink write failure must not invalidate the writer, unlike the primary writer's own failure");
+
+    // the writer remains genuinely usable afterward -- a position that triggers no warning at all writes
+    // successfully without ever touching the still-failing sink
+    VcfPosition cleanPosition = LENIENT_CONTEXT.newPosition("chr1", 2, null, "A", List.of("T"), null, null,
+        ArrayListMultimap.create(), null, -1);
+    writer.writeLine(metadata, cleanPosition, Collections.emptyList());
+    assertTrue(sw.toString().contains("chr1\t2\t"));
   }
 
   @Test
