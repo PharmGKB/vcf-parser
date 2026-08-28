@@ -8,6 +8,7 @@ import java.io.Reader;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.io.UncheckedIOException;
+import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,6 +26,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.pharmgkb.common.util.PathUtils;
+import org.pharmgkb.parser.vcf.spec.FailingWriter;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
@@ -3254,6 +3256,94 @@ public class VcfParserTest {
       String afterSecondParse = java.nio.file.Files.readString(warningsFile);
       assertTrue(afterSecondParse.contains("is out of order"));
     }
+  }
+
+  @Test
+  void testWarningsSinkWriteFailureMidParseSurfacesUncheckedIOExceptionAndParserRemainsCloseable() throws Exception {
+    // TODO.md follow-up from the 2026-08-27 17:40 release audit: VcfWriter's own warnings-sink write-failure
+    // behavior (that session's Follow-up 1) has a VcfParser analogue that was untested -- only open-failure/
+    // continuity/fallback were previously exercised here (see
+    // testSecondParseAfterMidFileExceptionDoesNotTruncateWarningsFile above and the open-failure tests
+    // elsewhere in this file), never a warnings destination that is already open and fails mid-*write*.
+    // Reuses this file's own "is out of order" fixture immediately above, which reliably warns without
+    // throwing on its own. No public API constructs a VcfParser with a caller-supplied warnings sink (only
+    // warningsToFile(Path), which opens its own file) -- reflection is the only way to substitute an
+    // already-open sink that fails on write, mirroring VcfWriterTest's identical technique for the writer
+    // side of this same finding.
+    String vcf = "##fileformat=VCFv4.3\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t100\t.\tA\tT\t.\t.\t.\n" +
+        "chr1\t50\t.\tA\tC\t.\t.\t.\n"; // POS out of order -- warns, doesn't throw on its own
+    List<Long> delivered = new ArrayList<>();
+    VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .parseWith((metadata, record) -> delivered.add(record.getPosition().getPosition()))
+        .build();
+    // no warningsToFile() configured, so m_warnings stays VcfWarnings.DEFAULT until substituted below --
+    // parseMetadata() alone can't warn for this fixture, so nothing is lost by driving it separately first
+    parser.parseMetadata();
+    Field warningsField = VcfParser.class.getDeclaredField("m_warnings");
+    warningsField.setAccessible(true);
+    FailingWriter failingSink = new FailingWriter();
+    failingSink.startFailing();
+    warningsField.set(parser, new VcfWarnings(failingSink));
+
+    assertTrue(parser.parseNextLine()); // chr1:100 -- first record, nothing to compare against, no warning
+    assertEquals(List.of(100L), delivered);
+    assertThrows(UncheckedIOException.class, parser::parseNextLine); // chr1:50 -- out-of-order warning fails to write
+
+    // the failure must not corrupt the parser's ability to release its own resources afterward
+    assertDoesNotThrow(parser::close);
+  }
+
+  @Test
+  void testReadFailureMidParsePropagatesAsCheckedIOExceptionAndParserRemainsCloseable() throws Exception {
+    // TODO.md follow-up from the 2026-08-27 17:40 release audit: no existing test covered m_reader.read()
+    // itself throwing IOException mid-parse, as opposed to on close()
+    // (testCloseThrowsUncheckedIOExceptionWhenTheUnderlyingReaderFailsToClose above covers that).
+    // readPhysicalLine() calls m_reader.read(...) directly, outside the try/catch that wraps
+    // VcfFormatException below it -- a genuine IOException from the underlying reader must propagate as an
+    // ordinary checked IOException (not wrapped, not silently swallowed), and must not corrupt the parser's
+    // own state: close() afterward must still succeed.
+    //
+    // Serves exactly the metadata/header content on its first read() call, then fails every call after --
+    // readPhysicalLine()'s own 8192-char read-ahead buffer (m_lineReadBuffer) would otherwise absorb this
+    // entire (small) fixture in one read() call, leaving nothing for parseNextLine() to ever request from
+    // this reader again and making the failure never actually surface at all; returning fewer characters
+    // than requested on the first call, as this reader deliberately does, is legal per Reader's own contract
+    // and is what forces a second read() call once readPhysicalLine() needs the data line's content, which
+    // is where the failure actually needs to occur to be "mid-parse" rather than "on the very first byte."
+    class FirstReadSucceedsThenAlwaysFailsReader extends Reader {
+      private final String m_firstChunk =
+          "##fileformat=VCFv4.3\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+      private boolean m_servedFirstChunk = false;
+
+      @Override
+      public int read(char[] cbuf, int off, int len) throws IOException {
+        if (m_servedFirstChunk) {
+          throw new IOException("simulated read failure");
+        }
+        m_servedFirstChunk = true;
+        m_firstChunk.getChars(0, m_firstChunk.length(), cbuf, off);
+        return m_firstChunk.length();
+      }
+
+      @Override
+      public void close() {
+        // no-op: nothing real to release, and close() itself must not throw for this test's own assertion
+        // (that the parser remains closeable) to mean anything
+      }
+    }
+
+    VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new FirstReadSucceedsThenAlwaysFailsReader()))
+        .parseWith((metadata, record) -> { })
+        .build();
+    parser.parseMetadata(); // succeeds: entirely served by the first, successful read() call above
+
+    IOException ex = assertThrows(IOException.class, parser::parseNextLine);
+    assertEquals("simulated read failure", ex.getMessage());
+    assertDoesNotThrow(parser::close);
   }
 
   @Test
