@@ -125,6 +125,28 @@ class VcfWarningsTest {
   }
 
   @Test
+  void testWarnFlushesSinkAfterEveryWrite() {
+    // regression test (2026-08-27 19:12 release audit): openFile()'s real sink is a BufferedWriter, whose
+    // default ~8KB buffer previously let warn() silently succeed on every write() call below that threshold
+    // even when the underlying file was already unwritable -- contradicting this method's own documented
+    // "writes to this sink synchronously" contract, and the callers (VcfParser/VcfWriter) that depend on a
+    // sink failure surfacing from warn() itself, not from some later, unrelated call that happens to cross
+    // the buffer boundary. flush() is what actually forces a BufferedWriter to attempt the underlying write
+    // (and therefore to notice a failure) instead of just accumulating it in memory.
+    java.util.concurrent.atomic.AtomicInteger flushCount = new java.util.concurrent.atomic.AtomicInteger();
+    Writer sink = new Writer() {
+      @Override public void write(char[] cbuf, int off, int len) {}
+      @Override public void flush() { flushCount.incrementAndGet(); }
+      @Override public void close() {}
+    };
+    VcfWarnings warnings = new VcfWarnings(sink);
+    warnings.warn("first");
+    warnings.warn("second");
+    assertEquals(2, flushCount.get(),
+        "each warn() call must flush immediately, not rely on the sink's own buffering to eventually surface a failure");
+  }
+
+  @Test
   void testCloseSwallowsAndLogsUnderlyingCloseFailureInsteadOfThrowing() {
     // regression test for finding #3 of this plan's external review: close() must not declare a checked
     // exception a caller (e.g. VcfParser's finally block, VcfWriter.closeWarningsWriterQuietly()) would have to

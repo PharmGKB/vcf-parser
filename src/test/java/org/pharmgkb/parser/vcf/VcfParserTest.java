@@ -3686,9 +3686,12 @@ public class VcfParserTest {
     // regression test: every other warningsToFile test in this class drives the parse through parse(), whose
     // own finally already calls closeWarningsFile() directly. This test never calls parse() at all -- it drives
     // parseMetadata()/parseNextLine() directly, the flow that made close() itself responsible for
-    // closeWarningsFile() -- so it's the only test that actually exercises that path. The warnings sink is
-    // buffered and not flushed per warn(), so without close()'s closeWarningsFile() this warning would never
-    // reach the file.
+    // closeWarningsFile() -- so it's the only test that actually exercises that path.
+    // VcfWarnings.warn() now flushes after every call (see its own Javadoc/comment), so this warning is
+    // already visible in the file well before parser.close() runs below -- flushing alone no longer depends
+    // on closeWarningsFile(). This test's remaining, narrower purpose is confirming the direct
+    // parseMetadata()/parseNextLine() flow still correctly reaches close()'s own closeWarningsFile() call at
+    // all (releasing the underlying file resource), not that flushing depends on it.
     Path file = tempDir.resolve("direct.vcf");
     Files.writeString(file,
         "##fileformat=VCFv4.2\n" +

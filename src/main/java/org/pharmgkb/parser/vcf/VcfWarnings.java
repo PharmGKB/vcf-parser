@@ -95,6 +95,15 @@ public final class VcfWarnings implements Closeable {
       try {
         m_sink.write(formatted);
         m_sink.write('\n');
+        // flushed unconditionally, not just relying on the sink's own eventual auto-flush: openFile() wraps
+        // its file in a BufferedWriter, whose default ~8KB buffer would otherwise silently absorb every
+        // write() call below that threshold with no error at all, even when the underlying file is already
+        // unwritable (e.g. disk full, permission revoked, fd closed) -- contradicting this method's own
+        // documented "writes to this sink synchronously" contract and the callers (VcfParser/VcfWriter) that
+        // depend on a sink failure surfacing here, not being silently lost until some later, unrelated
+        // write() call happens to cross the buffer boundary or close() (which only logs, never rethrows).
+        // Found by the 2026-08-27 19:12 release audit.
+        m_sink.flush();
       } catch (IOException e) {
         throw new UncheckedIOException("Error writing to the active VCF warnings file", e);
       }
