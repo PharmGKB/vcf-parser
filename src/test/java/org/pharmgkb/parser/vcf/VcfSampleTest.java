@@ -491,6 +491,30 @@ class VcfSampleTest {
   }
 
   @Test
+  void testManuallyConstructedSampleFromMapDoubleWarnsOnReservedKeyBetweenConstructionAndFirstRead() {
+    // TODO.md follow-up from the 2026-08-27 17:40 release audit: the eager probe above is reachable from
+    // TWO independent constructors -- the list-keyed one just pinned, and this class's Map-keyed one
+    // (VcfSample(VcfContext, LinkedHashMap), reachable via VcfContext.newSample(LinkedHashMap) or
+    // Builder.properties()/.property()) -- both call the identical checkReservedFormatTypes(...) probe, but
+    // only the list-keyed path had a pinning test until now.
+    Logger root = (Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    WarnCapturingAppender appender = new WarnCapturingAppender();
+    appender.start();
+    root.addAppender(appender);
+    try {
+      VcfSample sample = LENIENT_CONTEXT.newSample(new LinkedHashMap<>(Map.of("DP", "-5")));
+      assertEquals(1, appender.countMessagesContaining("FORMAT DP value \"-5\" is a negative number"),
+          "construction-time eager probe should warn once");
+      sample.getProperty(ReservedFormatProperty.Depth);
+      assertEquals(2, appender.countMessagesContaining("FORMAT DP value \"-5\" is a negative number"),
+          "the caller's own first read re-warns, since it's an independent call graph from the eager probe");
+    } finally {
+      root.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   void testGetPropertyReservedFormatPropertyGleIsVersionGated() {
     // behavior 6: the enum-key accessor consults neither metadata nor (before this gate) the version, so under
     // 4.3 a caller passing the removed key's constant would still get its historical interpretation. It
