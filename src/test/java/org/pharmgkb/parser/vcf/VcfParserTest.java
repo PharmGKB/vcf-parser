@@ -402,6 +402,30 @@ public class VcfParserTest {
   }
 
   @Test
+  void testRetryAfterMidMetadataFailureProducesMisleadingNotAVcfFileException() throws IOException {
+    // pins parseMetadata()'s own Javadoc claim (added this session): unlike the degenerate EOF-right-after-
+    // ##fileformat shape above, where the retry also hits EOF and throws the SAME kind of exception again,
+    // a failure genuinely mid-metadata (here: a line before #CHROM that starts with neither "##" nor "#")
+    // leaves a real #CHROM header line still unread. Retrying parseMetadata() doesn't resume from there --
+    // it unconditionally requires the NEXT unread line to be "##fileformat=...", so it throws a specific,
+    // misleading message instead, even though this file is genuinely well-formed past the first failure.
+    String vcf = "##fileformat=VCFv4.3\n" +
+        "not a metadata or header line\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n";
+    try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+         VcfParser parser = new VcfParser.Builder()
+             .fromReader(reader)
+             .parseWith((metadata, record) -> { })
+             .build()) {
+      VcfFormatException first = assertThrows(VcfFormatException.class, parser::parseMetadata);
+      assertTrue(first.getMessage().contains("Unexpected line before the #CHROM header"), first.getMessage());
+      VcfFormatException retry = assertThrows(VcfFormatException.class, parser::parseMetadata);
+      assertTrue(retry.getMessage().contains("Not a VCF file: the first line must be ##fileformat"),
+          retry.getMessage());
+    }
+  }
+
+  @Test
   void testBadColumnNameThrows() throws IOException {
     // the 8 fixed columns must have their exact spec names in order
     String vcf = "##fileformat=VCFv4.2\n" +
@@ -1419,6 +1443,52 @@ public class VcfParserTest {
     // if the warnings file were left open, this read would still succeed on Linux (no exclusive-lock
     // enforcement), but an unflushed BufferedWriter's content would be missing -- the real assertion
     assertTrue(Files.readString(warningsFile).contains("PEDIGREE metadata declaration has no ID"));
+  }
+
+  @Test
+  void testCloseInvalidatesInstanceEvenWhenAheadOfBufferBoundary() throws IOException {
+    // regression test (2026-08-27 19:12 release audit): close() only released m_reader itself -- it never set
+    // any "this instance is done" flag, and readPhysicalLine()'s own 8192-char read-ahead buffer
+    // (m_lineReadBuffer) routinely still holds unconsumed content at the moment close() is called (the first
+    // fill from a small file, like this one, absorbs the entire remaining stream at once). So a closed
+    // instance could keep silently delivering already-buffered records with no error at all, contradicting
+    // the class Javadoc's own "close() ... permanently invalidates the instance" claim. This fixture is
+    // small enough that the bug was invisible without this test: the buffer boundary case immediately below
+    // covers the shape where the old bug eventually surfaced anyway, once the buffer ran out.
+    String vcf = "##fileformat=VCFv4.3\n" +
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
+        "chr1\t100\t.\tA\tT\t.\t.\t.\n" +
+        "chr1\t200\t.\tA\tC\t.\t.\t.\n";
+    VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(vcf)))
+        .parseWith((metadata, record) -> { })
+        .build();
+    parser.parseMetadata();
+    parser.close();
+    assertThrows(IllegalStateException.class, parser::parseNextLine);
+    assertThrows(IllegalStateException.class, parser::parseMetadata);
+  }
+
+  @Test
+  void testCloseInvalidatesInstanceEvenWithUnexhaustedReadAheadBuffer() throws IOException {
+    // sibling of the test above, for the shape where the pre-fix bug DID eventually surface (once the
+    // read-ahead buffer ran out, a bare "Stream closed" IOException from the underlying BufferedReader would
+    // appear, non-deterministically depending on exactly how much had been buffered vs. consumed) -- but only
+    // after however many already-buffered records had already been silently delivered past close(). A file
+    // comfortably larger than the 8192-char read-ahead buffer (m_lineReadBuffer) still must be rejected on
+    // the very next call after close(), before any of that already-buffered content is delivered.
+    StringBuilder sb = new StringBuilder("##fileformat=VCFv4.3\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n");
+    for (int i = 0; i < 2000; i++) {
+      sb.append("chr1\t").append(i + 1).append("\t.\tA\tT\t.\t.\t.\n");
+    }
+    assertTrue(sb.length() > 8192, "fixture must exceed the read-ahead buffer to exercise the boundary case");
+    VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(new StringReader(sb.toString())))
+        .parseWith((metadata, record) -> { })
+        .build();
+    parser.parseMetadata();
+    parser.close();
+    assertThrows(IllegalStateException.class, parser::parseNextLine);
   }
 
   @Test

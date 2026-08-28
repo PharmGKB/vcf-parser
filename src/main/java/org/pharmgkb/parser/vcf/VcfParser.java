@@ -81,6 +81,14 @@ public class VcfParser implements Closeable {
 
   private int m_lineNumber;
   private boolean m_alreadyFinished;
+  // set unconditionally by close(), checked at the top of every public read-driving entry point (parse(),
+  // parseMetadata(), parseNextLine()) -- distinct from m_alreadyFinished, which means "read to EOF
+  // naturally," not "the caller explicitly closed this instance." Without this, close() only released
+  // m_reader itself; readPhysicalLine()'s own 8192-char read-ahead buffer (m_lineReadBuffer) routinely still
+  // holds unconsumed content at the moment close() is called, so a closed instance could keep silently
+  // delivering already-buffered records with no error -- found by the 2026-08-27 19:12 release audit,
+  // contradicting this class's own "close() ... permanently invalidates the instance" class Javadoc.
+  private boolean m_closed;
   // one-shot: set the first time activateWarningsFile() actually opens m_warningsFile, and never cleared, so a
   // resumed parse() (see activateWarningsFile()'s own comment) can never reopen it. Distinct from
   // m_warnings == VcfWarnings.DEFAULT, which closeWarningsFile() resets on every parse -- that alone can't tell
@@ -153,9 +161,18 @@ public class VcfParser implements Closeable {
   /**
    * Parses metadata only.
    * This method should be if only the metadata is needed; otherwise, {@link #parse()} is preferred.
+   * <p>
+   * Retrying this method after it throws {@link VcfFormatException} is <strong>not</strong> supported,
+   * unlike the data-line retry pattern {@link #parseNextLine()}'s own Javadoc describes: this method always
+   * treats the next unread physical line as the file's required first {@code ##fileformat} line. After any
+   * failure past that very first line, the next unread line usually is not one, so retrying produces a
+   * misleading "Not a VCF file: the first line must be ##fileformat" exception instead of resuming
+   * meaningfully -- even though the file itself may be perfectly valid VCF.
+   *
+   * @throws IllegalStateException if metadata has already been parsed, or this instance has been closed
    */
   public VcfMetadata parseMetadata() throws IOException {
-
+    checkNotClosed();
     if (m_vcfMetadata != null) {
       throw new IllegalStateException("Metadata has already been parsed.");
     }
@@ -275,10 +292,13 @@ public class VcfParser implements Closeable {
    * This is the preferred way to read a VCF file.
    * <p>
    * If this throws {@link VcfFormatException}, calling it again resumes reading rather than restarting --
-   * see {@link #parseNextLine()}'s Javadoc for exactly what that means (and why it is only supported for a
-   * failure encountered while reading data lines, not during the metadata phase).
+   * see {@link #parseNextLine()}'s Javadoc for exactly what that means for a data-line failure, and {@link
+   * #parseMetadata()}'s Javadoc for why retrying after a metadata-phase failure is not supported.
+   *
+   * @throws IllegalStateException if the stream was already fully parsed, or this instance has been closed
    */
   public void parse() throws IOException {
+    checkNotClosed();
     // checked before activateWarningsFile() below, not after: a second parse() call following a *successful*
     // first parse must not reopen (and truncate) the warnings file only to then throw from parseNextLine()'s
     // own m_alreadyFinished check -- see m_warningsFileOpened's field comment for the other half of this, a
@@ -420,26 +440,26 @@ public class VcfParser implements Closeable {
    * been parsed successfully), the physical line that caused it has already been read from the underlying
    * stream and cannot be recovered -- calling this method again resumes from the line <em>after</em> it, not
    * the line itself. If the parser's own checks rejected the line, the {@link VcfLineParser} callback is
-   * never invoked for it at all; if instead the callback itself threw to reject an already-structurally-valid
-   * record (e.g. a duplicate-ID handler configured to fail), the callback was invoked, but the line is
+   * never invoked for it at all; if instead the callback itself threw -- whether to deliberately reject an
+   * already-structurally-valid record (e.g. a duplicate-ID handler configured to fail) or for any other
+   * reason, including a bug in the caller's own callback code -- the callback was invoked, but the line is
    * equally unrecoverable either way. A caller that catches the exception and calls this method again to
    * skip the bad record and keep reading permanently loses that record, with nothing beyond the original
    * exception marking that it happened.
    * <p>
    * This retry pattern is supported only for a failure encountered while reading data lines. Retrying after
-   * a failure during the metadata phase is <strong>not</strong> supported: the retry re-enters metadata
-   * parsing assuming the next unread line is the file's required first {@code ##fileformat} line, which by
-   * then usually is not, producing a misleading "Not a VCF file" exception instead of resuming meaningfully.
+   * a failure during the metadata phase is <strong>not</strong> supported: see {@link #parseMetadata()}'s
+   * own Javadoc.
    *
    * @return true if a line was read (it may have been skipped without being delivered to the {@link VcfLineParser}
    * callback, e.g. by {@link Builder#rsidsOnly()}); false once the end of the stream is reached -- this happens
    * only on the read attempt made *after* the last data line has already been returned, not on the call that
    * returns that last line itself
-   * @throws IllegalStateException If the stream was already fully parsed
+   * @throws IllegalStateException If the stream was already fully parsed, or this instance has been closed
    * @throws VcfFormatException If a VCF formatting error is found
    */
   public boolean parseNextLine() throws IOException, VcfFormatException {
-
+    checkNotClosed();
     if (m_alreadyFinished) {
       // prevents user errors from causing infinite loops
       throw new IllegalStateException("Already finished reading the stream");
@@ -710,6 +730,12 @@ public class VcfParser implements Closeable {
     m_lastLineNumber = m_lineNumber;
   }
 
+  private void checkNotClosed() {
+    if (m_closed) {
+      throw new IllegalStateException("This VcfParser is no longer usable after being closed");
+    }
+  }
+
   /**
    * @throws UncheckedIOException if the underlying reader's own {@code close()} fails (e.g. a network-backed
    * stream, or an fsync-on-close error for a local one) -- the warnings file, if any, is still closed/flushed
@@ -718,6 +744,10 @@ public class VcfParser implements Closeable {
    */
   @Override
   public void close() {
+    // set unconditionally, before the reader-close attempt below, so this instance is invalidated regardless
+    // of whether that attempt itself succeeds or throws -- matching this class's own "permanently invalidates
+    // the instance" claim, not just "invalidates it if closing happened to succeed."
+    m_closed = true;
     try {
       m_reader.close();
     } catch (IOException ex) {
