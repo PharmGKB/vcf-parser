@@ -14,6 +14,18 @@ Audit the implementation against three contracts:
 3. Release-quality expectations for correctness, compatibility, safety,
    performance, testing, and packaging.
 
+This review determines whether the source *could* become a release; it is not itself
+the release. Cutting an approved release tag/version is the action that follows a
+"ready for release" verdict, not a precondition for reaching one — this review's whole
+purpose is to decide whether that action is safe to take next. Never report the
+absence of a release tag, an unreleased/development-version marker in `README.md` or
+`build.gradle`, or the fact that the audited commit isn't itself a published artifact
+as a finding of any severity: these are the expected, correct state of a checkout that
+has not yet been released, not evidence against readiness. Confine packaging review to
+whether the *mechanism* would produce a correct artifact once a tag is cut (version
+derivation logic, manifest/POM generation, signing configuration, publication
+target) — never to whether that mechanism has already been exercised for this commit.
+
 The final result must be one of:
 
 - **Ready for release** — no release-blocking findings remain and required gates
@@ -200,7 +212,9 @@ Do not report intentional warning-and-recovery behavior as a defect merely
 because the VCF specification would prefer rejection. Do report silent
 misalignment, data loss, malformed originated output, raw unexpected exceptions,
 unbounded resource behavior, and documentation that promises behavior the code
-does not provide.
+does not provide. Do not report the absence of an approved release tag/version, or
+any other artifact of the audited commit not yet being a published release, as a
+finding — see the Review objective section above.
 
 ## Delegation and worktree rules
 
