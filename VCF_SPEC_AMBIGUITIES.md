@@ -1313,6 +1313,41 @@ behavior this parser already had).
 **Decision:** warn, don't throw, consistent with not being stricter than bcftools on input it demonstrably
 tolerates. Implemented in `VcfPosition.checkInfoEntries`.
 
+### Malformed INFO shapes: `.` combined with a property, whitespace in a key, vertical tab/form feed in a value
+
+Three INFO shapes -- a bare `.` (missing value) combined with another property (e.g. `.;DP=1`), a plain
+space in a key (e.g. `A B=1`, the shape hts-specs `test/vcf/{4.1,4.2,4.3}/failed/failed_body_info_028.vcf`
+uses), and a vertical tab (U+000B) or form feed (U+000C) in a key or value -- previously threw
+`VcfFormatException` unconditionally from `VcfPosition.checkInfoEntries`/`info()`, regardless of context. A
+real parsed file reaches this check only lazily, on first `getInfo()`/`getInfoKeys()`/`hasInfo()` access, so
+a file with one of these shapes parsed with zero warnings and then failed only once `VcfWriter`'s default
+write path (`addInfoOrDot`) forced that lazy access -- and, since `VcfPosition` had no raw-text fallback for
+INFO (`getRawQuality()`'s equivalent), the original wire text was unrecoverable once that happened.
+
+None of the three corrupts `VcfWriter`'s output structure: unlike a tab/LF/CR in a key or value (still an
+unconditional throw -- a tab would add a spurious column and an LF/CR would end the record early, and neither
+is reachable via a real parsed file in the first place, since the whole raw INFO text is already checked for
+both before `info()` ever splits it), dropping a stray `.` or keeping a whitespace-containing key/value as-is
+writes back out as ordinary, re-parseable text. bcftools 1.23.1 does not cleanly accept any of the six related
+shapes measured (it warns "Invalid tag name" on most, silent on one); vcf_validator 0.10.2 rejects all of them
+as spec-invalid. Neither tool's behavior settles this on its own, so the decision rests on this library's own
+recoverability analysis above, matching its general permissive stance for non-structural content.
+
+Relaxing the key-whitespace case also aligns the data-line and metadata layers: `IdMetadata` already accepts
+a whitespace-containing `##INFO` declaration ID with just a warning under a lenient context, so a data-line
+key `A B` can now correctly resolve against a declared `##INFO=<ID=A B,...>` (`getId()` only unquotes, never
+strips whitespace, and `VcfMetadata`'s INFO map is keyed by that exact value) instead of the two layers
+disagreeing on the identical byte content. The metadata layer's own attribute-value encoding check
+(`InternalUtils.findEncodingProblems`) likewise has no check at all for a vertical tab/form feed, so relaxing
+the data-line value check matches existing leniency one layer up rather than introducing a new inconsistency.
+
+**Decision:** all three become `isLenient()`-gated `warnOrThrow` checks -- throw under strict (preserving
+fail-fast for direct/programmatic construction), warn and recover under lenient (what `VcfParser` always uses
+for a real file). Recovery keeps the record well-formed and re-writable: the `.` shape drops the stray `.`
+and keeps the real property/properties; the whitespace shapes keep the key/value as-is. `VcfPosition` also
+gained `getRawInfo()`, mirroring `getRawQuality()` -- the original wire text remains permanently recoverable
+regardless of which branch fires. Implemented in `VcfPosition.checkInfoEntries`/`info()`.
+
 ### Duplicate INFO key within one record
 
 VCFv4.3 states outright that duplicate INFO keys (`DP=1;DP=2`) are not allowed, mirroring the existing FORMAT

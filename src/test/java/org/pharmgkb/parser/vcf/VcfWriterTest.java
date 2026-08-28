@@ -5059,14 +5059,16 @@ public class VcfWriterTest {
   }
 
   @Test
-  public void testValidateBeforeWriteRejectsWhitespaceOtherThanSpaceInInfoValue() throws Exception {
+  public void testValidateBeforeWriteRejectsTabAndLineTerminatorsInInfoValueUnconditionally() throws Exception {
     // The default write path appends an INFO value verbatim (see VcfWriter.addInfoOrDot), so a tab would add a
-    // column and an LF/CR would end the record. Ordinary public construction already rejects these five, so
+    // column and an LF/CR would end the record. Ordinary public construction already rejects these three, so
     // this builds through the package-private newPositionCopyingTrustedFields() factory (reachable here only
     // because this test class shares VcfPosition/VcfContext's package) exactly as testDefaultWriteDropsEmptyIdEntry
     // does. validateBeforeWrite() calls position.validate(), which re-runs checkInfoEntries -- this pins that
-    // full-output diagnostics mode rejects rather than emitting a structurally invalid record.
-    for (char c : new char[] { '\t', '\n', '\u000B', '\f', '\r' }) {
+    // full-output diagnostics mode rejects rather than emitting a structurally invalid record, even under a
+    // LENIENT_CONTEXT position (unlike VT/FF -- see
+    // testValidateBeforeWriteWarnsAndRecoversForVerticalTabOrFormFeedInInfoValueButStrictContextStillThrows).
+    for (char c : new char[] { '\t', '\n', '\r' }) {
       String label = String.format("U+%04X", (int) c);
       ListMultimap<String, String> info = ArrayListMultimap.create();
       info.put("AA", "a" + c + "b");
@@ -5080,7 +5082,41 @@ public class VcfWriterTest {
       writer.writeHeader(metadata);
       VcfFormatException ex = assertThrows(VcfFormatException.class,
           () -> writer.writeLine(metadata, position, Collections.emptyList()), label);
-      assertTrue(ex.getMessage().contains("contains whitespace other than a space"), label);
+      assertTrue(ex.getMessage().contains("contains a tab or line terminator"), label);
+    }
+  }
+
+  @Test
+  public void testValidateBeforeWriteWarnsAndRecoversForVerticalTabOrFormFeedInInfoValueRegardlessOfOriginContext()
+      throws Exception {
+    // Unlike tab/LF/CR above, VT/FF get the isLenient()-gated warnOrThrow every other recoverable INFO
+    // violation has -- but VcfPosition.validate()
+    // (which validateBeforeWrite() calls) always passes its own m_warnings, never null, for exactly this class
+    // of check, REGARDLESS of the position's own construction context (see validate()'s own Javadoc: "always
+    // warns for a recoverable condition rather than throwing, even under a strict context"). So this warns and
+    // writes the value through unchanged either way -- a STRICT_CONTEXT-constructed position included. The
+    // strict-context throw this preserves for direct/programmatic construction is exercised at construction
+    // time instead, in
+    // VcfPositionTest#testInfoValueWithVerticalTabOrFormFeedThrowsUnderStrictButWarnsAndRecoversUnderLenient.
+    for (char c : new char[] { '\u000B', '\f' }) {
+      String label = String.format("U+%04X", (int) c);
+
+      // writeLine() requires the position and metadata to share the same VcfContext (mixed contexts are
+      // rejected as ambiguous), so metadata is built fresh per origin context here too.
+      for (VcfContext originContext : List.of(STRICT_CONTEXT, LENIENT_CONTEXT)) {
+        VcfMetadata metadata = new VcfMetadata.Builder(originContext).setFileFormat("VCFv4.2")
+            .addInfo("AA", "d", InfoType.String, "1", null, null).build();
+        ListMultimap<String, String> info = ArrayListMultimap.create();
+        info.put("AA", "a" + c + "b");
+        VcfPosition position = originContext.newPositionCopyingTrustedFields("chr1", 1, null, "A", null,
+            VcfFloat.of(new BigDecimal("0")), null, info, null, -1, null, null);
+        StringWriter sw = new StringWriter();
+        VcfWriter writer = new VcfWriter.Builder().toWriter(new PrintWriter(sw)).validateBeforeWrite().build();
+        writer.writeHeader(metadata);
+        writer.writeLine(metadata, position, Collections.emptyList());
+        writer.close();
+        assertTrue(sw.toString().contains("AA=a" + c + "b"), label);
+      }
     }
   }
 

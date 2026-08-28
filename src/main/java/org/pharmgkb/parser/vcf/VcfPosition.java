@@ -34,8 +34,9 @@ import org.jspecify.annotations.Nullable;
  * view, so no method changes any value a caller can observe once construction (or {@link Builder#build()}) has
  * returned. QUAL and INFO are the one internal exception -- {@link #getQuality()}/{@link #getInfo()} and
  * friends parse lazily on first access, writing {@link #m_quality}/{@link #m_info} the first time either is
- * actually read (clearing {@link #m_rawInfo}, the whole unsplit INFO text, once it does; {@link #m_rawQuality}
- * is never cleared, since {@link #getRawQuality()} exposes it permanently). That caching has no observable
+ * actually read. Neither {@link #m_rawQuality} nor {@link #m_rawInfo} (the whole unsplit INFO text) is ever
+ * cleared once set -- both remain permanently available via {@link #getRawQuality()}/{@link #getRawInfo()}.
+ * That caching has no observable
  * effect on a single-threaded caller, but it is unsynchronized, so <b>this class is not thread-safe</b>:
  * sharing one instance across threads before its QUAL/INFO have both been read at least once is not safe
  * without external synchronization. A caller that needs a changed position derives a new one via
@@ -52,10 +53,11 @@ public final class VcfPosition {
   private String m_refBases;
   private List<String> m_altBases = new ArrayList<>();
   // QUAL is stored either as a parsed VcfFloat (eager path) or as raw text parsed lazily on first getQuality()
-  // (parser path via this class's own constructor rawQual parameter); many consumers never read QUAL. Unlike
-  // INFO's m_rawInfo, m_rawQuality is never nulled out once set -- it remains permanently available via
-  // getRawQuality(), the same way INFO's own per-key raw string values remain permanently available via
-  // getInfo(String) regardless of whether the reserved-key typed getter has been called.
+  // (parser path via this class's own constructor rawQual parameter); many consumers never read QUAL.
+  // m_rawQuality is never nulled out once set -- it remains permanently available via getRawQuality(), the same
+  // way INFO's own per-key raw string values remain permanently available via getInfo(String) regardless of
+  // whether the reserved-key typed getter has been called, and the same way m_rawInfo below remains permanently
+  // available via getRawInfo().
   private @Nullable VcfFloat m_quality;
   private @Nullable String m_rawQuality;
   // true once getQuality()'s lazy parse has produced a final (cacheable) outcome -- success, or "nothing to
@@ -63,8 +65,11 @@ public final class VcfPosition {
   // method's own Javadoc for why that specific outcome re-fires on every call instead of being cached.
   private boolean m_qualityResolved;
   private List<String> m_filter = new ArrayList<>();
-  // INFO is stored either as a parsed multimap (eager constructor path) or as raw text parsed lazily on first access
-  // (parser path via this class's own constructor rawInfo parameter); at most one is non-null at a time.
+  // INFO is stored either as a parsed multimap (eager constructor path) or as raw text parsed lazily on first
+  // access (parser path via this class's own constructor rawInfo parameter). m_rawInfo is never nulled out once
+  // set -- like m_rawQuality above, it remains permanently available via getRawInfo() -- so the two can both be
+  // non-null at once, once info() has parsed the raw text into m_info, mirroring m_quality/m_rawQuality's
+  // identical documented shape; see the constructor's own rawInfo Javadoc.
   private @Nullable ListMultimap<String, String> m_info;
   private @Nullable String m_rawInfo;
   private List<String> m_format = new ArrayList<>();
@@ -324,13 +329,15 @@ public final class VcfPosition {
    * QUAL and INFO are seeded from {@link #m_quality}/{@link #m_rawQuality} and {@link #m_info}/{@link #m_rawInfo}
    * directly, never through {@link #getQuality()}/{@link #getInfo()}: those getters force lazy parsing (emitting
    * any parse warning, or throwing for an unparseable QUAL) as a side effect, so reading through them here would
-   * both parse-and-warn-or-throw at copy time and, for INFO, destroy the source's own lazy state ({@link
-   * #getInfo()} nulls {@link #m_rawInfo} once it splits it). QUAL prefers {@link #m_rawQuality} over
-   * {@link #m_quality} when both are set (i.e. {@link #getQuality()} already ran successfully on the source):
-   * {@link #m_rawQuality} is never cleared once populated (see its own field comment), so it is always at least
-   * as complete as {@link #m_quality} -- the copy re-derives the same parsed value lazily on its own first
-   * {@link #getQuality()} call -- and preserves a malformed source's original text too, which {@link #m_quality}
-   * alone (still {@code null} in that case) cannot.
+   * re-parse-and-warn-or-throw at copy time, redundantly re-emitting a warning {@link #info()} already emitted
+   * once on this source instance. Both fields prefer the raw text over the already-parsed value when both are
+   * set (i.e. {@link #getQuality()}/{@link #getInfo()} or a sibling accessor already ran successfully on the
+   * source): {@link #m_rawQuality}/{@link #m_rawInfo} are never cleared once populated (see their own field
+   * comments), so each is always at least as complete as its parsed counterpart -- the copy re-derives the same
+   * parsed value lazily on its own first {@link #getQuality()}/{@link #getInfo()} call, and preserves a
+   * malformed/warned-about source's original text too, which {@link #m_quality}/{@link #m_info} alone cannot
+   * (for QUAL, {@link #m_quality} stays {@code null} after an unparseable value; for INFO, {@link #getRawInfo()}
+   * would otherwise return {@code null} on the copy even though the source's own raw text is still available).
    * <p>
    * {@code ref}/{@code ids}/{@code altBases}/{@code filter}/{@code format}/{@code info} are seeded through
    * {@link Builder}'s private {@code seedXxx} methods, not its public setters -- this position already
@@ -356,10 +363,10 @@ public final class VcfPosition {
     } else {
       builder.quality(m_quality);
     }
-    if (m_info != null) {
-      builder.seedInfo(m_info);
-    } else {
+    if (m_rawInfo != null) {
       builder.rawInfo(m_rawInfo);
+    } else {
+      builder.seedInfo(m_info);
     }
     return builder;
   }
@@ -746,17 +753,42 @@ public final class VcfPosition {
             "=" + value);
         continue;
       }
-      // Key: no whitespace at all, at any version. VCFv4.2.tex line 186's INFO grammar note ("String, no
-      // whitespace, semicolons, or equals-signs permitted") forbids it, and VCFv4.3.tex line 368's INFO key
-      // grammar (^([A-Za-z_][0-9A-Za-z_.]*|1000G)$, unchanged at VCFv4.4.tex line 384 and VCFv4.5.tex line 433)
-      // excludes every whitespace character from the key's own character class -- so the two versions agree here
-      // and nothing below is version-gated. Reproduces hts-specs
-      // test/vcf/4.2/failed/failed_body_info_028.vcf, ##CauseOfFailure=INFO contains a whitespace (literal
-      // INFO="RS Q=123") -- note that fixture's whitespace is in the KEY, which is why the value-side relaxation
-      // below does not affect it.
-      if (InternalUtils.containsWhitespace(key)) {
+      // Key: tab/LF/CR remain unconditional structural violations regardless of context, the same as the
+      // parallel carve-out in the value check just below -- VcfWriter.addInfoOrDot (VcfWriter.java) writes this
+      // key straight into the record column (sb.append(key)), where a tab would add a spurious column and an
+      // LF/CR would end the record early, and nothing downstream catches either. Unreachable via a real parsed
+      // file for the identical reason as that carve-out: the constructor's own checkNoLineTerminator/tab check
+      // on the whole raw INFO text (see this class's constructor) already excludes them before info() ever
+      // derives a key by splitting that text -- this can only fire via direct/programmatic construction with an
+      // already-split ListMultimap.
+      if (key.indexOf('\t') >= 0 || key.indexOf('\n') >= 0 || key.indexOf('\r') >= 0) {
         throw new VcfFormatException("INFO column entry \"" + InternalUtils.truncateAndEscapeForMessage(key) +
-            "=" + InternalUtils.truncateAndEscapeForMessage(value) + "\" contains whitespace");
+            "=" + InternalUtils.truncateAndEscapeForMessage(value) + "\" contains a tab or line terminator " +
+            "in its key");
+      }
+      // Any OTHER whitespace in a key (a plain space, or VT/FF) does not corrupt output structure the way
+      // tab/LF/CR do -- none of them is a delimiter or line terminator VcfWriter's default write path depends
+      // on -- so unlike tab/LF/CR this gets the same isLenient()-gated warnOrThrow treatment as every other
+      // recoverable INFO violation in this method, instead of an unconditional throw. VCFv4.2.tex line 186's
+      // INFO grammar note ("String, no whitespace, semicolons, or equals-signs permitted") and VCFv4.3.tex line
+      // 368's INFO key grammar (^([A-Za-z_][0-9A-Za-z_.]*|1000G)$, unchanged at VCFv4.4.tex line 384 and
+      // VCFv4.5.tex line 433) both still forbid it -- this is leniency toward non-compliant input, not a
+      // reinterpretation of the rule. Reproduces hts-specs test/vcf/4.2/failed/failed_body_info_028.vcf,
+      // ##CauseOfFailure=INFO contains a whitespace (literal INFO="RS Q=123"). Matches IdMetadata's own
+      // existing warnOrThrow treatment of a whitespace-containing ##INFO declaration ID under a lenient
+      // context (see that class) -- a data-line key "A B" already correctly resolves against a declared
+      // "##INFO=<ID=A B,...>" once both sides tolerate it (getId() only unquotes, never strips whitespace, and
+      // VcfMetadata's INFO map is keyed by that exact value), so this closes an existing inconsistency between
+      // the metadata and data-line layers rather than creating a new one. See VCF_SPEC_AMBIGUITIES.md's
+      // "Malformed INFO shapes: '.' combined with a property, whitespace in a key, vertical tab/form feed in a
+      // value" entry.
+      if (InternalUtils.containsWhitespace(key)) {
+        String message = "INFO column entry \"" + InternalUtils.truncateAndEscapeForMessage(key) + "=" +
+            InternalUtils.truncateAndEscapeForMessage(value) + "\" contains whitespace";
+        if (warnings == null) {
+          throw new VcfFormatException(message);
+        }
+        warnings.warn(message + "; keeping the key as-is");
       }
       // Value: U+0020 SPACE only is permitted, at every version. VCFv4.2.tex line 186 (above) forbids all
       // whitespace in an INFO value, but VCFv4.3.tex line 366 states "Space characters are allowed in values"
@@ -766,16 +798,35 @@ public final class VcfPosition {
       // in a VCFv4.2 file is pure leniency with no misinterpretation risk (a space is not a delimiter in any
       // version's INFO grammar, so no value's meaning changes), which is this project's established handling
       // per AGENTS.md. The relaxation is deliberately U+0020-only -- the spec says "space characters", not
-      // whitespace, and no version widens it. A raw tab or line terminator here is structural, not merely
-      // non-conformant: VcfWriter.addInfoOrDot writes this value straight into the record column, where a tab
-      // adds a column and an LF/CR ends the record, and nothing downstream catches it (the ';'/',' check below
-      // does not cover them, and InternalUtils.checkNoLineTerminator is only called on the metadata path). It
-      // stays an unconditional throw for the same reason -- AGENTS.md's Parser Validation Policy keeps a
-      // structural violation an error rather than warn-and-recover.
-      if (InternalUtils.containsWhitespaceOtherThanSpace(value)) {
+      // whitespace, and no version widens it.
+      //
+      // Tab/LF/CR remain unconditional structural violations regardless of context, for the identical reason as
+      // the key check just above: VcfWriter.addInfoOrDot writes this value straight into the record column
+      // (sb.append(value)), where a tab adds a column and an LF/CR ends the record, and nothing downstream
+      // catches it (the ';'/',' check below does not cover them, and InternalUtils.checkNoLineTerminator is
+      // only called on the metadata path). Unreachable via a real parsed file for the same reason as the key
+      // check above -- only direct/programmatic construction can reach this.
+      if (value.indexOf('\t') >= 0 || value.indexOf('\n') >= 0 || value.indexOf('\r') >= 0) {
         throw new VcfFormatException("INFO value \"" + InternalUtils.truncateAndEscapeForMessage(value) +
-            "\" for key \"" + InternalUtils.truncateAndEscapeForMessage(key) + "\" contains whitespace " +
-            "other than a space (only U+0020 is permitted in an INFO value)");
+            "\" for key \"" + InternalUtils.truncateAndEscapeForMessage(key) + "\" contains a tab or line " +
+            "terminator");
+      }
+      // Any other whitespace (VT/FF -- the only two characters containsWhitespaceOtherThanSpace can still match
+      // once tab/LF/CR are excluded above) does not corrupt output structure the way tab/LF/CR do, so unlike
+      // tab/LF/CR it gets the same isLenient()-gated warnOrThrow treatment as every other recoverable INFO
+      // violation in this method. Confirmed empirically that the metadata layer's own attribute-value encoding
+      // check (InternalUtils.findEncodingProblems) doesn't check for this at all -- a VT byte in a
+      // ##INFO=<...,Description="...">  value already parses today with zero warning -- so this is leniency
+      // toward non-compliant input already tolerated one layer up, not a new inconsistency. See
+      // VCF_SPEC_AMBIGUITIES.md's "Malformed INFO shapes" entry.
+      if (InternalUtils.containsWhitespaceOtherThanSpace(value)) {
+        String message = "INFO value \"" + InternalUtils.truncateAndEscapeForMessage(value) + "\" for key \"" +
+            InternalUtils.truncateAndEscapeForMessage(key) + "\" contains whitespace other than a space (only " +
+            "U+0020 is permitted in an INFO value)";
+        if (warnings == null) {
+          throw new VcfFormatException(message);
+        }
+        warnings.warn(message + "; keeping the value as-is");
       }
       // a parsed value can never contain these (they were already split on to arrive at this value), but a value set
       // directly via getInfo().put(...) could; reject them so the writer's output remains re-parseable
@@ -826,7 +877,24 @@ public final class VcfPosition {
       boolean hasBareDotSentinel = dotValues.contains("");
       boolean hasOtherContent = result.keySet().size() > 1 || dotValues.stream().anyMatch(v -> !v.isEmpty());
       if (hasBareDotSentinel && hasOtherContent) {
-        throw new VcfFormatException("INFO contains '.' (missing value) along with other properties");
+        // isLenient()-gated, matching every other recoverable check in this method: throws under strict
+        // (preserving fail-fast for direct/programmatic construction), warns and recovers under lenient --
+        // VcfWriter.addInfoOrDot never re-emits a literal "."-combined-with-properties shape once the bare
+        // sentinel is dropped here, so the output remains well-formed. See VCF_SPEC_AMBIGUITIES.md's
+        // "Malformed INFO shapes" entry, and info()'s own identical check below, for the raw-text parsing path
+        // this eager/already-split-multimap path doesn't share.
+        String message = "INFO contains '.' (missing value) along with other properties";
+        if (warnings == null) {
+          throw new VcfFormatException(message);
+        }
+        warnings.warn(message + "; dropping '.' and keeping the other properties");
+        // Removes only the bare-sentinel (empty-string) value(s) under key "." -- not the whole key -- so a
+        // literal, non-empty value legitimately stored under the unusual key "." (e.g. from raw text ".=5",
+        // which info()'s own raw-text parsing branch has always left alone; see this method's own class
+        // Javadoc) survives. Guava's ListMultimap.get(key) returns a live view backed by the multimap, so
+        // removing through it removes from the multimap itself, and the key disappears entirely once no values
+        // remain under it.
+        dotValues.removeIf(String::isEmpty);
       }
     }
     return result;
@@ -1296,8 +1364,17 @@ public final class VcfPosition {
         // Unlike an empty prop (dropped above), this isn't a stray delimiter artifact, it directly contradicts
         // "." meaning "nothing here"
         if (props.contains(".") && props.size() > 1) {
-          throw withLineNumber(new VcfFormatException(
-              "INFO contains '.' (missing value) along with other properties"));
+          // isLenient()-gated, matching checkInfoEntries's own identical check below (which this raw-text
+          // path never reaches for this shape, since the loop below skips a "." prop before it can ever reach
+          // the built multimap -- see that loop's own comment): throws under strict, warns and drops every
+          // stray "." prop under lenient, keeping the real properties. See VCF_SPEC_AMBIGUITIES.md's
+          // "Malformed INFO shapes" entry.
+          String message = "INFO contains '.' (missing value) along with other properties";
+          if (!m_context.isLenient()) {
+            throw withLineNumber(new VcfFormatException(message));
+          }
+          m_warnings.warn(message + "; dropping '.' and keeping the other properties");
+          props.removeIf(prop -> prop.equals("."));
         }
         // VCFv4.2 is silent on whether a top-level INFO key may appear more than once, but VCFv4.3 explicitly
         // states "Duplicate keys are not allowed" for INFO (mirroring the same rule for FORMAT keys). bcftools
@@ -1341,13 +1418,23 @@ public final class VcfPosition {
           }
         }
         try {
-          info = checkInfoEntries(info, m_warnings);
+          // isLenient()-gated, matching every other check in this method (and checkInfoEntries's own
+          // warnOrThrow checks it shares with the eager construction path): a position built under a strict
+          // context via Builder.rawInfo() must still throw here, not merely warn, for every one of
+          // checkInfoEntries's recoverable checks (key/value whitespace, an empty key, a bare '=' in a
+          // value) -- passing m_warnings unconditionally regardless of context would silently downgrade all
+          // of them to warnings for this lazy path only.
+          info = checkInfoEntries(info, m_context.isLenient() ? m_warnings : null);
         } catch (VcfFormatException ex) {
           throw withLineNumber(ex);
         }
       }
       m_info = info;
-      m_rawInfo = null;
+      // m_rawInfo is deliberately NOT cleared here -- see getRawInfo() and this class's own field comment on
+      // m_rawInfo, and m_rawQuality's identical permanent-retention pattern. Once this method has parsed (and
+      // possibly warned about and recovered from) the raw text into m_info, the original wire text must remain
+      // available via getRawInfo() regardless -- see VALIDATION_PHILOSOPHY.md's raw-fallback-always-exists
+      // claim.
     }
     return info;
   }
@@ -1377,6 +1464,20 @@ public final class VcfPosition {
       m_infoView = view;
     }
     return view;
+  }
+
+  /**
+   * @return the original INFO column text, exactly as it appeared on the wire -- {@code null} only when this
+   * position was constructed directly from an already-parsed {@link ListMultimap} (via {@link Builder#info}),
+   * so no wire text ever existed to reproduce. Unlike {@link #getInfo()}, never parses anything and never
+   * throws; always safe to call, including after {@link #getInfo()}/{@link #getInfoKeys()}/
+   * {@link #hasInfo(String)} (or any other accessor that triggers {@link #info()}) has warned about or thrown
+   * for a malformed shape --
+   * this is exactly the fallback that makes that outcome lossless. Mirrors {@link #getRawQuality()}'s
+   * equivalent role for QUAL.
+   */
+  public @Nullable String getRawInfo() {
+    return m_rawInfo;
   }
 
   /**

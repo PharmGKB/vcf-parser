@@ -428,12 +428,19 @@ public class VcfPositionTest {
   }
 
   @Test
-  public void testLazyInfoValueContainingEqualsSignWarnsAndPreserves() {
+  public void testLazyInfoValueContainingEqualsSignWarnsAndPreservesUnderLenientButThrowsUnderStrict() {
     // VCFv4.2's INFO grammar note ("no whitespace, semicolons, or equals-signs permitted") technically disallows
     // this, but bcftools 1.23.1 accepts it silently (verified live: "DP=1=2" round-trips as-is, splitting only on
-    // the first '='); this parser matches that tolerance instead of rejecting it
-    VcfPosition position = newPosition().toBuilder().rawInfo("DP=1=2").build();
-    assertEquals(Collections.singletonList("1=2"), position.getInfo("DP"));
+    // the first '='); this parser matches that tolerance instead of rejecting it, but only under a lenient
+    // context -- info()'s lazy raw-text parse gates every checkInfoEntries warnOrThrow check (this one
+    // included) on m_context.isLenient(), the same as the eager already-split-multimap path.
+    VcfPosition lenient = LENIENT_CONTEXT.newPosition("chr", 1, null, "C", null, null, null, null, null, -1)
+        .toBuilder().rawInfo("DP=1=2").build();
+    assertEquals(Collections.singletonList("1=2"), lenient.getInfo("DP"));
+
+    VcfPosition strict = newPosition().toBuilder().rawInfo("DP=1=2").build();
+    VcfFormatException ex = assertThrows(VcfFormatException.class, strict::getInfo);
+    assertTrue(ex.getMessage().contains("contains '='"));
   }
 
   @Test
@@ -2465,6 +2472,20 @@ public class VcfPositionTest {
   }
 
   @Test
+  public void testToBuilderPreservesRawInfoAfterGetInfoHasAlreadyMaterializedIt() {
+    // getRawInfo() is never cleared once info() parses it (m_info and m_rawInfo can both be non-null on the
+    // same instance), so a toBuilder() copy taken AFTER getInfo() has already run must still be able to
+    // reproduce the original wire text -- toBuilder() prefers the raw text over the already-parsed multimap
+    // for exactly this reason (see toBuilder()'s own Javadoc).
+    VcfPosition parsed = newPosition().toBuilder().rawInfo("DP=1").build();
+    assertEquals(List.of("1"), parsed.getInfo("DP"));
+    assertEquals("DP=1", parsed.getRawInfo());
+    VcfPosition copy = parsed.toBuilder().build();
+    assertEquals("DP=1", copy.getRawInfo());
+    assertEquals(List.of("1"), copy.getInfo("DP"));
+  }
+
+  @Test
   public void testBuilderChromosomeAndRefRejectNullInsteadOfThrowingNpe() {
     VcfPosition.Builder builder = STRICT_CONTEXT.newPosition("chr1", 100, "A", null, -1).toBuilder();
     assertThrows(VcfFormatException.class, () -> builder.chromosome(null));
@@ -2549,11 +2570,18 @@ public class VcfPositionTest {
   }
 
   /**
-   * Every character {@code InternalUtils.containsWhitespace} matches except U+0020 SPACE -- i.e. exactly the
-   * set an INFO value must still reject after the space relaxation. Kept exhaustive on purpose: a partial set
-   * is what would let an implementation that dropped the value-side check outright still pass.
+   * The two whitespace characters that get an {@code isLenient()}-gated warn-or-throw in an INFO key or
+   * value instead of an unconditional throw -- see {@code checkInfoEntries}'s own comment.
    */
-  private static final char[] NON_SPACE_WHITESPACE = { '\t', '\n', '\u000B', '\f', '\r' };
+  private static final char[] RELAXABLE_WHITESPACE = { '\u000B', '\f' };
+
+  /**
+   * The three whitespace characters that remain an unconditional structural throw regardless of context, since
+   * unlike {@link #RELAXABLE_WHITESPACE} they corrupt {@code VcfWriter}'s tab-delimited output structure (a
+   * tab adds a column, an LF/CR ends the record). Kept exhaustive on purpose: a partial set is what would let
+   * an implementation that dropped this carve-out outright still pass.
+   */
+  private static final char[] STRUCTURAL_WHITESPACE = { '\t', '\n', '\r' };
 
   @Test
   public void testInfoValueAcceptsSpace() {
@@ -2571,13 +2599,13 @@ public class VcfPositionTest {
   }
 
   @Test
-  public void testInfoValueRejectsWhitespaceOtherThanSpace() {
-    // The relaxation above is U+0020-only: the spec says "space characters", not whitespace, and no later
-    // version widens it. The other five are structural, not merely non-conformant -- VcfWriter.addInfoOrDot
-    // writes an INFO value straight into the record column, so a tab adds a column and an LF/CR ends the
-    // record, and nothing downstream catches either. They therefore stay an UNCONDITIONAL throw (LENIENT_CONTEXT
-    // here, not STRICT_CONTEXT, pins that it is not warn-and-recover), per AGENTS.md's Parser Validation Policy.
-    for (char c : NON_SPACE_WHITESPACE) {
+  public void testInfoValueRejectsTabAndLineTerminatorsUnconditionally() {
+    // Tab/LF/CR remain a structural violation regardless of context -- VcfWriter.addInfoOrDot writes an INFO
+    // value straight into the record column, so a tab adds a column and an LF/CR ends the record, and nothing
+    // downstream catches either. They stay an UNCONDITIONAL throw even under LENIENT_CONTEXT (not just
+    // STRICT_CONTEXT), pinning that this is not warn-and-recover like RELAXABLE_WHITESPACE below, per
+    // AGENTS.md's Parser Validation Policy.
+    for (char c : STRUCTURAL_WHITESPACE) {
       String label = String.format("U+%04X", (int) c);
       ListMultimap<String, String> info = ArrayListMultimap.create();
       info.put("AA", "a" + c + "b");
@@ -2585,32 +2613,108 @@ public class VcfPositionTest {
       // route 1: the public factory
       VcfFormatException fromFactory = assertThrows(VcfFormatException.class,
           () -> LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, null, null, info, null, -1), label);
-      assertTrue(fromFactory.getMessage().contains("contains whitespace other than a space"), label);
+      assertTrue(fromFactory.getMessage().contains("contains a tab or line terminator"), label);
 
       // route 2: VcfPosition.Builder#info, which re-runs checkInfoEntries at build() time
       VcfPosition clean = LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, null, null, null, null, -1);
       VcfFormatException fromBuilder = assertThrows(VcfFormatException.class,
           () -> clean.toBuilder().info(info).build(), label);
-      assertTrue(fromBuilder.getMessage().contains("contains whitespace other than a space"), label);
+      assertTrue(fromBuilder.getMessage().contains("contains a tab or line terminator"), label);
     }
   }
 
   @Test
-  public void testInfoKeyRejectsEveryWhitespaceCharacterIncludingSpace() {
-    // Companion to testInfoValueRejectsWhitespaceOtherThanSpace: the value-side relaxation must not have
-    // widened to the key. VCFv4.3.tex line 368's INFO key grammar (^([A-Za-z_][0-9A-Za-z_.]*|1000G)$, unchanged
-    // at VCFv4.4.tex line 384 and VCFv4.5.tex line 433) excludes every whitespace character from the key's own
-    // character class, and VCFv4.2.tex line 186 forbids it too -- so a space in a KEY is still rejected. The
-    // assertFalse pins WHICH branch fired: the key-side message has no "other than a space" qualifier.
-    for (char c : new char[] { ' ', '\t', '\n', '\u000B', '\f', '\r' }) {
+  public void testInfoValueWithVerticalTabOrFormFeedThrowsUnderStrictButWarnsAndRecoversUnderLenient() {
+    // Unlike tab/LF/CR above, VT/FF do not corrupt VcfWriter's output structure (neither is a delimiter or
+    // line terminator its default write path depends on), so this is an isLenient()-gated warnOrThrow like
+    // every other recoverable INFO violation --
+    // throws under strict (preserving fail-fast for direct/programmatic construction), warns and keeps the
+    // value as-is under lenient (what VcfParser always uses for a real file).
+    for (char c : RELAXABLE_WHITESPACE) {
+      String label = String.format("U+%04X", (int) c);
+      ListMultimap<String, String> strictInfo = ArrayListMultimap.create();
+      strictInfo.put("AA", "a" + c + "b");
+      VcfFormatException ex = assertThrows(VcfFormatException.class,
+          () -> STRICT_CONTEXT.newPosition("chr1", 1, null, "A", null, null, null, strictInfo, null, -1), label);
+      assertTrue(ex.getMessage().contains("contains whitespace other than a space"), label);
+
+      StringWriter sink = new StringWriter();
+      ListMultimap<String, String> lenientInfo = ArrayListMultimap.create();
+      lenientInfo.put("AA", "a" + c + "b");
+      VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("chr1", 1, null, "A", null, null,
+          null, lenientInfo, null, -1);
+      assertTrue(sink.toString().contains("contains whitespace other than a space"), label);
+      assertEquals(List.of("a" + c + "b"), position.getInfo("AA"), label);
+    }
+  }
+
+  @Test
+  public void testInfoKeyRejectsTabAndLineTerminatorsUnconditionally() {
+    // Companion to testInfoValueRejectsTabAndLineTerminatorsUnconditionally: tab/LF/CR corrupt the key column
+    // exactly as they would the value column (VcfWriter.addInfoOrDot writes the key straight into the record
+    // too), so they stay an unconditional throw in the key as well. The assertFalse pins WHICH branch fired:
+    // the key-side message has no "other than a space" qualifier.
+    for (char c : STRUCTURAL_WHITESPACE) {
       String label = String.format("U+%04X", (int) c);
       ListMultimap<String, String> info = ArrayListMultimap.create();
       info.put("A" + c + "A", "1");
       VcfFormatException ex = assertThrows(VcfFormatException.class,
           () -> LENIENT_CONTEXT.newPosition("chr1", 1, null, "A", null, null, null, info, null, -1), label);
+      assertTrue(ex.getMessage().contains("contains a tab or line terminator"), label);
+    }
+  }
+
+  @Test
+  public void testInfoKeyWithSpaceOrVerticalTabOrFormFeedThrowsUnderStrictButWarnsAndRecoversUnderLenient() {
+    // A space, VT, or FF in a KEY does not corrupt output structure any more than it does in a value
+    // (see testInfoValueWithVerticalTabOrFormFeedThrowsUnderStrictButWarnsAndRecoversUnderLenient above), so
+    // this gets the identical isLenient()-gated warnOrThrow treatment -- throws under strict, warns and keeps
+    // the key as-is under lenient. Matches IdMetadata's own existing warnOrThrow treatment of a
+    // whitespace-containing ##INFO declaration ID under a lenient context.
+    for (char c : new char[] { ' ', '\u000B', '\f' }) {
+      String label = String.format("U+%04X", (int) c);
+      ListMultimap<String, String> strictInfo = ArrayListMultimap.create();
+      strictInfo.put("A" + c + "A", "1");
+      VcfFormatException ex = assertThrows(VcfFormatException.class,
+          () -> STRICT_CONTEXT.newPosition("chr1", 1, null, "A", null, null, null, strictInfo, null, -1), label);
       assertTrue(ex.getMessage().contains("contains whitespace"), label);
       assertFalse(ex.getMessage().contains("other than a space"), label);
+
+      StringWriter sink = new StringWriter();
+      ListMultimap<String, String> lenientInfo = ArrayListMultimap.create();
+      lenientInfo.put("A" + c + "A", "1");
+      VcfPosition position = lenientContext(new VcfWarnings(sink)).newPosition("chr1", 1, null, "A", null, null,
+          null, lenientInfo, null, -1);
+      assertTrue(sink.toString().contains("contains whitespace"), label);
+      assertFalse(sink.toString().contains("other than a space"), label);
+      assertEquals(List.of("1"), position.getInfo("A" + c + "A"), label);
     }
+  }
+
+  @Test
+  public void testLazyInfoKeyOrValueWhitespaceThrowsUnderStrictViaBuilderRawInfoToo() {
+    // Companion to the eager-multimap-path tests above: info()'s own lazy raw-text parse (reached via
+    // Builder.rawInfo(), the shape VcfParser itself always uses) must gate checkInfoEntries's warnOrThrow
+    // checks on m_context.isLenient() exactly like the eager path does, not unconditionally warn regardless
+    // of context.
+    char verticalTab = (char) 0x0B;
+    char formFeed = (char) 0x0C;
+
+    VcfFormatException keyEx = assertThrows(VcfFormatException.class,
+        () -> newPosition().toBuilder().rawInfo("A B=1").build().getInfo());
+    assertTrue(keyEx.getMessage().contains("contains whitespace"));
+    assertFalse(keyEx.getMessage().contains("other than a space"));
+
+    VcfFormatException valueEx = assertThrows(VcfFormatException.class,
+        () -> newPosition().toBuilder().rawInfo("AA=a" + verticalTab + "b").build().getInfo());
+    assertTrue(valueEx.getMessage().contains("contains whitespace other than a space"));
+
+    // and the lenient path still warns and recovers, matching the eager path's own behavior
+    StringWriter sink = new StringWriter();
+    VcfPosition lenient = lenientContext(new VcfWarnings(sink)).newPosition("chr", 1, null, "C", null, null, null,
+        null, null, -1).toBuilder().rawInfo("A" + formFeed + "A=1").build();
+    assertEquals(List.of("1"), lenient.getInfo("A" + formFeed + "A"));
+    assertTrue(sink.toString().contains("contains whitespace"));
   }
 
 }

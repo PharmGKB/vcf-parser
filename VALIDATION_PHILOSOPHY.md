@@ -88,8 +88,8 @@ is still valid, just non-compliant. The reason this one check breaks from the un
 that there is no sane value to preserve or normalize a non-numeric/non-single-character string to --
 recovering the way the checks above do would mean inventing data, not recovering it. This is deliberately made
 safe rather than merely tolerated: a sibling raw accessor the typed conversion never mutates
-(`VcfPosition.getRawQuality()`/`getInfo(String)`/`getInfo()`; `VcfSample.getProperty(String)`) keeps the original
-wire text permanently retrievable, so nothing is lost by throwing instead of returning `null`. `convertElement`'s
+(`VcfPosition.getRawQuality()`/`getRawInfo()`/`getInfo(String)`/`getInfo()`; `VcfSample.getProperty(String)`) keeps
+the original wire text permanently retrievable, so nothing is lost by throwing instead of returning `null`. `getRawInfo()` is the same kind of fallback one level up, for a structural INFO violation that throws from `checkInfoEntries` before any per-key value is ever stored -- see `VcfPosition`'s own class Javadoc and `VALIDATION_REFERENCE.md`'s "INFO/FORMAT/sample value content" section for those checks. `convertElement`'s
 `Boolean` branch (an INFO `Type=Flag` value) is the deliberate exception to this same unconditional-dispatch
 idea, in the opposite direction: it unconditionally warns and returns `true` for a non-empty value, never throws,
 because unlike the other three there is no genuinely non-conforming Flag value at all -- a Flag's truth is its

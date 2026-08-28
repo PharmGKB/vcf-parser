@@ -85,11 +85,14 @@ public class VcfParserTest {
   }
 
   @Test
-  void testDeferredInfoValidationExceptionCarriesLineNumberAfterParseReturns() throws IOException {
-    // regression test: a VcfFormatException from VcfPosition.getInfo()'s
-    // lazy-parse path, thrown AFTER parser.parse() has already returned (not from inside the parseWith callback),
-    // must still carry the correct originating line number -- this was previously silently lost, since
-    // VcfParser's own line-tracking call stack is gone by the time a caller inspects a collected position later
+  void testInfoDotCombinedWithOtherPropertyWarnsAndRecoversAfterParseReturnsInsteadOfThrowing() throws IOException {
+    // An INFO missing value (".") combined with another property warns and recovers under a real
+    // (always-lenient) parse rather than throwing -- see VCF_SPEC_AMBIGUITIES.md's "Malformed INFO shapes"
+    // entry. getInfo() no longer throws for this shape at all, so it carries no deferred-exception line
+    // number to pin here; that concern (a deferred exception retaining its line number after parse() returns)
+    // is covered instead by the sibling testDeferredReservedPropertyConversionExceptionCarriesLineNumberAfterParseReturns
+    // below, for the one remaining unconditional deferred INFO throw reachable via real parsing --
+    // getInfo(ReservedInfoProperty)'s type-conversion throw.
     String vcf = "##fileformat=VCFv4.2\n" +
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
         "chr1\t1\t.\tA\tT\t.\t.\t.;DP=1\n";
@@ -101,9 +104,8 @@ public class VcfParserTest {
       parser.parse();
     }
     assertEquals(1, positions.size());
-    VcfFormatException ex = assertThrows(VcfFormatException.class, () -> positions.get(0).getInfo());
-    assertEquals(3, ex.getLineNumber());
-    assertTrue(ex.getMessage().contains("[Line #3]"));
+    assertEquals(List.of("1"), positions.get(0).getInfo("DP"));
+    assertEquals(".;DP=1", positions.get(0).getRawInfo());
   }
 
   @Test
@@ -3778,26 +3780,30 @@ public class VcfParserTest {
   }
 
   @Test
-  void testInfoValueVerticalTabIsRejectedAtEveryDeclaredVersion() throws IOException {
+  void testInfoValueVerticalTabWarnsAtEveryDeclaredVersionInsteadOfRejecting() throws IOException {
     // The one non-space whitespace character a real parsed INFO value can actually carry: a tab is the column
     // delimiter and CR/LF end the record, but U+000B and U+000C are neither, so they reach checkInfoEntries
     // from a genuine file. VCFv4.3.tex line 81 disallows them ("non-printable characters U+0000--U+0008,
-    // U+000B--U+000C, U+000E--U+001F"), unconditionally in this library, and the space relaxation must not
-    // have widened to them.
+    // U+000B--U+000C, U+000E--U+001F"), but unlike tab/CR/LF they do not corrupt VcfWriter's output structure,
+    // so this is warn-and-recover under a real (always-lenient) parse instead of an unconditional throw -- see
+    // VCF_SPEC_AMBIGUITIES.md's "Malformed INFO shapes" entry, and
+    // VcfPositionTest#testInfoValueWithVerticalTabOrFormFeedThrowsUnderStrictButWarnsAndRecoversUnderLenient
+    // for the strict-context throw this preserves for direct/programmatic construction.
     for (String version : UNGATED_RULE_VERSIONS) {
       String vcf = "##fileformat=" + version + "\n" +
           "##INFO=<ID=AA,Number=1,Type=String,Description=\"d\">\n" +
           UNGATED_RULE_HEADER +
           "chr1\t1\t.\tA\tT\t.\t.\tAA=a\u000Bb\n";
-      assertThrows(VcfFormatException.class, () -> {
-        try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
-             VcfParser parser = new VcfParser.Builder()
-                 .fromReader(reader)
-                 .parseWith((metadata, record) -> record.getPosition().getInfo())
-                 .build()) {
-          parser.parse();
-        }
-      }, version);
+      List<VcfPosition> positions = new ArrayList<>();
+      try (BufferedReader reader = new BufferedReader(new StringReader(vcf));
+           VcfParser parser = new VcfParser.Builder()
+               .fromReader(reader)
+               .parseWith((metadata, record) -> positions.add(record.getPosition()))
+               .build()) {
+        parser.parse();
+      }
+      assertEquals(1, positions.size(), version);
+      assertEquals(List.of("a\u000Bb"), positions.get(0).getInfo("AA"), version);
     }
   }
 

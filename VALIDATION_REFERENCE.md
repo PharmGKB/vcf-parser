@@ -74,11 +74,13 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   once that metadata's own single-sample data lines are written against it.
 - A data line with the wrong number of tab-separated columns.
 - An empty mandatory fixed field (the missing value must be `.`), an empty `CHROM`, or a negative `POS`.
-- Invalid `REF`/`ALT` bases; whitespace where the spec forbids it (`CHROM`, `ID`, `FILTER`, and an `INFO` key --
-  a `FORMAT` key's own, narrower rule is its own bullet below); a `FILTER` of `0`; a `FILTER` missing value
-  (`.`) combined with another filter code; an `INFO` missing value (`.`) combined with a real property; or a
-  `FORMAT` in which `GT` is present but not the first sub-field or a key is duplicated (including an empty
-  key -- kept in place, not dropped, but a second occurrence still throws).
+- Invalid `REF`/`ALT` bases; whitespace where the spec forbids it (`CHROM`, `ID`, and `FILTER` -- an `INFO`
+  key's own, more lenient rule is covered by the "INFO/FORMAT/sample value content" section below; a
+  `FORMAT` key's own, narrower rule is its own bullet below); a `FILTER` of `0`; a `FILTER` missing value
+  (`.`) combined with another filter code; or a `FORMAT` in which `GT` is present but not the first sub-field
+  or a key is duplicated (including an empty key -- kept in place, not dropped, but a second occurrence still
+  throws). An `INFO` missing value (`.`) combined with a real property is likewise covered by "INFO/FORMAT/
+  sample value content" below, not here.
 - A `FILTER` entry containing a literal `;`, or a `FORMAT` key containing a literal `:` -- both unconditional
   (thrown regardless of strict/lenient), matching this same section's `ID`/`INFO` treatment of their own
   delimiters. VCFv4.3.tex line 362 states, for `FILTER`, "String, no whitespace or semicolons permitted,
@@ -104,8 +106,10 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   delimiter-corruption shapes above. Reachable only through direct construction, for the same reason as the
   `:` check.
 - An `INFO` **value** is the one exception to that whitespace rule: a literal space (U+0020) is accepted at
-  every declared version, while a tab, LF, CR, vertical tab, or form feed still throws. VCFv4.2.tex line 186
-  forbids all whitespace in an INFO value, but VCFv4.3.tex line 366 states "Space characters are allowed in
+  every declared version, while a tab, LF, or CR still throws unconditionally (a vertical tab or form feed --
+  the only other two characters `InternalUtils.containsWhitespaceOtherThanSpace` matches -- get an
+  `isLenient()`-gated `warnOrThrow` instead; see "INFO/FORMAT/sample value content" below). VCFv4.2.tex
+  line 186 forbids all whitespace in an INFO value, but VCFv4.3.tex line 366 states "Space characters are allowed in
   values" (verbatim at VCFv4.4.tex line 382 and VCFv4.5.tex line 431), corroborated by the VCFv4.2→4.3
   changelog at VCFv4.3.tex line 2151 ("Spaces are allowed in INFO field values"), and this library applies that
   rule unconditionally, including to `VCFv4.1`/`VCFv4.2` files that predate it — see "Rules applied at every
@@ -113,12 +117,14 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   direct conflict before the target moved to 4.3: under a VCFv4.2 target this was a named exception in
   `AGENTS.md`; at a VCFv4.3 target it is plain conformance and that exception paragraph has been deleted, though
   the unconditional-application behavior itself hasn't changed. The relaxation stops at U+0020 deliberately: the
-  spec says *space characters*, not whitespace, and the remaining five are structural rather than merely
+  spec says *space characters*, not whitespace, and tab/LF/CR remain structural rather than merely
   non-conformant, since `VcfWriter` writes an INFO value straight into the record column, where a tab adds a
   column and an LF/CR ends the record. Reachable only through direct construction (`VcfContext.newPosition`,
-  `VcfPosition.Builder.info`) or a raw INFO column containing a vertical tab/form feed — a parsed value can
-  never contain a tab or line terminator, since those are the column and record delimiters. **Scope note:**
-  because the relaxation is unconditional, nothing diagnoses a space in an INFO value on either path --
+  `VcfPosition.Builder.info`) -- a parsed value can never contain a tab or line terminator, since those are the
+  column and record delimiters (a real file's INFO column already had a raw tab/LF/CR rejected on its whole,
+  not-yet-split text at construction time, before any per-value check like this one ever runs -- see the
+  structural-delimiter bullet below). **Scope note:** because the relaxation is unconditional, nothing diagnoses
+  a space in an INFO value on either path --
   including `VcfWriter.Builder.validateBeforeWrite()` writing under a declared `##fileformat=VCFv4.2`, where
   the emitted value is legal by this library's reading but not by VCFv4.2.tex line 186's. That silence is
   settled behavior, not an oversight in diagnostics mode: the value was already accepted without a diagnostic
@@ -168,8 +174,9 @@ The parser rejects a file whose structure or mandatory record fields are invalid
   own QUAL raw text, and -- since the fourth re-verification round found the third round's fix had left an
   identical, unfixed gap on its own INFO sibling -- `VcfPosition`'s own INFO raw text too, both at
   construction time), `VcfSample.checkNoStructuralDelimiter` (a tab or line terminator in a sample key or
-  value), and `VcfPosition.checkInfoEntries`'s value-side check (tab, LF, CR, vertical tab, or form feed in an
-  INFO value, but only on first `getInfo()`/`info()` access, not at construction -- the eager
+  value), and `VcfPosition.checkInfoEntries`'s key/value-side check (tab, LF, or CR in an INFO key or value --
+  a vertical tab/form feed instead gets an `isLenient()`-gated `warnOrThrow`; see "INFO/FORMAT/sample value
+  content" below -- but only on first `getInfo()`/`info()` access, not at construction -- the eager
   `checkNoLineTerminator` call just mentioned is what closes that gap for a raw CR/LF specifically, ahead of
   that deferred check ever running). A raw tab in `VcfPosition`'s own QUAL/INFO raw text gets the identical
   construction-time treatment as the CR/LF check just described, but via a separate, dedicated check rather
@@ -785,6 +792,33 @@ is a structural failure and still throws -- see the strict section above):
   `VCF_SPEC_AMBIGUITIES.md`'s "Duplicate ID/FILTER entries within one record" entry.
 - An INFO value containing `=` (e.g. `DP=1=2`), or a duplicate top-level INFO key (e.g. `DP=1;DP=2`): see
   `VCF_SPEC_AMBIGUITIES.md`'s "INFO value containing a bare `=`" and "Duplicate INFO key within one record" entries.
+- Three INFO shapes are `isLenient()`-gated `warnOrThrow` checks in `VcfPosition.checkInfoEntries`, reachable
+  both from the eager, already-split-`ListMultimap` construction path and from `info()`'s own lazy raw-text
+  parse (the code path `VcfParser` uses): throws under strict (direct/programmatic construction), warns and
+  recovers under lenient (what `VcfParser` always uses for a real file). See `VCF_SPEC_AMBIGUITIES.md`'s
+  "Malformed INFO shapes: `.` combined with a property, whitespace in a key, vertical tab/form feed in a
+  value" entry for the full reasoning.
+  - An INFO missing value (`.`) combined with another property (e.g. `.;DP=1`): warns and drops the stray `.`,
+    keeping the real property/properties -- the same "drop, don't misalign" recovery `EMPTY_FIELD_HANDLING.md`
+    documents for other position-independent delimiter artifacts. `VcfWriter.addInfoOrDot` never re-emits a
+    literal `.`-combined-with-properties shape once the stray `.` is dropped at parse time.
+  - A plain space in an INFO key (e.g. `A B=1`): warns and keeps the key as-is (literal). Matches
+    `IdMetadata`'s own `warnOrThrow` treatment of a whitespace-containing `##INFO` declaration ID under a
+    lenient context -- a data-line key `A B` correctly resolves against a declared `##INFO=<ID=A B,...>`
+    (`getId()` only unquotes, never strips whitespace, and `VcfMetadata`'s INFO map is keyed by that exact
+    value).
+  - A vertical tab (U+000B) or form feed (U+000C) in an INFO key or value: warns and keeps the key/value as-is.
+    These are the only two characters `InternalUtils.containsWhitespace`/`containsWhitespaceOtherThanSpace`
+    match that are not a tab, LF, or CR -- see the "File and record structure" section's `INFO` **value**
+    bullet above (and the key/value-side structural-delimiter bullet just above it) for why those three
+    remain an unconditional throw instead. `getRawInfo()` (mirroring `getRawQuality()`; never cleared once
+    set, always safe to call) makes the original wire text permanently recoverable regardless of which branch
+    fires.
+  - `VcfPosition.validate()` (which `VcfWriter.Builder().validateBeforeWrite()` calls) and the lazy
+    first-access getters warn and recover for all three shapes even for a position built under a **strict**
+    `VcfContext` -- see the "`VcfPosition.validate()` and `VcfSample.validate()` do not work this way for
+    their recoverable conditions" paragraph above: both pass their warnings sink unconditionally rather than
+    deriving strictness from the context the way the constructor path does.
 - More than one comma-separated raw value for a scalar (`Number=0`/`1`) reserved `INFO` key (e.g. `AA=1,23`): a
   typed read of that key warns and keeps only the first value, the same "keep the first, warn about the rest"
   treatment as a duplicate top-level `INFO` key above.

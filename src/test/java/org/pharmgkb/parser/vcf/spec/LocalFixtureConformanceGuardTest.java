@@ -19,14 +19,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code HTS_SPECS_BASELINE_STATUS.md}'s "Non-numeric QUAL" row) is itself unfixable/accepted, not a bug the
  * guard could make pass.
  * <p>
- * Covers two of the three guarded phases (the {@code write} phase and the {@code semanticDiff}/comparison
- * phase, below) -- found by Phase 3's own re-verification round (Task 5) to be missing the {@code write}
- * one, which this class originally left untested. The third, the {@code parseText} (reparse) phase, has no
- * test here: constructing an input where {@code write()} succeeds but the WRITTEN output then fails to
- * reparse would mean deliberately reproducing a genuine round-trip defect (the exact thing AGENTS.md's
- * Writer Validation and Round-Trip Policy exists to prevent), not exercising an already-accepted, permanent
- * leniency case the way the other two probes below do -- there is no known input shape that reaches this
- * branch without being a new production bug in its own right.
+ * Covers one of the three guarded phases: the {@code semanticDiff}/comparison phase below. The {@code write}
+ * phase's guard has no test here: there is no known input shape, lazily-deferred INFO/QUAL/FORMAT check
+ * included, that reaches it without being a new production bug in its own right -- the same reason the
+ * {@code parseText} (reparse) phase already has no test here either. Constructing an input that still
+ * reaches either branch would mean deliberately reproducing a genuine round-trip defect (the exact thing
+ * AGENTS.md's Writer Validation and Round-Trip Policy exists to prevent), not exercising an already-accepted,
+ * permanent leniency case the way the probe below does. {@code checkRoundTripSemantic}'s own {@code write}-
+ * and {@code parseText}-phase guards are left in place regardless (speculative defensive code, matching their
+ * own comments there), simply untested pending a future genuine trigger.
  */
 class LocalFixtureConformanceGuardTest {
 
@@ -61,25 +62,5 @@ class LocalFixtureConformanceGuardTest {
     // guard existed
     assertTrue(e.getMessage().contains("unexpectedly threw while comparing before/after"), e.getMessage());
     assertTrue(e.getMessage().contains("QUAL"), e.getMessage());
-  }
-
-  @Test
-  void testWriteExceptionIsReportedAsCleanFailureNotRawException() throws IOException {
-    // an INFO key containing whitespace parses successfully with NO warning at all (the check is deferred,
-    // not skipped) via the lazy rawInfo path, but VcfPosition.checkInfoEntries's key-whitespace check is
-    // unconditional -- not a warn-or-throw -- and only actually runs on first getInfo()/getInfoKeys() access.
-    // VcfWriter.addInfoOrDot calls exactly that during write() to enumerate INFO for writing, so it throws
-    // there instead, with no warning ever having fired at parse time. The exact shape
-    // HTS_SPECS_BASELINE_STATUS.md's "INFO contains a whitespace" row documents (failed_body_info_028.vcf's
-    // "RS Q=123"), now exercised through this class's own (previously unguarded) write phase instead.
-    String vcf = "##fileformat=VCFv4.3\n" +
-        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" +
-        "1\t100\t.\tA\tT\t.\t.\tRS Q=123\n";
-    Files.writeString(PROBE_FILE, vcf);
-
-    AssertionFailedError e = assertThrows(AssertionFailedError.class,
-        () -> LocalFixtureConformanceTest.checkRoundTripSemantic(PROBE_FILE));
-    assertTrue(e.getMessage().contains("unexpectedly threw while writing"), e.getMessage());
-    assertTrue(e.getMessage().contains("whitespace"), e.getMessage());
   }
 }
