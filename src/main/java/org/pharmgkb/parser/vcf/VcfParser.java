@@ -28,7 +28,8 @@ import org.slf4j.LoggerFactory;
  * accumulated physical-line buffer, and the last-seen CHROM/POS used by {@code checkPositionOrdering}) on every
  * call, so sharing one instance across threads can corrupt that state. An instance owns the {@link
  * java.io.Reader} it was built from ({@link Builder#fromReader}/{@link Builder#fromFile}) for its entire
- * lifetime; {@link #close} closes that reader and permanently invalidates the instance. {@link Builder#fromReader}
+ * lifetime; {@link #close} closes that reader and permanently invalidates the instance, and is idempotent --
+ * a second call has no effect, regardless of whether the first one threw. {@link Builder#fromReader}
  * is one-shot -- {@link Builder#build()} consumes and clears the supplied reader -- so a second {@code build()}
  * without an intervening {@code fromReader}/{@code fromFile} call fails rather than returning a second
  * {@code VcfParser} silently backed by the same reader.
@@ -740,10 +741,19 @@ public class VcfParser implements Closeable {
    * @throws UncheckedIOException if the underlying reader's own {@code close()} fails (e.g. a network-backed
    * stream, or an fsync-on-close error for a local one) -- the warnings file, if any, is still closed/flushed
    * regardless (via a {@code finally} block), matching {@link VcfWriter#close()}'s equivalent write-failure
-   * behavior.
+   * behavior. Idempotent: a second call after the first has no effect, regardless of whether the first one
+   * threw -- matching {@link Closeable#close()}'s own documented contract ("If the stream is already closed
+   * then invoking this method has no effect") and {@link VcfWriter#close()}'s identical guarantee. Without
+   * this guard, a belt-and-braces {@code close()} inside try-with-resources (the underlying reader is already
+   * closed by {@link #parse()}'s own {@code finally} in the ordinary case) would re-invoke the underlying
+   * reader's {@code close()} and, for a reader whose {@code close()} is not itself idempotent, re-throw --
+   * which can suppress or replace the exception a caller actually cares about at try-with-resources unwind.
    */
   @Override
   public void close() {
+    if (m_closed) {
+      return; // idempotent: a second close() has no effect, regardless of whether the first one threw
+    }
     // set unconditionally, before the reader-close attempt below, so this instance is invalidated regardless
     // of whether that attempt itself succeeds or throws -- matching this class's own "permanently invalidates
     // the instance" claim, not just "invalidates it if closing happened to succeed."

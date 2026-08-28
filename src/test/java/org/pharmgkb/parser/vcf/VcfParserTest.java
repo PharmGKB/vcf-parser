@@ -1410,6 +1410,42 @@ public class VcfParserTest {
   }
 
   @Test
+  void testCloseIsIdempotentAfterFailure() throws IOException {
+    // regression test: Closeable.close()'s own documented contract says a second call on an already-closed
+    // stream has no effect -- without the m_closed guard, a second (or third) close() re-invoked the
+    // underlying reader's own close() and re-threw a fresh UncheckedIOException every time, which can
+    // suppress or replace the exception a caller actually cares about at try-with-resources unwind. Mirrors
+    // VcfWriterTest#testCloseIsIdempotentAfterFailure.
+    class CountingFailingCloseReader extends Reader {
+      private final Reader m_delegate = new StringReader(
+          "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n");
+      private int m_closeCount;
+
+      @Override
+      public int read(char[] cbuf, int off, int len) throws IOException {
+        return m_delegate.read(cbuf, off, len);
+      }
+
+      @Override
+      public void close() throws IOException {
+        m_closeCount++;
+        throw new IOException("simulated close failure");
+      }
+    }
+
+    CountingFailingCloseReader reader = new CountingFailingCloseReader();
+    VcfParser parser = new VcfParser.Builder()
+        .fromReader(new BufferedReader(reader))
+        .parseWith((metadata, record) -> {})
+        .build();
+    parser.parseMetadata();
+    assertThrows(UncheckedIOException.class, parser::close);
+    parser.close(); // second call: must be a no-op, not re-invoke the reader's close() or throw again
+    parser.close(); // third call: same
+    assertEquals(1, reader.m_closeCount, "the underlying reader's close() must be invoked exactly once");
+  }
+
+  @Test
   void testCloseStillClosesTheWarningsFileWhenTheUnderlyingReaderFailsToClose(@TempDir Path tempDir)
       throws IOException {
     // the warnings file must still be closed/flushed via close()'s finally block even when the reader-close
