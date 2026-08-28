@@ -34,18 +34,30 @@ def getDevVersionName() {
 }
 
 def getVersionName() {
+  def output
   try {
-    def output = providers.exec {
+    // --match restricts the nearest tag to a version tag: without it, an unrelated nearest tag (e.g. a
+    // work-in-progress branch marker with no "v" prefix at all) would either substring(1) into garbage or
+    // throw StringIndexOutOfBoundsException, and either way silently fall through to the '0.0.0' catch below
+    // -- indistinguishable from "no tags exist at all," which is the one case that legitimately means 0.0.0.
+    output = providers.exec {
       executable 'git'
-      args = ['describe', '--tags', '--abbrev=0']
+      args = ['describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*']
     }.standardOutput.asText.get().trim()
-    // strip of leading "v"
-    output = output.substring(1)
   } catch (ignore) {
     println(ignore)
     logger.info('Error running git describe (' + ignore + '), defaulting to 0.0.0')
     return '0.0.0'
   }
+  // strip the leading "v"
+  def version = output.substring(1)
+  // fail rather than silently publish a version that isn't actually the tag it claims to be: a wrong version
+  // published to Maven Central cannot be retracted, so this must be loud, not swallowed into '0.0.0' the way
+  // "no tags exist" legitimately is.
+  if (!(version =~ /^\d+\.\d+\.\d+$/)) {
+    throw new GradleException("Nearest version tag '" + output + "' does not match the required vX.Y.Z format")
+  }
+  return version
 }
 
 project.group = 'org.pharmgkb'
