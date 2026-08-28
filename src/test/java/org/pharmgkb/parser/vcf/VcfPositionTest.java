@@ -767,7 +767,20 @@ public class VcfPositionTest {
     assertEquals("C", position.getAllele(0));
     assertEquals("A", position.getAllele(1));
     assertEquals("T", position.getAllele(2));
-    assertThrows(IndexOutOfBoundsException.class, () -> position.getAllele(3));
+    IndexOutOfBoundsException tooHigh = assertThrows(IndexOutOfBoundsException.class, () -> position.getAllele(3));
+    assertTrue(tooHigh.getMessage().contains("3"), tooHigh.getMessage());
+  }
+
+  @Test
+  public void testGetAlleleThrowsForNegativeIndexReportingTheGivenIndexNotTheShiftedOne() {
+    // regression test: getAllele(-1) previously delegated straight to m_altBases.get(-1 - 1), reporting
+    // "Index -2" -- confusing for a caller who never passed -2. An explicit bound check now reports the
+    // caller's own index instead.
+    VcfPosition position = STRICT_CONTEXT.newPosition("chr1", 1, null, "C", new ArrayList<>(Arrays.asList("A", "T")),
+        null, null, null, null, -1);
+    IndexOutOfBoundsException e = assertThrows(IndexOutOfBoundsException.class, () -> position.getAllele(-1));
+    assertTrue(e.getMessage().contains("-1"), e.getMessage());
+    assertFalse(e.getMessage().contains("-2"), e.getMessage());
   }
 
   @Test

@@ -730,8 +730,11 @@ public final class VcfMetadata {
    * @throws IndexOutOfBoundsException If the sample doesn't exist
    */
   public String getSampleName(int idx) {
-    if (idx < 0) {
-      throw new IndexOutOfBoundsException("Sample index " + idx + " is negative");
+    // explicit upper bound too, not just the negative guard: a positive out-of-range idx would otherwise fall
+    // through to m_columns.get(9 + idx) and report the shifted COLUMN index in its own message (e.g. a
+    // 1-sample file's getSampleName(1) reporting "Index 10"), confusing for a caller who passed sample index 1.
+    if (idx < 0 || idx >= getNumSamples()) {
+      throw new IndexOutOfBoundsException("Sample index " + idx + " is out of bounds");
     }
     return m_columns.get(9 + idx);
   }

@@ -1227,6 +1227,12 @@ public final class VcfPosition {
     if (index == 0) {
       return m_refBases;
     }
+    // explicit bound check, not a bare delegation to m_altBases.get(index - 1): that would report the
+    // shifted index in its own message (e.g. getAllele(-1) reporting "Index -2"), confusing for a caller who
+    // never passed -2 -- reporting the caller's own index instead.
+    if (index < 0 || index > m_altBases.size()) {
+      throw new IndexOutOfBoundsException("Allele index " + index + " is out of bounds");
+    }
     return m_altBases.get(index - 1);
   }
 

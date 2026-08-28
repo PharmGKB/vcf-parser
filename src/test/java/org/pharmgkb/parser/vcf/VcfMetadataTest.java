@@ -1712,19 +1712,23 @@ public class VcfMetadataTest {
         .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
             "sample1"))
         .build();
-    assertThrows(IndexOutOfBoundsException.class, () -> metadata.getSampleName(-1));
+    IndexOutOfBoundsException e = assertThrows(IndexOutOfBoundsException.class, () -> metadata.getSampleName(-1));
+    assertTrue(e.getMessage().contains("-1"), e.getMessage());
   }
 
   @Test
   public void testGetSampleNameThrowsForIndexAtOrBeyondNumSamples() {
-    // pins the upper-bound behavior too (already correctly thrown by the underlying List.get(), but
-    // previously unpinned by any test) -- there is 1 sample (index 0), so index 1 is out of range
+    // pins the upper-bound behavior (an explicit check now, not merely a fall-through to the underlying
+    // List.get(9 + idx), which would report the shifted COLUMN index (10) rather than the caller's own
+    // sample index (1) in its own message) -- there is 1 sample (index 0), so index 1 is out of range
     VcfMetadata metadata = new VcfMetadata.Builder(STRICT_CONTEXT)
         .setFileFormat("VCFv4.2")
         .setColumns(Arrays.asList("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
             "sample1"))
         .build();
-    assertThrows(IndexOutOfBoundsException.class, () -> metadata.getSampleName(1));
+    IndexOutOfBoundsException e = assertThrows(IndexOutOfBoundsException.class, () -> metadata.getSampleName(1));
+    assertTrue(e.getMessage().contains("1"), e.getMessage());
+    assertFalse(e.getMessage().contains("10"), e.getMessage());
   }
 
   @Test
