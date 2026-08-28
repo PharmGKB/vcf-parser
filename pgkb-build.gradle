@@ -52,7 +52,8 @@ jar {
   }
   bundle {
     bnd(
-      'Export-Package': 'org.pharmgkb.parser.vcf,org.pharmgkb.parser.vcf.model'
+      'Export-Package': 'org.pharmgkb.parser.vcf',
+      'Import-Package': '!com.google.errorprone.annotations,!org.jspecify.annotations,*'
     )
   }
 }
